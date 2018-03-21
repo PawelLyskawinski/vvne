@@ -4,10 +4,18 @@ project(vvne)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fno-exceptions -fno-rtti")# -Wall -Wextra -Werror")
 
+if(WIN32)
 include_directories(
-	~/Pobrane/VulkanSDK/1.1.70.1/x86_64/include
-    ${CMAKE_CURRENT_LIST_DIR}/thirdparty
-    )
+        C:/Users/pawel.lyskawinski/Downloads/MinGW/include
+        C:/VulkanSDK/1.0.65.0/Include
+        ${CMAKE_CURRENT_LIST_DIR}/thirdparty
+        )
+else()
+include_directories(
+	    ~/Pobrane/VulkanSDK/1.1.70.1/x86_64/include
+        ${CMAKE_CURRENT_LIST_DIR}/thirdparty
+        )
+endif()
 
 add_executable(${PROJECT_NAME}
         main.cc
@@ -42,7 +50,14 @@ add_executable(${PROJECT_NAME}
         assets/imgui.frag
 		)
 
+if(WIN32)
+target_link_libraries(${PROJECT_NAME}
+        ${CMAKE_CURRENT_LIST_DIR}/bin/SDL2.dll
+        C:/Windows/System32/vulkan-1.dll
+        )
+else()
 target_link_libraries(${PROJECT_NAME}
         ${CMAKE_CURRENT_LIST_DIR}/bin/libSDL2-2.0.so.0
         /usr/lib/x86_64-linux-gnu/libvulkan.so.1
         )
+endif()

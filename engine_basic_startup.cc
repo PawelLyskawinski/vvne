@@ -1,21 +1,27 @@
+#ifdef __linux__
 #define VK_USE_PLATFORM_XCB_KHR
+#else
+#define VK_USE_PLATFORM_WIN32_KHR
+#endif
+
 #include "engine.hh"
 #include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_log.h>
 #include <SDL2/SDL_vulkan.h>
 
-#include <vulkan/vulkan.h>
-
 #define INITIAL_WINDOW_WIDTH 1200
 #define INITIAL_WINDOW_HEIGHT 900
 
-VkBool32 vulkan_debug_callback(VkDebugReportFlagsEXT, VkDebugReportObjectTypeEXT, uint64_t, size_t, int32_t,
-                                const char*, const char* msg, void*)
+VkBool32
+#ifndef __linux__
+    __stdcall
+#endif
+    vulkan_debug_callback(VkDebugReportFlagsEXT, VkDebugReportObjectTypeEXT, uint64_t, size_t, int32_t, const char*,
+                          const char* msg, void*)
 {
   SDL_Log("validation layer: %s\n", msg);
   return VK_FALSE;
 }
-
 
 void engine_basic_startup(Engine& engine)
 {
@@ -30,8 +36,17 @@ void engine_basic_startup(Engine& engine)
     ai.engineVersion      = 1;
     ai.apiVersion         = VK_API_VERSION_1_0;
 
-    const char* instance_layers[]     = {};
-    const char* instance_extensions[] = {VK_KHR_SURFACE_EXTENSION_NAME, "VK_KHR_xlib_surface",
+    const char* instance_layers[] = {
+#ifndef __linux__
+        "VK_LAYER_LUNARG_standard_validation"
+#endif
+    };
+    const char* instance_extensions[] = {VK_KHR_SURFACE_EXTENSION_NAME,
+#ifdef __linux__
+                                         "VK_KHR_xlib_surface",
+#else
+                                         VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+#endif
                                          VK_EXT_DEBUG_REPORT_EXTENSION_NAME};
 
     VkInstanceCreateInfo ci{};
@@ -71,12 +86,11 @@ void engine_basic_startup(Engine& engine)
     SDL_Log("Selecting graphics card: %s", engine.physical_device_properties.deviceName);
   }
 
-
   SDL_bool surface_result = SDL_Vulkan_CreateSurface(engine.window, engine.instance, &engine.surface);
-  if(SDL_FALSE == surface_result)
+  if (SDL_FALSE == surface_result)
   {
-      SDL_Log("%s", SDL_GetError());
-      return;
+    SDL_Log("%s", SDL_GetError());
+    return;
   }
 
   vkGetPhysicalDeviceSurfaceCapabilitiesKHR(engine.physical_device, engine.surface, &engine.surface_capabilities);

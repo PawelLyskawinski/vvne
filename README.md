@@ -8,10 +8,10 @@ There are a lot of publicly available engines / demos on github which use vulkan
 - Custom vulkan memory allocator (single VkDeviceMemory and VkBuffer for everything)
 - Physically based rendering of some sort?
 - gltf2.0 animations
-- support for both windows and linux
 ### already implemented
 - gltf2.0 model ascii import with cJSON (without animations)
 - integrated imgui
+- support for both windows and linux
 ### additional external dependencies
 - vulkan SDK (libvulkan/vulkan-1, glslang)
 - compiled SDL2 library
