@@ -265,7 +265,7 @@ void RenderableModel::construct(Engine& engine, const Model& model) noexcept
 
   SDL_free(uploadBuffer);
 
-  albedo_texture_idx = engine_load_texture(engine, model.images[0].data);
+  albedo_texture_idx = engine.load_texture(model.images[0].data);
 }
 
 void RenderableModel::teardown(const Engine& engine) noexcept

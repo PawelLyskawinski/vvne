@@ -23,7 +23,7 @@ uint32_t find_memory_type_index(VkPhysicalDeviceMemoryProperties* properties, Vk
   return 0;
 }
 
-VkShaderModule engine_load_shader(Engine& engine, const char* filepath)
+VkShaderModule Engine::load_shader(const char* filepath)
 {
   SDL_RWops* handle     = SDL_RWFromFile(filepath, "rb");
   uint32_t   filelength = static_cast<uint32_t>(SDL_RWsize(handle));
@@ -38,13 +38,13 @@ VkShaderModule engine_load_shader(Engine& engine, const char* filepath)
   ci.pCode    = reinterpret_cast<uint32_t*>(buffer);
 
   VkShaderModule result = VK_NULL_HANDLE;
-  vkCreateShaderModule(engine.device, &ci, nullptr, &result);
+  vkCreateShaderModule(device, &ci, nullptr, &result);
   SDL_free(buffer);
 
   return result;
 }
 
-int engine_load_texture(Engine& engine, const char* filepath)
+int Engine::load_texture(const char* filepath)
 {
   int x           = 0;
   int y           = 0;
@@ -61,14 +61,14 @@ int engine_load_texture(Engine& engine, const char* filepath)
   pixel_format = SDL_PIXELFORMAT_RGBA32;
 
   SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormatFrom(pixels, x, y, depth, pitch, pixel_format);
-  int          result  = engine_load_texture(engine, surface);
+  int          result  = load_texture(surface);
   SDL_FreeSurface(surface);
 
   stbi_image_free(pixels);
   return result;
 }
 
-int engine_load_texture(Engine &engine, SDL_Surface *surface)
+int Engine::load_texture(SDL_Surface *surface)
 {
   auto getSurfaceFormat = [](SDL_Surface* surface) -> VkFormat {
     switch (surface->format->BitsPerPixel)
@@ -98,16 +98,16 @@ int engine_load_texture(Engine &engine, SDL_Surface *surface)
     ci.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
     ci.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
 
-    vkCreateImage(engine.device, &ci, nullptr, &staging_image);
+    vkCreateImage(device, &ci, nullptr, &staging_image);
   }
 
   VkDeviceMemory staging_memory = VK_NULL_HANDLE;
   {
     VkPhysicalDeviceMemoryProperties properties = {};
-    vkGetPhysicalDeviceMemoryProperties(engine.physical_device, &properties);
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
 
     VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(engine.device, staging_image, &reqs);
+    vkGetImageMemoryRequirements(device, staging_image, &reqs);
 
     VkMemoryPropertyFlags type = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
@@ -116,14 +116,14 @@ int engine_load_texture(Engine &engine, SDL_Surface *surface)
     allocate.allocationSize  = reqs.size;
     allocate.memoryTypeIndex = find_memory_type_index(&properties, &reqs, type);
 
-    vkAllocateMemory(engine.device, &allocate, nullptr, &staging_memory);
-    vkBindImageMemory(engine.device, staging_image, staging_memory, 0);
+    vkAllocateMemory(device, &allocate, nullptr, &staging_memory);
+    vkBindImageMemory(device, staging_image, staging_memory, 0);
   }
 
   VkSubresourceLayout subresource_layout{};
   VkImageSubresource  image_subresource{};
   image_subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-  vkGetImageSubresourceLayout(engine.device, staging_image, &image_subresource, &subresource_layout);
+  vkGetImageSubresourceLayout(device, staging_image, &image_subresource, &subresource_layout);
 
   uint32_t device_row_pitch = static_cast<uint32_t>(subresource_layout.rowPitch);
   uint32_t device_size      = static_cast<uint32_t>(subresource_layout.size);
@@ -136,7 +136,7 @@ int engine_load_texture(Engine &engine, SDL_Surface *surface)
   uint8_t* pixels           = reinterpret_cast<uint8_t*>(surface->pixels);
   void*    mapped_data      = nullptr;
 
-  vkMapMemory(engine.device, staging_memory, 0, device_size, 0, &mapped_data);
+  vkMapMemory(device, staging_memory, 0, device_size, 0, &mapped_data);
 
   uint8_t* pixel_ptr  = pixels;
   uint8_t* mapped_ptr = reinterpret_cast<uint8_t*>(mapped_data);
@@ -172,13 +172,13 @@ int engine_load_texture(Engine &engine, SDL_Surface *surface)
     }
   }
 
-  vkUnmapMemory(engine.device, staging_memory);
+  vkUnmapMemory(device, staging_memory);
 
-  const int resultIdx = engine.loaded_textures;
-  engine.loaded_textures += 1;
-  VkImage&        result_image  = engine.images[resultIdx];
-  VkDeviceMemory& result_memory = engine.images_memory[resultIdx];
-  VkImageView&    result_view   = engine.image_views[resultIdx];
+  const int resultIdx = loaded_textures;
+  loaded_textures += 1;
+  VkImage&        result_image  = images[resultIdx];
+  VkDeviceMemory& result_memory = images_memory[resultIdx];
+  VkImageView&    result_view   = image_views[resultIdx];
 
   {
     VkImageCreateInfo ci{};
@@ -196,23 +196,23 @@ int engine_load_texture(Engine &engine, SDL_Surface *surface)
     ci.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
     ci.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
 
-    vkCreateImage(engine.device, &ci, nullptr, &result_image);
+    vkCreateImage(device, &ci, nullptr, &result_image);
   }
 
   {
     VkPhysicalDeviceMemoryProperties properties = {};
-    vkGetPhysicalDeviceMemoryProperties(engine.physical_device, &properties);
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
 
     VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(engine.device, result_image, &reqs);
+    vkGetImageMemoryRequirements(device, result_image, &reqs);
 
     VkMemoryAllocateInfo allocate{};
     allocate.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocate.allocationSize  = reqs.size;
     allocate.memoryTypeIndex = find_memory_type_index(&properties, &reqs, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-    vkAllocateMemory(engine.device, &allocate, nullptr, &result_memory);
-    vkBindImageMemory(engine.device, result_image, result_memory, 0);
+    vkAllocateMemory(device, &allocate, nullptr, &result_memory);
+    vkBindImageMemory(device, result_image, result_memory, 0);
   }
 
   {
@@ -229,17 +229,17 @@ int engine_load_texture(Engine &engine, SDL_Surface *surface)
     ci.subresourceRange = sr;
     ci.format           = getSurfaceFormat(surface);
     ci.image            = result_image;
-    vkCreateImageView(engine.device, &ci, nullptr, &result_view);
+    vkCreateImageView(device, &ci, nullptr, &result_view);
   }
 
   VkCommandBuffer command_buffer = VK_NULL_HANDLE;
   {
     VkCommandBufferAllocateInfo allocate{};
     allocate.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocate.commandPool        = engine.graphics_command_pool;
+    allocate.commandPool        = graphics_command_pool;
     allocate.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     allocate.commandBufferCount = 1;
-    vkAllocateCommandBuffers(engine.device, &allocate, &command_buffer);
+    vkAllocateCommandBuffers(device, &allocate, &command_buffer);
   }
 
   {
@@ -330,7 +330,7 @@ int engine_load_texture(Engine &engine, SDL_Surface *surface)
   {
     VkFenceCreateInfo ci{};
     ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    vkCreateFence(engine.device, &ci, nullptr, &image_upload_fence);
+    vkCreateFence(device, &ci, nullptr, &image_upload_fence);
   }
 
   {
@@ -338,13 +338,13 @@ int engine_load_texture(Engine &engine, SDL_Surface *surface)
     submit.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submit.commandBufferCount = 1;
     submit.pCommandBuffers    = &command_buffer;
-    vkQueueSubmit(engine.graphics_queue, 1, &submit, image_upload_fence);
+    vkQueueSubmit(graphics_queue, 1, &submit, image_upload_fence);
   }
 
-  vkWaitForFences(engine.device, 1, &image_upload_fence, VK_TRUE, UINT64_MAX);
-  vkDestroyFence(engine.device, image_upload_fence, nullptr);
-  vkFreeMemory(engine.device, staging_memory, nullptr);
-  vkDestroyImage(engine.device, staging_image, nullptr);
+  vkWaitForFences(device, 1, &image_upload_fence, VK_TRUE, UINT64_MAX);
+  vkDestroyFence(device, image_upload_fence, nullptr);
+  vkFreeMemory(device, staging_memory, nullptr);
+  vkDestroyImage(device, staging_image, nullptr);
 
   return resultIdx;
 }

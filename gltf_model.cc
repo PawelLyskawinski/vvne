@@ -2,7 +2,6 @@
 #include "engine.hh"
 #include "gltf.hh"
 #include <SDL2/SDL_log.h>
-#include <SDL2/SDL_stdinc.h>
 
 namespace gltf {
 

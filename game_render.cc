@@ -12,7 +12,7 @@ constexpr float to_rad(float deg) noexcept
 
 } // namespace
 
-void game_render(Game& game, Engine& engine, float current_time_sec)
+void Game::render(float current_time_sec)
 {
   Engine::SimpleRenderer& renderer = engine.simple_renderer;
 
@@ -137,14 +137,14 @@ void game_render(Game& game, Engine& engine, float current_time_sec)
       {
         const int max_handled_textures         = SDL_arraysize(renderer.descriptor_sets) / SWAPCHAIN_IMAGES_COUNT;
         const int offset_to_usable_descriptors = max_handled_textures * image_index;
-        const int descriptor_idx               = offset_to_usable_descriptors + game.renderableHelmet.albedo_texture_idx;
+        const int descriptor_idx               = offset_to_usable_descriptors + renderableHelmet.albedo_texture_idx;
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderer.pipeline_layouts[0], 0, 1,
                                 &renderer.descriptor_sets[descriptor_idx], 0, nullptr);
       }
 
-      vkCmdBindIndexBuffer(cmd, game.renderableHelmet.device_buffer, game.renderableHelmet.indices_offset,
-                           game.renderableHelmet.indices_type);
-      vkCmdBindVertexBuffers(cmd, 0, 1, &game.renderableHelmet.device_buffer, &game.renderableHelmet.vertices_offset);
+      vkCmdBindIndexBuffer(cmd, renderableHelmet.device_buffer, renderableHelmet.indices_offset,
+                           renderableHelmet.indices_type);
+      vkCmdBindVertexBuffers(cmd, 0, 1, &renderableHelmet.device_buffer, &renderableHelmet.vertices_offset);
 
       mat4x4 view   = {};
       vec3   eye    = {6.0f, 6.7f, 30.0f};
@@ -168,7 +168,7 @@ void game_render(Game& game, Engine& engine, float current_time_sec)
       mat4x4_identity(model);
 
       //mat4x4_translate(model, -5.0f, 2.0f, 10.0f);
-      mat4x4_translate(model, game.helmet_translation[0], game.helmet_translation[1], game.helmet_translation[2]);
+      mat4x4_translate(model, helmet_translation[0], helmet_translation[1], helmet_translation[2]);
       mat4x4_rotate_Y(model, model, current_time_sec * 0.3f);
       mat4x4_rotate_X(model, model, to_rad(90.0));
       mat4x4_scale_aniso(model, model, 1.6f, 1.6f, 1.6f);
@@ -177,7 +177,7 @@ void game_render(Game& game, Engine& engine, float current_time_sec)
       mat4x4_mul(mvp, projectionview, model);
 
       vkCmdPushConstants(cmd, renderer.pipeline_layouts[0], VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
-      vkCmdDrawIndexed(cmd, game.renderableHelmet.indices_count, 1, 0, 0, 0);
+      vkCmdDrawIndexed(cmd, renderableHelmet.indices_count, 1, 0, 0, 0);
     }
 
     vkEndCommandBuffer(cmd);

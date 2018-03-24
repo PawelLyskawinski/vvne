@@ -7,10 +7,10 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-void game_startup(Game& game, Engine& engine)
+void Game::startup()
 {
-  game.clouds_texture_idx       = engine_load_texture(engine, "../assets/clouds.png");
-  game.clouds_bliss_texture_idx = engine_load_texture(engine, "../assets/clouds_bliss_blue.jpg");
+  clouds_texture_idx       = engine.load_texture("../assets/clouds.png");
+  clouds_bliss_texture_idx = engine.load_texture("../assets/clouds_bliss_blue.jpg");
 
   {
     ImGui::CreateContext();
@@ -23,7 +23,7 @@ void game_startup(Game& game, Engine& engine)
     io.Fonts->GetTexDataAsRGBA32(&guifont_pixels, &guifont_w, &guifont_h);
     SDL_Surface* surface  = SDL_CreateRGBSurfaceWithFormatFrom(guifont_pixels, guifont_w, guifont_h, 32, 4 * guifont_w,
                                                               SDL_PIXELFORMAT_RGBA8888);
-    game.font_texture_idx = engine_load_texture(engine, surface);
+    font_texture_idx = engine.load_texture(surface);
     SDL_FreeSurface(surface);
 
     struct Mapping
@@ -73,16 +73,16 @@ void game_startup(Game& game, Engine& engine)
                            {ImGuiMouseCursor_ResizeNWSE, SDL_SYSTEM_CURSOR_SIZENWSE}};
 
     for (CursorMapping mapping : cursor_mappings)
-      game.mousecursors[mapping.imgui] = SDL_CreateSystemCursor(mapping.sdl);
+      mousecursors[mapping.imgui] = SDL_CreateSystemCursor(mapping.sdl);
   }
 
   {
     const int memorySize = 1600; // adjusted manually
-    game.helmet.memory   = static_cast<uint8_t*>(SDL_malloc(memorySize));
-    game.helmet.loadASCII("../assets/DamagedHelmet/glTF/DamagedHelmet.gltf");
-    SDL_Log("helmet used %d / %d bytes", game.helmet.usedMemory, memorySize);
-    game.helmet.debugDump();
-    game.renderableHelmet.construct(engine, game.helmet);
+    helmet.memory   = static_cast<uint8_t*>(SDL_malloc(memorySize));
+    helmet.loadASCII("../assets/DamagedHelmet/glTF/DamagedHelmet.gltf");
+    SDL_Log("helmet used %d / %d bytes", helmet.usedMemory, memorySize);
+    helmet.debugDump();
+    renderableHelmet.construct(engine, helmet);
   }
 
   // ----------------------------------------------------------
@@ -93,82 +93,40 @@ void game_startup(Game& game, Engine& engine)
   {
     Engine::SimpleRenderer& renderer = engine.simple_renderer;
 
-    // texture gui font
+    VkDescriptorImageInfo images[4] = {};
+    for (VkDescriptorImageInfo& image : images)
     {
-      VkDescriptorImageInfo image{};
       image.sampler     = engine.texture_samplers[image_index];
       image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-      image.imageView   = engine.image_views[game.font_texture_idx];
+    }
 
-      VkWriteDescriptorSet write{};
+    images[0].imageView = engine.image_views[font_texture_idx];
+    images[1].imageView = engine.image_views[clouds_texture_idx];
+    images[2].imageView = engine.image_views[clouds_bliss_texture_idx];
+    images[3].imageView = engine.image_views[renderableHelmet.albedo_texture_idx];
+
+    VkWriteDescriptorSet writes[4] = {};
+    for (int i = 0; i < SDL_arraysize(writes); ++i)
+    {
+      VkWriteDescriptorSet& write = writes[i];
+
       write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-      write.dstSet          = renderer.descriptor_sets[(image_index * 4) + game.font_texture_idx];
       write.dstBinding      = 1;
       write.dstArrayElement = 0;
       write.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
       write.descriptorCount = 1;
-      write.pImageInfo      = &image;
-
-      vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
+      write.pImageInfo      = &images[i];
     }
 
-    // texture clouds bliss
-    {
-      VkDescriptorImageInfo image{};
-      image.sampler     = engine.texture_samplers[image_index];
-      image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-      image.imageView   = engine.image_views[game.clouds_texture_idx];
+    writes[0].dstSet = renderer.descriptor_sets[(image_index * 4) + font_texture_idx];
+    writes[1].dstSet = renderer.descriptor_sets[(image_index * 4) + clouds_texture_idx];
+    writes[2].dstSet = renderer.descriptor_sets[(image_index * 4) + clouds_bliss_texture_idx];
+    writes[3].dstSet = renderer.descriptor_sets[(image_index * 4) + renderableHelmet.albedo_texture_idx];
 
-      VkWriteDescriptorSet write{};
-      write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-      write.dstSet          = renderer.descriptor_sets[(image_index * 4) + game.clouds_texture_idx];
-      write.dstBinding      = 1;
-      write.dstArrayElement = 0;
-      write.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-      write.descriptorCount = 1;
-      write.pImageInfo      = &image;
-
-      vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
-    }
-    // gui font
-    {
-      VkDescriptorImageInfo image{};
-      image.sampler     = engine.texture_samplers[image_index];
-      image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-      image.imageView   = engine.image_views[game.clouds_bliss_texture_idx];
-
-      VkWriteDescriptorSet write{};
-      write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-      write.dstSet          = renderer.descriptor_sets[(image_index * 4) + game.clouds_bliss_texture_idx];
-      write.dstBinding      = 1;
-      write.dstArrayElement = 0;
-      write.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-      write.descriptorCount = 1;
-      write.pImageInfo      = &image;
-
-      vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
-    }
-
-    {
-      VkDescriptorImageInfo image{};
-      image.sampler     = engine.texture_samplers[image_index];
-      image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-      image.imageView   = engine.image_views[game.renderableHelmet.albedo_texture_idx];
-
-      VkWriteDescriptorSet write{};
-      write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-      write.dstSet          = renderer.descriptor_sets[(image_index * 4) + game.renderableHelmet.albedo_texture_idx];
-      write.dstBinding      = 1;
-      write.dstArrayElement = 0;
-      write.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-      write.descriptorCount = 1;
-      write.pImageInfo      = &image;
-
-      vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
-    }
+    vkUpdateDescriptorSets(engine.device, SDL_arraysize(writes), writes, 0, nullptr);
   }
 
-  game.helmet_translation[0] = 2.2f;
-  game.helmet_translation[1] = 3.5f;
-  game.helmet_translation[2] = 19.2f;
+  helmet_translation[0] = 2.2f;
+  helmet_translation[1] = 3.5f;
+  helmet_translation[2] = 19.2f;
 }

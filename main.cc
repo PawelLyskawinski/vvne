@@ -14,11 +14,11 @@ int main(int argc, char* argv[])
   SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO | SDL_INIT_EVENTS);
 
   Engine engine = {};
-  engine_basic_startup(engine);
-  engine_renderer_simple(engine);
+  engine.basic_startup();
+  engine.renderer_simple();
 
-  Game game = {};
-  game_startup(game, engine);
+  Game game(engine);
+  game.startup();
 
   uint64_t performance_frequency = SDL_GetPerformanceFrequency();
   uint64_t start_of_game_ticks   = SDL_GetPerformanceCounter();
@@ -30,8 +30,8 @@ int main(int argc, char* argv[])
     uint64_t ticks_from_game_start = start_of_frame_ticks - start_of_game_ticks;
     float    current_time_sec      = (float)ticks_from_game_start / (float)performance_frequency;
 
-    game_update(game, engine, current_time_sec);
-    game_render(game, engine, current_time_sec);
+    game.update(current_time_sec);
+    game.render(current_time_sec);
 
     uint64_t    frame_time_counter         = SDL_GetPerformanceCounter() - start_of_frame_ticks;
     float       elapsed_ms                 = 1000.0f * ((float)frame_time_counter / (float)performance_frequency);
@@ -44,8 +44,8 @@ int main(int argc, char* argv[])
   SDL_HideWindow(engine.window);
 
   vkDeviceWaitIdle(engine.device);
-  game_teardown(game, engine);
-  engine_teardown(engine);
+  game.teardown();
+  engine.teardown();
 
   SDL_Quit();
   return 0;

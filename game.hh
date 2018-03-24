@@ -7,19 +7,26 @@
 
 struct Game
 {
-  bool        mousepressed[3];
-  SDL_Cursor* mousecursors[ImGuiMouseCursor_Count_];
-  uint64_t    time;
-  int         font_texture_idx;
-  int         clouds_texture_idx;
-  int         clouds_bliss_texture_idx;
+  explicit Game(Engine& engine)
+      : engine(engine)
+  {
+  }
 
-  gltf::Model           helmet;
-  gltf::RenderableModel renderableHelmet;
-  float helmet_translation[3];
+  Engine&     engine;
+  bool        mousepressed[3]                       = {};
+  SDL_Cursor* mousecursors[ImGuiMouseCursor_Count_] = {};
+  uint64_t    time                                  = 0;
+
+  int font_texture_idx         = 0;
+  int clouds_texture_idx       = 0;
+  int clouds_bliss_texture_idx = 0;
+
+  gltf::Model           helmet                = {};
+  gltf::RenderableModel renderableHelmet      = {};
+  float                 helmet_translation[3] = {};
+
+  void startup();
+  void teardown();
+  void update(float current_time_sec);
+  void render(float current_time_sec);
 };
-
-void game_startup(Game& game, Engine& engine);
-void game_teardown(Game& game, Engine& engine);
-void game_update(Game& game, Engine& engine, float current_time_sec);
-void game_render(Game& game, Engine& engine, float current_time_sec);

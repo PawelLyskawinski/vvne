@@ -71,19 +71,19 @@ struct Engine
   };
 
   SimpleRenderer simple_renderer;
+
+  void basic_startup();
+  void renderer_simple();
+  void teardown();
+
+  VkShaderModule load_shader(const char* filepath);
+  int load_texture(const char* filepath);
+  int load_texture(SDL_Surface* surface);
 };
 
-void load_vulkan_functions();
-void engine_basic_startup(Engine& engine);
-void engine_renderer_simple(Engine& engine);
-void engine_teardown(Engine& engine);
-
 // etc
-uint32_t       find_memory_type_index(VkPhysicalDeviceMemoryProperties* properties, VkMemoryRequirements* reqs,
-                                      VkMemoryPropertyFlags searched);
-VkShaderModule engine_load_shader(Engine& engine, const char* filepath);
-int            engine_load_texture(Engine& engine, const char* filepath);
-int            engine_load_texture(Engine& engine, SDL_Surface* surface);
+uint32_t find_memory_type_index(VkPhysicalDeviceMemoryProperties* properties, VkMemoryRequirements* reqs,
+                                VkMemoryPropertyFlags searched);
 
 // structure definitions
 struct CubeBuffer

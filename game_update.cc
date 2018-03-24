@@ -2,7 +2,7 @@
 #include "game.hh"
 #include <SDL2/SDL_events.h>
 
-void game_update(Game& game, Engine& engine, float current_time_sec)
+void Game::update(float current_time_sec)
 {
   ImGuiIO& io = ImGui::GetIO();
 
@@ -38,13 +38,13 @@ void game_update(Game& game, Engine& engine, float current_time_sec)
         switch (event.button.button)
         {
         case SDL_BUTTON_LEFT:
-          game.mousepressed[0] = true;
+          mousepressed[0] = true;
           break;
         case SDL_BUTTON_RIGHT:
-          game.mousepressed[1] = true;
+          mousepressed[1] = true;
           break;
         case SDL_BUTTON_MIDDLE:
-          game.mousepressed[2] = true;
+          mousepressed[2] = true;
           break;
         default:
           break;
@@ -82,11 +82,11 @@ void game_update(Game& game, Engine& engine, float current_time_sec)
     bool   is_mouse_in_window_area = 0 < (SDL_GetWindowFlags(engine.window) & SDL_WINDOW_MOUSE_FOCUS);
     io.MousePos = is_mouse_in_window_area ? ImVec2((float)mx, (float)my) : ImVec2(-FLT_MAX, -FLT_MAX);
 
-    io.MouseDown[0] = game.mousepressed[0] || (mouseMask & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
-    io.MouseDown[1] = game.mousepressed[1] || (mouseMask & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
-    io.MouseDown[2] = game.mousepressed[2] || (mouseMask & SDL_BUTTON(SDL_BUTTON_MIDDLE)) != 0;
+    io.MouseDown[0] = mousepressed[0] || (mouseMask & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
+    io.MouseDown[1] = mousepressed[1] || (mouseMask & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
+    io.MouseDown[2] = mousepressed[2] || (mouseMask & SDL_BUTTON(SDL_BUTTON_MIDDLE)) != 0;
 
-    for (bool& iter : game.mousepressed)
+    for (bool& iter : mousepressed)
       iter = false;
 
     if ((SDL_GetWindowFlags(engine.window) & (SDL_WINDOW_MOUSE_FOCUS | SDL_WINDOW_MOUSE_CAPTURE)) != 0)
@@ -106,7 +106,7 @@ void game_update(Game& game, Engine& engine, float current_time_sec)
     }
     else
     {
-      SDL_SetCursor(game.mousecursors[cursor] ? game.mousecursors[cursor] : game.mousecursors[ImGuiMouseCursor_Arrow]);
+      SDL_SetCursor(mousecursors[cursor] ? mousecursors[cursor] : mousecursors[ImGuiMouseCursor_Arrow]);
       SDL_ShowCursor(1);
     }
 
@@ -116,5 +116,5 @@ void game_update(Game& game, Engine& engine, float current_time_sec)
   ImGui::NewFrame();
   ImGui::Text("Hello World!");
   ImGui::Text("current time: %.2f", current_time_sec);
-  ImGui::SliderFloat3("helmet position", game.helmet_translation, -20.0f, 20.0f);
+  ImGui::SliderFloat3("helmet position", helmet_translation, -20.0f, 20.0f);
 }

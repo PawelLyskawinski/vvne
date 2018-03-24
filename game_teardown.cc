@@ -1,10 +1,10 @@
 #include "engine.hh"
 #include "game.hh"
 
-void game_teardown(Game& game, Engine& engine)
+void Game::teardown()
 {
-  for (SDL_Cursor* cursor : game.mousecursors)
+  for (SDL_Cursor* cursor : mousecursors)
     SDL_FreeCursor(cursor);
-  SDL_free(game.helmet.memory);
-  game.renderableHelmet.teardown(engine);
+  SDL_free(helmet.memory);
+  renderableHelmet.teardown(engine);
 }

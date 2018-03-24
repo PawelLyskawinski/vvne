@@ -23,7 +23,7 @@ VkBool32
   return VK_FALSE;
 }
 
-void engine_basic_startup(Engine& engine)
+void Engine::basic_startup()
 {
   uint8_t small_stack[1024];
 
@@ -57,7 +57,7 @@ void engine_basic_startup(Engine& engine)
     ci.enabledLayerCount       = SDL_arraysize(instance_layers);
     ci.enabledExtensionCount   = SDL_arraysize(instance_extensions);
 
-    vkCreateInstance(&ci, nullptr, &engine.instance);
+    vkCreateInstance(&ci, nullptr, &instance);
   }
 
   {
@@ -67,51 +67,51 @@ void engine_basic_startup(Engine& engine)
     ci.pfnCallback = vulkan_debug_callback;
 
     auto fcn =
-        (PFN_vkCreateDebugReportCallbackEXT)(vkGetInstanceProcAddr(engine.instance, "vkCreateDebugReportCallbackEXT"));
-    fcn(engine.instance, &ci, nullptr, &engine.debug_callback);
+        (PFN_vkCreateDebugReportCallbackEXT)(vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT"));
+    fcn(instance, &ci, nullptr, &debug_callback);
   }
 
-  engine.window = SDL_CreateWindow("minimalistic VK engine", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                                   INITIAL_WINDOW_WIDTH, INITIAL_WINDOW_HEIGHT, SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
+  window = SDL_CreateWindow("minimalistic VK engine", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                            INITIAL_WINDOW_WIDTH, INITIAL_WINDOW_HEIGHT, SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
 
   {
     uint32_t          count   = 0;
     VkPhysicalDevice* handles = reinterpret_cast<VkPhysicalDevice*>(small_stack);
 
-    vkEnumeratePhysicalDevices(engine.instance, &count, nullptr);
-    vkEnumeratePhysicalDevices(engine.instance, &count, handles);
+    vkEnumeratePhysicalDevices(instance, &count, nullptr);
+    vkEnumeratePhysicalDevices(instance, &count, handles);
 
-    engine.physical_device = handles[0];
-    vkGetPhysicalDeviceProperties(engine.physical_device, &engine.physical_device_properties);
-    SDL_Log("Selecting graphics card: %s", engine.physical_device_properties.deviceName);
+    physical_device = handles[0];
+    vkGetPhysicalDeviceProperties(physical_device, &physical_device_properties);
+    SDL_Log("Selecting graphics card: %s", physical_device_properties.deviceName);
   }
 
-  SDL_bool surface_result = SDL_Vulkan_CreateSurface(engine.window, engine.instance, &engine.surface);
+  SDL_bool surface_result = SDL_Vulkan_CreateSurface(window, instance, &surface);
   if (SDL_FALSE == surface_result)
   {
     SDL_Log("%s", SDL_GetError());
     return;
   }
 
-  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(engine.physical_device, engine.surface, &engine.surface_capabilities);
-  engine.extent2D = engine.surface_capabilities.currentExtent;
+  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &surface_capabilities);
+  extent2D = surface_capabilities.currentExtent;
 
   {
     uint32_t                 count          = 0;
     VkQueueFamilyProperties* all_properties = reinterpret_cast<VkQueueFamilyProperties*>(small_stack);
 
-    vkGetPhysicalDeviceQueueFamilyProperties(engine.physical_device, &count, nullptr);
-    vkGetPhysicalDeviceQueueFamilyProperties(engine.physical_device, &count, all_properties);
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, nullptr);
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, all_properties);
 
     for (uint32_t i = 0; count; ++i)
     {
       VkQueueFamilyProperties properties          = all_properties[i];
       VkBool32                has_present_support = 0;
-      vkGetPhysicalDeviceSurfaceSupportKHR(engine.physical_device, i, engine.surface, &has_present_support);
+      vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, surface, &has_present_support);
 
       if (has_present_support && (properties.queueFlags & VK_QUEUE_GRAPHICS_BIT))
       {
-        engine.graphics_family_index = i;
+        graphics_family_index = i;
         break;
       }
     }
@@ -124,7 +124,7 @@ void engine_basic_startup(Engine& engine)
 
     VkDeviceQueueCreateInfo graphics{};
     graphics.sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    graphics.queueFamilyIndex = engine.graphics_family_index;
+    graphics.queueFamilyIndex = graphics_family_index;
     graphics.queueCount       = SDL_arraysize(queue_priorities);
     graphics.pQueuePriorities = queue_priorities;
 
@@ -140,19 +140,19 @@ void engine_basic_startup(Engine& engine)
     ci.ppEnabledExtensionNames = device_extensions;
     ci.pEnabledFeatures        = &device_features;
 
-    vkCreateDevice(engine.physical_device, &ci, nullptr, &engine.device);
+    vkCreateDevice(physical_device, &ci, nullptr, &device);
   }
 
-  vkGetDeviceQueue(engine.device, engine.graphics_family_index, 0, &engine.graphics_queue);
+  vkGetDeviceQueue(device, graphics_family_index, 0, &graphics_queue);
 
   {
     uint32_t            count   = 0;
     VkSurfaceFormatKHR* formats = reinterpret_cast<VkSurfaceFormatKHR*>(small_stack);
 
-    vkGetPhysicalDeviceSurfaceFormatsKHR(engine.physical_device, engine.surface, &count, nullptr);
-    vkGetPhysicalDeviceSurfaceFormatsKHR(engine.physical_device, engine.surface, &count, formats);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, nullptr);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, formats);
 
-    engine.surface_format = formats[0];
+    surface_format = formats[0];
     for (uint32_t i = 0; i < count; ++i)
     {
       if (VK_FORMAT_B8G8R8A8_UNORM != formats[i].format)
@@ -161,7 +161,7 @@ void engine_basic_startup(Engine& engine)
       if (VK_COLOR_SPACE_SRGB_NONLINEAR_KHR != formats[i].colorSpace)
         continue;
 
-      engine.surface_format = formats[i];
+      surface_format = formats[i];
       break;
     }
   }
@@ -170,15 +170,15 @@ void engine_basic_startup(Engine& engine)
     uint32_t count         = 0;
     auto*    present_modes = reinterpret_cast<VkPresentModeKHR*>(small_stack);
 
-    vkGetPhysicalDeviceSurfacePresentModesKHR(engine.physical_device, engine.surface, &count, nullptr);
-    vkGetPhysicalDeviceSurfacePresentModesKHR(engine.physical_device, engine.surface, &count, present_modes);
+    vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, nullptr);
+    vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, present_modes);
 
-    engine.present_mode = VK_PRESENT_MODE_FIFO_KHR;
+    present_mode = VK_PRESENT_MODE_FIFO_KHR;
     for (uint32_t i = 0; i < count; ++i)
     {
       if (VK_PRESENT_MODE_MAILBOX_KHR == present_modes[i])
       {
-        engine.present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
+        present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
         break;
       }
     }
@@ -187,25 +187,25 @@ void engine_basic_startup(Engine& engine)
   {
     VkSwapchainCreateInfoKHR ci{};
     ci.sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-    ci.surface          = engine.surface;
+    ci.surface          = surface;
     ci.minImageCount    = SWAPCHAIN_IMAGES_COUNT;
-    ci.imageFormat      = engine.surface_format.format;
-    ci.imageColorSpace  = engine.surface_format.colorSpace;
-    ci.imageExtent      = engine.extent2D;
+    ci.imageFormat      = surface_format.format;
+    ci.imageColorSpace  = surface_format.colorSpace;
+    ci.imageExtent      = extent2D;
     ci.imageArrayLayers = 1;
     ci.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     ci.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    ci.preTransform     = engine.surface_capabilities.currentTransform;
+    ci.preTransform     = surface_capabilities.currentTransform;
     ci.compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    ci.presentMode      = engine.present_mode;
+    ci.presentMode      = present_mode;
     ci.clipped          = VK_TRUE;
 
-    vkCreateSwapchainKHR(engine.device, &ci, nullptr, &engine.swapchain);
+    vkCreateSwapchainKHR(device, &ci, nullptr, &swapchain);
 
     uint32_t swapchain_images_count = 0;
-    vkGetSwapchainImagesKHR(engine.device, engine.swapchain, &swapchain_images_count, nullptr);
+    vkGetSwapchainImagesKHR(device, swapchain, &swapchain_images_count, nullptr);
     SDL_assert(SWAPCHAIN_IMAGES_COUNT == swapchain_images_count);
-    vkGetSwapchainImagesKHR(engine.device, engine.swapchain, &swapchain_images_count, engine.swapchain_images);
+    vkGetSwapchainImagesKHR(device, swapchain, &swapchain_images_count, swapchain_images);
   }
 
   {
@@ -224,13 +224,13 @@ void engine_basic_startup(Engine& engine)
     {
       VkImageViewCreateInfo ci{};
       ci.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-      ci.image            = engine.swapchain_images[i];
+      ci.image            = swapchain_images[i];
       ci.viewType         = VK_IMAGE_VIEW_TYPE_2D;
-      ci.format           = engine.surface_format.format;
+      ci.format           = surface_format.format;
       ci.components       = cm;
       ci.subresourceRange = sr;
 
-      vkCreateImageView(engine.device, &ci, nullptr, &engine.swapchain_image_views[i]);
+      vkCreateImageView(device, &ci, nullptr, &swapchain_image_views[i]);
     }
   }
 
@@ -238,9 +238,9 @@ void engine_basic_startup(Engine& engine)
     VkCommandPoolCreateInfo ci{};
     ci.sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     ci.flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    ci.queueFamilyIndex = engine.graphics_family_index;
+    ci.queueFamilyIndex = graphics_family_index;
 
-    vkCreateCommandPool(engine.device, &ci, nullptr, &engine.graphics_command_pool);
+    vkCreateCommandPool(device, &ci, nullptr, &graphics_command_pool);
   }
 
   // Pool sizes below are just an suggestions. They have to be adjusted for the final release builds
@@ -254,14 +254,14 @@ void engine_basic_startup(Engine& engine)
     ci.poolSizeCount = SDL_arraysize(pool_sizes);
     ci.pPoolSizes    = pool_sizes;
 
-    vkCreateDescriptorPool(engine.device, &ci, nullptr, &engine.descriptor_pool);
+    vkCreateDescriptorPool(device, &ci, nullptr, &descriptor_pool);
   }
 
   {
     VkSemaphoreCreateInfo ci{};
     ci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    vkCreateSemaphore(engine.device, &ci, nullptr, &engine.image_available);
-    vkCreateSemaphore(engine.device, &ci, nullptr, &engine.render_finished);
+    vkCreateSemaphore(device, &ci, nullptr, &image_available);
+    vkCreateSemaphore(device, &ci, nullptr, &render_finished);
   }
 
   {
@@ -269,8 +269,8 @@ void engine_basic_startup(Engine& engine)
     ci.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     ci.imageType     = VK_IMAGE_TYPE_2D;
     ci.format        = VK_FORMAT_D32_SFLOAT;
-    ci.extent.width  = engine.extent2D.width;
-    ci.extent.height = engine.extent2D.height;
+    ci.extent.width  = extent2D.width;
+    ci.extent.height = extent2D.height;
     ci.extent.depth  = 1;
     ci.mipLevels     = 1;
     ci.arrayLayers   = 1;
@@ -280,7 +280,7 @@ void engine_basic_startup(Engine& engine)
     ci.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
     ci.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
 
-    vkCreateImage(engine.device, &ci, nullptr, &engine.depth_image);
+    vkCreateImage(device, &ci, nullptr, &depth_image);
   }
 
   {
@@ -302,8 +302,8 @@ void engine_basic_startup(Engine& engine)
     ci.borderColor             = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
     ci.unnormalizedCoordinates = VK_FALSE;
 
-    for (VkSampler& sampler : engine.texture_samplers)
-      vkCreateSampler(engine.device, &ci, nullptr, &sampler);
+    for (VkSampler& sampler : texture_samplers)
+      vkCreateSampler(device, &ci, nullptr, &sampler);
   }
 
   {
@@ -312,10 +312,10 @@ void engine_basic_startup(Engine& engine)
     {
       VkCommandBufferAllocateInfo alloc{};
       alloc.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-      alloc.commandPool        = engine.graphics_command_pool;
+      alloc.commandPool        = graphics_command_pool;
       alloc.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
       alloc.commandBufferCount = 1;
-      vkAllocateCommandBuffers(engine.device, &alloc, &command_buffer);
+      vkAllocateCommandBuffers(device, &alloc, &command_buffer);
     }
 
     {
@@ -334,7 +334,7 @@ void engine_basic_startup(Engine& engine)
       barrier.newLayout                   = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
       barrier.srcQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
       barrier.dstQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
-      barrier.image                       = engine.depth_image;
+      barrier.image                       = depth_image;
       barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
       barrier.subresourceRange.levelCount = 1;
       barrier.subresourceRange.layerCount = 1;
@@ -349,26 +349,26 @@ void engine_basic_startup(Engine& engine)
       submit.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
       submit.commandBufferCount = 1;
       submit.pCommandBuffers    = &command_buffer;
-      vkQueueSubmit(engine.graphics_queue, 1, &submit, VK_NULL_HANDLE);
+      vkQueueSubmit(graphics_queue, 1, &submit, VK_NULL_HANDLE);
     }
 
-    vkQueueWaitIdle(engine.graphics_queue);
-    vkFreeCommandBuffers(engine.device, engine.graphics_command_pool, 1, &command_buffer);
+    vkQueueWaitIdle(graphics_queue);
+    vkFreeCommandBuffers(device, graphics_command_pool, 1, &command_buffer);
   }
 
   {
     VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(engine.device, engine.depth_image, &reqs);
+    vkGetImageMemoryRequirements(device, depth_image, &reqs);
 
     VkPhysicalDeviceMemoryProperties properties = {};
-    vkGetPhysicalDeviceMemoryProperties(engine.physical_device, &properties);
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
 
     VkMemoryAllocateInfo allocate{};
     allocate.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocate.allocationSize  = reqs.size;
     allocate.memoryTypeIndex = find_memory_type_index(&properties, &reqs, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    vkAllocateMemory(engine.device, &allocate, nullptr, &engine.depth_image_memory);
-    vkBindImageMemory(engine.device, engine.depth_image, engine.depth_image_memory, 0);
+    vkAllocateMemory(device, &allocate, nullptr, &depth_image_memory);
+    vkBindImageMemory(device, depth_image, depth_image_memory, 0);
   }
 
   {
@@ -379,11 +379,11 @@ void engine_basic_startup(Engine& engine)
 
     VkImageViewCreateInfo ci{};
     ci.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    ci.image            = engine.depth_image;
+    ci.image            = depth_image;
     ci.viewType         = VK_IMAGE_VIEW_TYPE_2D;
     ci.format           = VK_FORMAT_D32_SFLOAT;
     ci.subresourceRange = sr;
 
-    vkCreateImageView(engine.device, &ci, nullptr, &engine.depth_image_view);
+    vkCreateImageView(device, &ci, nullptr, &depth_image_view);
   }
 }

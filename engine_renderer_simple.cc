@@ -79,14 +79,14 @@ void generate(CubeBuffer& buffer)
 
 } // namespace
 
-void engine_renderer_simple(Engine& engine)
+void Engine::renderer_simple()
 {
-  Engine::SimpleRenderer& renderer = engine.simple_renderer;
+  Engine::SimpleRenderer& renderer = simple_renderer;
 
   {
     VkAttachmentDescription attachments[2] = {};
 
-    attachments[0].format         = engine.surface_format.format;
+    attachments[0].format         = surface_format.format;
     attachments[0].samples        = VK_SAMPLE_COUNT_1_BIT;
     attachments[0].loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
     attachments[0].storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
@@ -148,7 +148,7 @@ void engine_renderer_simple(Engine& engine)
     ci.dependencyCount = SDL_arraysize(dependencies);
     ci.pDependencies   = dependencies;
 
-    vkCreateRenderPass(engine.device, &ci, nullptr, &renderer.render_pass);
+    vkCreateRenderPass(device, &ci, nullptr, &renderer.render_pass);
   }
 
   {
@@ -165,17 +165,17 @@ void engine_renderer_simple(Engine& engine)
     ci.pBindings    = bindings;
 
     for (VkDescriptorSetLayout& layout : renderer.descriptor_set_layouts)
-      vkCreateDescriptorSetLayout(engine.device, &ci, nullptr, &layout);
+      vkCreateDescriptorSetLayout(device, &ci, nullptr, &layout);
   }
 
   {
     VkDescriptorSetAllocateInfo allocate{};
     allocate.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocate.descriptorPool     = engine.descriptor_pool;
+    allocate.descriptorPool     = descriptor_pool;
     allocate.descriptorSetCount = SDL_arraysize(renderer.descriptor_sets);
     allocate.pSetLayouts        = renderer.descriptor_set_layouts;
 
-    vkAllocateDescriptorSets(engine.device, &allocate, renderer.descriptor_sets);
+    vkAllocateDescriptorSets(device, &allocate, renderer.descriptor_sets);
   }
 
   {
@@ -191,7 +191,7 @@ void engine_renderer_simple(Engine& engine)
     ci.pSetLayouts            = renderer.descriptor_set_layouts;
     ci.pushConstantRangeCount = SDL_arraysize(ranges);
     ci.pPushConstantRanges    = ranges;
-    vkCreatePipelineLayout(engine.device, &ci, nullptr, &renderer.pipeline_layouts[0]);
+    vkCreatePipelineLayout(device, &ci, nullptr, &renderer.pipeline_layouts[0]);
   }
 
   {
@@ -207,7 +207,7 @@ void engine_renderer_simple(Engine& engine)
     ci.pSetLayouts            = renderer.descriptor_set_layouts;
     ci.pushConstantRangeCount = SDL_arraysize(ranges);
     ci.pPushConstantRanges    = ranges;
-    vkCreatePipelineLayout(engine.device, &ci, nullptr, &renderer.pipeline_layouts[1]);
+    vkCreatePipelineLayout(device, &ci, nullptr, &renderer.pipeline_layouts[1]);
   }
 
   {
@@ -215,12 +215,12 @@ void engine_renderer_simple(Engine& engine)
 
     shader_stages[0].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     shader_stages[0].stage  = VK_SHADER_STAGE_VERTEX_BIT;
-    shader_stages[0].module = engine_load_shader(engine, "triangle_push.vert.spv");
+    shader_stages[0].module = load_shader("triangle_push.vert.spv");
     shader_stages[0].pName  = "main";
 
     shader_stages[1].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     shader_stages[1].stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
-    shader_stages[1].module = engine_load_shader(engine, "triangle_push.frag.spv");
+    shader_stages[1].module = load_shader("triangle_push.frag.spv");
     shader_stages[1].pName  = "main";
 
     VkVertexInputAttributeDescription attribute_descriptions[3] = {};
@@ -262,15 +262,15 @@ void engine_renderer_simple(Engine& engine)
 
     viewports[0].x        = 0.0f;
     viewports[0].y        = 0.0f;
-    viewports[0].width    = static_cast<float>(engine.extent2D.width);
-    viewports[0].height   = static_cast<float>(engine.extent2D.height);
+    viewports[0].width    = static_cast<float>(extent2D.width);
+    viewports[0].height   = static_cast<float>(extent2D.height);
     viewports[0].minDepth = 0.0f;
     viewports[0].maxDepth = 1.0f;
 
     VkRect2D scissors[1] = {};
 
     scissors[0].offset = {0, 0};
-    scissors[0].extent = engine.extent2D;
+    scissors[0].extent = extent2D;
 
     VkPipelineViewportStateCreateInfo viewport_state{};
     viewport_state.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -345,10 +345,10 @@ void engine_renderer_simple(Engine& engine)
     ci.subpass             = 0;
     ci.basePipelineHandle  = VK_NULL_HANDLE;
     ci.basePipelineIndex   = -1;
-    vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &renderer.pipelines[0]);
+    vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &ci, nullptr, &renderer.pipelines[0]);
 
     for (auto& shader_stage : shader_stages)
-      vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
+      vkDestroyShaderModule(device, shader_stage.module, nullptr);
   }
 
   {
@@ -356,12 +356,12 @@ void engine_renderer_simple(Engine& engine)
 
     shader_stages[0].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     shader_stages[0].stage  = VK_SHADER_STAGE_VERTEX_BIT;
-    shader_stages[0].module = engine_load_shader(engine, "imgui.vert.spv");
+    shader_stages[0].module = load_shader("imgui.vert.spv");
     shader_stages[0].pName  = "main";
 
     shader_stages[1].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     shader_stages[1].stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
-    shader_stages[1].module = engine_load_shader(engine, "imgui.frag.spv");
+    shader_stages[1].module = load_shader("imgui.frag.spv");
     shader_stages[1].pName  = "main";
 
     VkVertexInputAttributeDescription attribute_descriptions[3] = {};
@@ -403,15 +403,15 @@ void engine_renderer_simple(Engine& engine)
 
     viewports[0].x        = 0.0f;
     viewports[0].y        = 0.0f;
-    viewports[0].width    = static_cast<float>(engine.extent2D.width);
-    viewports[0].height   = static_cast<float>(engine.extent2D.height);
+    viewports[0].width    = static_cast<float>(extent2D.width);
+    viewports[0].height   = static_cast<float>(extent2D.height);
     viewports[0].minDepth = 0.0f;
     viewports[0].maxDepth = 1.0f;
 
     VkRect2D scissors[1] = {};
 
     scissors[0].offset = {0, 0};
-    scissors[0].extent = engine.extent2D;
+    scissors[0].extent = extent2D;
 
     VkPipelineViewportStateCreateInfo viewport_state{};
     viewport_state.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -483,25 +483,25 @@ void engine_renderer_simple(Engine& engine)
     ci.subpass             = 1;
     ci.basePipelineHandle  = VK_NULL_HANDLE;
     ci.basePipelineIndex   = -1;
-    vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &renderer.pipelines[1]);
+    vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &ci, nullptr, &renderer.pipelines[1]);
 
     for (auto& shader_stage : shader_stages)
-      vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
+      vkDestroyShaderModule(device, shader_stage.module, nullptr);
   }
 
   for (uint32_t i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
   {
-    VkImageView attachments[] = {engine.swapchain_image_views[i], engine.depth_image_view};
+    VkImageView attachments[] = {swapchain_image_views[i], depth_image_view};
 
     VkFramebufferCreateInfo ci{};
     ci.sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
     ci.renderPass      = renderer.render_pass;
-    ci.width           = engine.extent2D.width;
-    ci.height          = engine.extent2D.height;
+    ci.width           = extent2D.width;
+    ci.height          = extent2D.height;
     ci.layers          = 1;
     ci.attachmentCount = SDL_arraysize(attachments);
     ci.pAttachments    = attachments;
-    vkCreateFramebuffer(engine.device, &ci, nullptr, &renderer.framebuffers[i]);
+    vkCreateFramebuffer(device, &ci, nullptr, &renderer.framebuffers[i]);
   }
 
   for (uint32_t i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
@@ -509,7 +509,7 @@ void engine_renderer_simple(Engine& engine)
     VkFenceCreateInfo ci{};
     ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     ci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-    vkCreateFence(engine.device, &ci, nullptr, &renderer.submition_fences[i]);
+    vkCreateFence(device, &ci, nullptr, &renderer.submition_fences[i]);
   }
 
   // -----------------------------------------------------
@@ -523,7 +523,7 @@ void engine_renderer_simple(Engine& engine)
       ci.size        = sizeof(CubeBuffer);
       ci.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
       ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-      vkCreateBuffer(engine.device, &ci, nullptr, &host_buffer);
+      vkCreateBuffer(device, &ci, nullptr, &host_buffer);
     }
 
     {
@@ -533,16 +533,16 @@ void engine_renderer_simple(Engine& engine)
       ci.usage =
           VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
       ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-      vkCreateBuffer(engine.device, &ci, nullptr, &renderer.scene.cube_buffer);
+      vkCreateBuffer(device, &ci, nullptr, &renderer.scene.cube_buffer);
     }
 
     VkDeviceMemory host_memory = VK_NULL_HANDLE;
     {
       VkMemoryRequirements reqs = {};
-      vkGetBufferMemoryRequirements(engine.device, host_buffer, &reqs);
+      vkGetBufferMemoryRequirements(device, host_buffer, &reqs);
 
       VkPhysicalDeviceMemoryProperties properties = {};
-      vkGetPhysicalDeviceMemoryProperties(engine.physical_device, &properties);
+      vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
 
       VkMemoryPropertyFlags flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
@@ -551,39 +551,39 @@ void engine_renderer_simple(Engine& engine)
       allocate.allocationSize  = reqs.size;
       allocate.memoryTypeIndex = find_memory_type_index(&properties, &reqs, flags);
 
-      vkAllocateMemory(engine.device, &allocate, nullptr, &host_memory);
-      vkBindBufferMemory(engine.device, host_buffer, host_memory, 0);
+      vkAllocateMemory(device, &allocate, nullptr, &host_memory);
+      vkBindBufferMemory(device, host_buffer, host_memory, 0);
     }
 
     {
       VkMemoryRequirements reqs = {};
-      vkGetBufferMemoryRequirements(engine.device, renderer.scene.cube_buffer, &reqs);
+      vkGetBufferMemoryRequirements(device, renderer.scene.cube_buffer, &reqs);
 
       VkPhysicalDeviceMemoryProperties properties = {};
-      vkGetPhysicalDeviceMemoryProperties(engine.physical_device, &properties);
+      vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
 
       VkMemoryAllocateInfo allocate{};
       allocate.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
       allocate.allocationSize  = reqs.size;
       allocate.memoryTypeIndex = find_memory_type_index(&properties, &reqs, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-      vkAllocateMemory(engine.device, &allocate, nullptr, &renderer.scene.cube_buffer_memory);
-      vkBindBufferMemory(engine.device, renderer.scene.cube_buffer, renderer.scene.cube_buffer_memory, 0);
+      vkAllocateMemory(device, &allocate, nullptr, &renderer.scene.cube_buffer_memory);
+      vkBindBufferMemory(device, renderer.scene.cube_buffer, renderer.scene.cube_buffer_memory, 0);
     }
 
     CubeBuffer* static_data_mapped_gpu = nullptr;
-    vkMapMemory(engine.device, host_memory, 0, sizeof(CubeBuffer), 0, (void**)&static_data_mapped_gpu);
+    vkMapMemory(device, host_memory, 0, sizeof(CubeBuffer), 0, (void**)&static_data_mapped_gpu);
     generate(*static_data_mapped_gpu);
-    vkUnmapMemory(engine.device, host_memory);
+    vkUnmapMemory(device, host_memory);
 
     VkCommandBuffer copy_command = VK_NULL_HANDLE;
     {
       VkCommandBufferAllocateInfo allocate{};
       allocate.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-      allocate.commandPool        = engine.graphics_command_pool;
+      allocate.commandPool        = graphics_command_pool;
       allocate.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
       allocate.commandBufferCount = 1;
-      vkAllocateCommandBuffers(engine.device, &allocate, &copy_command);
+      vkAllocateCommandBuffers(device, &allocate, &copy_command);
     }
 
     {
@@ -619,7 +619,7 @@ void engine_renderer_simple(Engine& engine)
     {
       VkFenceCreateInfo ci{};
       ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-      vkCreateFence(engine.device, &ci, nullptr, &data_upload_fence);
+      vkCreateFence(device, &ci, nullptr, &data_upload_fence);
     }
 
     {
@@ -627,33 +627,33 @@ void engine_renderer_simple(Engine& engine)
       submit.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
       submit.commandBufferCount = 1;
       submit.pCommandBuffers    = &copy_command;
-      vkQueueSubmit(engine.graphics_queue, 1, &submit, data_upload_fence);
+      vkQueueSubmit(graphics_queue, 1, &submit, data_upload_fence);
     }
 
-    vkWaitForFences(engine.device, 1, &data_upload_fence, VK_TRUE, UINT64_MAX);
-    vkDestroyFence(engine.device, data_upload_fence, nullptr);
-    vkFreeCommandBuffers(engine.device, engine.graphics_command_pool, 1, &copy_command);
+    vkWaitForFences(device, 1, &data_upload_fence, VK_TRUE, UINT64_MAX);
+    vkDestroyFence(device, data_upload_fence, nullptr);
+    vkFreeCommandBuffers(device, graphics_command_pool, 1, &copy_command);
 
-    vkDestroyBuffer(engine.device, host_buffer, nullptr);
-    vkFreeMemory(engine.device, host_memory, nullptr);
+    vkDestroyBuffer(device, host_buffer, nullptr);
+    vkFreeMemory(device, host_memory, nullptr);
 
     {
       VkCommandBufferAllocateInfo allocate{};
       allocate.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-      allocate.commandPool        = engine.graphics_command_pool;
+      allocate.commandPool        = graphics_command_pool;
       allocate.level              = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
       allocate.commandBufferCount = SWAPCHAIN_IMAGES_COUNT;
-      vkAllocateCommandBuffers(engine.device, &allocate, renderer.scene.secondary_command_buffers);
-      vkAllocateCommandBuffers(engine.device, &allocate, renderer.gui.secondary_command_buffers);
+      vkAllocateCommandBuffers(device, &allocate, renderer.scene.secondary_command_buffers);
+      vkAllocateCommandBuffers(device, &allocate, renderer.gui.secondary_command_buffers);
     }
 
     {
       VkCommandBufferAllocateInfo allocate{};
       allocate.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-      allocate.commandPool        = engine.graphics_command_pool;
+      allocate.commandPool        = graphics_command_pool;
       allocate.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
       allocate.commandBufferCount = SWAPCHAIN_IMAGES_COUNT;
-      vkAllocateCommandBuffers(engine.device, &allocate, renderer.primary_command_buffers);
+      vkAllocateCommandBuffers(device, &allocate, renderer.primary_command_buffers);
     }
   }
 }
