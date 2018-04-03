@@ -132,9 +132,6 @@ struct Model
 
 struct RenderableModel
 {
-  VkDeviceMemory device_memory;
-  VkBuffer       device_buffer;
-
   VkDeviceSize indices_offset;
   VkDeviceSize vertices_offset;
   VkIndexType  indices_type;
@@ -147,7 +144,6 @@ struct RenderableModel
   int normal_texture_idx;
 
   void construct(Engine& engine, const Model& model) noexcept;
-  void teardown(const Engine& engine) noexcept;
 };
 
 } // namespace gltf

@@ -17,6 +17,27 @@ template <typename T> T align(const T value, const T alignment)
   }
 }
 
+uint32_t find_memory_type_index(VkPhysicalDeviceMemoryProperties* properties, VkMemoryRequirements* reqs,
+                                VkMemoryPropertyFlags searched)
+{
+  for (uint32_t i = 0; i < properties->memoryTypeCount; ++i)
+  {
+    if (0 == (reqs->memoryTypeBits & (1 << i)))
+      continue;
+
+    VkMemoryPropertyFlags memory_type_properties = properties->memoryTypes[i].propertyFlags;
+
+    if (searched == (memory_type_properties & searched))
+    {
+      return i;
+    }
+  }
+
+  // this code fragment should never be reached!
+  SDL_assert(false);
+  return 0;
+}
+
 } // namespace
 
 namespace gltf {
@@ -124,24 +145,22 @@ void RenderableModel::construct(Engine& engine, const Model& model) noexcept
   }
   SDL_free(dataBuffer);
 
-  //
-  // Upload data on gpu
-  //
   VkBuffer       host_buffer = VK_NULL_HANDLE;
   VkDeviceMemory host_memory = VK_NULL_HANDLE;
+
   {
     VkBufferCreateInfo ci{};
     ci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     ci.size        = fileSize;
     ci.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    vkCreateBuffer(engine.device, &ci, nullptr, &host_buffer);
+    vkCreateBuffer(engine.generic_handles.device, &ci, nullptr, &host_buffer);
 
     VkMemoryRequirements reqs = {};
-    vkGetBufferMemoryRequirements(engine.device, host_buffer, &reqs);
+    vkGetBufferMemoryRequirements(engine.generic_handles.device, host_buffer, &reqs);
 
     VkPhysicalDeviceMemoryProperties properties = {};
-    vkGetPhysicalDeviceMemoryProperties(engine.physical_device, &properties);
+    vkGetPhysicalDeviceMemoryProperties(engine.generic_handles.physical_device, &properties);
 
     VkMemoryPropertyFlags flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
@@ -150,48 +169,26 @@ void RenderableModel::construct(Engine& engine, const Model& model) noexcept
     allocate.allocationSize  = reqs.size;
     allocate.memoryTypeIndex = find_memory_type_index(&properties, &reqs, flags);
 
-    vkAllocateMemory(engine.device, &allocate, nullptr, &host_memory);
-    vkBindBufferMemory(engine.device, host_buffer, host_memory, 0);
-  }
-
-  {
-    VkBufferCreateInfo ci{};
-    ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    ci.size  = 1000000; // 1MB should fit the data I guess?
-    ci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    vkCreateBuffer(engine.device, &ci, nullptr, &device_buffer);
-
-    VkMemoryRequirements reqs = {};
-    vkGetBufferMemoryRequirements(engine.device, device_buffer, &reqs);
-    indices_offset  = 0;
-    vertices_offset = align(host_index_buffer_size, reqs.alignment);
-
-    VkPhysicalDeviceMemoryProperties properties = {};
-    vkGetPhysicalDeviceMemoryProperties(engine.physical_device, &properties);
-
-    VkMemoryAllocateInfo allocate{};
-    allocate.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocate.allocationSize  = reqs.size;
-    allocate.memoryTypeIndex = find_memory_type_index(&properties, &reqs, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-    vkAllocateMemory(engine.device, &allocate, nullptr, &device_memory);
-    vkBindBufferMemory(engine.device, device_buffer, device_memory, 0);
+    vkAllocateMemory(engine.generic_handles.device, &allocate, nullptr, &host_memory);
+    vkBindBufferMemory(engine.generic_handles.device, host_buffer, host_memory, 0);
   }
 
   uint8_t* mapped_gpu_memory = nullptr;
-  vkMapMemory(engine.device, host_memory, 0, fileSize, 0, (void**)&mapped_gpu_memory);
+  vkMapMemory(engine.generic_handles.device, host_memory, 0, fileSize, 0, (void**)&mapped_gpu_memory);
   SDL_memcpy(mapped_gpu_memory, uploadBuffer, fileSize);
-  vkUnmapMemory(engine.device, host_memory);
+  vkUnmapMemory(engine.generic_handles.device, host_memory);
+
+  indices_offset  = engine.gpu_static_geometry.allocate(host_index_buffer_size);
+  vertices_offset = engine.gpu_static_geometry.allocate(host_vertex_buffer_size);
 
   VkCommandBuffer copy_command = VK_NULL_HANDLE;
   {
     VkCommandBufferAllocateInfo allocate{};
     allocate.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocate.commandPool        = engine.graphics_command_pool;
+    allocate.commandPool        = engine.generic_handles.graphics_command_pool;
     allocate.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     allocate.commandBufferCount = 1;
-    vkAllocateCommandBuffers(engine.device, &allocate, &copy_command);
+    vkAllocateCommandBuffers(engine.generic_handles.device, &allocate, &copy_command);
   }
 
   {
@@ -206,12 +203,13 @@ void RenderableModel::construct(Engine& engine, const Model& model) noexcept
 
     copies[0].size      = host_index_buffer_size;
     copies[0].srcOffset = 0;
-    copies[0].dstOffset = 0;
+    copies[0].dstOffset = indices_offset;
+
     copies[1].size      = host_vertex_buffer_size;
     copies[1].srcOffset = host_index_buffer_size;
     copies[1].dstOffset = vertices_offset;
 
-    vkCmdCopyBuffer(copy_command, host_buffer, device_buffer, SDL_arraysize(copies), copies);
+    vkCmdCopyBuffer(copy_command, host_buffer, engine.gpu_static_geometry.buffer, SDL_arraysize(copies), copies);
   }
 
   {
@@ -222,8 +220,8 @@ void RenderableModel::construct(Engine& engine, const Model& model) noexcept
     barriers[0].dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
     barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barriers[0].buffer              = device_buffer;
-    barriers[0].offset              = 0;
+    barriers[0].buffer              = engine.gpu_static_geometry.buffer;
+    barriers[0].offset              = indices_offset;
     barriers[0].size                = host_index_buffer_size;
 
     barriers[1].sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
@@ -231,7 +229,7 @@ void RenderableModel::construct(Engine& engine, const Model& model) noexcept
     barriers[1].dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
     barriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barriers[1].buffer              = device_buffer;
+    barriers[1].buffer              = engine.gpu_static_geometry.buffer;
     barriers[1].offset              = vertices_offset;
     barriers[1].size                = host_vertex_buffer_size;
 
@@ -245,7 +243,7 @@ void RenderableModel::construct(Engine& engine, const Model& model) noexcept
   {
     VkFenceCreateInfo ci{};
     ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    vkCreateFence(engine.device, &ci, nullptr, &data_upload_fence);
+    vkCreateFence(engine.generic_handles.device, &ci, nullptr, &data_upload_fence);
   }
 
   {
@@ -253,25 +251,19 @@ void RenderableModel::construct(Engine& engine, const Model& model) noexcept
     submit.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submit.commandBufferCount = 1;
     submit.pCommandBuffers    = &copy_command;
-    vkQueueSubmit(engine.graphics_queue, 1, &submit, data_upload_fence);
+    vkQueueSubmit(engine.generic_handles.graphics_queue, 1, &submit, data_upload_fence);
   }
 
-  vkWaitForFences(engine.device, 1, &data_upload_fence, VK_TRUE, UINT64_MAX);
-  vkDestroyFence(engine.device, data_upload_fence, nullptr);
-  vkFreeCommandBuffers(engine.device, engine.graphics_command_pool, 1, &copy_command);
+  vkWaitForFences(engine.generic_handles.device, 1, &data_upload_fence, VK_TRUE, UINT64_MAX);
+  vkDestroyFence(engine.generic_handles.device, data_upload_fence, nullptr);
+  vkFreeCommandBuffers(engine.generic_handles.device, engine.generic_handles.graphics_command_pool, 1, &copy_command);
 
-  vkDestroyBuffer(engine.device, host_buffer, nullptr);
-  vkFreeMemory(engine.device, host_memory, nullptr);
+  vkDestroyBuffer(engine.generic_handles.device, host_buffer, nullptr);
+  vkFreeMemory(engine.generic_handles.device, host_memory, nullptr);
 
   SDL_free(uploadBuffer);
 
   albedo_texture_idx = engine.load_texture(model.images[0].data);
-}
-
-void RenderableModel::teardown(const Engine& engine) noexcept
-{
-  vkDestroyBuffer(engine.device, device_buffer, nullptr);
-  vkFreeMemory(engine.device, device_memory, nullptr);
 }
 
 } // namespace gltf

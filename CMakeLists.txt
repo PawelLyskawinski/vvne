@@ -20,19 +20,12 @@ endif()
 add_executable(${PROJECT_NAME}
         main.cc
 		engine.hh
-		engine_basic_startup.cc
-		engine_renderer_simple.cc
-		engine_teardown.cc
-        engine_etc.cc
+        engine.cc
         game.hh
-        game_update.cc
-        game_render.cc
-        game_startup.cc
-        game_teardown.cc
+        game.cc
         gltf_model.cc
         gltf_renderablemodel.cc
         gltf.hh
-
         thirdparty/imconfig.h
         thirdparty/imgui.cpp
         thirdparty/imgui.h
@@ -43,7 +36,6 @@ add_executable(${PROJECT_NAME}
         thirdparty/cJSON.h
         thirdparty/cJSON_Utils.c
         thirdparty/cJSON_Utils.h
-
         assets/triangle_push.vert
         assets/triangle_push.frag
         assets/imgui.vert

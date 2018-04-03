@@ -7,26 +7,31 @@
 
 struct Game
 {
-  explicit Game(Engine& engine)
-      : engine(engine)
+  struct DebugGui
   {
-  }
+    bool        mousepressed[3];
+    SDL_Cursor* mousecursors[ImGuiMouseCursor_Count_];
+    int         font_texture_idx;
 
-  Engine&     engine;
-  bool        mousepressed[3]                       = {};
-  SDL_Cursor* mousecursors[ImGuiMouseCursor_Count_] = {};
-  uint64_t    time                                  = 0;
+    enum
+    {
+      VERTEX_BUFFER_CAPACITY_BYTES = 10 * 1024,
+      INDEX_BUFFER_CAPACITY_BYTES  = 5 * 1024
+    };
 
-  int font_texture_idx         = 0;
-  int clouds_texture_idx       = 0;
-  int clouds_bliss_texture_idx = 0;
+    VkDeviceSize vertex_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
+    VkDeviceSize index_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
+  } debug_gui;
+
+  VkDescriptorSet descriptor_sets[SWAPCHAIN_IMAGES_COUNT]; // todo: rename!
+  VkDescriptorSet helmet_descriptor_sets[SWAPCHAIN_IMAGES_COUNT];
 
   gltf::Model           helmet                = {};
   gltf::RenderableModel renderableHelmet      = {};
   float                 helmet_translation[3] = {};
 
-  void startup();
-  void teardown();
-  void update(float current_time_sec);
-  void render(float current_time_sec);
+  void startup(Engine& engine);
+  void teardown(Engine& engine);
+  void update(Engine& engine, float current_time_sec);
+  void render(Engine& engine, float current_time_sec);
 };

@@ -7,93 +7,160 @@
 
 struct Engine
 {
-  VkInstance                 instance;
-  VkDebugReportCallbackEXT   debug_callback;
-  SDL_Window*                window;
-  VkPhysicalDevice           physical_device;
-  VkPhysicalDeviceProperties physical_device_properties;
-  VkSurfaceKHR               surface;
-  VkSurfaceCapabilitiesKHR   surface_capabilities;
-  VkExtent2D                 extent2D;
-  uint32_t                   graphics_family_index;
-  VkDevice                   device;
-  VkQueue                    graphics_queue;
-  VkSurfaceFormatKHR         surface_format;
-  VkPresentModeKHR           present_mode;
-  VkSwapchainKHR             swapchain;
-  VkImage                    swapchain_images[SWAPCHAIN_IMAGES_COUNT];
-  VkImageView                swapchain_image_views[SWAPCHAIN_IMAGES_COUNT];
-  VkCommandPool              graphics_command_pool;
-  VkDescriptorPool           descriptor_pool;
-  VkImage                    depth_image;
-  VkDeviceMemory             depth_image_memory;
-  VkImageView                depth_image_view;
-  VkSemaphore                image_available;
-  VkSemaphore                render_finished;
-  VkSampler                  texture_samplers[SWAPCHAIN_IMAGES_COUNT];
-
-  uint32_t       loaded_textures;
-  VkDeviceMemory images_memory[128];
-  VkImage        images[128];
-  VkImageView    image_views[128];
-
-  struct SimpleRenderer
+  struct GenericHandles
   {
-    VkRenderPass          render_pass;
-    VkDescriptorSetLayout descriptor_set_layouts[4 * SWAPCHAIN_IMAGES_COUNT];
-    VkDescriptorSet       descriptor_sets[4 * SWAPCHAIN_IMAGES_COUNT];
-    VkFramebuffer         framebuffers[SWAPCHAIN_IMAGES_COUNT];
+    VkInstance                 instance;
+    VkDebugReportCallbackEXT   debug_callback;
+    SDL_Window*                window;
+    VkPhysicalDevice           physical_device;
+    VkPhysicalDeviceProperties physical_device_properties;
+    VkSurfaceKHR               surface;
+    VkSurfaceCapabilitiesKHR   surface_capabilities;
+    VkExtent2D                 extent2D;
+    uint32_t                   graphics_family_index;
+    VkDevice                   device;
+    VkQueue                    graphics_queue;
+    VkSurfaceFormatKHR         surface_format;
+    VkPresentModeKHR           present_mode;
+    VkSwapchainKHR             swapchain;
+    VkImage                    swapchain_images[SWAPCHAIN_IMAGES_COUNT];
+    VkImageView                swapchain_image_views[SWAPCHAIN_IMAGES_COUNT];
+    VkCommandPool              graphics_command_pool;
+    VkDescriptorPool           descriptor_pool;
+    VkImage                    depth_image;
+    VkImageView                depth_image_view;
+    VkSemaphore                image_available;
+    VkSemaphore                render_finished;
+    VkSampler                  texture_samplers[SWAPCHAIN_IMAGES_COUNT];
+  } generic_handles;
 
-    VkPipelineLayout pipeline_layouts[2];
-    VkPipeline       pipelines[2];
-
-    struct GuiResources
+  struct DoubleEndedStack
+  {
+    enum
     {
-      VkDeviceMemory  vertex_memory[SWAPCHAIN_IMAGES_COUNT];
-      VkBuffer        vertex_buffers[SWAPCHAIN_IMAGES_COUNT];
-      VkDeviceMemory  index_memory[SWAPCHAIN_IMAGES_COUNT];
-      VkBuffer        index_buffers[SWAPCHAIN_IMAGES_COUNT];
-      VkCommandBuffer secondary_command_buffers[SWAPCHAIN_IMAGES_COUNT];
+      MAX_SIZE = 5 * 1024
     };
 
-    struct SceneResources
+    int calculate_64bit_alignment_padding(int value)
     {
-      VkDeviceMemory  cube_buffer_memory;
-      VkBuffer        cube_buffer;
-      VkCommandBuffer secondary_command_buffers[SWAPCHAIN_IMAGES_COUNT];
-    };
+      return (value % 64) ? 64 - (value % 64) : 0;
+    }
 
-    GuiResources   gui;
-    SceneResources scene;
+    template <typename T> T* allocate_front(int count = 1)
+    {
+      T*  result         = reinterpret_cast<T*>(&memory[front]);
+      int size           = count * sizeof(T);
+      int padding        = calculate_64bit_alignment_padding(size);
+      int corrected_size = size + padding;
+      front += corrected_size;
+      return result;
+    }
 
-    VkCommandBuffer primary_command_buffers[SWAPCHAIN_IMAGES_COUNT];
-    VkFence         submition_fences[SWAPCHAIN_IMAGES_COUNT];
+    template <typename T> T* allocate_back(int count = 1)
+    {
+      int size           = count * sizeof(T);
+      int padding        = calculate_64bit_alignment_padding(size);
+      int corrected_size = size + padding;
+      back += corrected_size;
+      return reinterpret_cast<T*>(&memory[MAX_SIZE - back]);
+    }
+
+    void reset_back()
+    {
+      back = 0;
+    }
+
+    uint8_t memory[MAX_SIZE];
+    int     front;
+    int     back;
+  } double_ended_stack;
+
+  struct MemoryWithAlignment
+  {
+    VkDeviceSize allocate(VkDeviceSize size)
+    {
+      VkDeviceSize offset = used_memory;
+      used_memory += (size % alignment) ? size + (alignment - (size % alignment)) : size;
+      return offset;
+    }
+
+    VkDeviceMemory memory;
+    VkDeviceSize   alignment;
+    VkDeviceSize   used_memory;
   };
 
-  SimpleRenderer simple_renderer;
+  struct GpuStaticGeometry : public MemoryWithAlignment
+  {
+    enum
+    {
+      MAX_MEMORY_SIZE_MB    = 1,
+      MAX_MEMORY_SIZE_KB    = MAX_MEMORY_SIZE_MB * 1024,
+      MAX_MEMORY_SIZE_BYTES = MAX_MEMORY_SIZE_KB * 1024,
+      MAX_MEMORY_SIZE       = MAX_MEMORY_SIZE_BYTES
+    };
 
-  void basic_startup();
-  void renderer_simple();
+    VkBuffer buffer;
+  } gpu_static_geometry;
+
+  struct GpuHostVisible : public MemoryWithAlignment
+  {
+    enum
+    {
+      MAX_MEMORY_SIZE_MB    = 1,
+      MAX_MEMORY_SIZE_KB    = MAX_MEMORY_SIZE_MB * 1024,
+      MAX_MEMORY_SIZE_BYTES = MAX_MEMORY_SIZE_KB * 1024,
+      MAX_MEMORY_SIZE       = MAX_MEMORY_SIZE_BYTES
+    };
+
+    VkBuffer buffer;
+  } gpu_host_visible;
+
+  struct Images : public MemoryWithAlignment
+  {
+    enum
+    {
+      MAX_COUNT             = 128,
+      MAX_MEMORY_SIZE_MB    = 50,
+      MAX_MEMORY_SIZE_KB    = MAX_MEMORY_SIZE_MB * 1024,
+      MAX_MEMORY_SIZE_BYTES = MAX_MEMORY_SIZE_KB * 1024,
+      MAX_MEMORY_SIZE       = MAX_MEMORY_SIZE_BYTES
+    };
+
+    VkImage*     images;
+    VkImageView* image_views;
+    uint32_t     loaded_count;
+  } images;
+
+  struct SimpleRendering
+  {
+    VkRenderPass          render_pass;
+    VkDescriptorSetLayout descriptor_set_layouts[SWAPCHAIN_IMAGES_COUNT];
+    VkFramebuffer         framebuffers[SWAPCHAIN_IMAGES_COUNT];
+
+    enum Passes
+    {
+      Scene3D = 0,
+      ImGui,
+      Count
+    };
+
+    VkPipelineLayout pipeline_layouts[Passes::Count];
+    VkPipeline       pipelines[Passes::Count];
+    VkCommandBuffer  secondary_command_buffers[SWAPCHAIN_IMAGES_COUNT * Passes::Count];
+    VkCommandBuffer  primary_command_buffers[SWAPCHAIN_IMAGES_COUNT];
+    VkFence          submition_fences[SWAPCHAIN_IMAGES_COUNT];
+  } simple_rendering;
+
+  void startup();
   void teardown();
+  void print_memory_statistics();
+  void submit_simple_rendering(uint32_t image_index);
 
   VkShaderModule load_shader(const char* filepath);
-  int load_texture(const char* filepath);
-  int load_texture(SDL_Surface* surface);
-};
+  int            load_texture(const char* filepath);
+  int            load_texture(SDL_Surface* surface);
 
-// etc
-uint32_t find_memory_type_index(VkPhysicalDeviceMemoryProperties* properties, VkMemoryRequirements* reqs,
-                                VkMemoryPropertyFlags searched);
-
-// structure definitions
-struct CubeBuffer
-{
-  uint32_t indices[6 * 6];
-
-  struct Vertex
-  {
-    float position[3];
-    float normal[3];
-    float tex_coord[2];
-  } vertices[6 * 4];
+  // internals
+private:
+  void setup_simple_rendering();
 };
