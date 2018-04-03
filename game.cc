@@ -461,10 +461,10 @@ void Game::render(Engine& engine, float current_time_sec)
     float scale[]     = {2.0f / io.DisplaySize.x, 2.0f / io.DisplaySize.y};
     float translate[] = {-1.0f, -1.0f};
 
-    vkCmdPushConstants(command_buffer, renderer.pipeline_layouts[1], VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float) * 2,
-                       scale);
-    vkCmdPushConstants(command_buffer, renderer.pipeline_layouts[1], VK_SHADER_STAGE_VERTEX_BIT, sizeof(float) * 2,
-                       sizeof(float) * 2, translate);
+    vkCmdPushConstants(command_buffer, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ImGui],
+                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float) * 2, scale);
+    vkCmdPushConstants(command_buffer, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ImGui],
+                       VK_SHADER_STAGE_VERTEX_BIT, sizeof(float) * 2, sizeof(float) * 2, translate);
 
     {
       ImDrawData* draw_data = ImGui::GetDrawData();
