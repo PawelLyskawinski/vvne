@@ -19,7 +19,7 @@ endif()
 
 add_executable(${PROJECT_NAME}
         main.cc
-		engine.hh
+        engine.hh
         engine.cc
         game.hh
         game.cc
