@@ -38,7 +38,10 @@ struct Engine
   {
     enum
     {
-      MAX_SIZE = 5 * 1024
+      MAX_MEMORY_SIZE_MB    = 2,
+      MAX_MEMORY_SIZE_KB    = MAX_MEMORY_SIZE_MB * 1024,
+      MAX_MEMORY_SIZE_BYTES = MAX_MEMORY_SIZE_KB * 1024,
+      MAX_MEMORY_SIZE       = MAX_MEMORY_SIZE_BYTES
     };
 
     int calculate_64bit_alignment_padding(int value)
@@ -62,7 +65,7 @@ struct Engine
       int padding        = calculate_64bit_alignment_padding(size);
       int corrected_size = size + padding;
       back += corrected_size;
-      return reinterpret_cast<T*>(&memory[MAX_SIZE - back]);
+      return reinterpret_cast<T*>(&memory[MAX_MEMORY_SIZE - back]);
     }
 
     void reset_back()
@@ -70,7 +73,7 @@ struct Engine
       back = 0;
     }
 
-    uint8_t memory[MAX_SIZE];
+    uint8_t memory[MAX_MEMORY_SIZE];
     int     front;
     int     back;
   } double_ended_stack;

@@ -46,7 +46,7 @@ void RenderableModel::construct(Engine& engine, const Model& model) noexcept
 {
   SDL_RWops* ctx        = SDL_RWFromFile(model.buffers[0].path.data, "rb");
   size_t     fileSize   = static_cast<size_t>(SDL_RWsize(ctx));
-  uint8_t*   dataBuffer = static_cast<uint8_t*>(SDL_malloc(fileSize));
+  uint8_t*   dataBuffer = engine.double_ended_stack.allocate_back<uint8_t>(fileSize);
   SDL_RWread(ctx, dataBuffer, sizeof(char), fileSize);
   SDL_RWclose(ctx);
 
@@ -63,7 +63,7 @@ void RenderableModel::construct(Engine& engine, const Model& model) noexcept
   size_t host_vertex_buffer_size = 0;
   size_t host_index_buffer_size  = 0;
 
-  uint8_t* uploadBuffer = static_cast<uint8_t*>(SDL_malloc(fileSize));
+  uint8_t* uploadBuffer = engine.double_ended_stack.allocate_back<uint8_t>(fileSize);
   {
     // single mesh, single primitive
     const Primitive& primitive = model.meshes[0].primitives[0];
@@ -143,7 +143,6 @@ void RenderableModel::construct(Engine& engine, const Model& model) noexcept
 
     host_vertex_buffer_size = count * sizeof(Vertex);
   }
-  SDL_free(dataBuffer);
 
   VkBuffer       host_buffer = VK_NULL_HANDLE;
   VkDeviceMemory host_memory = VK_NULL_HANDLE;
@@ -260,8 +259,6 @@ void RenderableModel::construct(Engine& engine, const Model& model) noexcept
 
   vkDestroyBuffer(engine.generic_handles.device, host_buffer, nullptr);
   vkFreeMemory(engine.generic_handles.device, host_memory, nullptr);
-
-  SDL_free(uploadBuffer);
 
   albedo_texture_idx = engine.load_texture(model.images[0].data);
 }
