@@ -38,12 +38,39 @@ uint32_t find_memory_type_index(VkPhysicalDeviceMemoryProperties* properties, Vk
   return 0;
 }
 
+VkIndexType gltfToVulkanIndexType(int in)
+{
+  switch (in)
+  {
+  case ACCESSOR_COMPONENTTYPE_UINT16:
+    return VK_INDEX_TYPE_UINT16;
+  default:
+  case ACCESSOR_COMPONENTTYPE_UINT8:
+  case ACCESSOR_COMPONENTTYPE_UINT32:
+    return VK_INDEX_TYPE_UINT32;
+  }
+}
+
+size_t vulkanIndexTypeToSize(VkIndexType in)
+{
+  switch (in)
+  {
+  case VK_INDEX_TYPE_UINT16:
+    return sizeof(uint16_t);
+  default:
+  case VK_INDEX_TYPE_UINT32:
+    return sizeof(uint32_t);
+  }
+}
+
 } // namespace
 
 namespace gltf {
 
 void RenderableModel::construct(Engine& engine, const Model& model) noexcept
 {
+  SDL_Log("reading %s", model.buffers[0].path.data);
+
   SDL_RWops* ctx        = SDL_RWFromFile(model.buffers[0].path.data, "rb");
   size_t     fileSize   = static_cast<size_t>(SDL_RWsize(ctx));
   uint8_t*   dataBuffer = engine.double_ended_stack.allocate_back<uint8_t>(fileSize);
@@ -60,88 +87,103 @@ void RenderableModel::construct(Engine& engine, const Model& model) noexcept
   //
   // Reorganize data to fit into expected shader vertex layout
   //
-  size_t host_vertex_buffer_size = 0;
-  size_t host_index_buffer_size  = 0;
+  size_t   host_vertex_buffer_size  = 0;
+  size_t   host_index_buffer_size   = 0;
+  size_t   total_upload_buffer_size = 0;
+  uint8_t* uploadBuffer             = nullptr;
 
-  uint8_t* uploadBuffer = engine.double_ended_stack.allocate_back<uint8_t>(fileSize);
   {
     // single mesh, single primitive
-    const Primitive& primitive = model.meshes[0].primitives[0];
+    const Primitive& primitive                     = model.meshes[0].primitives[0];
+    int              upload_buffer_vertices_offset = 0;
 
-    int    count        = 0;
-    int    vertexoffset = 0;
-    float* positions    = nullptr;
-    float* normals      = nullptr;
-    float* texcoords    = nullptr;
+    // calculate memory size for the upload buffer
+    {
+      Accessor index_accessor = model.accessors[primitive.indices];
+      indices_type            = gltfToVulkanIndexType(index_accessor.componentType);
+      host_index_buffer_size  = vulkanIndexTypeToSize(indices_type) * index_accessor.count;
+    }
 
+    {
+      Accessor position_accessor = model.accessors[primitive.position_attrib];
+      host_vertex_buffer_size    = position_accessor.count * sizeof(Vertex);
+    }
+
+    total_upload_buffer_size = host_index_buffer_size + host_vertex_buffer_size;
+    uploadBuffer             = engine.double_ended_stack.allocate_back<uint8_t>(total_upload_buffer_size);
+    SDL_memset(uploadBuffer, 0, fileSize);
+
+    // index data will be re-arranged to be at start of upload buffer (wherever it might be in source buffer)
     {
       const Accessor&   index_accessor = model.accessors[primitive.indices];
       const BufferView& index_view     = model.bufferViews[index_accessor.bufferView];
 
-      vertexoffset  = index_view.byteLength;
-      indices_count = static_cast<uint32_t>(index_accessor.count);
-      indices_type  = VK_INDEX_TYPE_UINT32;
-
-      switch (index_accessor.componentType)
-      {
-      case ACCESSOR_COMPONENTTYPE_UINT8:
-        host_index_buffer_size = sizeof(uint8_t) * index_accessor.count;
-        break;
-      case ACCESSOR_COMPONENTTYPE_UINT16:
-        host_index_buffer_size = sizeof(uint16_t) * index_accessor.count;
-        indices_type           = VK_INDEX_TYPE_UINT16;
-        break;
-      case ACCESSOR_COMPONENTTYPE_UINT32:
-        host_index_buffer_size = sizeof(uint32_t) * index_accessor.count;
-        indices_type           = VK_INDEX_TYPE_UINT32;
-        break;
-      default:
-        SDL_assert(false);
-        break;
-      }
+      upload_buffer_vertices_offset = index_view.byteLength;
+      indices_count                 = static_cast<uint32_t>(index_accessor.count);
+      indices_type                  = gltfToVulkanIndexType(index_accessor.componentType);
+      host_index_buffer_size        = vulkanIndexTypeToSize(indices_type) * index_accessor.count;
 
       SDL_memcpy(uploadBuffer, &dataBuffer[index_view.byteOffset], host_index_buffer_size);
     }
 
+    // write position data into upload buffer
+    if (Primitive::Flag::hasPositionAttrib & primitive.flags)
     {
-      const Accessor&   position_accessor = model.accessors[primitive.position_attrib];
-      const BufferView& position_view     = model.bufferViews[position_accessor.bufferView];
+      Accessor   accessor    = model.accessors[primitive.position_attrib];
+      BufferView buffer_view = model.bufferViews[accessor.bufferView];
+      Vertex*    vertices    = reinterpret_cast<Vertex*>(&uploadBuffer[upload_buffer_vertices_offset]);
 
-      positions = reinterpret_cast<float*>(&dataBuffer[position_view.byteOffset]);
-      count     = position_accessor.count;
+      host_vertex_buffer_size = accessor.count * sizeof(Vertex);
+
+      int start_offset = (buffer_view.byteOffset + accessor.byteOffset);
+      int vec3_size    = 3 * sizeof(float);
+      int stride       = (buffer_view.flags & BufferView::Flag::hasByteStride) ? buffer_view.byteStride : vec3_size;
+
+      for (int i = 0; i < accessor.count; ++i)
+      {
+        Vertex& current = vertices[i];
+        float*  src     = reinterpret_cast<float*>(&dataBuffer[start_offset + (stride * i)]);
+        SDL_memcpy(current.position, src, vec3_size);
+      }
     }
 
+    // write normal data into upload buffer
+    if (Primitive::Flag::hasNormalAttrib & primitive.flags)
     {
-      const Accessor&   normal_accessor = model.accessors[primitive.normal_attrib];
-      const BufferView& normal_view     = model.bufferViews[normal_accessor.bufferView];
+      Accessor   accessor    = model.accessors[primitive.normal_attrib];
+      BufferView buffer_view = model.bufferViews[accessor.bufferView];
+      Vertex*    vertices    = reinterpret_cast<Vertex*>(&uploadBuffer[upload_buffer_vertices_offset]);
 
-      normals = reinterpret_cast<float*>(&dataBuffer[normal_view.byteOffset]);
+      int start_offset = (buffer_view.byteOffset + accessor.byteOffset);
+      int vec3_size    = 3 * sizeof(float);
+      int stride       = (buffer_view.flags & BufferView::Flag::hasByteStride) ? buffer_view.byteStride : vec3_size;
+
+      for (int i = 0; i < accessor.count; ++i)
+      {
+        Vertex& current = vertices[i];
+        float*  src     = reinterpret_cast<float*>(&dataBuffer[start_offset + (stride * i)]);
+        SDL_memcpy(current.normal, src, vec3_size);
+      }
     }
 
+    // write normal data into upload buffer
+    if (Primitive::Flag::hasTexcoordAttrib & primitive.flags)
     {
-      const Accessor&   texcoord_accessor = model.accessors[primitive.texcoord_attrib];
-      const BufferView& texcoord_view     = model.bufferViews[texcoord_accessor.bufferView];
+      Accessor   accessor    = model.accessors[primitive.texcoord_attrib];
+      BufferView buffer_view = model.bufferViews[accessor.bufferView];
+      Vertex*    vertices    = reinterpret_cast<Vertex*>(&uploadBuffer[upload_buffer_vertices_offset]);
 
-      texcoords = reinterpret_cast<float*>(&dataBuffer[texcoord_view.byteOffset]);
+      int start_offset = (buffer_view.byteOffset + accessor.byteOffset);
+      int vec2_size    = 2 * sizeof(float);
+      int stride       = (buffer_view.flags & BufferView::Flag::hasByteStride) ? buffer_view.byteStride : vec2_size;
 
-      SDL_Log("componentType: %d, type: %d", texcoord_accessor.componentType, texcoord_accessor.type);
+      for (int i = 0; i < accessor.count; ++i)
+      {
+        Vertex& current = vertices[i];
+        float*  src     = reinterpret_cast<float*>(&dataBuffer[start_offset + (stride * i)]);
+        SDL_memcpy(current.texcoord, src, vec2_size);
+      }
     }
-
-    Vertex* vertices = reinterpret_cast<Vertex*>(&uploadBuffer[vertexoffset]);
-    for (int i = 0; i < count; ++i)
-    {
-      Vertex* current      = &vertices[i];
-      current->position[0] = positions[(3 * i) + 0];
-      current->position[1] = positions[(3 * i) + 1];
-      current->position[2] = positions[(3 * i) + 2];
-      current->normal[0]   = normals[(3 * i) + 0];
-      current->normal[1]   = normals[(3 * i) + 1];
-      current->normal[2]   = normals[(3 * i) + 2];
-      current->texcoord[0] = texcoords[(2 * i) + 0];
-      current->texcoord[1] = texcoords[(2 * i) + 1];
-    }
-
-    host_vertex_buffer_size = count * sizeof(Vertex);
   }
 
   VkBuffer       host_buffer = VK_NULL_HANDLE;
@@ -150,7 +192,7 @@ void RenderableModel::construct(Engine& engine, const Model& model) noexcept
   {
     VkBufferCreateInfo ci{};
     ci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    ci.size        = fileSize;
+    ci.size        = total_upload_buffer_size;
     ci.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     vkCreateBuffer(engine.generic_handles.device, &ci, nullptr, &host_buffer);
@@ -173,8 +215,8 @@ void RenderableModel::construct(Engine& engine, const Model& model) noexcept
   }
 
   uint8_t* mapped_gpu_memory = nullptr;
-  vkMapMemory(engine.generic_handles.device, host_memory, 0, fileSize, 0, (void**)&mapped_gpu_memory);
-  SDL_memcpy(mapped_gpu_memory, uploadBuffer, fileSize);
+  vkMapMemory(engine.generic_handles.device, host_memory, 0, total_upload_buffer_size, 0, (void**)&mapped_gpu_memory);
+  SDL_memcpy(mapped_gpu_memory, uploadBuffer, total_upload_buffer_size);
   vkUnmapMemory(engine.generic_handles.device, host_memory);
 
   indices_offset  = engine.gpu_static_geometry.allocate(host_index_buffer_size);
@@ -260,7 +302,10 @@ void RenderableModel::construct(Engine& engine, const Model& model) noexcept
   vkDestroyBuffer(engine.generic_handles.device, host_buffer, nullptr);
   vkFreeMemory(engine.generic_handles.device, host_memory, nullptr);
 
-  albedo_texture_idx = engine.load_texture(model.images[0].data);
+  if (0 != model.images.size())
+  {
+    albedo_texture_idx = engine.load_texture(model.images[0].data);
+  }
 }
 
 } // namespace gltf

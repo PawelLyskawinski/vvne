@@ -3,13 +3,72 @@
 #include "gltf.hh"
 #include <SDL2/SDL_log.h>
 
+namespace {
+
+struct Loader
+{
+  Loader(int* flags, cJSON* json)
+      : flags(flags)
+      , json(json)
+  {
+  }
+
+  void loadInt(int flag, int* dst, const char* name)
+  {
+    if (cJSON_HasObjectItem(json, name))
+    {
+      *flags |= flag;
+      *dst = cJSON_GetObjectItem(json, name)->valueint;
+    }
+  }
+
+  void loadStringAsInt(int flag, int* dst, const char* name, int (*convert)(const char*))
+  {
+    if (cJSON_HasObjectItem(json, name))
+    {
+      *flags |= flag;
+      *dst = convert(cJSON_GetObjectItem(json, name)->valuestring);
+    }
+  }
+
+  void loadVector(int flag, float* dst, const char* name, int length)
+  {
+    if (cJSON_HasObjectItem(json, name))
+    {
+      *flags |= flag;
+      cJSON* vec = cJSON_GetObjectItem(json, name);
+      for (int i = 0; i < length; ++i)
+        dst[i] = static_cast<float>(cJSON_GetArrayItem(vec, i)->valuedouble);
+    }
+  }
+
+  void loadIntFromIndexChild(int flag, int* dst, const char* name)
+  {
+    if (cJSON_HasObjectItem(json, name))
+    {
+      const char* idxname = "index";
+      cJSON*      child   = cJSON_GetObjectItem(json, name);
+      if (cJSON_HasObjectItem(child, idxname))
+      {
+        *flags |= flag;
+        *dst = cJSON_GetObjectItem(child, idxname)->valueint;
+      }
+    }
+  }
+
+  int*   flags;
+  cJSON* json;
+};
+
+} // namespace
+
 namespace gltf {
 
-void Model::loadASCII(const char* path) noexcept
+void Model::loadASCII(Engine::DoubleEndedStack& stack, const char* path) noexcept
 {
   SDL_RWops* ctx         = SDL_RWFromFile(path, "r");
   size_t     fileSize    = static_cast<size_t>(SDL_RWsize(ctx));
-  char*      fileContent = static_cast<char*>(SDL_malloc(fileSize));
+  char*      fileContent = stack.allocate_back<char>(fileSize);
   SDL_RWread(ctx, fileContent, sizeof(char), fileSize);
   SDL_RWclose(ctx);
 
@@ -27,23 +86,29 @@ void Model::loadASCII(const char* path) noexcept
       cJSON*    jsonAccessor = cJSON_GetArrayItem(jsonAccessors, accessorIdx);
       Accessor& accessor     = accessors[accessorIdx];
 
-      accessor.bufferView    = cJSON_GetObjectItem(jsonAccessor, "bufferView")->valueint;
-      accessor.componentType = cJSON_GetObjectItem(jsonAccessor, "componentType")->valueint;
-      accessor.count         = cJSON_GetObjectItem(jsonAccessor, "count")->valueint;
+      auto typeConvert = [](const char* in) -> int {
+        int result = ACCESSOR_TYPE_VEC3;
+        if (0 == SDL_strcmp("SCALAR", in))
+        {
+          result = ACCESSOR_TYPE_SCALAR;
+        }
+        else if (0 == SDL_strcmp("VEC3", in))
+        {
+          result = ACCESSOR_TYPE_VEC3;
+        }
+        else if (0 == SDL_strcmp("VEC2", in))
+        {
+          result = ACCESSOR_TYPE_VEC2;
+        }
+        return result;
+      };
 
-      const char* type = cJSON_GetObjectItem(jsonAccessor, "type")->valuestring;
-      if (0 == SDL_strcmp("SCALAR", type))
-      {
-        accessor.type = ACCESSOR_TYPE_SCALAR;
-      }
-      else if (0 == SDL_strcmp("VEC3", type))
-      {
-        accessor.type = ACCESSOR_TYPE_VEC3;
-      }
-      else if (0 == SDL_strcmp("VEC2", type))
-      {
-        accessor.type = ACCESSOR_TYPE_VEC2;
-      }
+      Loader loader(&accessor.flags, jsonAccessor);
+      loader.loadInt(Accessor::Flag ::hasBufferView, &accessor.bufferView, "bufferView");
+      loader.loadInt(Accessor::Flag ::hasComponentType, &accessor.componentType, "componentType");
+      loader.loadInt(Accessor::Flag::hasCount, &accessor.count, "count");
+      loader.loadInt(Accessor::Flag::hasByteOffset, &accessor.byteOffset, "byteOffset");
+      loader.loadStringAsInt(Accessor::Flag::hasType, &accessor.type, "type", typeConvert);
     }
   }
 
@@ -59,10 +124,12 @@ void Model::loadASCII(const char* path) noexcept
       cJSON*      jsonBufferView = cJSON_GetArrayItem(jsonBufferViews, bufferViewIdx);
       BufferView& bufferView     = bufferViews[bufferViewIdx];
 
-      bufferView.buffer     = cJSON_GetObjectItem(jsonBufferView, "buffer")->valueint;
-      bufferView.byteLength = cJSON_GetObjectItem(jsonBufferView, "byteLength")->valueint;
-      bufferView.byteOffset = cJSON_GetObjectItem(jsonBufferView, "byteOffset")->valueint;
-      bufferView.target     = cJSON_GetObjectItem(jsonBufferView, "target")->valueint;
+      Loader loader(&bufferView.flags, jsonBufferView);
+      loader.loadInt(BufferView::Flag::hasBuffer, &bufferView.buffer, "buffer");
+      loader.loadInt(BufferView::Flag::hasByteLength, &bufferView.byteLength, "byteLength");
+      loader.loadInt(BufferView::Flag::hasByteOffset, &bufferView.byteOffset, "byteOffset");
+      loader.loadInt(BufferView::Flag::hasTarget, &bufferView.target, "target");
+      loader.loadInt(BufferView::Flag::hasByteStride, &bufferView.byteStride, "byteStride");
     }
   }
 
@@ -78,8 +145,9 @@ void Model::loadASCII(const char* path) noexcept
       cJSON*   jsonTexture = cJSON_GetArrayItem(jsonTextures, textureIdx);
       Texture& texture     = textures[textureIdx];
 
-      texture.sampler = cJSON_GetObjectItem(jsonTexture, "sampler")->valueint;
-      texture.source  = cJSON_GetObjectItem(jsonTexture, "source")->valueint;
+      Loader loader(&texture.flags, jsonTexture);
+      loader.loadInt(Texture::Flag::hasSampler, &texture.sampler, "sampler");
+      loader.loadInt(Texture::Flag::hasSource, &texture.source, "source");
     }
   }
 
@@ -95,11 +163,10 @@ void Model::loadASCII(const char* path) noexcept
       cJSON* jsonNode = cJSON_GetArrayItem(jsonNodes, nodeIdx);
       Node&  node     = nodes[nodeIdx];
 
-      node.mesh           = cJSON_GetObjectItem(jsonNode, "mesh")->valueint;
-      cJSON* jsonRotation = cJSON_GetObjectItem(jsonNode, "rotation");
+      Loader loader(&node.flags, jsonNode);
 
-      for (int i = 0; i < 4; ++i)
-        node.rotation[i] = static_cast<float>(cJSON_GetArrayItem(jsonRotation, i)->valuedouble);
+      loader.loadInt(Node::Flag::hasMesh, &node.mesh, "mesh");
+      loader.loadVector(Node::Flag::hasRotation, node.rotation, "rotation", 4);
     }
   }
 
@@ -128,11 +195,18 @@ void Model::loadASCII(const char* path) noexcept
 
         Primitive& primitive = mesh.primitives[primitiveIdx];
 
-        primitive.position_attrib = cJSON_GetObjectItem(attribs, "POSITION")->valueint;
-        primitive.normal_attrib   = cJSON_GetObjectItem(attribs, "NORMAL")->valueint;
-        primitive.texcoord_attrib = cJSON_GetObjectItem(attribs, "TEXCOORD_0")->valueint;
-        primitive.indices         = cJSON_GetObjectItem(jsonPrimitive, "indices")->valueint;
-        primitive.material        = cJSON_GetObjectItem(jsonPrimitive, "material")->valueint;
+        {
+          Loader loader(&primitive.flags, attribs);
+          loader.loadInt(Primitive::Flag::hasPositionAttrib, &primitive.position_attrib, "POSITION");
+          loader.loadInt(Primitive::Flag::hasNormalAttrib, &primitive.normal_attrib, "NORMAL");
+          loader.loadInt(Primitive::Flag::hasTexcoordAttrib, &primitive.texcoord_attrib, "TEXCOORD_0");
+        }
+
+        {
+          Loader loader(&primitive.flags, jsonPrimitive);
+          loader.loadInt(Primitive::Flag::hasIndices, &primitive.indices, "indices");
+          loader.loadInt(Primitive::Flag::hasMaterial, &primitive.material, "material");
+        }
       }
     }
   }
@@ -149,27 +223,31 @@ void Model::loadASCII(const char* path) noexcept
       cJSON*    jsonMaterial = cJSON_GetArrayItem(jsonMaterials, materialIdx);
       Material& material     = materials[materialIdx];
 
-      cJSON* emissiveFactor = cJSON_GetObjectItem(jsonMaterial, "emissiveFactor");
-      for (int i = 0; i < 3; ++i)
-        material.emissiveFactor[i] = static_cast<float>(cJSON_GetArrayItem(emissiveFactor, i)->valuedouble);
+      {
+        Loader loader(&material.flags, jsonMaterial);
+        loader.loadVector(Material::Flag::hasEmissiveFactor, material.emissiveFactor, "emissiveFactor", 3);
+        loader.loadIntFromIndexChild(Material::Flag::hasEmissiveTextureIdx, &material.emissiveTextureIdx,
+                                     "emissiveTexture");
+        loader.loadIntFromIndexChild(Material::Flag::hasNormalTextureIdx, &material.normalTextureIdx, "normalTexture");
+        loader.loadIntFromIndexChild(Material::Flag::hasOcclusionTextureIdx, &material.occlusionTextureIdx,
+                                     "occlusionTexture");
+      }
 
-      auto getIndex = [](cJSON* parent, const char* name) {
-        return cJSON_GetObjectItem(cJSON_GetObjectItem(parent, name), "index")->valueint;
-      };
-
-      material.emissiveTextureIdx  = getIndex(jsonMaterial, "emissiveTexture");
-      material.normalTextureIdx    = getIndex(jsonMaterial, "normalTexture");
-      material.occlusionTextureIdx = getIndex(jsonMaterial, "occlusionTexture");
-
-      cJSON* pbr                              = cJSON_GetObjectItem(jsonMaterial, "pbrMetallicRoughness");
-      material.pbrBaseColorTextureIdx         = getIndex(pbr, "baseColorTexture");
-      material.pbrMetallicRoughnessTextureIdx = getIndex(pbr, "metallicRoughnessTexture");
+      if (cJSON_HasObjectItem(jsonMaterial, "pbrMetallicRoughness"))
+      {
+        cJSON* pbr = cJSON_GetObjectItem(jsonMaterial, "pbrMetallicRoughness");
+        Loader loader(&material.flags, pbr);
+        loader.loadIntFromIndexChild(Material::Flag::hasPbrBaseColorTextureIdx, &material.pbrBaseColorTextureIdx,
+                                     "baseColorTexture");
+        loader.loadIntFromIndexChild(Material::Flag::hasPbrMetallicRoughnessTextureIdx,
+                                     &material.pbrMetallicRoughnessTextureIdx, "metallicRoughnessTexture");
+      }
     }
   }
 
   char relativePath[256] = {};
-  int  lastSlashIdx      = 0;
-  for (int i = 0; i < SDL_strlen(path); ++i)
+  size_t  lastSlashIdx      = 0;
+  for (size_t i = 0; i < SDL_strlen(path); ++i)
     if ('/' == path[i])
       lastSlashIdx = i;
   SDL_memcpy(relativePath, path, lastSlashIdx + 1);
@@ -186,8 +264,6 @@ void Model::loadASCII(const char* path) noexcept
     {
       cJSON*      image    = cJSON_GetArrayItem(jsonImages, imageIdx);
       const char* filename = cJSON_GetObjectItem(image, "uri")->valuestring;
-
-      SDL_Log("image filename: %s", filename);
 
       SmallString& smallString = images[imageIdx];
       SDL_strlcpy(&smallString.data[0], relativePath, 128);
@@ -215,8 +291,7 @@ void Model::loadASCII(const char* path) noexcept
   }
 
   cJSON_Delete(document);
-  SDL_free(fileContent);
-}
+} // namespace gltf
 
 void Model::debugDump() noexcept
 {
@@ -247,9 +322,18 @@ void Model::debugDump() noexcept
     SDL_Log("[mesh] primitives: %d", mesh.primitives.n);
     for (const auto& primitive : mesh.primitives)
     {
-      SDL_Log("  [primitive] position_attrib: %d, normal_attrib: %d, texcoord_attrib: %d, indices: %d, material: %d",
-              primitive.position_attrib, primitive.normal_attrib, primitive.texcoord_attrib, primitive.indices,
-              primitive.material);
+      SDL_Log("  [primitive] -- begin (flags: %d)", primitive.flags);
+      if (primitive.flags & Primitive::Flag::hasPositionAttrib)
+        SDL_Log("  position_attrib: %d", primitive.position_attrib);
+      if (primitive.flags & Primitive::Flag::hasNormalAttrib)
+        SDL_Log("  normal_attrib: %d", primitive.normal_attrib);
+      if (primitive.flags & Primitive::Flag::hasTexcoordAttrib)
+        SDL_Log("  texcoord_attrib: %d", primitive.texcoord_attrib);
+      if (primitive.flags & Primitive::Flag::hasIndices)
+        SDL_Log("  indices: %d", primitive.indices);
+      if (primitive.flags & Primitive::Flag::hasMaterial)
+        SDL_Log("  material: %d", primitive.material);
+      SDL_Log("  [primitive] -- end");
     }
   }
 

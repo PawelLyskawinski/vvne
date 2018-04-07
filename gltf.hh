@@ -51,34 +51,84 @@ template <typename T> struct ArrayView
 
 struct Accessor
 {
+  enum Flag
+  {
+    hasBufferView    = (1 << 0),
+    hasComponentType = (1 << 1),
+    hasCount         = (1 << 2),
+    hasType          = (1 << 3),
+    hasByteOffset    = (1 << 4)
+  };
+  int flags;
+
   int bufferView;
   int componentType;
   int count;
   int type;
+  int byteOffset;
 };
 
 struct BufferView
 {
+  enum Flag
+  {
+    hasBuffer     = (1 << 0),
+    hasByteLength = (1 << 1),
+    hasByteOffset = (1 << 2),
+    hasTarget     = (1 << 3),
+    hasByteStride = (1 << 4)
+  };
+  int flags;
+
   int buffer;
   int byteLength;
   int byteOffset;
   int target;
+  int byteStride;
 };
 
 struct Texture
 {
+  enum Flag
+  {
+    hasSampler = (1 << 0),
+    hasSource  = (1 << 1)
+  };
+  int flags;
+
   int sampler;
   int source;
 };
 
 struct Node
 {
+  enum Flag
+  {
+    hasMesh     = (1 << 0),
+    hasChild    = (1 << 1),
+    hasRotation = (1 << 2),
+    hasMatrix   = (1 << 3)
+  };
+  int flags;
+
   int   mesh;
+  int   child;
   float rotation[4];
+  float matrix[16];
 };
 
 struct Primitive
 {
+  enum Flag
+  {
+    hasPositionAttrib = (1 << 0),
+    hasNormalAttrib   = (1 << 1),
+    hasTexcoordAttrib = (1 << 2),
+    hasIndices        = (1 << 3),
+    hasMaterial       = (1 << 4),
+  };
+  int flags;
+
   int position_attrib;
   int normal_attrib;
   int texcoord_attrib;
@@ -93,6 +143,17 @@ struct Mesh
 
 struct Material
 {
+  enum Flag
+  {
+    hasEmissiveFactor                 = (1 << 0),
+    hasEmissiveTextureIdx             = (1 << 1),
+    hasNormalTextureIdx               = (1 << 2),
+    hasOcclusionTextureIdx            = (1 << 3),
+    hasPbrBaseColorTextureIdx         = (1 << 4),
+    hasPbrMetallicRoughnessTextureIdx = (1 << 5)
+  };
+  int flags;
+
   float emissiveFactor[3];
   int   emissiveTextureIdx;
   int   normalTextureIdx;
@@ -127,7 +188,7 @@ struct Model
   ArrayView<Material>    materials;
 
   void debugDump() noexcept;
-  void loadASCII(const char* path) noexcept;
+  void loadASCII(Engine::DoubleEndedStack& stack, const char* path) noexcept;
 };
 
 struct RenderableModel

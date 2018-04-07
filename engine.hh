@@ -34,50 +34,6 @@ struct Engine
     VkSampler                  texture_samplers[SWAPCHAIN_IMAGES_COUNT];
   } generic_handles;
 
-  struct DoubleEndedStack
-  {
-    enum
-    {
-      MAX_MEMORY_SIZE_MB    = 2,
-      MAX_MEMORY_SIZE_KB    = MAX_MEMORY_SIZE_MB * 1024,
-      MAX_MEMORY_SIZE_BYTES = MAX_MEMORY_SIZE_KB * 1024,
-      MAX_MEMORY_SIZE       = MAX_MEMORY_SIZE_BYTES
-    };
-
-    int calculate_64bit_alignment_padding(int value)
-    {
-      return (value % 64) ? 64 - (value % 64) : 0;
-    }
-
-    template <typename T> T* allocate_front(int count = 1)
-    {
-      T*  result         = reinterpret_cast<T*>(&memory[front]);
-      int size           = count * sizeof(T);
-      int padding        = calculate_64bit_alignment_padding(size);
-      int corrected_size = size + padding;
-      front += corrected_size;
-      return result;
-    }
-
-    template <typename T> T* allocate_back(int count = 1)
-    {
-      int size           = count * sizeof(T);
-      int padding        = calculate_64bit_alignment_padding(size);
-      int corrected_size = size + padding;
-      back += corrected_size;
-      return reinterpret_cast<T*>(&memory[MAX_MEMORY_SIZE - back]);
-    }
-
-    void reset_back()
-    {
-      back = 0;
-    }
-
-    uint8_t memory[MAX_MEMORY_SIZE];
-    int     front;
-    int     back;
-  } double_ended_stack;
-
   struct MemoryWithAlignment
   {
     VkDeviceSize allocate(VkDeviceSize size)
@@ -123,7 +79,7 @@ struct Engine
     enum
     {
       MAX_COUNT             = 128,
-      MAX_MEMORY_SIZE_MB    = 50,
+      MAX_MEMORY_SIZE_MB    = 200,
       MAX_MEMORY_SIZE_KB    = MAX_MEMORY_SIZE_MB * 1024,
       MAX_MEMORY_SIZE_BYTES = MAX_MEMORY_SIZE_KB * 1024,
       MAX_MEMORY_SIZE       = MAX_MEMORY_SIZE_BYTES
@@ -142,7 +98,8 @@ struct Engine
 
     enum Passes
     {
-      Scene3D = 0,
+      Skybox = 0,
+      Scene3D,
       ImGui,
       Count
     };
@@ -154,14 +111,59 @@ struct Engine
     VkFence          submition_fences[SWAPCHAIN_IMAGES_COUNT];
   } simple_rendering;
 
+  struct DoubleEndedStack
+  {
+    enum
+    {
+      MAX_MEMORY_SIZE_MB    = 2,
+      MAX_MEMORY_SIZE_KB    = MAX_MEMORY_SIZE_MB * 1024,
+      MAX_MEMORY_SIZE_BYTES = MAX_MEMORY_SIZE_KB * 1024,
+      MAX_MEMORY_SIZE       = MAX_MEMORY_SIZE_BYTES
+    };
+
+    int calculate_64bit_alignment_padding(int value)
+    {
+      return (value % 8) ? 8 - (value % 8) : 0;
+    }
+
+    template <typename T> T* allocate_front(int count = 1)
+    {
+      T*  result         = reinterpret_cast<T*>(&memory[front]);
+      int size           = count * sizeof(T);
+      int padding        = calculate_64bit_alignment_padding(size);
+      int corrected_size = size + padding;
+      front += corrected_size;
+      return result;
+    }
+
+    template <typename T> T* allocate_back(int count = 1)
+    {
+      int size           = count * sizeof(T);
+      int padding        = calculate_64bit_alignment_padding(size);
+      int corrected_size = size + padding;
+      back += corrected_size;
+      return reinterpret_cast<T*>(&memory[MAX_MEMORY_SIZE - back]);
+    }
+
+    void reset_back()
+    {
+      back = 0;
+    }
+
+    uint8_t memory[MAX_MEMORY_SIZE];
+    int     front;
+    int     back;
+  } double_ended_stack;
+
   void startup();
   void teardown();
   void print_memory_statistics();
   void submit_simple_rendering(uint32_t image_index);
 
   VkShaderModule load_shader(const char* filepath);
-  int            load_texture(const char* filepath);
-  int            load_texture(SDL_Surface* surface);
+
+  int load_texture(const char* filepath);
+  int load_texture(SDL_Surface* surface);
 
   // internals
 private:

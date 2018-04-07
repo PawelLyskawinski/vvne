@@ -4,6 +4,7 @@
 #include <SDL2/SDL_events.h>
 #include <SDL2/SDL_log.h>
 #include <SDL2/SDL_scancode.h>
+#include <SDL2/SDL_timer.h>
 #include <linmath.h>
 
 namespace {
@@ -97,6 +98,34 @@ void Game::startup(Engine& engine)
     }
   }
 
+  {
+    const int memorySize = 2000; // adjusted manually
+    helmet.memory        = engine.double_ended_stack.allocate_back<uint8_t>(memorySize);
+    SDL_memset(helmet.memory, 0, memorySize);
+
+    helmet.loadASCII(engine.double_ended_stack, "../assets/DamagedHelmet/glTF/DamagedHelmet.gltf");
+    SDL_Log("helmet used %d / %d bytes", helmet.usedMemory, memorySize);
+    // helmet.debugDump();
+    renderableHelmet.construct(engine, helmet);
+    engine.double_ended_stack.reset_back();
+  }
+
+  // skybox
+  {
+    const int memorySize = 500; // adjusted manually
+    box.memory           = engine.double_ended_stack.allocate_back<uint8_t>(memorySize);
+    SDL_memset(box.memory, 0, memorySize);
+
+    box.loadASCII(engine.double_ended_stack, "../assets/Box.gltf");
+    SDL_Log("box used %d / %d bytes", box.usedMemory, memorySize);
+    // box.debugDump();
+    renderableBox.construct(engine, box);
+    engine.double_ended_stack.reset_back();
+  }
+
+  environment_hdr_map_idx                 = engine.load_texture("../assets/old_industrial_hall.hdr");
+  environment_equirectangular_texture_idx = engine.load_texture("../assets/old_industrial_hall.jpg");
+
   //
   // IMGUI descriptor sets
   //
@@ -104,16 +133,14 @@ void Game::startup(Engine& engine)
     VkDescriptorSetAllocateInfo allocate{};
     allocate.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocate.descriptorPool     = engine.generic_handles.descriptor_pool;
-    allocate.descriptorSetCount = SDL_arraysize(descriptor_sets);
+    allocate.descriptorSetCount = SDL_arraysize(imgui_descriptor_sets);
     allocate.pSetLayouts        = engine.simple_rendering.descriptor_set_layouts;
 
-    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, descriptor_sets);
+    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, imgui_descriptor_sets);
   }
 
   for (int image_index = 0; image_index < SWAPCHAIN_IMAGES_COUNT; ++image_index)
   {
-    Engine::SimpleRendering& renderer = engine.simple_rendering;
-
     VkDescriptorImageInfo image{};
     image.sampler     = engine.generic_handles.texture_samplers[image_index];
     image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -126,19 +153,9 @@ void Game::startup(Engine& engine)
     write.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     write.descriptorCount = 1;
     write.pImageInfo      = &image;
-    write.dstSet          = descriptor_sets[image_index];
+    write.dstSet          = imgui_descriptor_sets[image_index];
 
     vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
-  }
-
-  {
-    const int memorySize = 1600; // adjusted manually
-    helmet.memory        = engine.double_ended_stack.allocate_back<uint8_t>(memorySize);
-    helmet.loadASCII("../assets/DamagedHelmet/glTF/DamagedHelmet.gltf");
-    SDL_Log("helmet used %d / %d bytes", helmet.usedMemory, memorySize);
-    // helmet.debugDump();
-    renderableHelmet.construct(engine, helmet);
-    engine.double_ended_stack.reset_back();
   }
 
   //
@@ -156,12 +173,11 @@ void Game::startup(Engine& engine)
 
   for (int image_index = 0; image_index < SWAPCHAIN_IMAGES_COUNT; ++image_index)
   {
-    Engine::SimpleRendering& renderer = engine.simple_rendering;
-
     VkDescriptorImageInfo image{};
     image.sampler     = engine.generic_handles.texture_samplers[image_index];
     image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     image.imageView   = engine.images.image_views[renderableHelmet.albedo_texture_idx];
+    // image.imageView = engine.images.image_views[environment_equirectangular_texture_idx];
 
     VkWriteDescriptorSet write{};
     write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -175,12 +191,44 @@ void Game::startup(Engine& engine)
     vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
   }
 
+  //
+  // SKYBOX descriptor sets
+  //
+  {
+    VkDescriptorSetAllocateInfo allocate{};
+    allocate.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocate.descriptorPool     = engine.generic_handles.descriptor_pool;
+    allocate.descriptorSetCount = SDL_arraysize(skybox_descriptor_sets);
+    allocate.pSetLayouts        = engine.simple_rendering.descriptor_set_layouts;
+
+    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, skybox_descriptor_sets);
+  }
+
+  for (int image_index = 0; image_index < SWAPCHAIN_IMAGES_COUNT; ++image_index)
+  {
+    VkDescriptorImageInfo image{};
+    image.sampler     = engine.generic_handles.texture_samplers[image_index];
+    image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    image.imageView   = engine.images.image_views[environment_equirectangular_texture_idx];
+
+    VkWriteDescriptorSet write{};
+    write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write.dstBinding      = 1;
+    write.dstArrayElement = 0;
+    write.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    write.descriptorCount = 1;
+    write.pImageInfo      = &image;
+    write.dstSet          = skybox_descriptor_sets[image_index];
+
+    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
+  }
+
   helmet_translation[0] = 2.2f;
   helmet_translation[1] = 3.5f;
   helmet_translation[2] = 19.2f;
 }
 
-void Game::teardown(Engine& engine)
+void Game::teardown(Engine&)
 {
   for (SDL_Cursor* cursor : debug_gui.mousecursors)
     SDL_FreeCursor(cursor);
@@ -188,6 +236,9 @@ void Game::teardown(Engine& engine)
 
 void Game::update(Engine& engine, float current_time_sec)
 {
+  (void)current_time_sec;
+  uint64_t start_function_ticks = SDL_GetPerformanceCounter();
+
   ImGuiIO& io = ImGui::GetIO();
 
   // Event dispatching
@@ -275,7 +326,7 @@ void Game::update(Engine& engine, float current_time_sec)
       iter = false;
 
     if ((SDL_GetWindowFlags(window) & (SDL_WINDOW_MOUSE_FOCUS | SDL_WINDOW_MOUSE_CAPTURE)) != 0)
-      io.MousePos = ImVec2((float)mx, (float)my);
+      io.MousePos              = ImVec2((float)mx, (float)my);
     bool any_mouse_button_down = false;
     for (int n = 0; n < IM_ARRAYSIZE(io.MouseDown); n++)
       any_mouse_button_down |= io.MouseDown[n];
@@ -300,20 +351,119 @@ void Game::update(Engine& engine, float current_time_sec)
   }
 
   ImGui::NewFrame();
-  ImGui::Text("Hello World!");
-  ImGui::Text("current time: %.2f", current_time_sec);
-  ImGui::SliderFloat3("helmet translation", helmet_translation, -10.0f, 10.0f);
+  ImGui::PlotHistogram("update times", update_times, SDL_arraysize(update_times), 0, nullptr, 0.0, 0.001,
+                       ImVec2(300, 20));
+  ImGui::PlotHistogram("render times", render_times, SDL_arraysize(render_times), 0, nullptr, 0.0, 0.03,
+                       ImVec2(300, 20));
+
+  float avg_time = 0.0f;
+  for (float time : update_times)
+    avg_time += time;
+  avg_time /= SDL_arraysize(update_times);
+
+  ImGui::Text("Average update time: %f", avg_time);
+
+  for (float time : render_times)
+    avg_time += time;
+  avg_time /= SDL_arraysize(render_times);
+
+  ImGui::Text("Average render time: %f", avg_time);
+
+  uint64_t end_function_ticks = SDL_GetPerformanceCounter();
+  uint64_t ticks_elapsed      = end_function_ticks - start_function_ticks;
+
+  for (int i = 0; i < (static_cast<int>(SDL_arraysize(update_times)) - 1); ++i)
+  {
+    update_times[i] = update_times[i + 1];
+  }
+
+  int last_element           = SDL_arraysize(update_times) - 1;
+  update_times[last_element] = (float)ticks_elapsed / (float)SDL_GetPerformanceFrequency();
 }
 
 void Game::render(Engine& engine, float current_time_sec)
 {
-  Engine::SimpleRendering& renderer = engine.simple_rendering;
+  uint64_t                 start_function_ticks = SDL_GetPerformanceCounter();
+  Engine::SimpleRendering& renderer             = engine.simple_rendering;
 
   uint32_t image_index = 0;
   vkAcquireNextImageKHR(engine.generic_handles.device, engine.generic_handles.swapchain, UINT64_MAX,
                         engine.generic_handles.image_available, VK_NULL_HANDLE, &image_index);
   vkWaitForFences(engine.generic_handles.device, 1, &renderer.submition_fences[image_index], VK_TRUE, UINT64_MAX);
   vkResetFences(engine.generic_handles.device, 1, &renderer.submition_fences[image_index]);
+
+  {
+    VkCommandBuffer cmd = renderer.secondary_command_buffers[Engine::SimpleRendering::Passes::Count * image_index +
+                                                             Engine::SimpleRendering::Passes::Skybox];
+
+    {
+      VkCommandBufferInheritanceInfo inheritance{};
+      inheritance.sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+      inheritance.renderPass           = renderer.render_pass;
+      inheritance.subpass              = Engine::SimpleRendering::Passes::Skybox;
+      inheritance.framebuffer          = renderer.framebuffers[image_index];
+      inheritance.occlusionQueryEnable = VK_FALSE;
+
+      VkCommandBufferBeginInfo begin{};
+      begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+      begin.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+      begin.pInheritanceInfo = &inheritance;
+      vkBeginCommandBuffer(cmd, &begin);
+    }
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      renderer.pipelines[Engine::SimpleRendering::Passes::Skybox]);
+    vkCmdBindIndexBuffer(cmd, engine.gpu_static_geometry.buffer, renderableBox.indices_offset,
+                         renderableBox.indices_type);
+    vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_static_geometry.buffer, &renderableBox.vertices_offset);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Skybox], 0, 1,
+                            &skybox_descriptor_sets[image_index], 0, nullptr);
+
+    mat4x4 view{};
+    vec3   eye    = {6.0f, 6.7f, 30.0f};
+    vec3   center = {-3.0f, 0.0f, -1.0f};
+    vec3   up     = {0.0f, -1.0f, 0.0f};
+    mat4x4_look_at(view, eye, center, up);
+
+    mat4x4 projection{};
+    float  extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
+    float  extent_height       = static_cast<float>(engine.generic_handles.extent2D.height);
+    float  aspect_ratio        = extent_width / extent_height;
+    float  fov                 = 100.0f;
+    float  near_clipping_plane = 0.001f;
+    float  far_clipping_plane  = 10000.0f;
+    mat4x4_perspective(projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
+
+    mat4x4 model{};
+    mat4x4_identity(model);
+    mat4x4_rotate_Y(model, model, current_time_sec * 0.1f);
+
+    {
+      const float scale = 150.0f;
+      mat4x4_scale_aniso(model, model, scale, scale, scale);
+    }
+
+    mat4x4 projectionview{};
+    mat4x4_mul(projectionview, projection, view);
+
+    mat4x4 mvp = {};
+    mat4x4_mul(mvp, projectionview, model);
+
+    vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Skybox],
+                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
+    struct FragPush
+    {
+      float exposure = 1.0f;
+      float gamma    = 1.0f;
+    } fragpush;
+    vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Skybox],
+                       VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), 2 * sizeof(float), &fragpush);
+
+    vkCmdDrawIndexed(cmd, renderableBox.indices_count, 1, 0, 0, 0);
+
+    vkEndCommandBuffer(cmd);
+  }
 
   {
     VkCommandBuffer cmd = renderer.secondary_command_buffers[Engine::SimpleRendering::Passes::Count * image_index +
@@ -376,6 +526,7 @@ void Game::render(Engine& engine, float current_time_sec)
     vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Scene3D],
                        VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
     vkCmdDrawIndexed(cmd, renderableHelmet.indices_count, 1, 0, 0, 0);
+
     vkEndCommandBuffer(cmd);
   }
 
@@ -441,7 +592,7 @@ void Game::render(Engine& engine, float current_time_sec)
                       renderer.pipelines[Engine::SimpleRendering::Passes::ImGui]);
 
     vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, renderer.pipeline_layouts[1], 0, 1,
-                            &descriptor_sets[image_index], 0, nullptr);
+                            &imgui_descriptor_sets[image_index], 0, nullptr);
 
     vkCmdBindIndexBuffer(command_buffer, engine.gpu_host_visible.buffer, debug_gui.index_buffer_offsets[image_index],
                          VK_INDEX_TYPE_UINT16);
@@ -504,4 +655,15 @@ void Game::render(Engine& engine, float current_time_sec)
   }
 
   engine.submit_simple_rendering(image_index);
+
+  uint64_t end_function_ticks = SDL_GetPerformanceCounter();
+  uint64_t ticks_elapsed      = end_function_ticks - start_function_ticks;
+
+  for (int i = 0; i < (static_cast<int>(SDL_arraysize(render_times)) - 1); ++i)
+  {
+    render_times[i] = render_times[i + 1];
+  }
+
+  int last_element           = SDL_arraysize(render_times) - 1;
+  render_times[last_element] = (float)ticks_elapsed / (float)SDL_GetPerformanceFrequency();
 }

@@ -15,20 +15,32 @@ struct Game
 
     enum
     {
-      VERTEX_BUFFER_CAPACITY_BYTES = 10 * 1024,
-      INDEX_BUFFER_CAPACITY_BYTES  = 5 * 1024
+      VERTEX_BUFFER_CAPACITY_BYTES = 30 * 1024,
+      INDEX_BUFFER_CAPACITY_BYTES  = 20 * 1024
     };
 
     VkDeviceSize vertex_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
     VkDeviceSize index_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
   } debug_gui;
 
-  VkDescriptorSet descriptor_sets[SWAPCHAIN_IMAGES_COUNT]; // todo: rename!
+  VkDescriptorSet imgui_descriptor_sets[SWAPCHAIN_IMAGES_COUNT]; // todo: rename!
   VkDescriptorSet helmet_descriptor_sets[SWAPCHAIN_IMAGES_COUNT];
+  VkDescriptorSet skybox_descriptor_sets[SWAPCHAIN_IMAGES_COUNT];
 
-  gltf::Model           helmet                = {};
-  gltf::RenderableModel renderableHelmet      = {};
-  float                 helmet_translation[3] = {};
+  gltf::Model           helmet;
+  gltf::RenderableModel renderableHelmet;
+  float                 helmet_translation[3];
+
+  // skybox
+  gltf::Model           box;
+  gltf::RenderableModel renderableBox;
+
+  int environment_hdr_map_idx;
+  int environment_equirectangular_texture_idx;
+  // (For some reason 4-mb jpeg takes ~100MB on gpu. WTF!? todo: investigate)
+
+  float update_times[50];
+  float render_times[50];
 
   void startup(Engine& engine);
   void teardown(Engine& engine);
