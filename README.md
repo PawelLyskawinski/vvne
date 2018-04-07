@@ -16,7 +16,3 @@ There are a lot of publicly available engines / demos on github which use vulkan
 - vulkan SDK (libvulkan/vulkan-1, glslang)
 - compiled SDL2 library
 - "Old Industrial Hall" pack from http://www.hdrlabs.com/sibl/archive.html (too big to include into repo)
-
-# TODO
-- Fix the equirectangular texture upload. Right now environment cubemap takes the same texture and uses it on each and every wall.
-- Fix skybox texture sizes on gpu. 4MB jpeg blows up to ~800MB for some reason
