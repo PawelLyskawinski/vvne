@@ -15,24 +15,22 @@ struct Game
 
     enum
     {
-      VERTEX_BUFFER_CAPACITY_BYTES = 30 * 1024,
-      INDEX_BUFFER_CAPACITY_BYTES  = 20 * 1024
+      VERTEX_BUFFER_CAPACITY_BYTES = 40 * 1024,
+      INDEX_BUFFER_CAPACITY_BYTES  = 30 * 1024
     };
 
     VkDeviceSize vertex_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
     VkDeviceSize index_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
   } debug_gui;
 
-  VkDescriptorSet imgui_descriptor_sets[SWAPCHAIN_IMAGES_COUNT]; // todo: rename!
-  VkDescriptorSet helmet_descriptor_sets[SWAPCHAIN_IMAGES_COUNT];
-  VkDescriptorSet skybox_descriptor_sets[SWAPCHAIN_IMAGES_COUNT];
+  VkDescriptorSet skybox_dset;
+  VkDescriptorSet helmet_dset;
+  VkDescriptorSet imgui_dset;
 
-  gltf::Model           helmet;
+  gltf::Model helmet;
+  gltf::Model box;
+
   gltf::RenderableModel renderableHelmet;
-  float                 helmet_translation[3];
-
-  // skybox
-  gltf::Model           box;
   gltf::RenderableModel renderableBox;
 
   int environment_hdr_map_idx;
@@ -41,6 +39,31 @@ struct Game
 
   float update_times[50];
   float render_times[50];
+  float helmet_translation[3];
+
+  struct LightSource
+  {
+    float position[3];
+    float color[3];
+
+    void setPosition(float x, float y, float z)
+    {
+      position[0] = x;
+      position[1] = y;
+      position[2] = z;
+    }
+
+    void setColor(float r, float g, float b)
+    {
+      color[0] = r;
+      color[1] = g;
+      color[2] = b;
+    }
+  };
+
+  LightSource  light_sources[10];
+  int          light_sources_count;
+  VkDeviceSize lights_ubo_offset;
 
   void startup(Engine& engine);
   void teardown(Engine& engine);

@@ -31,7 +31,7 @@ struct Engine
     VkImageView                depth_image_view;
     VkSemaphore                image_available;
     VkSemaphore                render_finished;
-    VkSampler                  texture_samplers[SWAPCHAIN_IMAGES_COUNT];
+    VkSampler                  texture_sampler;
   } generic_handles;
 
   struct MemoryWithAlignment
@@ -79,7 +79,7 @@ struct Engine
     enum
     {
       MAX_COUNT             = 128,
-      MAX_MEMORY_SIZE_MB    = 200,
+      MAX_MEMORY_SIZE_MB    = 300,
       MAX_MEMORY_SIZE_KB    = MAX_MEMORY_SIZE_MB * 1024,
       MAX_MEMORY_SIZE_BYTES = MAX_MEMORY_SIZE_KB * 1024,
       MAX_MEMORY_SIZE       = MAX_MEMORY_SIZE_BYTES
@@ -90,16 +90,30 @@ struct Engine
     uint32_t     loaded_count;
   } images;
 
+  struct UboHostVisible : MemoryWithAlignment
+  {
+    enum
+    {
+      MAX_MEMORY_SIZE_MB    = 1,
+      MAX_MEMORY_SIZE_KB    = MAX_MEMORY_SIZE_MB * 1024,
+      MAX_MEMORY_SIZE_BYTES = MAX_MEMORY_SIZE_KB * 1024,
+      MAX_MEMORY_SIZE       = MAX_MEMORY_SIZE_BYTES
+    };
+
+    VkBuffer buffer;
+  } ubo_host_visible;
+
   struct SimpleRendering
   {
     VkRenderPass          render_pass;
-    VkDescriptorSetLayout descriptor_set_layouts[SWAPCHAIN_IMAGES_COUNT];
+    VkDescriptorSetLayout descriptor_set_layout;
     VkFramebuffer         framebuffers[SWAPCHAIN_IMAGES_COUNT];
 
     enum Passes
     {
       Skybox = 0,
       Scene3D,
+      ColoredGeometry,
       ImGui,
       Count
     };

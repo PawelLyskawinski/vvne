@@ -5,13 +5,15 @@ There are a lot of publicly available engines / demos on github which use vulkan
 - very fast compile times (no stl, no rtti, minimal use of templates, compression oriented programming)
 - learning experiance!
 ### feature wishlist
-- physically based rendering of some sort?
 - gltf2.0 animations
+- PBR IBL
 ### already implemented
 - gltf2.0 model ascii import with cJSON (without animations)
 - integrated imgui
 - support for both windows and linux
-- eustom vulkan memory allocators
+- custom vulkan memory allocators
+- hdr skybox
+- PBR without IBL
 ### additional external dependencies
 - vulkan SDK (libvulkan/vulkan-1, glslang)
 - compiled SDL2 library

@@ -1,13 +1,6 @@
 #version 450
 
-layout(push_constant) uniform Params
-{
-  layout(offset = 64) float exposure;
-  float                     gamma;
-}
-params;
-
-layout(binding = 1) uniform sampler2D equirectangularMap;
+layout(binding = 0) uniform sampler2D equirectangularMap;
 layout(location = 0) in vec3 inUVW;
 layout(location = 0) out vec4 outColor;
 
@@ -37,12 +30,14 @@ void main()
   vec2 uv = sampleSphericalMap(normalize(inUVW));
   vec3 color = texture(equirectangularMap, uv).rgb;
 
+  float exposure = 1.2;
+  float gamma = 1.5;
 
   // Tone mapping
-  color = tonemap(color * params.exposure);
+  color = tonemap(color * exposure);
   color = color * (1.0f / tonemap(vec3(11.2f)));
 
   // Gamma correction
-  color    = pow(color, vec3(1.0f / params.gamma));
+  color    = pow(color, vec3(1.0f / gamma));
   outColor = vec4(color * 1.0, 1.0);
 }

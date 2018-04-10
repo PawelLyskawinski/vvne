@@ -125,107 +125,135 @@ void Game::startup(Engine& engine)
 
   environment_hdr_map_idx                 = engine.load_texture("../assets/old_industrial_hall.hdr");
   environment_equirectangular_texture_idx = engine.load_texture("../assets/old_industrial_hall.jpg");
+  lights_ubo_offset                       = engine.ubo_host_visible.allocate(sizeof(light_sources));
 
-  //
-  // IMGUI descriptor sets
-  //
+  // ----------------------------------------------------------------------------------------------
+  // Descriptor sets
+  // ----------------------------------------------------------------------------------------------
+
   {
     VkDescriptorSetAllocateInfo allocate{};
     allocate.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocate.descriptorPool     = engine.generic_handles.descriptor_pool;
-    allocate.descriptorSetCount = SDL_arraysize(imgui_descriptor_sets);
-    allocate.pSetLayouts        = engine.simple_rendering.descriptor_set_layouts;
+    allocate.descriptorSetCount = 1;
+    allocate.pSetLayouts        = &engine.simple_rendering.descriptor_set_layout;
 
-    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, imgui_descriptor_sets);
+    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &skybox_dset);
+    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &helmet_dset);
+    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &imgui_dset);
   }
 
-  for (int image_index = 0; image_index < SWAPCHAIN_IMAGES_COUNT; ++image_index)
   {
-    VkDescriptorImageInfo image{};
-    image.sampler     = engine.generic_handles.texture_samplers[image_index];
-    image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    image.imageView   = engine.images.image_views[debug_gui.font_texture_idx];
+    VkDescriptorImageInfo skybox_image{};
+    skybox_image.sampler     = engine.generic_handles.texture_sampler;
+    skybox_image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    skybox_image.imageView   = engine.images.image_views[environment_equirectangular_texture_idx];
 
-    VkWriteDescriptorSet write{};
-    write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    write.dstBinding      = 1;
-    write.dstArrayElement = 0;
-    write.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    write.descriptorCount = 1;
-    write.pImageInfo      = &image;
-    write.dstSet          = imgui_descriptor_sets[image_index];
+    VkDescriptorImageInfo imgui_image{};
+    imgui_image.sampler     = engine.generic_handles.texture_sampler;
+    imgui_image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    imgui_image.imageView   = engine.images.image_views[debug_gui.font_texture_idx];
 
-    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
-  }
+    VkDescriptorImageInfo helmet_images[5]{};
+    for (VkDescriptorImageInfo& info : helmet_images)
+    {
+      info.sampler     = engine.generic_handles.texture_sampler;
+      info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    }
+    helmet_images[0].imageView = engine.images.image_views[renderableHelmet.albedo_texture_idx];
+    helmet_images[1].imageView = engine.images.image_views[renderableHelmet.metal_roughness_texture_idx];
+    helmet_images[2].imageView = engine.images.image_views[renderableHelmet.emissive_texture_idx];
+    helmet_images[3].imageView = engine.images.image_views[renderableHelmet.AO_texture_idx];
+    helmet_images[4].imageView = engine.images.image_views[renderableHelmet.normal_texture_idx];
 
-  //
-  // HELMET descriptor sets
-  //
-  {
-    VkDescriptorSetAllocateInfo allocate{};
-    allocate.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocate.descriptorPool     = engine.generic_handles.descriptor_pool;
-    allocate.descriptorSetCount = SDL_arraysize(helmet_descriptor_sets);
-    allocate.pSetLayouts        = engine.simple_rendering.descriptor_set_layouts;
+    VkDescriptorBufferInfo helmet_ubo{};
+    helmet_ubo.buffer = engine.ubo_host_visible.buffer;
+    helmet_ubo.offset = lights_ubo_offset;
+    helmet_ubo.range  = sizeof(light_sources);
 
-    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, helmet_descriptor_sets);
-  }
+    VkWriteDescriptorSet writes[4]{};
 
-  for (int image_index = 0; image_index < SWAPCHAIN_IMAGES_COUNT; ++image_index)
-  {
-    VkDescriptorImageInfo image{};
-    image.sampler     = engine.generic_handles.texture_samplers[image_index];
-    image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    image.imageView   = engine.images.image_views[renderableHelmet.albedo_texture_idx];
-    // image.imageView = engine.images.image_views[environment_equirectangular_texture_idx];
+    VkWriteDescriptorSet& skybox_write = writes[0];
+    skybox_write.sType                 = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    skybox_write.dstBinding            = 0;
+    skybox_write.dstArrayElement       = 0;
+    skybox_write.descriptorType        = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    skybox_write.descriptorCount       = 1;
+    skybox_write.pImageInfo            = &skybox_image;
+    skybox_write.dstSet                = skybox_dset;
 
-    VkWriteDescriptorSet write{};
-    write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    write.dstBinding      = 1;
-    write.dstArrayElement = 0;
-    write.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    write.descriptorCount = 1;
-    write.pImageInfo      = &image;
-    write.dstSet          = helmet_descriptor_sets[image_index];
+    VkWriteDescriptorSet& helmet_write = writes[1];
+    helmet_write.sType                 = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    helmet_write.dstBinding            = 0;
+    helmet_write.dstArrayElement       = 0;
+    helmet_write.descriptorType        = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    helmet_write.descriptorCount       = SDL_arraysize(helmet_images);
+    helmet_write.pImageInfo            = helmet_images;
+    helmet_write.dstSet                = helmet_dset;
 
-    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
-  }
+    VkWriteDescriptorSet& helmet_ubo_write = writes[2];
+    helmet_ubo_write.sType                 = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    helmet_ubo_write.dstBinding            = 5;
+    helmet_ubo_write.dstArrayElement       = 0;
+    helmet_ubo_write.descriptorType        = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    helmet_ubo_write.descriptorCount       = 1;
+    helmet_ubo_write.pBufferInfo           = &helmet_ubo;
+    helmet_ubo_write.dstSet                = helmet_dset;
 
-  //
-  // SKYBOX descriptor sets
-  //
-  {
-    VkDescriptorSetAllocateInfo allocate{};
-    allocate.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocate.descriptorPool     = engine.generic_handles.descriptor_pool;
-    allocate.descriptorSetCount = SDL_arraysize(skybox_descriptor_sets);
-    allocate.pSetLayouts        = engine.simple_rendering.descriptor_set_layouts;
+    VkWriteDescriptorSet& imgui_write = writes[3];
+    imgui_write.sType                 = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    imgui_write.dstBinding            = 0;
+    imgui_write.dstArrayElement       = 0;
+    imgui_write.descriptorType        = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    imgui_write.descriptorCount       = 1;
+    imgui_write.pImageInfo            = &imgui_image;
+    imgui_write.dstSet                = imgui_dset;
 
-    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, skybox_descriptor_sets);
-  }
-
-  for (int image_index = 0; image_index < SWAPCHAIN_IMAGES_COUNT; ++image_index)
-  {
-    VkDescriptorImageInfo image{};
-    image.sampler     = engine.generic_handles.texture_samplers[image_index];
-    image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    image.imageView   = engine.images.image_views[environment_equirectangular_texture_idx];
-
-    VkWriteDescriptorSet write{};
-    write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    write.dstBinding      = 1;
-    write.dstArrayElement = 0;
-    write.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    write.descriptorCount = 1;
-    write.pImageInfo      = &image;
-    write.dstSet          = skybox_descriptor_sets[image_index];
-
-    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
+    vkUpdateDescriptorSets(engine.generic_handles.device, SDL_arraysize(writes), writes, 0, nullptr);
   }
 
   helmet_translation[0] = 2.2f;
   helmet_translation[1] = 3.5f;
   helmet_translation[2] = 19.2f;
+
+  {
+    LightSource& red = light_sources[0];
+    red.setPosition(4.0, 5.0, 23.0);
+
+    LightSource& green = light_sources[1];
+    green.setPosition(1.0, 5.0, 23.0);
+
+    LightSource& blue = light_sources[2];
+    blue.setPosition(4.0, 3.0, 23.0);
+
+    LightSource& white = light_sources[3];
+    white.setPosition(1.0, 3.0, 23.0);
+
+    for (int i = 0; i < 4; ++i)
+    {
+      light_sources[i].setColor(50.0, 0.0, 0.0);
+    }
+
+    light_sources_count = 4;
+  }
+
+  {
+    struct LightSourceAtShader
+    {
+      float position[4];
+      float color[4];
+    };
+
+    LightSourceAtShader* dst = nullptr;
+    vkMapMemory(engine.generic_handles.device, engine.ubo_host_visible.memory, lights_ubo_offset,
+                SDL_arraysize(light_sources) * sizeof(LightSourceAtShader), 0, (void**)(&dst));
+    for (int i = 0; i < 10; ++i)
+    {
+      SDL_memcpy(dst[i].position, light_sources[i].position, 3 * sizeof(float));
+      SDL_memcpy(dst[i].color, light_sources[i].color, 3 * sizeof(float));
+    }
+    vkUnmapMemory(engine.generic_handles.device, engine.ubo_host_visible.memory);
+  }
 }
 
 void Game::teardown(Engine&)
@@ -326,7 +354,7 @@ void Game::update(Engine& engine, float current_time_sec)
       iter = false;
 
     if ((SDL_GetWindowFlags(window) & (SDL_WINDOW_MOUSE_FOCUS | SDL_WINDOW_MOUSE_CAPTURE)) != 0)
-      io.MousePos              = ImVec2((float)mx, (float)my);
+      io.MousePos = ImVec2((float)mx, (float)my);
     bool any_mouse_button_down = false;
     for (int n = 0; n < IM_ARRAYSIZE(io.MouseDown); n++)
       any_mouse_button_down |= io.MouseDown[n];
@@ -417,8 +445,8 @@ void Game::render(Engine& engine, float current_time_sec)
                          renderableBox.indices_type);
     vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_static_geometry.buffer, &renderableBox.vertices_offset);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Skybox], 0, 1,
-                            &skybox_descriptor_sets[image_index], 0, nullptr);
+                            renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Skybox], 0, 1, &skybox_dset, 0,
+                            nullptr);
 
     mat4x4 view{};
     vec3   eye    = {6.0f, 6.7f, 30.0f};
@@ -430,9 +458,9 @@ void Game::render(Engine& engine, float current_time_sec)
     float  extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
     float  extent_height       = static_cast<float>(engine.generic_handles.extent2D.height);
     float  aspect_ratio        = extent_width / extent_height;
-    float  fov                 = 100.0f;
-    float  near_clipping_plane = 0.001f;
-    float  far_clipping_plane  = 10000.0f;
+    float  fov                 = 99.5f;
+    float  near_clipping_plane = 0.1f;
+    float  far_clipping_plane  = 200.0f;
     mat4x4_perspective(projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
 
     mat4x4 model{};
@@ -490,9 +518,69 @@ void Game::render(Engine& engine, float current_time_sec)
                          renderableHelmet.indices_type);
     vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_static_geometry.buffer, &renderableHelmet.vertices_offset);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Scene3D], 0, 1,
-                            &helmet_descriptor_sets[image_index], 0, nullptr);
+                            renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Scene3D], 0, 1, &helmet_dset, 0,
+                            nullptr);
 
+    struct PushConst
+    {
+      mat4x4 projection;
+      mat4x4 view;
+      mat4x4 model{};
+    } push_const = {};
+
+    vec3 eye    = {6.0f, 6.7f, 30.0f};
+    vec3 center = {-3.0f, 0.0f, -1.0f};
+    vec3 up     = {0.0f, 1.0f, 0.0f};
+    mat4x4_look_at(push_const.view, eye, center, up);
+
+    float extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
+    float extent_height       = static_cast<float>(engine.generic_handles.extent2D.height);
+    float aspect_ratio        = extent_width / extent_height;
+    float fov                 = 100.0f;
+    float near_clipping_plane = 0.001f;
+    float far_clipping_plane  = 10000.0f;
+    mat4x4_perspective(push_const.projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
+
+    mat4x4_identity(push_const.model);
+    mat4x4_translate(push_const.model, helmet_translation[0], helmet_translation[1], helmet_translation[2]);
+    mat4x4_rotate_Y(push_const.model, push_const.model, SDL_sinf(current_time_sec * 0.3f) - 2.0f);
+    mat4x4_rotate_X(push_const.model, push_const.model, to_rad(90.0));
+    mat4x4_scale_aniso(push_const.model, push_const.model, 1.6f, 1.6f, 1.6f);
+
+    vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Scene3D],
+                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push_const), &push_const);
+    vkCmdDrawIndexed(cmd, renderableHelmet.indices_count, 1, 0, 0, 0);
+
+    vkEndCommandBuffer(cmd);
+  }
+
+  {
+    VkCommandBuffer cmd = renderer.secondary_command_buffers[Engine::SimpleRendering::Passes::Count * image_index +
+                                                             Engine::SimpleRendering::Passes::ColoredGeometry];
+
+    {
+      VkCommandBufferInheritanceInfo inheritance{};
+      inheritance.sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+      inheritance.renderPass           = renderer.render_pass;
+      inheritance.subpass              = Engine::SimpleRendering::Passes::ColoredGeometry;
+      inheritance.framebuffer          = renderer.framebuffers[image_index];
+      inheritance.occlusionQueryEnable = VK_FALSE;
+
+      VkCommandBufferBeginInfo begin{};
+      begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+      begin.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+      begin.pInheritanceInfo = &inheritance;
+      vkBeginCommandBuffer(cmd, &begin);
+    }
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      renderer.pipelines[Engine::SimpleRendering::Passes::ColoredGeometry]);
+    vkCmdBindIndexBuffer(cmd, engine.gpu_static_geometry.buffer, renderableBox.indices_offset,
+                         renderableBox.indices_type);
+    vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_static_geometry.buffer, &renderableBox.vertices_offset);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometry], 0, 1,
+                            &helmet_dset, 0, nullptr);
     mat4x4 view{};
     vec3   eye    = {6.0f, 6.7f, 30.0f};
     vec3   center = {-3.0f, 0.0f, -1.0f};
@@ -508,24 +596,25 @@ void Game::render(Engine& engine, float current_time_sec)
     float  far_clipping_plane  = 10000.0f;
     mat4x4_perspective(projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
 
-    mat4x4 projectionview{};
-    mat4x4_mul(projectionview, projection, view);
+    for (int i = 0; i < light_sources_count; ++i)
+    {
+      mat4x4 model{};
+      mat4x4_identity(model);
+      mat4x4_translate(model, light_sources[i].position[0], light_sources[i].position[1], light_sources[i].position[2]);
+      mat4x4_scale_aniso(model, model, 0.1f, 0.1f, 0.1f);
 
-    mat4x4 model{};
-    mat4x4_identity(model);
+      mat4x4 projectionview{};
+      mat4x4_mul(projectionview, projection, view);
 
-    // mat4x4_translate(model, -5.0f, 2.0f, 10.0f);
-    mat4x4_translate(model, helmet_translation[0], helmet_translation[1], helmet_translation[2]);
-    mat4x4_rotate_Y(model, model, current_time_sec * 0.3f);
-    mat4x4_rotate_X(model, model, to_rad(90.0));
-    mat4x4_scale_aniso(model, model, 1.6f, 1.6f, 1.6f);
+      mat4x4 mvp = {};
+      mat4x4_mul(mvp, projectionview, model);
 
-    mat4x4 mvp = {};
-    mat4x4_mul(mvp, projectionview, model);
-
-    vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Scene3D],
-                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
-    vkCmdDrawIndexed(cmd, renderableHelmet.indices_count, 1, 0, 0, 0);
+      vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometry],
+                         VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
+      vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometry],
+                         VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(vec3), light_sources[i].color);
+      vkCmdDrawIndexed(cmd, renderableBox.indices_count, 1, 0, 0, 0);
+    }
 
     vkEndCommandBuffer(cmd);
   }
@@ -592,7 +681,7 @@ void Game::render(Engine& engine, float current_time_sec)
                       renderer.pipelines[Engine::SimpleRendering::Passes::ImGui]);
 
     vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, renderer.pipeline_layouts[1], 0, 1,
-                            &imgui_descriptor_sets[image_index], 0, nullptr);
+                            &imgui_dset, 0, nullptr);
 
     vkCmdBindIndexBuffer(command_buffer, engine.gpu_host_visible.buffer, debug_gui.index_buffer_offsets[image_index],
                          VK_INDEX_TYPE_UINT16);

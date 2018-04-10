@@ -11,4 +11,7 @@ SET compiler=C:/VulkanSDK/1.0.65.0/Bin/glslangValidator.exe
 %compiler% -V skybox.frag -o ../bin/skybox.frag.spv
 %compiler% -V skybox.vert -o ../bin/skybox.vert.spv
 
+%compiler% -V colored_geometry.frag -o ../bin/colored_geometry.frag.spv
+%compiler% -V colored_geometry.vert -o ../bin/colored_geometry.vert.spv
+
 pause

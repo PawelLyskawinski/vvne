@@ -10,3 +10,5 @@ compile triangle_push.frag
 compile triangle_push.vert
 compile skybox.frag
 compile skybox.vert
+compile colored_geometry.frag
+compile colored_geometry.vert

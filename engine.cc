@@ -8,6 +8,7 @@
 #include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_log.h>
 #include <SDL2/SDL_vulkan.h>
+#include <linmath.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #pragma GCC diagnostic push
@@ -329,8 +330,7 @@ void Engine::startup()
     ci.borderColor             = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
     ci.unnormalizedCoordinates = VK_FALSE;
 
-    for (VkSampler& sampler : ctx.texture_samplers)
-      vkCreateSampler(ctx.device, &ci, nullptr, &sampler);
+    vkCreateSampler(ctx.device, &ci, nullptr, &ctx.texture_sampler);
   }
 
   {
@@ -476,6 +476,33 @@ void Engine::startup()
     vkCreateImageView(ctx.device, &ci, nullptr, &ctx.depth_image_view);
   }
 
+  // UBO HOST VISIBLE
+  {
+    VkBufferCreateInfo ci{};
+    ci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    ci.size        = UboHostVisible::MAX_MEMORY_SIZE;
+    ci.usage       = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    vkCreateBuffer(ctx.device, &ci, nullptr, &ubo_host_visible.buffer);
+  }
+
+  {
+    VkMemoryRequirements reqs{};
+    vkGetBufferMemoryRequirements(ctx.device, ubo_host_visible.buffer, &reqs);
+    ubo_host_visible.alignment = reqs.alignment;
+
+    VkPhysicalDeviceMemoryProperties properties{};
+    vkGetPhysicalDeviceMemoryProperties(ctx.physical_device, &properties);
+
+    VkMemoryAllocateInfo allocate{};
+    allocate.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocate.allocationSize  = reqs.size;
+    allocate.memoryTypeIndex = find_memory_type_index(
+        &properties, &reqs, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    vkAllocateMemory(ctx.device, &allocate, nullptr, &ubo_host_visible.memory);
+    vkBindBufferMemory(ctx.device, ubo_host_visible.buffer, ubo_host_visible.memory, 0);
+  }
+
   double_ended_stack.reset_back();
   setup_simple_rendering();
 }
@@ -485,11 +512,14 @@ void Engine::print_memory_statistics()
   float image_percent = 100.0f * ((float)images.used_memory / (float)Images::MAX_MEMORY_SIZE);
   float dv_percent    = 100.0f * ((float)gpu_static_geometry.used_memory / (float)GpuStaticGeometry::MAX_MEMORY_SIZE);
   float hv_percent    = 100.0f * ((float)gpu_host_visible.used_memory / (float)GpuHostVisible::MAX_MEMORY_SIZE);
+  float ubo_percent   = 100.0f * ((float)ubo_host_visible.used_memory / (float)UboHostVisible::MAX_MEMORY_SIZE);
 
   SDL_Log("### Memory statistics ###");
-  SDL_Log("Image memory:           %.2f proc. out of %u MB", image_percent, Images::MAX_MEMORY_SIZE_MB);
-  SDL_Log("device-visible memory:  %.2f proc. out of %u MB", dv_percent, GpuStaticGeometry::MAX_MEMORY_SIZE_MB);
-  SDL_Log("host-visible memory:    %.2f proc. out of %u MB", hv_percent, GpuHostVisible::MAX_MEMORY_SIZE_MB);
+  SDL_Log("Image memory:                    %.2f proc. out of %u MB", image_percent, Images::MAX_MEMORY_SIZE_MB);
+  SDL_Log("device-visible memory:           %.2f proc. out of %u MB", dv_percent,
+          GpuStaticGeometry::MAX_MEMORY_SIZE_MB);
+  SDL_Log("host-visible memory:             %.2f proc. out of %u MB", hv_percent, GpuHostVisible::MAX_MEMORY_SIZE_MB);
+  SDL_Log("universal buffer objects memory: %.2f proc. out of %u MB", ubo_percent, UboHostVisible::MAX_MEMORY_SIZE_MB);
 }
 
 void Engine::teardown()
@@ -499,8 +529,8 @@ void Engine::teardown()
   vkDeviceWaitIdle(ctx.device);
 
   vkDestroyRenderPass(ctx.device, simple_rendering.render_pass, nullptr);
-  for (auto& layout : simple_rendering.descriptor_set_layouts)
-    vkDestroyDescriptorSetLayout(ctx.device, layout, nullptr);
+  vkDestroyDescriptorSetLayout(ctx.device, simple_rendering.descriptor_set_layout, nullptr);
+
   for (auto& framebuffer : simple_rendering.framebuffers)
     vkDestroyFramebuffer(ctx.device, framebuffer, nullptr);
   for (auto& layout : simple_rendering.pipeline_layouts)
@@ -520,21 +550,19 @@ void Engine::teardown()
     vkDestroyImageView(ctx.device, images.image_views[i], nullptr);
   }
 
+  vkFreeMemory(ctx.device, ubo_host_visible.memory, nullptr);
   vkFreeMemory(ctx.device, images.memory, nullptr);
   vkFreeMemory(ctx.device, gpu_host_visible.memory, nullptr);
   vkFreeMemory(ctx.device, gpu_static_geometry.memory, nullptr);
 
+  vkDestroyBuffer(ctx.device, ubo_host_visible.buffer, nullptr);
   vkDestroyBuffer(ctx.device, gpu_host_visible.buffer, nullptr);
   vkDestroyBuffer(ctx.device, gpu_static_geometry.buffer, nullptr);
 
   vkDestroyImage(ctx.device, ctx.depth_image, nullptr);
   vkDestroyImageView(ctx.device, ctx.depth_image_view, nullptr);
 
-  for (VkSampler& sampler : ctx.texture_samplers)
-  {
-    vkDestroySampler(ctx.device, sampler, nullptr);
-  }
-
+  vkDestroySampler(ctx.device, ctx.texture_sampler, nullptr);
   vkDestroySemaphore(ctx.device, ctx.image_available, nullptr);
   vkDestroySemaphore(ctx.device, ctx.render_finished, nullptr);
   vkDestroyCommandPool(ctx.device, ctx.graphics_command_pool, nullptr);
@@ -981,6 +1009,14 @@ void Engine::setup_simple_rendering()
     }
 
     {
+      VkSubpassDescription& subpass   = subpasses[SimpleRendering::Passes::ColoredGeometry];
+      subpass.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
+      subpass.colorAttachmentCount    = 1;
+      subpass.pColorAttachments       = &color_reference;
+      subpass.pDepthStencilAttachment = &depth_reference;
+    }
+
+    {
       VkSubpassDescription& subpass = subpasses[SimpleRendering::Passes::ImGui];
       subpass.pipelineBindPoint     = VK_PIPELINE_BIND_POINT_GRAPHICS;
       subpass.colorAttachmentCount  = 1;
@@ -1010,9 +1046,19 @@ void Engine::setup_simple_rendering()
     }
 
     {
-      VkSubpassDependency& dep = dependencies[SimpleRendering::Passes::ImGui];
+      VkSubpassDependency& dep = dependencies[SimpleRendering::Passes::ColoredGeometry];
       dep.srcSubpass           = 1;
       dep.dstSubpass           = 2;
+      dep.srcStageMask         = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+      dep.dstStageMask         = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+      dep.srcAccessMask        = VK_ACCESS_MEMORY_READ_BIT;
+      dep.dstAccessMask        = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    }
+
+    {
+      VkSubpassDependency& dep = dependencies[SimpleRendering::Passes::ImGui];
+      dep.srcSubpass           = 2;
+      dep.dstSubpass           = 3;
       dep.srcStageMask         = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
       dep.dstStageMask         = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
       dep.srcAccessMask        = VK_ACCESS_MEMORY_READ_BIT;
@@ -1032,20 +1078,27 @@ void Engine::setup_simple_rendering()
   }
 
   {
-    VkDescriptorSetLayoutBinding bindings[1] = {};
+    VkDescriptorSetLayoutBinding bindings[6] = {};
 
-    bindings[0].binding         = 1;
-    bindings[0].descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    bindings[0].descriptorCount = 1;
-    bindings[0].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
+    for (int i = 0; i < 5; ++i)
+    {
+      bindings[i].binding         = static_cast<uint32_t>(i);
+      bindings[i].descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+      bindings[i].descriptorCount = 1;
+      bindings[i].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
+    }
+
+    bindings[5].binding         = 5;
+    bindings[5].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    bindings[5].descriptorCount = 1;
+    bindings[5].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
 
     VkDescriptorSetLayoutCreateInfo ci{};
     ci.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     ci.bindingCount = SDL_arraysize(bindings);
     ci.pBindings    = bindings;
 
-    for (VkDescriptorSetLayout& layout : renderer.descriptor_set_layouts)
-      vkCreateDescriptorSetLayout(ctx.device, &ci, nullptr, &layout);
+    vkCreateDescriptorSetLayout(ctx.device, &ci, nullptr, &renderer.descriptor_set_layout);
   }
 
   {
@@ -1061,8 +1114,8 @@ void Engine::setup_simple_rendering()
 
     VkPipelineLayoutCreateInfo ci{};
     ci.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    ci.setLayoutCount         = SWAPCHAIN_IMAGES_COUNT;
-    ci.pSetLayouts            = renderer.descriptor_set_layouts;
+    ci.setLayoutCount         = 1;
+    ci.pSetLayouts            = &renderer.descriptor_set_layout;
     ci.pushConstantRangeCount = SDL_arraysize(ranges);
     ci.pPushConstantRanges    = ranges;
     vkCreatePipelineLayout(ctx.device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Passes::Skybox]);
@@ -1071,17 +1124,38 @@ void Engine::setup_simple_rendering()
   {
     VkPushConstantRange ranges[1] = {};
 
-    ranges[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    ranges[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     ranges[0].offset     = 0;
-    ranges[0].size       = 16 * sizeof(float);
+    ranges[0].size       = 3 * sizeof(mat4x4);
 
     VkPipelineLayoutCreateInfo ci{};
     ci.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    ci.setLayoutCount         = SWAPCHAIN_IMAGES_COUNT;
-    ci.pSetLayouts            = renderer.descriptor_set_layouts;
+    ci.setLayoutCount         = 1;
+    ci.pSetLayouts            = &renderer.descriptor_set_layout;
     ci.pushConstantRangeCount = SDL_arraysize(ranges);
     ci.pPushConstantRanges    = ranges;
     vkCreatePipelineLayout(ctx.device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Passes::Scene3D]);
+  }
+
+  {
+    VkPushConstantRange ranges[2] = {};
+
+    ranges[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    ranges[0].offset     = 0;
+    ranges[0].size       = sizeof(mat4x4);
+
+    ranges[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    ranges[1].offset     = sizeof(mat4x4);
+    ranges[1].size       = 3 * sizeof(float);
+
+    VkPipelineLayoutCreateInfo ci{};
+    ci.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    ci.setLayoutCount         = 1;
+    ci.pSetLayouts            = &renderer.descriptor_set_layout;
+    ci.pushConstantRangeCount = SDL_arraysize(ranges);
+    ci.pPushConstantRanges    = ranges;
+    vkCreatePipelineLayout(ctx.device, &ci, nullptr,
+                           &renderer.pipeline_layouts[SimpleRendering::Passes::ColoredGeometry]);
   }
 
   {
@@ -1093,8 +1167,8 @@ void Engine::setup_simple_rendering()
 
     VkPipelineLayoutCreateInfo ci{};
     ci.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    ci.setLayoutCount         = SWAPCHAIN_IMAGES_COUNT;
-    ci.pSetLayouts            = renderer.descriptor_set_layouts;
+    ci.setLayoutCount         = 1;
+    ci.pSetLayouts            = &renderer.descriptor_set_layout;
     ci.pushConstantRangeCount = SDL_arraysize(ranges);
     ci.pPushConstantRanges    = ranges;
     vkCreatePipelineLayout(ctx.device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Passes::ImGui]);
@@ -1389,6 +1463,138 @@ void Engine::setup_simple_rendering()
 
     shader_stages[0].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     shader_stages[0].stage  = VK_SHADER_STAGE_VERTEX_BIT;
+    shader_stages[0].module = load_shader("colored_geometry.vert.spv");
+    shader_stages[0].pName  = "main";
+
+    shader_stages[1].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shader_stages[1].stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
+    shader_stages[1].module = load_shader("colored_geometry.frag.spv");
+    shader_stages[1].pName  = "main";
+
+    VkVertexInputAttributeDescription attribute_descriptions[1] = {};
+
+    attribute_descriptions[0].location = 0;
+    attribute_descriptions[0].binding  = 0;
+    attribute_descriptions[0].format   = VK_FORMAT_R32G32B32_SFLOAT;
+    attribute_descriptions[0].offset   = static_cast<uint32_t>(offsetof(TrianglesVertex, position));
+
+    VkVertexInputBindingDescription vertex_binding_descriptions[1] = {};
+
+    vertex_binding_descriptions[0].binding   = 0;
+    vertex_binding_descriptions[0].stride    = sizeof(TrianglesVertex);
+    vertex_binding_descriptions[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+    VkPipelineVertexInputStateCreateInfo vertex_input_state{};
+    vertex_input_state.sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertex_input_state.vertexBindingDescriptionCount   = SDL_arraysize(vertex_binding_descriptions);
+    vertex_input_state.pVertexBindingDescriptions      = vertex_binding_descriptions;
+    vertex_input_state.vertexAttributeDescriptionCount = SDL_arraysize(attribute_descriptions);
+    vertex_input_state.pVertexAttributeDescriptions    = attribute_descriptions;
+
+    VkPipelineInputAssemblyStateCreateInfo input_assembly_state{};
+    input_assembly_state.sType                  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    input_assembly_state.topology               = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    input_assembly_state.primitiveRestartEnable = VK_FALSE;
+
+    VkViewport viewports[1] = {};
+
+    viewports[0].x        = 0.0f;
+    viewports[0].y        = 0.0f;
+    viewports[0].width    = static_cast<float>(ctx.extent2D.width);
+    viewports[0].height   = static_cast<float>(ctx.extent2D.height);
+    viewports[0].minDepth = 0.0f;
+    viewports[0].maxDepth = 1.0f;
+
+    VkRect2D scissors[1] = {};
+
+    scissors[0].offset = {0, 0};
+    scissors[0].extent = ctx.extent2D;
+
+    VkPipelineViewportStateCreateInfo viewport_state{};
+    viewport_state.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewport_state.viewportCount = SDL_arraysize(viewports);
+    viewport_state.pViewports    = viewports;
+    viewport_state.scissorCount  = SDL_arraysize(scissors);
+    viewport_state.pScissors     = scissors;
+
+    VkPipelineRasterizationStateCreateInfo rasterization_state{};
+    rasterization_state.sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterization_state.depthClampEnable        = VK_FALSE;
+    rasterization_state.rasterizerDiscardEnable = VK_FALSE;
+    rasterization_state.polygonMode             = VK_POLYGON_MODE_FILL;
+    rasterization_state.cullMode                = VK_CULL_MODE_BACK_BIT;
+    rasterization_state.frontFace               = VK_FRONT_FACE_CLOCKWISE;
+    rasterization_state.depthBiasEnable         = VK_FALSE;
+    rasterization_state.depthBiasConstantFactor = 0.0f;
+    rasterization_state.depthBiasClamp          = 0.0f;
+    rasterization_state.depthBiasSlopeFactor    = 0.0f;
+    rasterization_state.lineWidth               = 1.0f;
+
+    VkPipelineMultisampleStateCreateInfo multisample_state{};
+    multisample_state.sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisample_state.rasterizationSamples  = VK_SAMPLE_COUNT_1_BIT;
+    multisample_state.sampleShadingEnable   = VK_FALSE;
+    multisample_state.minSampleShading      = 1.0f;
+    multisample_state.alphaToCoverageEnable = VK_FALSE;
+    multisample_state.alphaToOneEnable      = VK_FALSE;
+
+    VkPipelineDepthStencilStateCreateInfo depth_stencil_state{};
+    depth_stencil_state.sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depth_stencil_state.depthTestEnable       = VK_TRUE;
+    depth_stencil_state.depthWriteEnable      = VK_TRUE;
+    depth_stencil_state.depthCompareOp        = VK_COMPARE_OP_LESS;
+    depth_stencil_state.depthBoundsTestEnable = VK_FALSE;
+    depth_stencil_state.stencilTestEnable     = VK_FALSE;
+    depth_stencil_state.minDepthBounds        = 0.0f;
+    depth_stencil_state.maxDepthBounds        = 1.0f;
+
+    VkPipelineColorBlendAttachmentState color_blend_attachments[1] = {};
+
+    color_blend_attachments[0].blendEnable         = VK_FALSE;
+    color_blend_attachments[0].srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+    color_blend_attachments[0].dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+    color_blend_attachments[0].colorBlendOp        = VK_BLEND_OP_ADD;
+    color_blend_attachments[0].srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    color_blend_attachments[0].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    color_blend_attachments[0].alphaBlendOp        = VK_BLEND_OP_ADD;
+    color_blend_attachments[0].colorWriteMask =
+        VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+    VkPipelineColorBlendStateCreateInfo color_blend_state{};
+    color_blend_state.sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    color_blend_state.logicOpEnable   = VK_FALSE;
+    color_blend_state.logicOp         = VK_LOGIC_OP_COPY;
+    color_blend_state.attachmentCount = SDL_arraysize(color_blend_attachments);
+    color_blend_state.pAttachments    = color_blend_attachments;
+
+    VkGraphicsPipelineCreateInfo ci{};
+    ci.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    ci.stageCount          = SDL_arraysize(shader_stages);
+    ci.pStages             = shader_stages;
+    ci.pVertexInputState   = &vertex_input_state;
+    ci.pInputAssemblyState = &input_assembly_state;
+    ci.pViewportState      = &viewport_state;
+    ci.pRasterizationState = &rasterization_state;
+    ci.pMultisampleState   = &multisample_state;
+    ci.pDepthStencilState  = &depth_stencil_state;
+    ci.pColorBlendState    = &color_blend_state;
+    ci.layout              = renderer.pipeline_layouts[SimpleRendering::Passes::ColoredGeometry];
+    ci.renderPass          = renderer.render_pass;
+    ci.subpass             = SimpleRendering::Passes::ColoredGeometry;
+    ci.basePipelineHandle  = VK_NULL_HANDLE;
+    ci.basePipelineIndex   = -1;
+    vkCreateGraphicsPipelines(ctx.device, VK_NULL_HANDLE, 1, &ci, nullptr,
+                              &renderer.pipelines[SimpleRendering::Passes::ColoredGeometry]);
+
+    for (auto& shader_stage : shader_stages)
+      vkDestroyShaderModule(ctx.device, shader_stage.module, nullptr);
+  }
+
+  {
+    VkPipelineShaderStageCreateInfo shader_stages[2] = {};
+
+    shader_stages[0].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shader_stages[0].stage  = VK_SHADER_STAGE_VERTEX_BIT;
     shader_stages[0].module = load_shader("imgui.vert.spv");
     shader_stages[0].pName  = "main";
 
@@ -1603,6 +1809,8 @@ void Engine::submit_simple_rendering(uint32_t image_index)
   vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Passes::Skybox]);
   vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
   vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Passes::Scene3D]);
+  vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+  vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Passes::ColoredGeometry]);
   vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
   vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Passes::ImGui]);
   vkCmdEndRenderPass(cmd);

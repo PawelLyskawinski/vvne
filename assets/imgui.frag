@@ -1,6 +1,6 @@
 #version 450
 
-layout(set = 0, binding = 1) uniform sampler2D sTexture;
+layout(set = 0, binding = 0) uniform sampler2D sTexture;
 
 // inputs from vs
 layout(location = 0) in vec4 Color;

@@ -302,9 +302,15 @@ void RenderableModel::construct(Engine& engine, const Model& model) noexcept
   vkDestroyBuffer(engine.generic_handles.device, host_buffer, nullptr);
   vkFreeMemory(engine.generic_handles.device, host_memory, nullptr);
 
-  if (0 != model.images.size())
+  SDL_Log("images count: %d", model.images.size());
+
+  if (0 != model.images.n)
   {
-    albedo_texture_idx = engine.load_texture(model.images[0].data);
+    albedo_texture_idx          = engine.load_texture(model.images[0].data);
+    metal_roughness_texture_idx = engine.load_texture(model.images[1].data);
+    emissive_texture_idx        = engine.load_texture(model.images[2].data);
+    AO_texture_idx              = engine.load_texture(model.images[3].data);
+    normal_texture_idx          = engine.load_texture(model.images[4].data);
   }
 }
 
