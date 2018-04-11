@@ -642,7 +642,6 @@ int Engine::load_texture_hdr(const char* filepath)
   int x           = 0;
   int y           = 0;
   int real_format = 0;
-  int result      = 0;
 
   float*         pixels     = stbi_loadf(filepath, &x, &y, &real_format, 0);
   const VkFormat dst_format = VK_FORMAT_R32G32B32_SFLOAT;
