@@ -33,9 +33,8 @@ struct Game
   gltf::RenderableModel renderableHelmet;
   gltf::RenderableModel renderableBox;
 
-  int environment_hdr_map_idx;
-  int environment_equirectangular_texture_idx;
-  // (For some reason 4-mb jpeg takes ~100MB on gpu. WTF!? todo: investigate)
+  int environment_hdr_map_idx; // radiance, quick and fast
+  int environment_equirectangular_texture_idx; // highly detailed, takes ~100MB on gpu ram
 
   float update_times[50];
   float render_times[50];

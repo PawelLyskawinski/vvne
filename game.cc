@@ -6,6 +6,7 @@
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_timer.h>
 #include <linmath.h>
+#include <stb_image.h>
 
 namespace {
 
@@ -123,7 +124,11 @@ void Game::startup(Engine& engine)
     engine.double_ended_stack.reset_back();
   }
 
-  environment_hdr_map_idx                 = engine.load_texture("../assets/old_industrial_hall.hdr");
+
+  // stbi_hdr_to_ldr_gamma(2.2f);
+  // stbi_ldr_to_hdr_gamma(0.2f);
+
+  environment_hdr_map_idx                 = engine.load_texture_hdr("../assets/old_industrial_hall.hdr");
   environment_equirectangular_texture_idx = engine.load_texture("../assets/old_industrial_hall.jpg");
   lights_ubo_offset                       = engine.ubo_host_visible.allocate(sizeof(light_sources));
 

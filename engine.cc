@@ -602,34 +602,16 @@ int Engine::load_texture(const char* filepath)
   int real_format = 0;
   int result      = 0;
 
-  if (doesStringEndWith(filepath, ".hdr"))
-  {
-    SDL_Log("loading HDR file! %s", filepath);
+  stbi_uc*     pixels       = stbi_load(filepath, &x, &y, &real_format, STBI_rgb_alpha);
+  int          depth        = 32;
+  int          pitch        = 4 * x;
+  Uint32       pixel_format = SDL_PIXELFORMAT_RGBA32;
+  SDL_Surface* surface      = SDL_CreateRGBSurfaceWithFormatFrom(pixels, x, y, depth, pitch, pixel_format);
 
-    float*       pixels       = stbi_loadf(filepath, &x, &y, &real_format, 0);
-    int          depth        = 32;
-    int          pitch        = 4 * x;
-    Uint32       pixel_format = SDL_PIXELFORMAT_RGBA32;
-    SDL_Surface* surface      = SDL_CreateRGBSurfaceWithFormatFrom(pixels, x, y, depth, pitch, pixel_format);
+  result = load_texture(surface);
 
-    result = load_texture(surface);
-
-    SDL_FreeSurface(surface);
-    stbi_image_free(pixels);
-  }
-  else
-  {
-    stbi_uc*     pixels       = stbi_load(filepath, &x, &y, &real_format, STBI_rgb_alpha);
-    int          depth        = 32;
-    int          pitch        = 4 * x;
-    Uint32       pixel_format = SDL_PIXELFORMAT_RGBA32;
-    SDL_Surface* surface      = SDL_CreateRGBSurfaceWithFormatFrom(pixels, x, y, depth, pitch, pixel_format);
-
-    result = load_texture(surface);
-
-    SDL_FreeSurface(surface);
-    stbi_image_free(pixels);
-  }
+  SDL_FreeSurface(surface);
+  stbi_image_free(pixels);
 
   return result;
 }
@@ -654,6 +636,262 @@ VkFormat bitsPerPixelToFormat(SDL_Surface* surface)
 }
 
 } // namespace
+
+int Engine::load_texture_hdr(const char* filepath)
+{
+    {
+        uint32_t count = 0;
+        vkGetPhysicalDeviceSurfaceFormatsKHR(generic_handles.physical_device, generic_handles.surface, &count, nullptr);
+        VkSurfaceFormatKHR* formats = double_ended_stack.allocate_back<VkSurfaceFormatKHR>(count);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(generic_handles.physical_device, generic_handles.surface, &count, nullptr);
+
+        for(int i=0; i<count; ++i)
+        {
+            SDL_Log("Format: %u", formats[i].format);
+        }
+
+        double_ended_stack.reset_back();
+    }
+
+  int x           = 0;
+  int y           = 0;
+  int real_format = 0;
+  int result      = 0;
+
+  SDL_Log("loading HDR file! %s", filepath);
+
+  float* pixels = stbi_loadf(filepath, &x, &y, &real_format, 0);
+
+  //const VkFormat dst_format = VK_FORMAT_R32G32B32A32_SFLOAT;
+  const VkFormat dst_format = VK_FORMAT_R32G32B32_SFLOAT;
+
+  GenericHandles& ctx            = generic_handles;
+  VkImage         staging_image  = VK_NULL_HANDLE;
+  VkDeviceMemory  staging_memory = VK_NULL_HANDLE;
+
+  {
+    VkImageCreateInfo ci{};
+    ci.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    ci.imageType     = VK_IMAGE_TYPE_2D;
+    ci.format        = dst_format;
+    ci.extent.width  = static_cast<uint32_t>(x);
+    ci.extent.height = static_cast<uint32_t>(y);
+    ci.extent.depth  = 1;
+    ci.mipLevels     = 1;
+    ci.arrayLayers   = 1;
+    ci.samples       = VK_SAMPLE_COUNT_1_BIT;
+    ci.tiling        = VK_IMAGE_TILING_LINEAR;
+    ci.usage         = VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    ci.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+    ci.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
+
+    vkCreateImage(ctx.device, &ci, nullptr, &staging_image);
+  }
+
+  VkMemoryRequirements reqs = {};
+  {
+    VkPhysicalDeviceMemoryProperties properties = {};
+    vkGetPhysicalDeviceMemoryProperties(ctx.physical_device, &properties);
+    vkGetImageMemoryRequirements(ctx.device, staging_image, &reqs);
+
+    VkMemoryPropertyFlags type = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+    VkMemoryAllocateInfo allocate{};
+    allocate.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocate.allocationSize  = reqs.size;
+    allocate.memoryTypeIndex = find_memory_type_index(&properties, &reqs, type);
+
+    vkAllocateMemory(ctx.device, &allocate, nullptr, &staging_memory);
+    vkBindImageMemory(ctx.device, staging_image, staging_memory, 0);
+  }
+
+  VkSubresourceLayout subresource_layout{};
+  VkImageSubresource  image_subresource{};
+
+  image_subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  vkGetImageSubresourceLayout(generic_handles.device, staging_image, &image_subresource, &subresource_layout);
+
+  float* mapped_data = nullptr;
+  vkMapMemory(ctx.device, staging_memory, 0, reqs.size, 0, (void**)&mapped_data);
+
+  // 360 * 180 * 3 type powinno być ok!
+
+  SDL_Log("attempting to copy %llu bytes into %llu storage", x*y*real_format*sizeof(float), reqs.size);
+
+  for(int i=0; i<(x*y*real_format); ++i)
+      mapped_data[i] = pixels[i];
+
+  vkUnmapMemory(ctx.device, staging_memory);
+
+  const int resultIdx = images.loaded_count;
+  images.loaded_count += 1;
+  VkImage&     result_image = images.images[resultIdx];
+  VkImageView& result_view  = images.image_views[resultIdx];
+
+  {
+    VkImageCreateInfo ci{};
+    ci.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    ci.imageType     = VK_IMAGE_TYPE_2D;
+    ci.format        = dst_format;
+    ci.extent.width  = static_cast<uint32_t>(x);
+    ci.extent.height = static_cast<uint32_t>(y);
+    ci.extent.depth  = 1;
+    ci.mipLevels     = 1;
+    ci.arrayLayers   = 1;
+    ci.samples       = VK_SAMPLE_COUNT_1_BIT;
+    ci.tiling        = VK_IMAGE_TILING_OPTIMAL;
+    ci.usage         = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    ci.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+    ci.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
+
+    vkCreateImage(ctx.device, &ci, nullptr, &result_image);
+  }
+
+  VkMemoryRequirements result_image_reqs = {};
+  vkGetImageMemoryRequirements(ctx.device, result_image, &result_image_reqs);
+
+  {
+    VkMemoryRequirements reqs = {};
+    vkGetImageMemoryRequirements(ctx.device, result_image, &reqs);
+    vkBindImageMemory(ctx.device, result_image, images.memory, images.allocate(reqs.size));
+  }
+
+  {
+    VkImageSubresourceRange sr{};
+    sr.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+    sr.baseMipLevel   = 0;
+    sr.levelCount     = 1;
+    sr.baseArrayLayer = 0;
+    sr.layerCount     = 1;
+
+    VkImageViewCreateInfo ci{};
+    ci.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    ci.viewType         = VK_IMAGE_VIEW_TYPE_2D;
+    ci.subresourceRange = sr;
+    ci.format           = dst_format;
+    ci.image            = result_image;
+    vkCreateImageView(ctx.device, &ci, nullptr, &result_view);
+  }
+
+  VkCommandBuffer command_buffer = VK_NULL_HANDLE;
+
+  {
+    VkCommandBufferAllocateInfo allocate{};
+    allocate.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocate.commandPool        = ctx.graphics_command_pool;
+    allocate.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocate.commandBufferCount = 1;
+    vkAllocateCommandBuffers(ctx.device, &allocate, &command_buffer);
+  }
+
+  {
+    VkCommandBufferBeginInfo begin{};
+    begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(command_buffer, &begin);
+  }
+
+  {
+    VkImageSubresourceRange sr{};
+    sr.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+    sr.baseMipLevel   = 0;
+    sr.levelCount     = 1;
+    sr.baseArrayLayer = 0;
+    sr.layerCount     = 1;
+
+    VkImageMemoryBarrier barriers[2] = {};
+
+    barriers[0].sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barriers[0].srcAccessMask       = VK_ACCESS_HOST_WRITE_BIT;
+    barriers[0].dstAccessMask       = VK_ACCESS_TRANSFER_READ_BIT;
+    barriers[0].oldLayout           = VK_IMAGE_LAYOUT_PREINITIALIZED;
+    barriers[0].newLayout           = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[0].image               = staging_image;
+    barriers[0].subresourceRange    = sr;
+
+    barriers[1].sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barriers[1].srcAccessMask       = VK_ACCESS_HOST_WRITE_BIT;
+    barriers[1].dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barriers[1].oldLayout           = VK_IMAGE_LAYOUT_PREINITIALIZED;
+    barriers[1].newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[1].image               = result_image;
+    barriers[1].subresourceRange    = sr;
+
+    vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0,
+                         nullptr, SDL_arraysize(barriers), barriers);
+  }
+
+  {
+    VkImageSubresourceLayers sl{};
+    sl.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+    sl.mipLevel       = 0;
+    sl.baseArrayLayer = 0;
+    sl.layerCount     = 1;
+
+    VkImageCopy copy{};
+    copy.srcSubresource = sl;
+    copy.dstSubresource = sl;
+    copy.extent.width   = static_cast<uint32_t>(x);
+    copy.extent.height  = static_cast<uint32_t>(y);
+    copy.extent.depth   = 1;
+
+    vkCmdCopyImage(command_buffer, staging_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, result_image,
+                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+  }
+
+  {
+    VkImageSubresourceRange sr{};
+    sr.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+    sr.baseMipLevel   = 0;
+    sr.levelCount     = 1;
+    sr.baseArrayLayer = 0;
+    sr.layerCount     = 1;
+
+    VkImageMemoryBarrier barrier{};
+    barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
+    barrier.oldLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image               = result_image;
+    barrier.subresourceRange    = sr;
+
+    vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, 0, 0,
+                         nullptr, 0, nullptr, 1, &barrier);
+  }
+
+  vkEndCommandBuffer(command_buffer);
+
+  VkFence image_upload_fence = VK_NULL_HANDLE;
+  {
+    VkFenceCreateInfo ci{};
+    ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    vkCreateFence(ctx.device, &ci, nullptr, &image_upload_fence);
+  }
+
+  {
+    VkSubmitInfo submit{};
+    submit.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit.commandBufferCount = 1;
+    submit.pCommandBuffers    = &command_buffer;
+    vkQueueSubmit(ctx.graphics_queue, 1, &submit, image_upload_fence);
+  }
+
+  vkWaitForFences(ctx.device, 1, &image_upload_fence, VK_TRUE, UINT64_MAX);
+  vkDestroyFence(ctx.device, image_upload_fence, nullptr);
+  vkFreeMemory(ctx.device, staging_memory, nullptr);
+  vkDestroyImage(ctx.device, staging_image, nullptr);
+
+  stbi_image_free(pixels);
+
+  return resultIdx;
+}
 
 int Engine::load_texture(SDL_Surface* surface)
 {
