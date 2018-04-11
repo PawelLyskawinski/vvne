@@ -639,30 +639,12 @@ VkFormat bitsPerPixelToFormat(SDL_Surface* surface)
 
 int Engine::load_texture_hdr(const char* filepath)
 {
-    {
-        uint32_t count = 0;
-        vkGetPhysicalDeviceSurfaceFormatsKHR(generic_handles.physical_device, generic_handles.surface, &count, nullptr);
-        VkSurfaceFormatKHR* formats = double_ended_stack.allocate_back<VkSurfaceFormatKHR>(count);
-        vkGetPhysicalDeviceSurfaceFormatsKHR(generic_handles.physical_device, generic_handles.surface, &count, nullptr);
-
-        for(int i=0; i<count; ++i)
-        {
-            SDL_Log("Format: %u", formats[i].format);
-        }
-
-        double_ended_stack.reset_back();
-    }
-
   int x           = 0;
   int y           = 0;
   int real_format = 0;
   int result      = 0;
 
-  SDL_Log("loading HDR file! %s", filepath);
-
-  float* pixels = stbi_loadf(filepath, &x, &y, &real_format, 0);
-
-  //const VkFormat dst_format = VK_FORMAT_R32G32B32A32_SFLOAT;
+  float*         pixels     = stbi_loadf(filepath, &x, &y, &real_format, 0);
   const VkFormat dst_format = VK_FORMAT_R32G32B32_SFLOAT;
 
   GenericHandles& ctx            = generic_handles;
@@ -716,10 +698,10 @@ int Engine::load_texture_hdr(const char* filepath)
 
   // 360 * 180 * 3 type powinno być ok!
 
-  SDL_Log("attempting to copy %llu bytes into %llu storage", x*y*real_format*sizeof(float), reqs.size);
+  SDL_Log("attempting to copy %llu bytes into %llu storage", x * y * real_format * sizeof(float), reqs.size);
 
-  for(int i=0; i<(x*y*real_format); ++i)
-      mapped_data[i] = pixels[i];
+  for (int i = 0; i < (x * y * real_format); ++i)
+    mapped_data[i] = pixels[i];
 
   vkUnmapMemory(ctx.device, staging_memory);
 
