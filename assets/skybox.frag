@@ -30,8 +30,8 @@ void main()
   vec2 uv = sampleSphericalMap(normalize(inUVW));
   vec3 color = texture(equirectangularMap, uv).rgb;
 
-  float exposure = 1.2;
-  float gamma = 1.5;
+  float exposure = 1.0;
+  float gamma = 2.2;
 
   // Tone mapping
   color = tonemap(color * exposure);

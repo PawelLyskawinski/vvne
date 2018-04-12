@@ -13,6 +13,7 @@ layout(set = 0, binding = 1) uniform sampler2D metal_roughness_map;
 layout(set = 0, binding = 2) uniform sampler2D emissive_map;
 layout(set = 0, binding = 3) uniform sampler2D ambient_occlusion_map;
 layout(set = 0, binding = 4) uniform sampler2D normal_map;
+layout(set = 0, binding = 5) uniform sampler2D irradiance_map;
 
 struct LightSource
 {
@@ -20,7 +21,7 @@ struct LightSource
   vec3 color;
 };
 
-layout(set = 0, binding = 5) uniform UBO
+layout(set = 0, binding = 6) uniform UBO
 {
   LightSource light_sources[10];
 }
@@ -156,7 +157,7 @@ void main()
 
   // ambient lighting (note that the next IBL tutorial will replace
   // this ambient lighting with environment lighting).
-  vec3 ambient = vec3(0.03) * albedo_color * ao_color;
+  vec3 ambient = texture(irradiance_map, N.xy).rgb * albedo_color * ao_color;
 
   vec3 color = ambient + Lo;
 

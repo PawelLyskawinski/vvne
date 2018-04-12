@@ -6,6 +6,7 @@
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_timer.h>
 #include <linmath.h>
+#include <stb_image.h>
 
 namespace {
 
@@ -123,7 +124,10 @@ void Game::startup(Engine& engine)
     engine.double_ended_stack.reset_back();
   }
 
-  environment_hdr_map_idx                 = engine.load_texture("../assets/old_industrial_hall.hdr");
+  // stbi_hdr_to_ldr_gamma(2.2f);
+  // stbi_ldr_to_hdr_gamma(0.2f);
+
+  environment_hdr_map_idx                 = engine.load_texture_hdr("../assets/old_industrial_hall.hdr");
   environment_equirectangular_texture_idx = engine.load_texture("../assets/old_industrial_hall.jpg");
   lights_ubo_offset                       = engine.ubo_host_visible.allocate(sizeof(light_sources));
 
@@ -154,7 +158,7 @@ void Game::startup(Engine& engine)
     imgui_image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     imgui_image.imageView   = engine.images.image_views[debug_gui.font_texture_idx];
 
-    VkDescriptorImageInfo helmet_images[5]{};
+    VkDescriptorImageInfo helmet_images[6]{};
     for (VkDescriptorImageInfo& info : helmet_images)
     {
       info.sampler     = engine.generic_handles.texture_sampler;
@@ -165,6 +169,7 @@ void Game::startup(Engine& engine)
     helmet_images[2].imageView = engine.images.image_views[renderableHelmet.emissive_texture_idx];
     helmet_images[3].imageView = engine.images.image_views[renderableHelmet.AO_texture_idx];
     helmet_images[4].imageView = engine.images.image_views[renderableHelmet.normal_texture_idx];
+    helmet_images[5].imageView = engine.images.image_views[environment_hdr_map_idx];
 
     VkDescriptorBufferInfo helmet_ubo{};
     helmet_ubo.buffer = engine.ubo_host_visible.buffer;
@@ -193,7 +198,7 @@ void Game::startup(Engine& engine)
 
     VkWriteDescriptorSet& helmet_ubo_write = writes[2];
     helmet_ubo_write.sType                 = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    helmet_ubo_write.dstBinding            = 5;
+    helmet_ubo_write.dstBinding            = 6;
     helmet_ubo_write.dstArrayElement       = 0;
     helmet_ubo_write.descriptorType        = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     helmet_ubo_write.descriptorCount       = 1;
@@ -231,7 +236,7 @@ void Game::startup(Engine& engine)
 
     for (int i = 0; i < 4; ++i)
     {
-      light_sources[i].setColor(50.0, 0.0, 0.0);
+      light_sources[i].setColor(10.0, 0.0, 0.0);
     }
 
     light_sources_count = 4;
@@ -465,7 +470,7 @@ void Game::render(Engine& engine, float current_time_sec)
 
     mat4x4 model{};
     mat4x4_identity(model);
-    mat4x4_rotate_Y(model, model, current_time_sec * 0.1f);
+    //mat4x4_rotate_Y(model, model, current_time_sec * 0.1f);
 
     {
       const float scale = 150.0f;
@@ -543,7 +548,7 @@ void Game::render(Engine& engine, float current_time_sec)
 
     mat4x4_identity(push_const.model);
     mat4x4_translate(push_const.model, helmet_translation[0], helmet_translation[1], helmet_translation[2]);
-    mat4x4_rotate_Y(push_const.model, push_const.model, SDL_sinf(current_time_sec * 0.3f) - 2.0f);
+    mat4x4_rotate_Y(push_const.model, push_const.model, SDL_sinf(current_time_sec * 0.3f));
     mat4x4_rotate_X(push_const.model, push_const.model, to_rad(90.0));
     mat4x4_scale_aniso(push_const.model, push_const.model, 1.6f, 1.6f, 1.6f);
 

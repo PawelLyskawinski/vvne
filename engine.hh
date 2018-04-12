@@ -177,6 +177,7 @@ struct Engine
   VkShaderModule load_shader(const char* filepath);
 
   int load_texture(const char* filepath);
+  int load_texture_hdr(const char* filepath);
   int load_texture(SDL_Surface* surface);
 
   // internals
