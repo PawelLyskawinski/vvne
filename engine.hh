@@ -4,6 +4,7 @@
 #include <vulkan/vulkan.h>
 
 #define SWAPCHAIN_IMAGES_COUNT 2
+#define MSAA_SAMPLE_COUNT VK_SAMPLE_COUNT_8_BIT
 
 struct Engine
 {
@@ -29,6 +30,10 @@ struct Engine
     VkDescriptorPool           descriptor_pool;
     VkImage                    depth_image;
     VkImageView                depth_image_view;
+    VkImage                    msaa_color_image;
+    VkImageView                msaa_color_image_view;
+    VkImage                    msaa_depth_image;
+    VkImageView                msaa_depth_image_view;
     VkSemaphore                image_available;
     VkSemaphore                render_finished;
     VkSampler                  texture_sampler;
@@ -84,6 +89,13 @@ struct Engine
       MAX_MEMORY_SIZE_BYTES = MAX_MEMORY_SIZE_KB * 1024,
       MAX_MEMORY_SIZE       = MAX_MEMORY_SIZE_BYTES
     };
+
+    void add(VkImage image, VkImageView image_view)
+    {
+      images[loaded_count]      = image;
+      image_views[loaded_count] = image_view;
+      loaded_count += 1;
+    }
 
     VkImage*     images;
     VkImageView* image_views;

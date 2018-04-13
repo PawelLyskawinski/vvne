@@ -312,6 +312,44 @@ void Engine::startup()
   }
 
   {
+    VkImageCreateInfo ci{};
+    ci.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    ci.imageType     = VK_IMAGE_TYPE_2D;
+    ci.format        = ctx.surface_format.format;
+    ci.extent.width  = ctx.extent2D.width;
+    ci.extent.height = ctx.extent2D.height;
+    ci.extent.depth  = 1;
+    ci.mipLevels     = 1;
+    ci.arrayLayers   = 1;
+    ci.samples       = MSAA_SAMPLE_COUNT;
+    ci.tiling        = VK_IMAGE_TILING_OPTIMAL;
+    ci.usage         = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    ci.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+    ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    vkCreateImage(ctx.device, &ci, nullptr, &ctx.msaa_color_image);
+  }
+
+  {
+    VkImageCreateInfo ci{};
+    ci.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    ci.imageType     = VK_IMAGE_TYPE_2D;
+    ci.format        = VK_FORMAT_D32_SFLOAT;
+    ci.extent.width  = ctx.extent2D.width;
+    ci.extent.height = ctx.extent2D.height;
+    ci.extent.depth  = 1;
+    ci.mipLevels     = 1;
+    ci.arrayLayers   = 1;
+    ci.samples       = MSAA_SAMPLE_COUNT;
+    ci.tiling        = VK_IMAGE_TILING_OPTIMAL;
+    ci.usage         = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    ci.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+    ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    vkCreateImage(ctx.device, &ci, nullptr, &ctx.msaa_depth_image);
+  }
+
+  {
     VkSamplerCreateInfo ci{};
     ci.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     ci.magFilter               = VK_FILTER_LINEAR;
@@ -438,7 +476,6 @@ void Engine::startup()
   }
 
   // IMAGES
-
   {
     VkMemoryRequirements reqs{};
     vkGetImageMemoryRequirements(ctx.device, ctx.depth_image, &reqs);
@@ -452,19 +489,33 @@ void Engine::startup()
     allocate.allocationSize  = Images::MAX_MEMORY_SIZE;
     allocate.memoryTypeIndex = find_memory_type_index(&properties, &reqs, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     vkAllocateMemory(ctx.device, &allocate, nullptr, &images.memory);
-
-    vkBindImageMemory(ctx.device, ctx.depth_image, images.memory, 0);
-    images.used_memory += reqs.size;
+    vkBindImageMemory(ctx.device, ctx.depth_image, images.memory, images.allocate(reqs.size));
   }
 
-  images.images      = double_ended_stack.allocate_front<VkImage>(Images::MAX_COUNT);
-  images.image_views = double_ended_stack.allocate_front<VkImageView>(Images::MAX_COUNT);
+  {
+    VkMemoryRequirements reqs{};
+    vkGetImageMemoryRequirements(ctx.device, ctx.msaa_color_image, &reqs);
+    vkBindImageMemory(ctx.device, ctx.msaa_color_image, images.memory, images.allocate(reqs.size));
+  }
 
+  {
+    VkMemoryRequirements reqs{};
+    vkGetImageMemoryRequirements(ctx.device, ctx.msaa_depth_image, &reqs);
+    vkBindImageMemory(ctx.device, ctx.msaa_depth_image, images.memory, images.allocate(reqs.size));
+  }
+
+  // image views can only be created when memory is bound to the image handle
   {
     VkImageSubresourceRange sr{};
     sr.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
     sr.levelCount = 1;
     sr.layerCount = 1;
+
+    VkComponentMapping comp{};
+    comp.r = VK_COMPONENT_SWIZZLE_R;
+    comp.g = VK_COMPONENT_SWIZZLE_G;
+    comp.b = VK_COMPONENT_SWIZZLE_B;
+    comp.a = VK_COMPONENT_SWIZZLE_A;
 
     VkImageViewCreateInfo ci{};
     ci.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -472,9 +523,62 @@ void Engine::startup()
     ci.viewType         = VK_IMAGE_VIEW_TYPE_2D;
     ci.format           = VK_FORMAT_D32_SFLOAT;
     ci.subresourceRange = sr;
+    ci.components       = comp;
 
     vkCreateImageView(ctx.device, &ci, nullptr, &ctx.depth_image_view);
   }
+
+  {
+    VkImageSubresourceRange sr{};
+    sr.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    sr.levelCount = 1;
+    sr.layerCount = 1;
+
+    VkComponentMapping comp{};
+    comp.r = VK_COMPONENT_SWIZZLE_R;
+    comp.g = VK_COMPONENT_SWIZZLE_G;
+    comp.b = VK_COMPONENT_SWIZZLE_B;
+    comp.a = VK_COMPONENT_SWIZZLE_A;
+
+    VkImageViewCreateInfo ci{};
+    ci.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    ci.image            = ctx.msaa_color_image;
+    ci.viewType         = VK_IMAGE_VIEW_TYPE_2D;
+    ci.format           = ctx.surface_format.format;
+    ci.subresourceRange = sr;
+    ci.components       = comp;
+
+    vkCreateImageView(ctx.device, &ci, nullptr, &ctx.msaa_color_image_view);
+  }
+
+  {
+    VkImageSubresourceRange sr{};
+    sr.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    sr.levelCount = 1;
+    sr.layerCount = 1;
+
+    VkComponentMapping comp{};
+    comp.r = VK_COMPONENT_SWIZZLE_R;
+    comp.g = VK_COMPONENT_SWIZZLE_G;
+    comp.b = VK_COMPONENT_SWIZZLE_B;
+    comp.a = VK_COMPONENT_SWIZZLE_A;
+
+    VkImageViewCreateInfo ci{};
+    ci.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    ci.image            = ctx.msaa_depth_image;
+    ci.viewType         = VK_IMAGE_VIEW_TYPE_2D;
+    ci.format           = VK_FORMAT_D32_SFLOAT;
+    ci.subresourceRange = sr;
+    ci.components       = comp;
+
+    vkCreateImageView(ctx.device, &ci, nullptr, &ctx.msaa_depth_image_view);
+  }
+
+  images.images      = double_ended_stack.allocate_front<VkImage>(Images::MAX_COUNT);
+  images.image_views = double_ended_stack.allocate_front<VkImageView>(Images::MAX_COUNT);
+  images.add(ctx.depth_image, ctx.depth_image_view);
+  images.add(ctx.msaa_color_image, ctx.msaa_color_image_view);
+  images.add(ctx.msaa_depth_image, ctx.msaa_depth_image_view);
 
   // UBO HOST VISIBLE
   {
@@ -558,9 +662,6 @@ void Engine::teardown()
   vkDestroyBuffer(ctx.device, ubo_host_visible.buffer, nullptr);
   vkDestroyBuffer(ctx.device, gpu_host_visible.buffer, nullptr);
   vkDestroyBuffer(ctx.device, gpu_static_geometry.buffer, nullptr);
-
-  vkDestroyImage(ctx.device, ctx.depth_image, nullptr);
-  vkDestroyImageView(ctx.device, ctx.depth_image_view, nullptr);
 
   vkDestroySampler(ctx.device, ctx.texture_sampler, nullptr);
   vkDestroySemaphore(ctx.device, ctx.image_available, nullptr);
@@ -1184,7 +1285,7 @@ void Engine::setup_simple_rendering()
   SimpleRendering& renderer = simple_rendering;
 
   {
-    VkAttachmentDescription attachments[2] = {};
+    VkAttachmentDescription attachments[4] = {};
 
     attachments[0].format         = ctx.surface_format.format;
     attachments[0].samples        = VK_SAMPLE_COUNT_1_BIT;
@@ -1204,13 +1305,36 @@ void Engine::setup_simple_rendering()
     attachments[1].initialLayout  = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     attachments[1].finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
+    // MSAA attachments
+    attachments[2].format         = ctx.surface_format.format;
+    attachments[2].samples        = MSAA_SAMPLE_COUNT;
+    attachments[2].loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachments[2].storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
+    attachments[2].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachments[2].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachments[2].initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachments[2].finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    attachments[3].format         = VK_FORMAT_D32_SFLOAT;
+    attachments[3].samples        = MSAA_SAMPLE_COUNT;
+    attachments[3].loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachments[3].storeOp        = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachments[3].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachments[3].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachments[3].initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachments[3].finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
     VkAttachmentReference color_reference{};
-    color_reference.attachment = 0;
+    color_reference.attachment = 2;
     color_reference.layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     VkAttachmentReference depth_reference{};
-    depth_reference.attachment = 1;
+    depth_reference.attachment = 3;
     depth_reference.layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference resolve_reference{};
+    resolve_reference.attachment = 0;
+    resolve_reference.layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     VkSubpassDescription subpasses[SimpleRendering::Passes::Count] = {};
 
@@ -1219,6 +1343,7 @@ void Engine::setup_simple_rendering()
       subpass.pipelineBindPoint     = VK_PIPELINE_BIND_POINT_GRAPHICS;
       subpass.colorAttachmentCount  = 1;
       subpass.pColorAttachments     = &color_reference;
+      subpass.pResolveAttachments   = &resolve_reference;
     }
 
     {
@@ -1226,6 +1351,7 @@ void Engine::setup_simple_rendering()
       subpass.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
       subpass.colorAttachmentCount    = 1;
       subpass.pColorAttachments       = &color_reference;
+      subpass.pResolveAttachments     = &resolve_reference;
       subpass.pDepthStencilAttachment = &depth_reference;
     }
 
@@ -1234,6 +1360,7 @@ void Engine::setup_simple_rendering()
       subpass.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
       subpass.colorAttachmentCount    = 1;
       subpass.pColorAttachments       = &color_reference;
+      subpass.pResolveAttachments     = &resolve_reference;
       subpass.pDepthStencilAttachment = &depth_reference;
     }
 
@@ -1242,6 +1369,7 @@ void Engine::setup_simple_rendering()
       subpass.pipelineBindPoint     = VK_PIPELINE_BIND_POINT_GRAPHICS;
       subpass.colorAttachmentCount  = 1;
       subpass.pColorAttachments     = &color_reference;
+      subpass.pResolveAttachments   = &resolve_reference;
     }
 
     VkSubpassDependency dependencies[SimpleRendering::Passes::Count] = {};
@@ -1479,7 +1607,7 @@ void Engine::setup_simple_rendering()
 
     VkPipelineMultisampleStateCreateInfo multisample_state{};
     multisample_state.sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    multisample_state.rasterizationSamples  = VK_SAMPLE_COUNT_1_BIT;
+    multisample_state.rasterizationSamples  = MSAA_SAMPLE_COUNT;
     multisample_state.sampleShadingEnable   = VK_FALSE;
     multisample_state.minSampleShading      = 1.0f;
     multisample_state.alphaToCoverageEnable = VK_FALSE;
@@ -1621,7 +1749,7 @@ void Engine::setup_simple_rendering()
 
     VkPipelineMultisampleStateCreateInfo multisample_state{};
     multisample_state.sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    multisample_state.rasterizationSamples  = VK_SAMPLE_COUNT_1_BIT;
+    multisample_state.rasterizationSamples  = MSAA_SAMPLE_COUNT;
     multisample_state.sampleShadingEnable   = VK_FALSE;
     multisample_state.minSampleShading      = 1.0f;
     multisample_state.alphaToCoverageEnable = VK_FALSE;
@@ -1753,7 +1881,7 @@ void Engine::setup_simple_rendering()
 
     VkPipelineMultisampleStateCreateInfo multisample_state{};
     multisample_state.sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    multisample_state.rasterizationSamples  = VK_SAMPLE_COUNT_1_BIT;
+    multisample_state.rasterizationSamples  = MSAA_SAMPLE_COUNT;
     multisample_state.sampleShadingEnable   = VK_FALSE;
     multisample_state.minSampleShading      = 1.0f;
     multisample_state.alphaToCoverageEnable = VK_FALSE;
@@ -1895,7 +2023,7 @@ void Engine::setup_simple_rendering()
 
     VkPipelineMultisampleStateCreateInfo multisample_state{};
     multisample_state.sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    multisample_state.rasterizationSamples  = VK_SAMPLE_COUNT_1_BIT;
+    multisample_state.rasterizationSamples  = MSAA_SAMPLE_COUNT;
     multisample_state.sampleShadingEnable   = VK_FALSE;
     multisample_state.minSampleShading      = 1.0f;
     multisample_state.alphaToCoverageEnable = VK_FALSE;
@@ -1952,7 +2080,8 @@ void Engine::setup_simple_rendering()
 
   for (uint32_t i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
   {
-    VkImageView attachments[] = {ctx.swapchain_image_views[i], ctx.depth_image_view};
+    VkImageView attachments[] = {ctx.swapchain_image_views[i], ctx.depth_image_view, ctx.msaa_color_image_view,
+                                 ctx.msaa_depth_image_view};
 
     VkFramebufferCreateInfo ci{};
     ci.sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -2002,16 +2131,11 @@ void Engine::submit_simple_rendering(uint32_t image_index)
     vkBeginCommandBuffer(cmd, &begin);
   }
 
-  VkClearValue color_clear = {};
-  {
-    float clear[] = {0.0f, 0.0f, 0.2f, 1.0f};
-    SDL_memcpy(color_clear.color.float32, clear, sizeof(clear));
-  }
-
-  VkClearValue depth_clear{};
-  depth_clear.depthStencil.depth = 1.0;
-
-  VkClearValue clear_values[] = {color_clear, depth_clear};
+  VkClearValue clear_values[4] = {};
+  clear_values[0].color        = {{0.0f, 0.0f, 0.2f, 1.0f}};
+  clear_values[1].depthStencil = {1.0, 0};
+  clear_values[2].color        = {{0.0f, 0.0f, 0.2f, 1.0f}};
+  clear_values[3].depthStencil = {1.0, 0};
 
   {
     VkRenderPassBeginInfo begin{};

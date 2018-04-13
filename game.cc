@@ -470,7 +470,7 @@ void Game::render(Engine& engine, float current_time_sec)
 
     mat4x4 model{};
     mat4x4_identity(model);
-    //mat4x4_rotate_Y(model, model, current_time_sec * 0.1f);
+    mat4x4_rotate_Y(model, model, current_time_sec * 0.1f);
 
     {
       const float scale = 150.0f;
