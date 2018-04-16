@@ -1611,7 +1611,7 @@ void Engine::setup_simple_rendering()
     multisample_state.sampleShadingEnable   = VK_TRUE;
     multisample_state.minSampleShading      = 1.0f;
     multisample_state.alphaToCoverageEnable = VK_TRUE;
-    multisample_state.alphaToOneEnable      = VK_TRUE;
+    multisample_state.alphaToOneEnable      = VK_FALSE;
 
     VkPipelineDepthStencilStateCreateInfo depth_stencil_state{};
     depth_stencil_state.sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
@@ -1753,7 +1753,7 @@ void Engine::setup_simple_rendering()
     multisample_state.sampleShadingEnable   = VK_TRUE;
     multisample_state.minSampleShading      = 1.0f;
     multisample_state.alphaToCoverageEnable = VK_TRUE;
-    multisample_state.alphaToOneEnable      = VK_TRUE;
+    multisample_state.alphaToOneEnable      = VK_FALSE;
 
     VkPipelineDepthStencilStateCreateInfo depth_stencil_state{};
     depth_stencil_state.sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
@@ -1885,7 +1885,7 @@ void Engine::setup_simple_rendering()
     multisample_state.sampleShadingEnable   = VK_TRUE;
     multisample_state.minSampleShading      = 1.0f;
     multisample_state.alphaToCoverageEnable = VK_TRUE;
-    multisample_state.alphaToOneEnable      = VK_TRUE;
+    multisample_state.alphaToOneEnable      = VK_FALSE;
 
     VkPipelineDepthStencilStateCreateInfo depth_stencil_state{};
     depth_stencil_state.sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
