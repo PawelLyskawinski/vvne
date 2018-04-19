@@ -123,7 +123,23 @@ void RenderableModel::construct(Engine& engine, const Model& model) noexcept
       indices_type                  = gltfToVulkanIndexType(index_accessor.componentType);
       host_index_buffer_size        = vulkanIndexTypeToSize(indices_type) * index_accessor.count;
 
-      SDL_memcpy(uploadBuffer, &dataBuffer[index_view.byteOffset], host_index_buffer_size);
+      // @todo: uint8 indices should be probably mapped to uint16 here
+      // @todo: remove the branch below and optimize
+      if (ACCESSOR_COMPONENTTYPE_UINT8 == index_accessor.componentType)
+      {
+        upload_buffer_vertices_offset = 4 * index_view.byteLength;
+
+        uint32_t* dst = reinterpret_cast<uint32_t*>(uploadBuffer);
+        uint8_t*  src = &dataBuffer[index_view.byteOffset];
+        for (int i = 0; i < index_accessor.count; ++i)
+        {
+          dst[i] = src[i];
+        }
+      }
+      else
+      {
+        SDL_memcpy(uploadBuffer, &dataBuffer[index_view.byteOffset], host_index_buffer_size);
+      }
     }
 
     // write position data into upload buffer

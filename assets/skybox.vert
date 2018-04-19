@@ -2,17 +2,18 @@
 
 layout(push_constant) uniform Transformation
 {
-  mat4 mvp;
+  mat4 projection;
+  mat4 view;
 }
 transformation;
 
 layout(location = 0) in vec3 inPosition;
-layout(location = 1) in vec3 inNormal;
-layout(location = 2) in vec2 inTexCoord;
-layout(location = 0) out vec3 outUVW;
+layout(location = 0) out vec3 outLocalPos;
 
 void main()
 {
-  gl_Position = transformation.mvp * vec4(inPosition, 1.0);
-  outUVW      = inPosition;
+  outLocalPos  = inPosition;
+  mat4 rotView = mat4(mat3(transformation.view)); // remove translation from the view matrix
+  vec4 clipPos = transformation.projection * rotView * vec4(outLocalPos, 1.0);
+  gl_Position  = clipPos.xyww;
 }

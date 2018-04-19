@@ -29,12 +29,23 @@ struct Game
 
   gltf::Model helmet;
   gltf::Model box;
+  gltf::Model robot_wip;
 
   gltf::RenderableModel renderableHelmet;
   gltf::RenderableModel renderableBox;
+  gltf::RenderableModel renderableRobot;
+
+  float robot_position[3];
+  float skybox_eye[3];
+  float skybox_center[3];
+  float skybox_up[3];
 
   int environment_hdr_map_idx; // radiance, quick and fast
-  int environment_equirectangular_texture_idx; // highly detailed, takes ~100MB on gpu ram
+  // int environment_equirectangular_texture_idx; // highly detailed, takes ~100MB on gpu ram
+  int environment_cubemap_idx;
+  int irradiance_cubemap_idx;
+  int prefiltered_cubemap_idx;
+  int brdf_lookup_idx;
 
   float update_times[50];
   float render_times[50];

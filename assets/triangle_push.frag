@@ -13,7 +13,9 @@ layout(set = 0, binding = 1) uniform sampler2D metal_roughness_map;
 layout(set = 0, binding = 2) uniform sampler2D emissive_map;
 layout(set = 0, binding = 3) uniform sampler2D ambient_occlusion_map;
 layout(set = 0, binding = 4) uniform sampler2D normal_map;
-layout(set = 0, binding = 5) uniform sampler2D irradiance_map;
+layout(set = 0, binding = 5) uniform samplerCube irradiance_map;
+layout(set = 0, binding = 6) uniform samplerCube prefilter_map;
+layout(set = 0, binding = 7) uniform sampler2D brdf_lut;
 
 struct LightSource
 {
@@ -21,7 +23,7 @@ struct LightSource
   vec3 color;
 };
 
-layout(set = 0, binding = 6) uniform UBO
+layout(set = 0, binding = 8) uniform UBO
 {
   LightSource light_sources[10];
 }
@@ -91,6 +93,11 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0)
   return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
 }
 
+vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
+{
+  return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(1.0 - cosTheta, 5.0);
+}
+
 void main()
 {
   vec3  albedo_color    = pow(texture(albedo_map, inTexCoord).rgb, vec3(2.2));
@@ -155,11 +162,28 @@ void main()
           NdotL; // note that we already multiplied the BRDF by the Fresnel (kS) so we won't multiply by kS again
   }
 
-  // ambient lighting (note that the next IBL tutorial will replace
-  // this ambient lighting with environment lighting).
-  vec3 ambient = texture(irradiance_map, N.xy).rgb * albedo_color * ao_color;
+  vec3 F  = fresnelSchlickRoughness(max(dot(N, V), 0.0), F0, roughness_color);
+  vec3 kS = F;
+  vec3 kD = 1.0 - kS;
+  kD *= 1.0 - metallic_color;
+  vec3        irradiance         = texture(irradiance_map, N).rgb;
+  vec3        diffuse            = irradiance * albedo_color;
+  vec3        R                  = reflect(V, N);
+  const float MAX_REFLECTION_LOD = 4.0;
+  vec3        prefilteredColor   = textureLod(prefilter_map, R, roughness_color * MAX_REFLECTION_LOD).rgb;
+  vec2        envBRDF            = texture(brdf_lut, vec2(max(dot(N, V), 0.0), roughness_color)).rg;
+  vec3        specular           = prefilteredColor * (F * envBRDF.x + envBRDF.y);
+  vec3        ambient            = (kD * diffuse + specular) * ao_color;
 
+  // ---------------------- old working code
+  // vec3 kS = fresnelSchlickRoughness(max(dot(N, V), 0.0), F0, roughness_color);
+  // vec3 kD = 1.0 - kS;
+  // kD *= 1.0 - metallic_color;
+  // vec3 irradiance = texture(irradiance_map, N).rgb;
+  // vec3 diffuse    = irradiance * albedo_color;
+  // vec3 ambient    = (kD * diffuse) * ao_color;
   vec3 color = ambient + Lo;
+  // ---------------------- old working code
 
   // HDR tonemapping
   color = color / (color + vec3(1.0));

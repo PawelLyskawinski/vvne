@@ -1,17 +1,24 @@
 @echo off
 
-SET compiler=C:/VulkanSDK/1.0.65.0/Bin/glslangValidator.exe
-
-%compiler% -V imgui.frag -o ../bin/imgui.frag.spv
-%compiler% -V imgui.vert -o ../bin/imgui.vert.spv
-
-%compiler% -V triangle_push.frag -o ../bin/triangle_push.frag.spv
-%compiler% -V triangle_push.vert -o ../bin/triangle_push.vert.spv
-
-%compiler% -V skybox.frag -o ../bin/skybox.frag.spv
-%compiler% -V skybox.vert -o ../bin/skybox.vert.spv
-
-%compiler% -V colored_geometry.frag -o ../bin/colored_geometry.frag.spv
-%compiler% -V colored_geometry.vert -o ../bin/colored_geometry.vert.spv
-
+call:compile imgui.frag
+call:compile imgui.vert
+call:compile triangle_push.frag
+call:compile triangle_push.vert
+call:compile skybox.frag
+call:compile skybox.vert
+call:compile colored_geometry.frag
+call:compile colored_geometry.vert
+call:compile equirectangular_to_cubemap.frag
+call:compile equirectangular_to_cubemap.vert
+call:compile cubemap_to_irradiance.frag
+call:compile cubemap_to_irradiance.vert
+call:compile cubemap_prefiltering.frag
+call:compile cubemap_prefiltering.vert
+call:compile brdf_compute.frag
+call:compile brdf_compute.vert
 pause
+goto:eof
+
+:compile
+C:/VulkanSDK/1.0.65.0/Bin/glslangValidator.exe -V %~1 -o ../bin/%~1.spv
+goto:eof

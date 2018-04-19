@@ -273,8 +273,8 @@ void Engine::startup()
 
   // Pool sizes below are just an suggestions. They have to be adjusted for the final release builds
   {
-    VkDescriptorPoolSize pool_sizes[] = {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10 * SWAPCHAIN_IMAGES_COUNT},
-                                         {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10 * SWAPCHAIN_IMAGES_COUNT}};
+    VkDescriptorPoolSize pool_sizes[] = {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 20 * SWAPCHAIN_IMAGES_COUNT},
+                                         {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 20 * SWAPCHAIN_IMAGES_COUNT}};
 
     VkDescriptorPoolCreateInfo ci{};
     ci.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -1427,9 +1427,9 @@ void Engine::setup_simple_rendering()
   }
 
   {
-    VkDescriptorSetLayoutBinding bindings[7] = {};
+    VkDescriptorSetLayoutBinding bindings[9] = {};
 
-    for (int i = 0; i < 6; ++i)
+    for (int i = 0; i < 8; ++i)
     {
       bindings[i].binding         = static_cast<uint32_t>(i);
       bindings[i].descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -1437,10 +1437,10 @@ void Engine::setup_simple_rendering()
       bindings[i].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
     }
 
-    bindings[6].binding         = 6;
-    bindings[6].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    bindings[6].descriptorCount = 1;
-    bindings[6].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
+    bindings[8].binding         = 8;
+    bindings[8].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    bindings[8].descriptorCount = 1;
+    bindings[8].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
 
     VkDescriptorSetLayoutCreateInfo ci{};
     ci.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -1451,15 +1451,11 @@ void Engine::setup_simple_rendering()
   }
 
   {
-    VkPushConstantRange ranges[2] = {};
+    VkPushConstantRange ranges[1] = {};
 
     ranges[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
     ranges[0].offset     = 0;
-    ranges[0].size       = 16 * sizeof(float);
-
-    ranges[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-    ranges[1].offset     = 16 * sizeof(float);
-    ranges[1].size       = 2 * sizeof(float);
+    ranges[0].size       = 2 * sizeof(mat4x4);
 
     VkPipelineLayoutCreateInfo ci{};
     ci.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -1536,22 +1532,12 @@ void Engine::setup_simple_rendering()
     shader_stages[1].module = load_shader("skybox.frag.spv");
     shader_stages[1].pName  = "main";
 
-    VkVertexInputAttributeDescription attribute_descriptions[3] = {};
+    VkVertexInputAttributeDescription attribute_descriptions[1] = {};
 
     attribute_descriptions[0].location = 0;
     attribute_descriptions[0].binding  = 0;
     attribute_descriptions[0].format   = VK_FORMAT_R32G32B32_SFLOAT;
     attribute_descriptions[0].offset   = static_cast<uint32_t>(offsetof(TrianglesVertex, position));
-
-    attribute_descriptions[1].location = 1;
-    attribute_descriptions[1].binding  = 0;
-    attribute_descriptions[1].format   = VK_FORMAT_R32G32B32_SFLOAT;
-    attribute_descriptions[1].offset   = static_cast<uint32_t>(offsetof(TrianglesVertex, normal));
-
-    attribute_descriptions[2].location = 2;
-    attribute_descriptions[2].binding  = 0;
-    attribute_descriptions[2].format   = VK_FORMAT_R32G32_SFLOAT;
-    attribute_descriptions[2].offset   = static_cast<uint32_t>(offsetof(TrianglesVertex, tex_coord));
 
     VkVertexInputBindingDescription vertex_binding_descriptions[1] = {};
 

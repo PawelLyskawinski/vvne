@@ -1,17 +1,8 @@
 #version 450
 
-layout(binding = 0) uniform sampler2D equirectangularMap;
-layout(location = 0) in vec3 inUVW;
+layout(binding = 0) uniform samplerCube cube_map;
+layout(location = 0) in vec3 inLocalPos;
 layout(location = 0) out vec4 outColor;
-
-const vec2 invAtan = vec2(0.1591, 0.3183);
-vec2 sampleSphericalMap(vec3 v)
-{
-    vec2 uv = vec2(atan(v.z, v.x), asin(v.y));
-    uv *= invAtan;
-    uv += 0.5;
-    return uv;
-}
 
 vec3 tonemap(vec3 color)
 {
@@ -27,17 +18,17 @@ vec3 tonemap(vec3 color)
 
 void main()
 {
-  vec2 uv = sampleSphericalMap(normalize(inUVW));
-  vec3 color = texture(equirectangularMap, uv).rgb;
-
-  float exposure = 1.0;
-  float gamma = 2.2;
+  vec3 color = texture(cube_map, inLocalPos).rgb;
 
   // Tone mapping
-  color = tonemap(color * exposure);
-  color = color * (1.0f / tonemap(vec3(11.2f)));
+  // color = tonemap(color * exposure);
+  // color = color * (1.0f / tonemap(vec3(11.2f)));
 
   // Gamma correction
-  color    = pow(color, vec3(1.0f / gamma));
-  outColor = vec4(color * 1.0, 1.0);
+  // color    = pow(color, vec3(1.0f / gamma));
+
+  // color = color / (color + vec3(1.0));
+  // color = pow(color, vec3(1.0 / 2.2));
+
+  outColor = vec4(color, 1.0);
 }

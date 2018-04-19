@@ -44,13 +44,20 @@ struct Engine
     VkDeviceSize allocate(VkDeviceSize size)
     {
       VkDeviceSize offset = used_memory;
-      used_memory += (size % alignment) ? size + (alignment - (size % alignment)) : size;
+      last_allocation     = (size % alignment) ? size + (alignment - (size % alignment)) : size;
+      used_memory += last_allocation;
       return offset;
+    }
+
+    void pop()
+    {
+      used_memory -= last_allocation;
     }
 
     VkDeviceMemory memory;
     VkDeviceSize   alignment;
     VkDeviceSize   used_memory;
+    VkDeviceSize   last_allocation;
   };
 
   struct GpuStaticGeometry : public MemoryWithAlignment

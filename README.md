@@ -6,14 +6,13 @@ There are a lot of publicly available engines / demos on github which use vulkan
 - learning experiance!
 ### feature wishlist
 - gltf2.0 animations
-- real PBR IBL
 ### already implemented
 - gltf2.0 model ascii import with cJSON (without animations)
 - integrated imgui
 - support for both windows and linux
 - custom vulkan memory allocators
-- hdr skybox
-- PBR with pseudo IBL
+- hdr skybox (although not used yet)
+- PBR with IBL
 - MSAA
 ### additional external dependencies
 - vulkan SDK (libvulkan/vulkan-1, glslang)

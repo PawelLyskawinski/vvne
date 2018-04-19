@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.9)
 project(vvne)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fno-exceptions -fno-rtti")# -Wall -Wextra -Werror")
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -fno-exceptions -fno-rtti")# -Wall -Wextra -Werror")
 
 if(WIN32)
 include_directories(
@@ -26,6 +26,8 @@ add_executable(${PROJECT_NAME}
         gltf_model.cc
         gltf_renderablemodel.cc
         gltf.hh
+        cubemap.cc
+        cubemap.hh
         thirdparty/imconfig.h
         thirdparty/imgui.cpp
         thirdparty/imgui.h

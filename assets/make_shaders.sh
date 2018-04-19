@@ -12,3 +12,11 @@ compile skybox.frag
 compile skybox.vert
 compile colored_geometry.frag
 compile colored_geometry.vert
+compile equirectangular_to_cubemap.frag
+compile equirectangular_to_cubemap.vert
+compile cubemap_to_irradiance.frag
+compile cubemap_to_irradiance.vert
+compile cubemap_prefiltering.frag
+compile cubemap_prefiltering.vert
+compile brdf_compute.frag
+compile brdf_compute.vert

@@ -1,4 +1,5 @@
 #include "game.hh"
+#include "cubemap.hh"
 #include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_clipboard.h>
 #include <SDL2/SDL_events.h>
@@ -124,12 +125,61 @@ void Game::startup(Engine& engine)
     engine.double_ended_stack.reset_back();
   }
 
+#if 0
+  {
+    const int memorySize = 1024; // adjusted manually
+    robot_wip.memory           = engine.double_ended_stack.allocate_back<uint8_t>(memorySize);
+    SDL_memset(robot_wip.memory, 0, memorySize);
+
+    robot_wip.loadASCII(engine.double_ended_stack, "../assets/robot_wip.gltf");
+    SDL_Log("robot used %d / %d bytes", robot_wip.usedMemory, memorySize);
+    //robot_wip.debugDump();
+    renderableRobot.construct(engine, robot_wip);
+    engine.double_ended_stack.reset_back();
+  }
+#endif
+
   // stbi_hdr_to_ldr_gamma(2.2f);
   // stbi_ldr_to_hdr_gamma(0.2f);
 
-  environment_hdr_map_idx                 = engine.load_texture_hdr("../assets/old_industrial_hall.hdr");
-  environment_equirectangular_texture_idx = engine.load_texture("../assets/old_industrial_hall.jpg");
-  lights_ubo_offset                       = engine.ubo_host_visible.allocate(sizeof(light_sources));
+  environment_hdr_map_idx = engine.load_texture_hdr("../assets/old_industrial_hall.hdr");
+  // environment_equirectangular_texture_idx = engine.load_texture("../assets/old_industrial_hall.jpg");
+  lights_ubo_offset = engine.ubo_host_visible.allocate(sizeof(light_sources));
+
+  {
+    CubemapGenerator generator{};
+    generator.filepath        = "../assets/old_industrial_hall.jpg";
+    generator.engine          = &engine;
+    generator.game            = this;
+    generator.desired_size[0] = 512;
+    generator.desired_size[1] = 512;
+
+    environment_cubemap_idx = generator.generate();
+  }
+
+  {
+    IrradianceGenerator generator{};
+    generator.environment_cubemap_idx = environment_cubemap_idx;
+    generator.engine                  = &engine;
+    generator.game                    = this;
+    generator.desired_size[0]         = 512;
+    generator.desired_size[1]         = 512;
+
+    irradiance_cubemap_idx = generator.generate();
+  }
+
+  {
+    PrefilteredCubemapGenerator generator{};
+    generator.environment_cubemap_idx = environment_cubemap_idx;
+    generator.engine                  = &engine;
+    generator.game                    = this;
+    generator.desired_size[0]         = 512;
+    generator.desired_size[1]         = 512;
+
+    prefiltered_cubemap_idx = generator.generate();
+  }
+
+  brdf_lookup_idx = generateBRDFlookup(&engine, 512);
 
   // ----------------------------------------------------------------------------------------------
   // Descriptor sets
@@ -151,14 +201,14 @@ void Game::startup(Engine& engine)
     VkDescriptorImageInfo skybox_image{};
     skybox_image.sampler     = engine.generic_handles.texture_sampler;
     skybox_image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    skybox_image.imageView   = engine.images.image_views[environment_equirectangular_texture_idx];
+    skybox_image.imageView = engine.images.image_views[environment_cubemap_idx];
 
     VkDescriptorImageInfo imgui_image{};
     imgui_image.sampler     = engine.generic_handles.texture_sampler;
     imgui_image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     imgui_image.imageView   = engine.images.image_views[debug_gui.font_texture_idx];
 
-    VkDescriptorImageInfo helmet_images[6]{};
+    VkDescriptorImageInfo helmet_images[8]{};
     for (VkDescriptorImageInfo& info : helmet_images)
     {
       info.sampler     = engine.generic_handles.texture_sampler;
@@ -169,7 +219,9 @@ void Game::startup(Engine& engine)
     helmet_images[2].imageView = engine.images.image_views[renderableHelmet.emissive_texture_idx];
     helmet_images[3].imageView = engine.images.image_views[renderableHelmet.AO_texture_idx];
     helmet_images[4].imageView = engine.images.image_views[renderableHelmet.normal_texture_idx];
-    helmet_images[5].imageView = engine.images.image_views[environment_hdr_map_idx];
+    helmet_images[5].imageView = engine.images.image_views[irradiance_cubemap_idx];
+    helmet_images[6].imageView = engine.images.image_views[prefiltered_cubemap_idx];
+    helmet_images[7].imageView = engine.images.image_views[brdf_lookup_idx];
 
     VkDescriptorBufferInfo helmet_ubo{};
     helmet_ubo.buffer = engine.ubo_host_visible.buffer;
@@ -198,7 +250,7 @@ void Game::startup(Engine& engine)
 
     VkWriteDescriptorSet& helmet_ubo_write = writes[2];
     helmet_ubo_write.sType                 = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    helmet_ubo_write.dstBinding            = 6;
+    helmet_ubo_write.dstBinding            = 8;
     helmet_ubo_write.dstArrayElement       = 0;
     helmet_ubo_write.descriptorType        = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     helmet_ubo_write.descriptorCount       = 1;
@@ -218,26 +270,29 @@ void Game::startup(Engine& engine)
   }
 
   helmet_translation[0] = 2.2f;
-  helmet_translation[1] = 3.5f;
-  helmet_translation[2] = 19.2f;
+  helmet_translation[1] = 4.2f;
+  helmet_translation[2] = 21.0f;
+
+  robot_position[0] = 5.0f;
+  robot_position[1] = 5.0f;
+  robot_position[2] = 19.0f;
 
   {
     LightSource& red = light_sources[0];
     red.setPosition(4.0, 5.0, 23.0);
+    red.setColor(2.0, 0.0, 0.0);
 
     LightSource& green = light_sources[1];
     green.setPosition(1.0, 5.0, 23.0);
+    green.setColor(0.0, 2.0, 0.0);
 
     LightSource& blue = light_sources[2];
     blue.setPosition(4.0, 3.0, 23.0);
+    blue.setColor(0.0, 0.0, 2.0);
 
     LightSource& white = light_sources[3];
     white.setPosition(1.0, 3.0, 23.0);
-
-    for (int i = 0; i < 4; ++i)
-    {
-      light_sources[i].setColor(10.0, 0.0, 0.0);
-    }
+    white.setColor(2.0, 2.0, 2.0);
 
     light_sources_count = 4;
   }
@@ -388,6 +443,7 @@ void Game::update(Engine& engine, float current_time_sec)
                        ImVec2(300, 20));
   ImGui::PlotHistogram("render times", render_times, SDL_arraysize(render_times), 0, nullptr, 0.0, 0.03,
                        ImVec2(300, 20));
+  ImGui::InputFloat3("robot position", robot_position);
 
   float avg_time = 0.0f;
   for (float time : update_times)
@@ -453,45 +509,27 @@ void Game::render(Engine& engine, float current_time_sec)
                             renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Skybox], 0, 1, &skybox_dset, 0,
                             nullptr);
 
-    mat4x4 view{};
-    vec3   eye    = {6.0f, 6.7f, 30.0f};
-    vec3   center = {-3.0f, 0.0f, -1.0f};
-    vec3   up     = {0.0f, -1.0f, 0.0f};
-    mat4x4_look_at(view, eye, center, up);
-
-    mat4x4 projection{};
-    float  extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
-    float  extent_height       = static_cast<float>(engine.generic_handles.extent2D.height);
-    float  aspect_ratio        = extent_width / extent_height;
-    float  fov                 = 99.5f;
-    float  near_clipping_plane = 0.1f;
-    float  far_clipping_plane  = 200.0f;
-    mat4x4_perspective(projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
-
-    mat4x4 model{};
-    mat4x4_identity(model);
-    mat4x4_rotate_Y(model, model, current_time_sec * 0.1f);
-
+    struct VertPush
     {
-      const float scale = 150.0f;
-      mat4x4_scale_aniso(model, model, scale, scale, scale);
-    }
+      mat4x4 projection;
+      mat4x4 view;
+    } vertpush{};
 
-    mat4x4 projectionview{};
-    mat4x4_mul(projectionview, projection, view);
+    vec3 eye    = {0.0f, 0.0f, 0.0f};
+    vec3 center = {0.0f, 0.0f, 1.0f};
+    vec3 up     = {0.0f, 1.0f, 0.0f};
+    mat4x4_look_at(vertpush.view, eye, center, up);
 
-    mat4x4 mvp = {};
-    mat4x4_mul(mvp, projectionview, model);
+    float extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
+    float extent_height       = static_cast<float>(engine.generic_handles.extent2D.height);
+    float aspect_ratio        = extent_width / extent_height;
+    float fov                 = to_rad(100.0f);
+    float near_clipping_plane = 0.1f;
+    float far_clipping_plane  = 10.0f;
+    mat4x4_perspective(vertpush.projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
 
     vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Skybox],
-                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
-    struct FragPush
-    {
-      float exposure = 1.0f;
-      float gamma    = 1.0f;
-    } fragpush;
-    vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Skybox],
-                       VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), 2 * sizeof(float), &fragpush);
+                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(VertPush), &vertpush);
 
     vkCmdDrawIndexed(cmd, renderableBox.indices_count, 1, 0, 0, 0);
 
@@ -620,6 +658,34 @@ void Game::render(Engine& engine, float current_time_sec)
                          VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(vec3), light_sources[i].color);
       vkCmdDrawIndexed(cmd, renderableBox.indices_count, 1, 0, 0, 0);
     }
+
+    // robot debug
+#if 0
+    {
+      mat4x4 model{};
+      mat4x4_identity(model);
+      mat4x4_translate(model, robot_position[0], robot_position[1], robot_position[2]);
+      mat4x4_rotate_Y(model, model, current_time_sec * 0.4f);
+      mat4x4_rotate_Z(model, model, current_time_sec * 0.8f);
+      mat4x4_scale_aniso(model, model, 0.3f, 0.53, 0.3f);
+
+      mat4x4 projectionview{};
+      mat4x4_mul(projectionview, projection, view);
+
+      mat4x4 mvp = {};
+      mat4x4_mul(mvp, projectionview, model);
+
+      vkCmdBindIndexBuffer(cmd, engine.gpu_static_geometry.buffer, renderableRobot.indices_offset,
+                           renderableRobot.indices_type);
+      vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_static_geometry.buffer, &renderableRobot.vertices_offset);
+      vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometry],
+                         VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
+      vec3 color = {0.0, 1.0, 0.0};
+      vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometry],
+                         VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(vec3), color);
+      vkCmdDrawIndexed(cmd, renderableRobot.indices_count, 1, 0, 0, 0);
+    }
+#endif
 
     vkEndCommandBuffer(cmd);
   }
