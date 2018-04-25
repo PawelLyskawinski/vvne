@@ -16,6 +16,45 @@ constexpr float calculate_mip_divisor(int mip_level)
   return static_cast<float>(mip_level ? SDL_pow(2, mip_level) : 1);
 }
 
+void generate_cubemap_views(mat4x4 views[5])
+{
+  vec3 eye = {0.0f, 0.0f, 0.0f};
+
+  struct Input
+  {
+    vec3 center;
+    vec3 up;
+  } inputs[] = {
+      {
+          {1.0f, 0.0f, 0.0f},
+          {0.0f, -1.0f, 0.0f},
+      },
+      {
+          {-1.0f, 0.0f, 0.0f},
+          {0.0f, -1.0f, 0.0f},
+      },
+      {
+          {0.0f, 1.0f, 0.0f},
+          {0.0f, 0.0f, 1.0f},
+      },
+      {
+          {0.0f, -1.0f, 0.0f},
+          {0.0f, 0.0f, -1.0f},
+      },
+      {
+          {0.0f, 0.0f, 1.0f},
+          {0.0f, -1.0f, 0.0f},
+      },
+      {
+          {0.0f, 0.0f, -1.0f},
+          {0.0f, -1.0f, 0.0f},
+      },
+  };
+
+  for (int i = 0; i < SDL_arraysize(inputs); ++i)
+    mat4x4_look_at(views[i], eye, inputs[i].center, inputs[i].up);
+}
+
 } // namespace
 
 int CubemapGenerator::generate()
@@ -406,43 +445,7 @@ int CubemapGenerator::generate()
     mat4x4_perspective(projection, to_rad(90.0f), 1.0f, 0.1f, 100.0f);
 
     mat4x4 views[6]{};
-    vec3   eye = {0.0f, 0.0f, 0.0f};
-
-    {
-      vec3 center = {1.0f, 0.0f, 0.0f};
-      vec3 up     = {0.0f, -1.0f, 0.0f};
-      mat4x4_look_at(views[0], eye, center, up);
-    }
-
-    {
-      vec3 center = {-1.0f, 0.0f, 0.0f};
-      vec3 up     = {0.0f, -1.0f, 0.0f};
-      mat4x4_look_at(views[1], eye, center, up);
-    }
-
-    {
-      vec3 center = {0.0f, 1.0f, 0.0f};
-      vec3 up     = {0.0f, 0.0f, 1.0f};
-      mat4x4_look_at(views[2], eye, center, up);
-    }
-
-    {
-      vec3 center = {0.0f, -1.0f, 0.0f};
-      vec3 up     = {0.0f, 0.0f, -1.0f};
-      mat4x4_look_at(views[3], eye, center, up);
-    }
-
-    {
-      vec3 center = {0.0f, 0.0f, 1.0f};
-      vec3 up     = {0.0f, -1.0f, 0.0f};
-      mat4x4_look_at(views[4], eye, center, up);
-    }
-
-    {
-      vec3 center = {0.0f, 0.0f, -1.0f};
-      vec3 up     = {0.0f, -1.0f, 0.0f};
-      mat4x4_look_at(views[5], eye, center, up);
-    }
+    generate_cubemap_views(views);
 
     for (int i = 0; i < 6; ++i)
     {
@@ -900,43 +903,7 @@ int IrradianceGenerator::generate()
     mat4x4_perspective(projection, to_rad(90.0f), 1.0f, 0.1f, 100.0f);
 
     mat4x4 views[6]{};
-    vec3   eye = {0.0f, 0.0f, 0.0f};
-
-    {
-      vec3 center = {1.0f, 0.0f, 0.0f};
-      vec3 up     = {0.0f, -1.0f, 0.0f};
-      mat4x4_look_at(views[0], eye, center, up);
-    }
-
-    {
-      vec3 center = {-1.0f, 0.0f, 0.0f};
-      vec3 up     = {0.0f, -1.0f, 0.0f};
-      mat4x4_look_at(views[1], eye, center, up);
-    }
-
-    {
-      vec3 center = {0.0f, 1.0f, 0.0f};
-      vec3 up     = {0.0f, 0.0f, 1.0f};
-      mat4x4_look_at(views[2], eye, center, up);
-    }
-
-    {
-      vec3 center = {0.0f, -1.0f, 0.0f};
-      vec3 up     = {0.0f, 0.0f, -1.0f};
-      mat4x4_look_at(views[3], eye, center, up);
-    }
-
-    {
-      vec3 center = {0.0f, 0.0f, 1.0f};
-      vec3 up     = {0.0f, -1.0f, 0.0f};
-      mat4x4_look_at(views[4], eye, center, up);
-    }
-
-    {
-      vec3 center = {0.0f, 0.0f, -1.0f};
-      vec3 up     = {0.0f, -1.0f, 0.0f};
-      mat4x4_look_at(views[5], eye, center, up);
-    }
+    generate_cubemap_views(views);
 
     for (int i = 0; i < 6; ++i)
     {
@@ -1412,43 +1379,7 @@ int PrefilteredCubemapGenerator::generate()
       mat4x4_perspective(projection, to_rad(90.0f), 1.0f, 0.1f, 100.0f);
 
       mat4x4 views[6]{};
-      vec3   eye = {0.0f, 0.0f, 0.0f};
-
-      {
-        vec3 center = {1.0f, 0.0f, 0.0f};
-        vec3 up     = {0.0f, -1.0f, 0.0f};
-        mat4x4_look_at(views[0], eye, center, up);
-      }
-
-      {
-        vec3 center = {-1.0f, 0.0f, 0.0f};
-        vec3 up     = {0.0f, -1.0f, 0.0f};
-        mat4x4_look_at(views[1], eye, center, up);
-      }
-
-      {
-        vec3 center = {0.0f, 1.0f, 0.0f};
-        vec3 up     = {0.0f, 0.0f, 1.0f};
-        mat4x4_look_at(views[2], eye, center, up);
-      }
-
-      {
-        vec3 center = {0.0f, -1.0f, 0.0f};
-        vec3 up     = {0.0f, 0.0f, -1.0f};
-        mat4x4_look_at(views[3], eye, center, up);
-      }
-
-      {
-        vec3 center = {0.0f, 0.0f, 1.0f};
-        vec3 up     = {0.0f, -1.0f, 0.0f};
-        mat4x4_look_at(views[4], eye, center, up);
-      }
-
-      {
-        vec3 center = {0.0f, 0.0f, -1.0f};
-        vec3 up     = {0.0f, -1.0f, 0.0f};
-        mat4x4_look_at(views[5], eye, center, up);
-      }
+      generate_cubemap_views(views);
 
       const float roughness = (float)mip_level / (float)(DESIRED_MIP_LEVELS - 1);
       for (int cube_side = 0; cube_side < CUBE_SIDES; ++cube_side)
