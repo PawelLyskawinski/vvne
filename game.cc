@@ -100,30 +100,9 @@ void Game::startup(Engine& engine)
     }
   }
 
-  {
-    const int memorySize = 2000; // adjusted manually
-    helmet.memory        = engine.double_ended_stack.allocate_back<uint8_t>(memorySize);
-    SDL_memset(helmet.memory, 0, memorySize);
-
-    helmet.loadASCII(engine.double_ended_stack, "../assets/DamagedHelmet/glTF/DamagedHelmet.gltf");
-    SDL_Log("helmet used %d / %d bytes", helmet.usedMemory, memorySize);
-    // helmet.debugDump();
-    renderableHelmet.construct(engine, helmet);
-    engine.double_ended_stack.reset_back();
-  }
-
-  // skybox
-  {
-    const int memorySize = 500; // adjusted manually
-    box.memory           = engine.double_ended_stack.allocate_back<uint8_t>(memorySize);
-    SDL_memset(box.memory, 0, memorySize);
-
-    box.loadASCII(engine.double_ended_stack, "../assets/Box.gltf");
-    SDL_Log("box used %d / %d bytes", box.usedMemory, memorySize);
-    // box.debugDump();
-    renderableBox.construct(engine, box);
-    engine.double_ended_stack.reset_back();
-  }
+  // Proof of concept GLB loader
+  helmet.loadGLB(engine, "../assets/DamagedHelmet.glb");
+  box.loadGLB(engine, "../assets/Box.glb");
 
 #if 0
   {
@@ -201,7 +180,7 @@ void Game::startup(Engine& engine)
     VkDescriptorImageInfo skybox_image{};
     skybox_image.sampler     = engine.generic_handles.texture_sampler;
     skybox_image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    skybox_image.imageView = engine.images.image_views[environment_cubemap_idx];
+    skybox_image.imageView   = engine.images.image_views[environment_cubemap_idx];
 
     VkDescriptorImageInfo imgui_image{};
     imgui_image.sampler     = engine.generic_handles.texture_sampler;
@@ -214,11 +193,11 @@ void Game::startup(Engine& engine)
       info.sampler     = engine.generic_handles.texture_sampler;
       info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     }
-    helmet_images[0].imageView = engine.images.image_views[renderableHelmet.albedo_texture_idx];
-    helmet_images[1].imageView = engine.images.image_views[renderableHelmet.metal_roughness_texture_idx];
-    helmet_images[2].imageView = engine.images.image_views[renderableHelmet.emissive_texture_idx];
-    helmet_images[3].imageView = engine.images.image_views[renderableHelmet.AO_texture_idx];
-    helmet_images[4].imageView = engine.images.image_views[renderableHelmet.normal_texture_idx];
+    helmet_images[0].imageView = engine.images.image_views[helmet.albedo_texture_idx];
+    helmet_images[1].imageView = engine.images.image_views[helmet.metal_roughness_texture_idx];
+    helmet_images[2].imageView = engine.images.image_views[helmet.emissive_texture_idx];
+    helmet_images[3].imageView = engine.images.image_views[helmet.AO_texture_idx];
+    helmet_images[4].imageView = engine.images.image_views[helmet.normal_texture_idx];
     helmet_images[5].imageView = engine.images.image_views[irradiance_cubemap_idx];
     helmet_images[6].imageView = engine.images.image_views[prefiltered_cubemap_idx];
     helmet_images[7].imageView = engine.images.image_views[brdf_lookup_idx];
@@ -502,9 +481,9 @@ void Game::render(Engine& engine, float current_time_sec)
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       renderer.pipelines[Engine::SimpleRendering::Passes::Skybox]);
-    vkCmdBindIndexBuffer(cmd, engine.gpu_static_geometry.buffer, renderableBox.indices_offset,
-                         renderableBox.indices_type);
-    vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_static_geometry.buffer, &renderableBox.vertices_offset);
+    vkCmdBindIndexBuffer(cmd, engine.gpu_static_geometry.buffer, box.indices_offset,
+                         box.indices_type);
+    vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_static_geometry.buffer, &box.vertices_offset);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Skybox], 0, 1, &skybox_dset, 0,
                             nullptr);
@@ -531,7 +510,7 @@ void Game::render(Engine& engine, float current_time_sec)
     vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Skybox],
                        VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(VertPush), &vertpush);
 
-    vkCmdDrawIndexed(cmd, renderableBox.indices_count, 1, 0, 0, 0);
+    vkCmdDrawIndexed(cmd, box.indices_count, 1, 0, 0, 0);
 
     vkEndCommandBuffer(cmd);
   }
@@ -557,9 +536,9 @@ void Game::render(Engine& engine, float current_time_sec)
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       renderer.pipelines[Engine::SimpleRendering::Passes::Scene3D]);
-    vkCmdBindIndexBuffer(cmd, engine.gpu_static_geometry.buffer, renderableHelmet.indices_offset,
-                         renderableHelmet.indices_type);
-    vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_static_geometry.buffer, &renderableHelmet.vertices_offset);
+    vkCmdBindIndexBuffer(cmd, engine.gpu_static_geometry.buffer, helmet.indices_offset,
+                         helmet.indices_type);
+    vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_static_geometry.buffer, &helmet.vertices_offset);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Scene3D], 0, 1, &helmet_dset, 0,
                             nullptr);
@@ -592,7 +571,7 @@ void Game::render(Engine& engine, float current_time_sec)
 
     vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Scene3D],
                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push_const), &push_const);
-    vkCmdDrawIndexed(cmd, renderableHelmet.indices_count, 1, 0, 0, 0);
+    vkCmdDrawIndexed(cmd, helmet.indices_count, 1, 0, 0, 0);
 
     vkEndCommandBuffer(cmd);
   }
@@ -618,9 +597,9 @@ void Game::render(Engine& engine, float current_time_sec)
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       renderer.pipelines[Engine::SimpleRendering::Passes::ColoredGeometry]);
-    vkCmdBindIndexBuffer(cmd, engine.gpu_static_geometry.buffer, renderableBox.indices_offset,
-                         renderableBox.indices_type);
-    vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_static_geometry.buffer, &renderableBox.vertices_offset);
+    vkCmdBindIndexBuffer(cmd, engine.gpu_static_geometry.buffer, box.indices_offset,
+                         box.indices_type);
+    vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_static_geometry.buffer, &box.vertices_offset);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometry], 0, 1,
                             &helmet_dset, 0, nullptr);
@@ -656,7 +635,7 @@ void Game::render(Engine& engine, float current_time_sec)
                          VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
       vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometry],
                          VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(vec3), light_sources[i].color);
-      vkCmdDrawIndexed(cmd, renderableBox.indices_count, 1, 0, 0, 0);
+      vkCmdDrawIndexed(cmd, box.indices_count, 1, 0, 0, 0);
     }
 
     // robot debug

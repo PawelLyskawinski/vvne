@@ -73,6 +73,19 @@ struct Engine
     VkBuffer buffer;
   } gpu_static_geometry;
 
+  struct GpuStaticTransfer : public MemoryWithAlignment
+  {
+    enum
+    {
+      MAX_MEMORY_SIZE_MB    = 1,
+      MAX_MEMORY_SIZE_KB    = MAX_MEMORY_SIZE_MB * 1024,
+      MAX_MEMORY_SIZE_BYTES = MAX_MEMORY_SIZE_KB * 1024,
+      MAX_MEMORY_SIZE       = MAX_MEMORY_SIZE_BYTES
+    };
+
+    VkBuffer buffer;
+  } gpu_static_transfer;
+
   struct GpuHostVisible : public MemoryWithAlignment
   {
     enum
@@ -148,7 +161,7 @@ struct Engine
   {
     enum
     {
-      MAX_MEMORY_SIZE_MB    = 2,
+      MAX_MEMORY_SIZE_MB    = 5,
       MAX_MEMORY_SIZE_KB    = MAX_MEMORY_SIZE_MB * 1024,
       MAX_MEMORY_SIZE_BYTES = MAX_MEMORY_SIZE_KB * 1024,
       MAX_MEMORY_SIZE       = MAX_MEMORY_SIZE_BYTES

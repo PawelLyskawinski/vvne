@@ -27,19 +27,11 @@ struct Game
   VkDescriptorSet helmet_dset;
   VkDescriptorSet imgui_dset;
 
-  gltf::Model helmet;
-  gltf::Model box;
-  gltf::Model robot_wip;
-
-  gltf::RenderableModel renderableHelmet;
-  gltf::RenderableModel renderableBox;
-  gltf::RenderableModel renderableRobot;
+  gltf::RenderableModel helmet;
+  gltf::RenderableModel box;
+  gltf::RenderableModel robot;
 
   float robot_position[3];
-  float skybox_eye[3];
-  float skybox_center[3];
-  float skybox_up[3];
-
   int environment_hdr_map_idx; // radiance, quick and fast
   // int environment_equirectangular_texture_idx; // highly detailed, takes ~100MB on gpu ram
   int environment_cubemap_idx;

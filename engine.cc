@@ -14,6 +14,8 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #include <stb_image.h>
+#include <SDL2/SDL_timer.h>
+
 #pragma GCC diagnostic pop
 
 #define INITIAL_WINDOW_WIDTH 1200
@@ -448,6 +450,33 @@ void Engine::startup()
     vkBindBufferMemory(ctx.device, gpu_static_geometry.buffer, gpu_static_geometry.memory, 0);
   }
 
+  // STATIC_GEOMETRY_TRANSFER
+  {
+    VkBufferCreateInfo ci{};
+    ci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    ci.size        = GpuStaticTransfer::MAX_MEMORY_SIZE;
+    ci.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    vkCreateBuffer(ctx.device, &ci, nullptr, &gpu_static_transfer.buffer);
+  }
+
+  {
+    VkMemoryRequirements reqs{};
+    vkGetBufferMemoryRequirements(ctx.device, gpu_static_transfer.buffer, &reqs);
+    gpu_static_transfer.alignment = reqs.alignment;
+
+    VkPhysicalDeviceMemoryProperties properties{};
+    vkGetPhysicalDeviceMemoryProperties(ctx.physical_device, &properties);
+
+    VkMemoryAllocateInfo allocate{};
+    allocate.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocate.allocationSize  = reqs.size;
+    allocate.memoryTypeIndex = find_memory_type_index(
+        &properties, &reqs, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    vkAllocateMemory(ctx.device, &allocate, nullptr, &gpu_static_transfer.memory);
+    vkBindBufferMemory(ctx.device, gpu_static_transfer.buffer, gpu_static_transfer.memory, 0);
+  }
+
   // HOST VISIBLE
 
   {
@@ -657,10 +686,12 @@ void Engine::teardown()
   vkFreeMemory(ctx.device, ubo_host_visible.memory, nullptr);
   vkFreeMemory(ctx.device, images.memory, nullptr);
   vkFreeMemory(ctx.device, gpu_host_visible.memory, nullptr);
+  vkFreeMemory(ctx.device, gpu_static_transfer.memory, nullptr);
   vkFreeMemory(ctx.device, gpu_static_geometry.memory, nullptr);
 
   vkDestroyBuffer(ctx.device, ubo_host_visible.buffer, nullptr);
   vkDestroyBuffer(ctx.device, gpu_host_visible.buffer, nullptr);
+  vkDestroyBuffer(ctx.device, gpu_static_transfer.buffer, nullptr);
   vkDestroyBuffer(ctx.device, gpu_static_geometry.buffer, nullptr);
 
   vkDestroySampler(ctx.device, ctx.texture_sampler, nullptr);

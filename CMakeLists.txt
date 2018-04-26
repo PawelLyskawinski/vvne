@@ -23,9 +23,8 @@ add_executable(${PROJECT_NAME}
         engine.cc
         game.hh
         game.cc
-        gltf_model.cc
-        gltf_renderablemodel.cc
         gltf.hh
+        gltf.cc
         cubemap.cc
         cubemap.hh
         thirdparty/imconfig.h
@@ -34,10 +33,6 @@ add_executable(${PROJECT_NAME}
         thirdparty/imgui_draw.cpp
         thirdparty/imgui_internal.h
         thirdparty/linmath.h
-        thirdparty/cJSON.c
-        thirdparty/cJSON.h
-        thirdparty/cJSON_Utils.c
-        thirdparty/cJSON_Utils.h
         assets/triangle_push.vert
         assets/triangle_push.frag
         assets/imgui.vert

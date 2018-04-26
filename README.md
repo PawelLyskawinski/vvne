@@ -7,7 +7,7 @@ There are a lot of publicly available engines / demos on github which use vulkan
 ### feature wishlist
 - gltf2.0 animations
 ### already implemented
-- gltf2.0 model ascii import with cJSON (without animations)
+- gltf2.0 binary model import (without animations)
 - integrated imgui
 - support for both windows and linux
 - custom vulkan memory allocators
