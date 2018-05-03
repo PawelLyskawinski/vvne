@@ -29,7 +29,7 @@ struct Game
 
   gltf::RenderableModel helmet;
   gltf::RenderableModel box;
-  gltf::RenderableModel robot;
+  gltf::RenderableModel animatedBox;
 
   float robot_position[3];
   int environment_hdr_map_idx; // radiance, quick and fast

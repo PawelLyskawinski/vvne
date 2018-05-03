@@ -459,14 +459,11 @@ int CubemapGenerator::generate()
       mat4x4_mul(mvp, projectionview, model);
 
       vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, operation.pipelines[i]);
-      vkCmdBindIndexBuffer(cmd, engine->gpu_static_geometry.buffer, game->box.indices_offset,
-                           game->box.indices_type);
-      vkCmdBindVertexBuffers(cmd, 0, 1, &engine->gpu_static_geometry.buffer, &game->box.vertices_offset);
       vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, operation.pipeline_layout, 0, 1,
                               &operation.descriptor_set, 0, nullptr);
 
       vkCmdPushConstants(cmd, operation.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
-      vkCmdDrawIndexed(cmd, game->box.indices_count, 1, 0, 0, 0);
+      game->box.renderRaw(*engine, cmd);
       if (5 != i)
         vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
     }
@@ -917,14 +914,11 @@ int IrradianceGenerator::generate()
       mat4x4_mul(mvp, projectionview, model);
 
       vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, operation.pipelines[i]);
-      vkCmdBindIndexBuffer(cmd, engine->gpu_static_geometry.buffer, game->box.indices_offset,
-                           game->box.indices_type);
-      vkCmdBindVertexBuffers(cmd, 0, 1, &engine->gpu_static_geometry.buffer, &game->box.vertices_offset);
       vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, operation.pipeline_layout, 0, 1,
                               &operation.descriptor_set, 0, nullptr);
-
       vkCmdPushConstants(cmd, operation.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
-      vkCmdDrawIndexed(cmd, game->box.indices_count, 1, 0, 0, 0);
+      game->box.renderRaw(*engine, cmd);
+
       if (5 != i)
         vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
     }
@@ -1395,17 +1389,12 @@ int PrefilteredCubemapGenerator::generate()
 
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                           operation.pipelines[CUBE_SIDES * mip_level + cube_side]);
-        vkCmdBindIndexBuffer(cmd, engine->gpu_static_geometry.buffer, game->box.indices_offset,
-                             game->box.indices_type);
-        vkCmdBindVertexBuffers(cmd, 0, 1, &engine->gpu_static_geometry.buffer, &game->box.vertices_offset);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, operation.pipeline_layout, 0, 1,
                                 &operation.descriptor_set, 0, nullptr);
-
         vkCmdPushConstants(cmd, operation.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
         vkCmdPushConstants(cmd, operation.pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(float),
                            &roughness);
-
-        vkCmdDrawIndexed(cmd, game->box.indices_count, 1, 0, 0, 0);
+        game->box.renderRaw(*engine, cmd);
 
         if (5 != cube_side)
           vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);

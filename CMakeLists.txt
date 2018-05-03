@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.9)
 project(vvne)
 
 set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -fno-exceptions -fno-rtti")# -Wall -Wextra -Werror")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fno-exceptions -fno-rtti")# -Wall -Wextra -Werror")
 
 if(WIN32)
 include_directories(
@@ -51,4 +51,10 @@ target_link_libraries(${PROJECT_NAME}
         ${CMAKE_CURRENT_LIST_DIR}/bin/libSDL2-2.0.so.0
         /usr/lib/x86_64-linux-gnu/libvulkan.so.1
         )
+endif()
+
+if(WIN32)
+else()
+add_executable(tests unit_tests/SeekerTests.cc)
+target_link_libraries(tests ${CMAKE_CURRENT_LIST_DIR}/bin/libSDL2-2.0.so.0)
 endif()

@@ -103,6 +103,7 @@ void Game::startup(Engine& engine)
   // Proof of concept GLB loader
   helmet.loadGLB(engine, "../assets/DamagedHelmet.glb");
   box.loadGLB(engine, "../assets/Box.glb");
+  animatedBox.loadGLB(engine, "../assets/BoxAnimated.glb");
 
 #if 0
   {
@@ -160,9 +161,9 @@ void Game::startup(Engine& engine)
 
   brdf_lookup_idx = generateBRDFlookup(&engine, 512);
 
-  // ----------------------------------------------------------------------------------------------
-  // Descriptor sets
-  // ----------------------------------------------------------------------------------------------
+// ----------------------------------------------------------------------------------------------
+// Descriptor sets
+// ----------------------------------------------------------------------------------------------
 
   {
     VkDescriptorSetAllocateInfo allocate{};
@@ -193,11 +194,18 @@ void Game::startup(Engine& engine)
       info.sampler     = engine.generic_handles.texture_sampler;
       info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     }
-    helmet_images[0].imageView = engine.images.image_views[helmet.albedo_texture_idx];
-    helmet_images[1].imageView = engine.images.image_views[helmet.metal_roughness_texture_idx];
-    helmet_images[2].imageView = engine.images.image_views[helmet.emissive_texture_idx];
-    helmet_images[3].imageView = engine.images.image_views[helmet.AO_texture_idx];
-    helmet_images[4].imageView = engine.images.image_views[helmet.normal_texture_idx];
+
+    // todo: refactor
+
+    {
+      const Material& material   = helmet.scene_graph.materials.data[0];
+      helmet_images[0].imageView = engine.images.image_views[material.albedo_texture_idx];
+      helmet_images[1].imageView = engine.images.image_views[material.metal_roughness_texture_idx];
+      helmet_images[2].imageView = engine.images.image_views[material.emissive_texture_idx];
+      helmet_images[3].imageView = engine.images.image_views[material.AO_texture_idx];
+      helmet_images[4].imageView = engine.images.image_views[material.normal_texture_idx];
+    }
+
     helmet_images[5].imageView = engine.images.image_views[irradiance_cubemap_idx];
     helmet_images[6].imageView = engine.images.image_views[prefiltered_cubemap_idx];
     helmet_images[7].imageView = engine.images.image_views[brdf_lookup_idx];
@@ -263,15 +271,15 @@ void Game::startup(Engine& engine)
 
     LightSource& green = light_sources[1];
     green.setPosition(1.0, 5.0, 23.0);
-    green.setColor(0.0, 2.0, 0.0);
+    green.setColor(2.0, 0.0, 0.0);
 
     LightSource& blue = light_sources[2];
     blue.setPosition(4.0, 3.0, 23.0);
-    blue.setColor(0.0, 0.0, 2.0);
+    blue.setColor(2.0, 0.0, 0.0);
 
     LightSource& white = light_sources[3];
     white.setPosition(1.0, 3.0, 23.0);
-    white.setColor(2.0, 2.0, 2.0);
+    white.setColor(2.0, 0.0, 0.0);
 
     light_sources_count = 4;
   }
@@ -393,7 +401,7 @@ void Game::update(Engine& engine, float current_time_sec)
       iter = false;
 
     if ((SDL_GetWindowFlags(window) & (SDL_WINDOW_MOUSE_FOCUS | SDL_WINDOW_MOUSE_CAPTURE)) != 0)
-      io.MousePos = ImVec2((float)mx, (float)my);
+      io.MousePos              = ImVec2((float)mx, (float)my);
     bool any_mouse_button_down = false;
     for (int n = 0; n < IM_ARRAYSIZE(io.MouseDown); n++)
       any_mouse_button_down |= io.MouseDown[n];
@@ -479,15 +487,6 @@ void Game::render(Engine& engine, float current_time_sec)
       vkBeginCommandBuffer(cmd, &begin);
     }
 
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      renderer.pipelines[Engine::SimpleRendering::Passes::Skybox]);
-    vkCmdBindIndexBuffer(cmd, engine.gpu_static_geometry.buffer, box.indices_offset,
-                         box.indices_type);
-    vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_static_geometry.buffer, &box.vertices_offset);
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Skybox], 0, 1, &skybox_dset, 0,
-                            nullptr);
-
     struct VertPush
     {
       mat4x4 projection;
@@ -507,10 +506,14 @@ void Game::render(Engine& engine, float current_time_sec)
     float far_clipping_plane  = 10.0f;
     mat4x4_perspective(vertpush.projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
 
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      renderer.pipelines[Engine::SimpleRendering::Passes::Skybox]);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Skybox], 0, 1, &skybox_dset, 0,
+                            nullptr);
     vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Skybox],
                        VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(VertPush), &vertpush);
-
-    vkCmdDrawIndexed(cmd, box.indices_count, 1, 0, 0, 0);
+    box.renderRaw(engine, cmd);
 
     vkEndCommandBuffer(cmd);
   }
@@ -536,19 +539,11 @@ void Game::render(Engine& engine, float current_time_sec)
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       renderer.pipelines[Engine::SimpleRendering::Passes::Scene3D]);
-    vkCmdBindIndexBuffer(cmd, engine.gpu_static_geometry.buffer, helmet.indices_offset,
-                         helmet.indices_type);
-    vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_static_geometry.buffer, &helmet.vertices_offset);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Scene3D], 0, 1, &helmet_dset, 0,
                             nullptr);
 
-    struct PushConst
-    {
-      mat4x4 projection;
-      mat4x4 view;
-      mat4x4 model{};
-    } push_const = {};
+    gltf::MVP push_const{};
 
     vec3 eye    = {6.0f, 6.7f, 30.0f};
     vec3 center = {-3.0f, 0.0f, -1.0f};
@@ -568,10 +563,7 @@ void Game::render(Engine& engine, float current_time_sec)
     mat4x4_rotate_Y(push_const.model, push_const.model, SDL_sinf(current_time_sec * 0.3f));
     mat4x4_rotate_X(push_const.model, push_const.model, to_rad(90.0));
     mat4x4_scale_aniso(push_const.model, push_const.model, 1.6f, 1.6f, 1.6f);
-
-    vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Scene3D],
-                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push_const), &push_const);
-    vkCmdDrawIndexed(cmd, helmet.indices_count, 1, 0, 0, 0);
+    helmet.render(engine, cmd, push_const);
 
     vkEndCommandBuffer(cmd);
   }
@@ -597,74 +589,81 @@ void Game::render(Engine& engine, float current_time_sec)
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       renderer.pipelines[Engine::SimpleRendering::Passes::ColoredGeometry]);
-    vkCmdBindIndexBuffer(cmd, engine.gpu_static_geometry.buffer, box.indices_offset,
-                         box.indices_type);
-    vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_static_geometry.buffer, &box.vertices_offset);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometry], 0, 1,
                             &helmet_dset, 0, nullptr);
-    mat4x4 view{};
-    vec3   eye    = {6.0f, 6.7f, 30.0f};
-    vec3   center = {-3.0f, 0.0f, -1.0f};
-    vec3   up     = {0.0f, 1.0f, 0.0f};
-    mat4x4_look_at(view, eye, center, up);
 
-    mat4x4 projection{};
-    float  extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
-    float  extent_height       = static_cast<float>(engine.generic_handles.extent2D.height);
-    float  aspect_ratio        = extent_width / extent_height;
-    float  fov                 = 100.0f;
-    float  near_clipping_plane = 0.001f;
-    float  far_clipping_plane  = 10000.0f;
-    mat4x4_perspective(projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
+    gltf::MVP push_const{};
+
+    vec3 eye    = {6.0f, 6.7f, 30.0f};
+    vec3 center = {-3.0f, 0.0f, -1.0f};
+    vec3 up     = {0.0f, 1.0f, 0.0f};
+    mat4x4_look_at(push_const.view, eye, center, up);
+
+    float extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
+    float extent_height       = static_cast<float>(engine.generic_handles.extent2D.height);
+    float aspect_ratio        = extent_width / extent_height;
+    float fov                 = 100.0f;
+    float near_clipping_plane = 0.001f;
+    float far_clipping_plane  = 10000.0f;
+    mat4x4_perspective(push_const.projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
 
     for (int i = 0; i < light_sources_count; ++i)
     {
-      mat4x4 model{};
-      mat4x4_identity(model);
-      mat4x4_translate(model, light_sources[i].position[0], light_sources[i].position[1], light_sources[i].position[2]);
-      mat4x4_scale_aniso(model, model, 0.1f, 0.1f, 0.1f);
+      quat orientation = {};
+      quat_identity(orientation);
 
-      mat4x4 projectionview{};
-      mat4x4_mul(projectionview, projection, view);
-
-      mat4x4 mvp = {};
-      mat4x4_mul(mvp, projectionview, model);
-
-      vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometry],
-                         VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
-      vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometry],
-                         VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(vec3), light_sources[i].color);
-      vkCmdDrawIndexed(cmd, box.indices_count, 1, 0, 0, 0);
-    }
-
-    // robot debug
 #if 0
-    {
-      mat4x4 model{};
-      mat4x4_identity(model);
-      mat4x4_translate(model, robot_position[0], robot_position[1], robot_position[2]);
-      mat4x4_rotate_Y(model, model, current_time_sec * 0.4f);
-      mat4x4_rotate_Z(model, model, current_time_sec * 0.8f);
-      mat4x4_scale_aniso(model, model, 0.3f, 0.53, 0.3f);
+      {
+        quat a    = {};
+        vec3 axis = {1.0, 0.0, 0.0};
+        quat_rotate(a, to_rad(60.0 * current_time_sec), axis);
 
-      mat4x4 projectionview{};
-      mat4x4_mul(projectionview, projection, view);
+        quat b     = {};
+        vec3 axis2 = {0.0, 1.0, 0.0};
+        quat_rotate(b, to_rad(280.0f * current_time_sec), axis2);
 
-      mat4x4 mvp = {};
-      mat4x4_mul(mvp, projectionview, model);
+        quat ab = {};
+        quat_mul(ab, b, a);
 
-      vkCmdBindIndexBuffer(cmd, engine.gpu_static_geometry.buffer, renderableRobot.indices_offset,
-                           renderableRobot.indices_type);
-      vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_static_geometry.buffer, &renderableRobot.vertices_offset);
-      vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometry],
-                         VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
-      vec3 color = {0.0, 1.0, 0.0};
-      vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometry],
-                         VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(vec3), color);
-      vkCmdDrawIndexed(cmd, renderableRobot.indices_count, 1, 0, 0, 0);
-    }
+        quat c     = {};
+        vec3 axis3 = {0.0, 0.0, 1.0};
+        quat_rotate(c, to_rad(100.0f * current_time_sec), axis3);
+        quat_mul(orientation, c, ab);
+      }
 #endif
+
+      vec3 scale = {0.05f, 0.05f, 0.05f};
+      box.renderColored(engine, cmd, push_const.projection, push_const.view, light_sources[i].position, orientation,
+                        scale, light_sources[i].color);
+    }
+
+    {
+      quat orientation = {};
+      quat_identity(orientation);
+
+      {
+        quat a    = {};
+        vec3 axis = {1.0, 0.0, 0.0};
+        quat_rotate(a, to_rad(20.0 * current_time_sec), axis);
+
+        quat b     = {};
+        vec3 axis2 = {0.0, 1.0, 0.0};
+        quat_rotate(b, to_rad(100.0f * current_time_sec), axis2);
+
+        quat ab = {};
+        quat_mul(ab, b, a);
+
+        quat c     = {};
+        vec3 axis3 = {0.0, 0.0, 1.0};
+        quat_rotate(c, to_rad(30.0f * current_time_sec), axis3);
+        quat_mul(orientation, c, ab);
+      }
+
+      vec3 scale = {0.5f, 0.5f, 0.5f};
+      vec3 color = {0.0, 1.0, 0.0};
+      animatedBox.renderColored(engine, cmd, push_const.projection, push_const.view, robot_position, orientation, scale, color);
+    }
 
     vkEndCommandBuffer(cmd);
   }
