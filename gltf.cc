@@ -720,7 +720,7 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
 
       for (int i = 0; i < 4; ++i)
       {
-        current_transform.position[i] = result[i];
+        current_transform.orientation[i] = result[i];
       }
     }
   }

@@ -613,7 +613,6 @@ void Game::render(Engine& engine, float current_time_sec)
       quat orientation = {};
       quat_identity(orientation);
 
-#if 0
       {
         quat a    = {};
         vec3 axis = {1.0, 0.0, 0.0};
@@ -631,7 +630,6 @@ void Game::render(Engine& engine, float current_time_sec)
         quat_rotate(c, to_rad(100.0f * current_time_sec), axis3);
         quat_mul(orientation, c, ab);
       }
-#endif
 
       vec3 scale = {0.05f, 0.05f, 0.05f};
       box.renderColored(engine, cmd, push_const.projection, push_const.view, light_sources[i].position, orientation,
@@ -645,22 +643,24 @@ void Game::render(Engine& engine, float current_time_sec)
       {
         quat a    = {};
         vec3 axis = {1.0, 0.0, 0.0};
-        quat_rotate(a, to_rad(20.0 * current_time_sec), axis);
+        quat_rotate(a, to_rad(10.0f * current_time_sec), axis);
 
         quat b     = {};
         vec3 axis2 = {0.0, 1.0, 0.0};
-        quat_rotate(b, to_rad(100.0f * current_time_sec), axis2);
+        quat_rotate(b, to_rad(10.0f * current_time_sec), axis2);
 
         quat ab = {};
         quat_mul(ab, b, a);
 
         quat c     = {};
         vec3 axis3 = {0.0, 0.0, 1.0};
-        quat_rotate(c, to_rad(30.0f * current_time_sec), axis3);
+        quat_rotate(c, to_rad(10.0f * current_time_sec), axis3);
         quat_mul(orientation, c, ab);
       }
 
-      vec3 scale = {0.5f, 0.5f, 0.5f};
+      float coefficient           = (SDL_sinf(current_time_sec) + 1.0f) / 2.0f;
+      float constant_scale_factor = 0.5f * coefficient;
+      vec3 scale = {0.5f + constant_scale_factor, 0.5f + constant_scale_factor, 0.5f + constant_scale_factor};
       vec3 color = {0.0, 1.0, 0.0};
       animatedBox.renderColored(engine, cmd, push_const.projection, push_const.view, robot_position, orientation, scale, color);
     }
