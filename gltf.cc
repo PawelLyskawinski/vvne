@@ -284,6 +284,12 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
   scene_graph.scenes.count = document.node("scenes").elements_count();
   scene_graph.scenes.data  = engine.double_ended_stack.allocate_front<Scene>(scene_graph.scenes.count);
 
+  if (document.has("animations"))
+  {
+    scene_graph.animations.count = document.node("animations").elements_count();
+    scene_graph.animations.data  = engine.double_ended_stack.allocate_front<Animation>(scene_graph.animations.count);
+  }
+
   // ---------------------------------------------------------------------------
   // MATERIALS
   // ---------------------------------------------------------------------------
@@ -365,7 +371,8 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
     const int required_vertex_space = position_count * sizeof(Vertex);
     const int total_upload_buffer_size = required_index_space + required_vertex_space;
     uint8_t*  upload_buffer            = engine.double_ended_stack.allocate_back<uint8_t>(total_upload_buffer_size);
-    const int index_buffer_glb_offset  = buffer_views.idx(index_buffer_view).integer("byteOffset") + index_accessor.integer("byteOffset");
+    const int index_buffer_glb_offset =
+        buffer_views.idx(index_buffer_view).integer("byteOffset") + index_accessor.integer("byteOffset");
 
     SDL_memset(upload_buffer, 0, static_cast<size_t>(total_upload_buffer_size));
 
@@ -375,7 +382,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
       const uint8_t* src = &binary_data[index_buffer_glb_offset];
 
       for (int i = 0; i < mesh.indices_count; ++i)
-        dst[i]   = src[i];
+        dst[i] = src[i];
     }
     else if (IndexType::UINT16 == index_type)
     {
@@ -383,7 +390,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
       const uint16_t* src = reinterpret_cast<const uint16_t*>(&binary_data[index_buffer_glb_offset]);
 
       for (int i = 0; i < mesh.indices_count; ++i)
-        dst[i]   = src[i];
+        dst[i] = src[i];
     }
     else
     {
@@ -407,7 +414,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
         const float* src     = reinterpret_cast<const float*>(&binary_data[start_offset + (stride * i)]);
 
         for (int j = 0; j < 3; ++j)
-          dst[j]   = src[j];
+          dst[j] = src[j];
       }
     }
 
@@ -429,7 +436,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
         const float* src     = reinterpret_cast<const float*>(&binary_data[start_offset + (stride * i)]);
 
         for (int j = 0; j < 3; ++j)
-          dst[j]   = src[j];
+          dst[j] = src[j];
       }
     }
 
@@ -452,7 +459,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
         const float* src     = reinterpret_cast<const float*>(&binary_data[start_offset + (stride * i)]);
 
         for (int j = 0; j < 2; ++j)
-          dst[j]   = src[j];
+          dst[j] = src[j];
       }
     }
 
@@ -573,8 +580,8 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
     }
     else
     {
-        node.children.count = 0;
-        node.children.data = nullptr;
+      node.children.count = 0;
+      node.children.data  = nullptr;
     }
 
     if (node_json.has("rotation"))
@@ -613,6 +620,140 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // ANIMATIONS
+  // ---------------------------------------------------------------------------
+  SDL_Log("%s : %d animation(s)", path, scene_graph.animations.count);
+
+  Seeker animations_json = document.node("animations");
+  for (int animation_idx = 0; animation_idx < scene_graph.animations.count; ++animation_idx)
+  {
+    Seeker animation_json = animations_json.idx(animation_idx);
+    Seeker channels_json  = animation_json.node("channels");
+    Seeker samplers_json  = animation_json.node("samplers");
+
+    int channels_count = channels_json.elements_count();
+    int samplers_count = samplers_json.elements_count();
+
+    Animation& current_animation = scene_graph.animations.data[animation_idx];
+
+    current_animation.channels.count = channels_count;
+    current_animation.channels.data  = engine.double_ended_stack.allocate_front<AnimationChannel>(channels_count);
+
+    current_animation.samplers.count = samplers_count;
+    current_animation.samplers.data  = engine.double_ended_stack.allocate_front<AnimationSampler>(samplers_count);
+
+    for (int channel_idx = 0; channel_idx < channels_count; ++channel_idx)
+    {
+      Seeker            channel_json    = channels_json.idx(channel_idx);
+      Seeker            target_json     = channel_json.node("target");
+      AnimationChannel& current_channel = current_animation.channels.data[channel_idx];
+
+      current_channel.sampler_idx     = channel_json.integer("sampler");
+      current_channel.target_node_idx = target_json.integer("node");
+
+      Seeker      path_json  = target_json.node("path");
+      const char* path_value = &path_json.data[8];
+
+      current_channel.target_path = (0 == SDL_memcmp(path_value, "rotation", 8)) ? AnimationChannel::Path::Rotation
+                                                                                 : AnimationChannel::Path::Translation;
+    }
+
+    for (int sampler_idx = 0; sampler_idx < samplers_count; ++sampler_idx)
+    {
+      Seeker            sampler_json    = samplers_json.idx(sampler_idx);
+      AnimationSampler& current_sampler = current_animation.samplers.data[sampler_idx];
+
+      int input  = sampler_json.integer("input");
+      int output = sampler_json.integer("output");
+
+      Seeker input_accessor  = accessors.idx(input);
+      Seeker output_accessor = accessors.idx(output);
+
+      int input_elements  = input_accessor.integer("count");
+      int output_elements = output_accessor.integer("count");
+
+      SDL_assert(input_elements == output_elements);
+
+      current_sampler.keyframes_count = input_elements;
+
+      Seeker input_buffer_view  = buffer_views.idx(input_accessor.integer("bufferView"));
+      Seeker output_buffer_view = buffer_views.idx(output_accessor.integer("bufferView"));
+
+      enum class Type : unsigned
+      {
+        Scalar = 1,
+        Vec3   = 3,
+        Vec4   = 4
+      };
+
+      Type        output_type         = Type::Scalar;
+      Seeker      output_type_json    = output_accessor.node("type");
+      const char* output_type_str_ptr = &output_type_json.data[8];
+
+      if (0 == SDL_memcmp(output_type_str_ptr, "VEC3", 4))
+      {
+        output_type = Type::Vec3;
+      }
+      else if (0 == SDL_memcmp(output_type_str_ptr, "VEC4", 4))
+      {
+        output_type = Type::Vec4;
+      }
+      else if (0 == SDL_memcmp(output_type_str_ptr, "SCALAR", 6))
+      {
+        output_type = Type::Scalar;
+      }
+      else
+      {
+        SDL_assert(false);
+      }
+
+      current_sampler.times = engine.double_ended_stack.allocate_front<float>(input_elements);
+      current_sampler.values =
+          engine.double_ended_stack.allocate_front<float>(static_cast<unsigned>(output_type) * input_elements);
+
+      {
+        const int input_view_glb_offset     = input_buffer_view.integer("byteOffset");
+        const int input_accessor_glb_offset = input_accessor.integer("byteOffset");
+        const int input_start_offset        = input_view_glb_offset + input_accessor_glb_offset;
+
+        int input_stride = input_buffer_view.integer("stride");
+        input_stride     = input_stride ? input_stride : sizeof(float);
+
+        for (int i = 0; i < input_elements; ++i)
+        {
+          float*       dst = &current_sampler.times[i];
+          const float* src = reinterpret_cast<const float*>(&binary_data[input_start_offset + (input_stride * i)]);
+
+          *dst = *src;
+        }
+      }
+
+      current_sampler.time_frame[0] = current_sampler.times[0];
+      current_sampler.time_frame[1] = current_sampler.times[current_sampler.keyframes_count - 1];
+
+      {
+        const int output_view_glb_offset     = output_buffer_view.integer("byteOffset");
+        const int output_accessor_glb_offset = output_accessor.integer("byteOffset");
+        const int output_start_offset        = output_view_glb_offset + output_accessor_glb_offset;
+
+        int output_stride = output_buffer_view.integer("stride");
+        output_stride     = output_stride ? output_stride : static_cast<unsigned>(output_type) * sizeof(float);
+
+        for (int i = 0; i < output_elements; ++i)
+        {
+          float*       dst = &current_sampler.values[static_cast<unsigned>(output_type) * i];
+          const float* src = reinterpret_cast<const float*>(&binary_data[output_start_offset + (output_stride * i)]);
+
+          for (int j = 0; j < static_cast<unsigned>(output_type); ++j)
+          {
+            dst[j] = src[j];
+          }
+        }
+      }
+    }
+  }
+
   stack.reset_back();
 
   uint64_t duration_ticks = SDL_GetPerformanceCounter() - start;
@@ -644,8 +785,8 @@ void RenderableModel::render(Engine& engine, VkCommandBuffer cmd, MVP& mvp) cons
 }
 
 void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 projection, mat4x4 view,
-                                    vec4 global_position, quat global_orientation, vec3 model_scale, vec3 color) const
-    noexcept
+                                    vec4 global_position, quat global_orientation, vec3 model_scale,
+                                    vec3 color) noexcept
 {
   // Compute hierarchy
   uint8_t node_parent_hierarchy[32] = {};
@@ -670,9 +811,9 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
     quat orientation;
   } node_transforms[32] = {};
 
-  for(NodeTransforms& transform : node_transforms)
+  for (NodeTransforms& transform : node_transforms)
   {
-      quat_identity(transform.orientation);
+    quat_identity(transform.orientation);
   }
 
   // initialize scene nodes to start with global transforms
@@ -692,6 +833,22 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
     }
   }
 
+  auto quat_mul_inplace = [](quat a, quat b) {
+    quat c = {};
+    quat_mul(c, a, b);
+    for (int i = 0; i < 4; ++i)
+    {
+      a[i] = c[i];
+    }
+  };
+
+  auto quat_copy = [](quat into, quat from) {
+    for (int i = 0; i < 4; ++i)
+    {
+      into[i] = from[i];
+    }
+  };
+
   // propagate transformations downstream
   for (uint8_t node_idx = 0; node_idx < scene_graph.nodes.count; ++node_idx)
   {
@@ -701,9 +858,10 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
     NodeTransforms& current_transform = node_transforms[node_idx];
     NodeTransforms& parent_transform  = node_transforms[parent_idx];
 
-    for (int i = 0; i < 4; ++i)
     {
-      current_transform.orientation[i] = parent_transform.orientation[i];
+      quat tmp;
+      quat_mul(tmp, parent_transform.orientation, current_transform.orientation);
+      quat_copy(current_transform.orientation, tmp);
     }
 
     for (int i = 0; i < 4; ++i)
@@ -711,17 +869,20 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
       current_transform.position[i] = parent_transform.position[i];
     }
 
-    // @todo: I can probably get rid of this if the rotation quaternion inside of node is zeroed
-    // (and I bet it is already. Requires tinkering anyway.
     if (current.has(Node::RotationBit))
     {
-      quat result = {};
-      quat_mul(result, current_transform.orientation, current.rotation);
+      // quat_mul_inplace(current_transform.orientation, current.rotation);
+    }
 
-      for (int i = 0; i < 4; ++i)
+    if (animation_enabled)
+    {
       {
-        current_transform.orientation[i] = result[i];
+        quat tmp;
+        quat_mul(tmp, animation_rotations[node_idx], current_transform.orientation);
+        quat_copy(current_transform.orientation, tmp);
       }
+
+      vec4_add(current_transform.position, current_transform.position, animation_translations[node_idx]);
     }
   }
 

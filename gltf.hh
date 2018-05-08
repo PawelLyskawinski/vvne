@@ -1,10 +1,11 @@
 #pragma once
 
 #include "engine.hh"
+#include "linmath.h"
 #include <SDL2/SDL_stdinc.h>
 #include <vulkan/vulkan.h>
-#include "linmath.h"
 
+// todo: work on better interface
 template <typename T> struct ArrayView
 {
   T*  data;
@@ -62,12 +63,41 @@ struct Scene
   ArrayView<int> nodes;
 };
 
+struct AnimationChannel
+{
+  enum class Path
+  {
+    Rotation,
+    Translation
+  };
+
+  int  sampler_idx;
+  int  target_node_idx;
+  Path target_path;
+};
+
+struct AnimationSampler
+{
+  // todo: very naive (but fastest to implement) approach. This should be in form of buffer, buffer views and accessors
+  float  time_frame[2];
+  int    keyframes_count;
+  float* times;
+  float* values;
+};
+
+struct Animation
+{
+  ArrayView<AnimationChannel> channels;
+  ArrayView<AnimationSampler> samplers;
+};
+
 struct SceneGraph
 {
-  ArrayView<Material> materials;
-  ArrayView<Mesh>     meshes;
-  ArrayView<Node>     nodes;
-  ArrayView<Scene>    scenes;
+  ArrayView<Material>  materials;
+  ArrayView<Mesh>      meshes;
+  ArrayView<Node>      nodes;
+  ArrayView<Scene>     scenes;
+  ArrayView<Animation> animations;
 };
 
 namespace gltf {
@@ -83,10 +113,15 @@ struct RenderableModel
 {
   SceneGraph scene_graph;
 
+  bool  animation_enabled;
+  float animation_start_time;
+  vec4  animation_translations[32];
+  quat  animation_rotations[32];
+
   void loadGLB(Engine& engine, const char* path) noexcept;
   void render(Engine& engine, VkCommandBuffer cmd, MVP& mvp) const noexcept;
-
-  void renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 projection, mat4x4 view, vec4 global_position, quat global_orientation, vec3 model_scale, vec3 color) const noexcept;
+  void renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 projection, mat4x4 view, vec4 global_position,
+                     quat global_orientation, vec3 model_scale, vec3 color) noexcept;
   void renderRaw(Engine& engine, VkCommandBuffer cmd) const noexcept;
 };
 

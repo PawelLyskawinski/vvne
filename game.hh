@@ -32,7 +32,7 @@ struct Game
   gltf::RenderableModel animatedBox;
 
   float robot_position[3];
-  int environment_hdr_map_idx; // radiance, quick and fast
+
   // int environment_equirectangular_texture_idx; // highly detailed, takes ~100MB on gpu ram
   int environment_cubemap_idx;
   int irradiance_cubemap_idx;

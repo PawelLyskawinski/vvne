@@ -105,25 +105,6 @@ void Game::startup(Engine& engine)
   box.loadGLB(engine, "../assets/Box.glb");
   animatedBox.loadGLB(engine, "../assets/BoxAnimated.glb");
 
-#if 0
-  {
-    const int memorySize = 1024; // adjusted manually
-    robot_wip.memory           = engine.double_ended_stack.allocate_back<uint8_t>(memorySize);
-    SDL_memset(robot_wip.memory, 0, memorySize);
-
-    robot_wip.loadASCII(engine.double_ended_stack, "../assets/robot_wip.gltf");
-    SDL_Log("robot used %d / %d bytes", robot_wip.usedMemory, memorySize);
-    //robot_wip.debugDump();
-    renderableRobot.construct(engine, robot_wip);
-    engine.double_ended_stack.reset_back();
-  }
-#endif
-
-  // stbi_hdr_to_ldr_gamma(2.2f);
-  // stbi_ldr_to_hdr_gamma(0.2f);
-
-  environment_hdr_map_idx = engine.load_texture_hdr("../assets/old_industrial_hall.hdr");
-  // environment_equirectangular_texture_idx = engine.load_texture("../assets/old_industrial_hall.jpg");
   lights_ubo_offset = engine.ubo_host_visible.allocate(sizeof(light_sources));
 
   {
@@ -161,9 +142,9 @@ void Game::startup(Engine& engine)
 
   brdf_lookup_idx = generateBRDFlookup(&engine, 512);
 
-// ----------------------------------------------------------------------------------------------
-// Descriptor sets
-// ----------------------------------------------------------------------------------------------
+  // ----------------------------------------------------------------------------------------------
+  // Descriptor sets
+  // ----------------------------------------------------------------------------------------------
 
   {
     VkDescriptorSetAllocateInfo allocate{};
@@ -261,7 +242,7 @@ void Game::startup(Engine& engine)
   helmet_translation[2] = 21.0f;
 
   robot_position[0] = 5.0f;
-  robot_position[1] = 5.0f;
+  robot_position[1] = 1.5f;
   robot_position[2] = 19.0f;
 
   {
@@ -401,7 +382,7 @@ void Game::update(Engine& engine, float current_time_sec)
       iter = false;
 
     if ((SDL_GetWindowFlags(window) & (SDL_WINDOW_MOUSE_FOCUS | SDL_WINDOW_MOUSE_CAPTURE)) != 0)
-      io.MousePos              = ImVec2((float)mx, (float)my);
+      io.MousePos = ImVec2((float)mx, (float)my);
     bool any_mouse_button_down = false;
     for (int n = 0; n < IM_ARRAYSIZE(io.MouseDown); n++)
       any_mouse_button_down |= io.MouseDown[n];
@@ -432,6 +413,28 @@ void Game::update(Engine& engine, float current_time_sec)
                        ImVec2(300, 20));
   ImGui::InputFloat3("robot position", robot_position);
 
+  ImGui::Text("animation: %s, %.2f", animatedBox.animation_enabled ? "ongoing" : "stopped",
+              animatedBox.animation_enabled ? current_time_sec - animatedBox.animation_start_time : 0.0f);
+
+  if (ImGui::Button("restart animation"))
+  {
+    animatedBox.animation_enabled    = true;
+    animatedBox.animation_start_time = current_time_sec;
+
+    for (quat& rotation : animatedBox.animation_rotations)
+    {
+      quat_identity(rotation);
+    }
+
+    for (vec4& translation : animatedBox.animation_translations)
+    {
+      for (int i = 0; i < 4; ++i)
+      {
+        translation[i] = 0.0f;
+      }
+    }
+  }
+
   float avg_time = 0.0f;
   for (float time : update_times)
     avg_time += time;
@@ -444,6 +447,124 @@ void Game::update(Engine& engine, float current_time_sec)
   avg_time /= SDL_arraysize(render_times);
 
   ImGui::Text("Average render time: %f", avg_time);
+
+  // simple animation for testing purposes
+  if (animatedBox.animation_enabled)
+  {
+    bool  any_sampler_ongoing = false;
+    float animation_time      = current_time_sec - animatedBox.animation_start_time;
+
+    for (int anim_channel_idx = 0; anim_channel_idx < animatedBox.scene_graph.animations.data[0].channels.count;
+         ++anim_channel_idx)
+    {
+      const AnimationChannel& channel = animatedBox.scene_graph.animations.data[0].channels.data[anim_channel_idx];
+      const AnimationSampler& sampler = animatedBox.scene_graph.animations.data[0].samplers.data[channel.sampler_idx];
+
+      if (sampler.time_frame[1] > animation_time)
+      {
+        any_sampler_ongoing = true;
+
+        if (sampler.time_frame[0] < animation_time)
+        {
+          auto find_first_higher = [](float* times, float current) -> int {
+            int iter = 0;
+            while (current > times[iter])
+              iter += 1;
+            return iter;
+          };
+
+          int   keyframe_upper         = find_first_higher(sampler.times, animation_time);
+          int   keyframe_lower         = keyframe_upper - 1;
+          float time_between_keyframes = sampler.times[keyframe_upper] - sampler.times[keyframe_lower];
+          float keyframe_uniform_time  = (animation_time - sampler.times[keyframe_lower]) / time_between_keyframes;
+
+          auto lerp = [](float* a, float* b, float* c, int len, float time) {
+            for (int i = 0; i < len; ++i)
+            {
+              float difference = b[i] - a[i];
+              float progressed = difference * time;
+              c[i]             = a[i] + progressed;
+            }
+          };
+
+          auto slerp = [](quat a, quat b, quat c, float time) {
+
+            auto normalize = [](quat q) -> float {
+              float x = q[0] * q[0];
+              float y = q[1] * q[1];
+              float z = q[2] * q[2];
+              float w = q[3] * q[3];
+
+              float norm = SDL_sqrtf(x + y + z + w);
+              q[0] /= norm;
+              q[1] /= norm;
+              q[2] /= norm;
+            };
+
+            auto clamp = [](float val, float min, float max) -> float {
+              return (val < min) ? min : (val > max) ? max : val;
+            };
+
+            auto quat_copy = [](quat into, quat from) {
+              for (int i = 0; i < 4; ++i)
+                into[i] = from[i];
+            };
+
+            float       dotproduct = quat_inner_product(a, b);
+            const float limit      = 0.9995f;
+
+            if (dotproduct > limit)
+            {
+              quat_mul(c, b, a);
+              normalize(c);
+            }
+            else
+            {
+              dotproduct   = clamp(dotproduct, -1.0f, 1.0f);
+              float theta0 = static_cast<float>(SDL_acos(dotproduct));
+              float theta  = theta0 * time;
+
+              quat tmp = {};
+              quat_copy(tmp, a);
+              quat_scale(tmp, tmp, dotproduct);
+
+              quat v2 = {};
+              quat_mul(v2, b, tmp);
+              normalize(v2);
+
+              quat a_scaled = {};
+              quat_scale(a_scaled, a, SDL_cosf(theta));
+
+              quat v2_scaled = {};
+              quat_scale(v2_scaled, v2, SDL_sinf(theta));
+
+              quat_add(c, a_scaled, v2_scaled);
+            }
+          };
+
+          if (AnimationChannel::Path::Rotation == channel.target_path)
+          {
+            float* a = &sampler.values[4 * keyframe_lower];
+            float* b = &sampler.values[4 * keyframe_upper];
+            float* c = animatedBox.animation_rotations[channel.target_node_idx];
+            slerp(a, b, c, keyframe_uniform_time);
+          }
+          else if (AnimationChannel::Path::Translation == channel.target_path)
+          {
+            float* a = &sampler.values[3 * keyframe_lower];
+            float* b = &sampler.values[3 * keyframe_upper];
+            float* c = animatedBox.animation_translations[channel.target_node_idx];
+            lerp(a, b, c, 3, keyframe_uniform_time);
+          }
+        }
+      }
+    }
+
+    if (not any_sampler_ongoing)
+    {
+      animatedBox.animation_enabled = false;
+    }
+  }
 
   uint64_t end_function_ticks = SDL_GetPerformanceCounter();
   uint64_t ticks_elapsed      = end_function_ticks - start_function_ticks;
@@ -640,29 +761,13 @@ void Game::render(Engine& engine, float current_time_sec)
       quat orientation = {};
       quat_identity(orientation);
 
-      {
-        quat a    = {};
-        vec3 axis = {1.0, 0.0, 0.0};
-        quat_rotate(a, to_rad(10.0f * current_time_sec), axis);
-
-        quat b     = {};
-        vec3 axis2 = {0.0, 1.0, 0.0};
-        quat_rotate(b, to_rad(10.0f * current_time_sec), axis2);
-
-        quat ab = {};
-        quat_mul(ab, b, a);
-
-        quat c     = {};
-        vec3 axis3 = {0.0, 0.0, 1.0};
-        quat_rotate(c, to_rad(10.0f * current_time_sec), axis3);
-        quat_mul(orientation, c, ab);
-      }
-
+      // todo: global transform "orientation" does not work well with animations. Object transformation needs review
       float coefficient           = (SDL_sinf(current_time_sec) + 1.0f) / 2.0f;
       float constant_scale_factor = 0.5f * coefficient;
-      vec3 scale = {0.5f + constant_scale_factor, 0.5f + constant_scale_factor, 0.5f + constant_scale_factor};
-      vec3 color = {0.0, 1.0, 0.0};
-      animatedBox.renderColored(engine, cmd, push_const.projection, push_const.view, robot_position, orientation, scale, color);
+      vec3  scale = {0.5f + constant_scale_factor, 0.5f + constant_scale_factor, 0.5f + constant_scale_factor};
+      vec3  color = {0.0, 1.0, 0.0};
+      animatedBox.renderColored(engine, cmd, push_const.projection, push_const.view, robot_position, orientation, scale,
+                                color);
     }
 
     vkEndCommandBuffer(cmd);

@@ -5,9 +5,9 @@ There are a lot of publicly available engines / demos on github which use vulkan
 - very fast compile times (no stl, no rtti, no exceptions, minimal use of templates, compression oriented programming)
 - learning experiance!
 ### feature wishlist
-- gltf2.0 animations
+- gltf2.0 animations (full skeletal with morph targets)
 ### already implemented
-- gltf2.0 binary model import (without animations)
+- gltf2.0 binary model import, node animations
 - integrated imgui
 - support for both windows and linux
 - custom vulkan memory allocators

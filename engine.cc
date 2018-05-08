@@ -13,8 +13,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
-#include <stb_image.h>
 #include <SDL2/SDL_timer.h>
+#include <stb_image.h>
 
 #pragma GCC diagnostic pop
 
@@ -646,6 +646,7 @@ void Engine::print_memory_statistics()
   float dv_percent    = 100.0f * ((float)gpu_static_geometry.used_memory / (float)GpuStaticGeometry::MAX_MEMORY_SIZE);
   float hv_percent    = 100.0f * ((float)gpu_host_visible.used_memory / (float)GpuHostVisible::MAX_MEMORY_SIZE);
   float ubo_percent   = 100.0f * ((float)ubo_host_visible.used_memory / (float)UboHostVisible::MAX_MEMORY_SIZE);
+  float stack_percent = 100.0f * ((float)double_ended_stack.front / (float)DoubleEndedStack::MAX_MEMORY_SIZE);
 
   SDL_Log("### Memory statistics ###");
   SDL_Log("Image memory:                    %.2f proc. out of %u MB", image_percent, Images::MAX_MEMORY_SIZE_MB);
@@ -653,6 +654,8 @@ void Engine::print_memory_statistics()
           GpuStaticGeometry::MAX_MEMORY_SIZE_MB);
   SDL_Log("host-visible memory:             %.2f proc. out of %u MB", hv_percent, GpuHostVisible::MAX_MEMORY_SIZE_MB);
   SDL_Log("universal buffer objects memory: %.2f proc. out of %u MB", ubo_percent, UboHostVisible::MAX_MEMORY_SIZE_MB);
+  SDL_Log("double ended stack memory:       %.2f proc. out of %u MB", stack_percent,
+          DoubleEndedStack::MAX_MEMORY_SIZE_MB);
 }
 
 void Engine::teardown()
@@ -715,17 +718,6 @@ void Engine::teardown()
   fcn(ctx.instance, ctx.debug_callback, nullptr);
   vkDestroyInstance(ctx.instance, nullptr);
 }
-
-namespace {
-
-bool doesStringEndWith(const char* source, const char* ending)
-{
-  size_t source_length = SDL_strlen(source);
-  size_t ending_length = SDL_strlen(ending);
-  return 0 == SDL_strcmp(&source[source_length - ending_length], ending);
-}
-
-} // namespace
 
 int Engine::load_texture(const char* filepath)
 {

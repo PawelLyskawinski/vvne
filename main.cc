@@ -21,6 +21,7 @@ int main(int argc, char* argv[])
 
   engine.startup();
   game.startup(engine);
+  engine.print_memory_statistics();
 
   uint64_t performance_frequency = SDL_GetPerformanceFrequency();
   uint64_t start_of_game_ticks   = SDL_GetPerformanceCounter();
