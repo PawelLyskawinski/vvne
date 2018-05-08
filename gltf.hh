@@ -5,11 +5,30 @@
 #include <SDL2/SDL_stdinc.h>
 #include <vulkan/vulkan.h>
 
-// todo: work on better interface
 template <typename T> struct ArrayView
 {
   T*  data;
   int count;
+
+  T& operator[](int idx)
+  {
+    return data[idx];
+  }
+
+  const T& operator[](int idx) const
+  {
+    return data[idx];
+  }
+
+  T* begin()
+  {
+    return data;
+  }
+
+  T* end()
+  {
+    return &data[count];
+  }
 };
 
 struct Material
@@ -107,6 +126,7 @@ struct MVP
   float projection[4][4];
   float view[4][4];
   float model[4][4];
+  float camera_position[3];
 };
 
 struct RenderableModel

@@ -1,5 +1,6 @@
 #include "gltf.hh"
 #include "stb_image.h"
+#include "utility.hh"
 #include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_log.h>
 #include <SDL2/SDL_timer.h>
@@ -296,8 +297,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
 
   if (document.has("images"))
   {
-    Seeker images       = document.node("images");
-    int    images_count = document.node("images").elements_count();
+    Seeker images = document.node("images");
 
     for (int material_idx = 0; material_idx < scene_graph.materials.count; ++material_idx)
     {
@@ -788,66 +788,38 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
                                     vec4 global_position, quat global_orientation, vec3 model_scale,
                                     vec3 color) noexcept
 {
-  // Compute hierarchy
-  uint8_t node_parent_hierarchy[32] = {};
-
-  // pointing at self as a parent means that the node has no parent (or the scene is it's parent)
-  for (uint8_t i = 0; i < SDL_arraysize(node_parent_hierarchy); ++i)
-  {
-    node_parent_hierarchy[i] = i;
-  }
+  uint8_t node_parent_hierarchy[32];
+  utility::generate_incremental(node_parent_hierarchy, uint8_t(0), SDL_arraysize(node_parent_hierarchy));
 
   for (uint8_t node_idx = 0; node_idx < scene_graph.nodes.count; ++node_idx)
   {
-    for (int child_idx = 0; child_idx < scene_graph.nodes.data[node_idx].children.count; ++child_idx)
+    const ArrayView<int>& children = scene_graph.nodes[node_idx].children;
+    for (uint8_t child_idx = 0; child_idx < children.count; ++child_idx)
     {
-      node_parent_hierarchy[scene_graph.nodes.data[node_idx].children.data[child_idx]] = node_idx;
+      node_parent_hierarchy[children[child_idx]] = node_idx;
     }
   }
 
   struct NodeTransforms
   {
-    vec4 position;
-    quat orientation;
-  } node_transforms[32] = {};
+    vec3 positions[32];
+    quat orientations[32];
+  };
 
-  for (NodeTransforms& transform : node_transforms)
+  NodeTransforms node_transforms = {};
+
+  for (quat& orientation : node_transforms.orientations)
   {
-    quat_identity(transform.orientation);
+    orientation[3] = 1.f;
   }
 
   // initialize scene nodes to start with global transforms
-  ArrayView<int>& scene_root_node_indices = scene_graph.scenes.data[0].nodes;
-  for (int sceen_node_idx = 0; sceen_node_idx < scene_root_node_indices.count; ++sceen_node_idx)
+  ArrayView<int>& scene_root_node_indices = scene_graph.scenes[0].nodes;
+  for (int node_idx : scene_root_node_indices)
   {
-    int node_idx = scene_root_node_indices.data[sceen_node_idx];
-
-    for (int i = 0; i < 4; ++i)
-    {
-      node_transforms[node_idx].orientation[i] = global_orientation[i];
-    }
-
-    for (int i = 0; i < 4; ++i)
-    {
-      node_transforms[node_idx].position[i] = global_position[i];
-    }
+    utility::copy<float, 4>(node_transforms.orientations[node_idx], global_orientation);
+    utility::copy<float, 3>(node_transforms.positions[node_idx], global_position);
   }
-
-  auto quat_mul_inplace = [](quat a, quat b) {
-    quat c = {};
-    quat_mul(c, a, b);
-    for (int i = 0; i < 4; ++i)
-    {
-      a[i] = c[i];
-    }
-  };
-
-  auto quat_copy = [](quat into, quat from) {
-    for (int i = 0; i < 4; ++i)
-    {
-      into[i] = from[i];
-    }
-  };
 
   // propagate transformations downstream
   for (uint8_t node_idx = 0; node_idx < scene_graph.nodes.count; ++node_idx)
@@ -855,34 +827,32 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
     Node&   current    = scene_graph.nodes.data[node_idx];
     uint8_t parent_idx = node_parent_hierarchy[node_idx];
 
-    NodeTransforms& current_transform = node_transforms[node_idx];
-    NodeTransforms& parent_transform  = node_transforms[parent_idx];
+    float* current_orientation = node_transforms.orientations[node_idx];
+    float* current_position    = node_transforms.positions[node_idx];
+    float* parent_orientation  = node_transforms.orientations[parent_idx];
+    float* parent_position     = node_transforms.positions[parent_idx];
 
     {
-      quat tmp;
-      quat_mul(tmp, parent_transform.orientation, current_transform.orientation);
-      quat_copy(current_transform.orientation, tmp);
+      quat tmp = {};
+      quat_mul(tmp, parent_orientation, current_orientation);
+      utility::copy<float, 4>(current_orientation, tmp);
     }
 
-    for (int i = 0; i < 4; ++i)
-    {
-      current_transform.position[i] = parent_transform.position[i];
-    }
-
-    if (current.has(Node::RotationBit))
-    {
-      // quat_mul_inplace(current_transform.orientation, current.rotation);
-    }
+    utility::copy<float, 3>(current_position, parent_position);
 
     if (animation_enabled)
     {
       {
-        quat tmp;
-        quat_mul(tmp, animation_rotations[node_idx], current_transform.orientation);
-        quat_copy(current_transform.orientation, tmp);
+        quat tmp = {};
+        quat_mul(tmp, current_orientation, animation_rotations[node_idx]);
+        utility::copy<float, 4>(current_orientation, tmp);
       }
 
-      vec4_add(current_transform.position, current_transform.position, animation_translations[node_idx]);
+      {
+          vec3 animated_position = {};
+          quat_mul_vec3(animated_position, current_orientation, animation_translations[node_idx]);
+          vec3_add(current_position, current_position, animated_position);
+      }
     }
   }
 
@@ -913,9 +883,9 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
     if (node_shall_be_rendered[node_idx] and scene_graph.nodes.data[node_idx].has(Node::MeshBit))
     {
       mat4x4 rotation = {};
-      mat4x4_from_quat(rotation, node_transforms[node_idx].orientation);
+      mat4x4_from_quat(rotation, node_transforms.orientations[node_idx]);
 
-      float* position_src = node_transforms[node_idx].position;
+      float* position_src = node_transforms.positions[node_idx];
 
       mat4x4 model = {};
       mat4x4_identity(model);

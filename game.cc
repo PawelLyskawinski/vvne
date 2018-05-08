@@ -6,7 +6,6 @@
 #include <SDL2/SDL_log.h>
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_timer.h>
-#include <linmath.h>
 #include <stb_image.h>
 
 namespace {
@@ -237,29 +236,29 @@ void Game::startup(Engine& engine)
     vkUpdateDescriptorSets(engine.generic_handles.device, SDL_arraysize(writes), writes, 0, nullptr);
   }
 
-  helmet_translation[0] = 2.2f;
-  helmet_translation[1] = 4.2f;
-  helmet_translation[2] = 21.0f;
+  helmet_translation[0] = -1.0f;
+  helmet_translation[1] = 1.0f;
+  helmet_translation[2] = 3.0f;
 
-  robot_position[0] = 5.0f;
-  robot_position[1] = 1.5f;
-  robot_position[2] = 19.0f;
+  robot_position[0] = 2.0f;
+  robot_position[1] = 2.5f;
+  robot_position[2] = 3.0f;
 
   {
     LightSource& red = light_sources[0];
-    red.setPosition(4.0, 5.0, 23.0);
+    red.setPosition(-2.0, 0.0, 1.0);
     red.setColor(2.0, 0.0, 0.0);
 
     LightSource& green = light_sources[1];
-    green.setPosition(1.0, 5.0, 23.0);
-    green.setColor(2.0, 0.0, 0.0);
+    green.setPosition(0.0, 0.0, 1.0);
+    green.setColor(0.0, 0.0, 2.0);
 
     LightSource& blue = light_sources[2];
-    blue.setPosition(4.0, 3.0, 23.0);
-    blue.setColor(2.0, 0.0, 0.0);
+    blue.setPosition(-2.0, 2.0, 1.0);
+    blue.setColor(0.0, 0.0, 2.0);
 
     LightSource& white = light_sources[3];
-    white.setPosition(1.0, 3.0, 23.0);
+    white.setPosition(0.0, 2.0, 1.0);
     white.setColor(2.0, 0.0, 0.0);
 
     light_sources_count = 4;
@@ -282,6 +281,19 @@ void Game::startup(Engine& engine)
     }
     vkUnmapMemory(engine.generic_handles.device, engine.ubo_host_visible.memory);
   }
+
+  vec3 eye    = {0.0f, 0.0f, 0.0f};
+  vec3 center = {0.0f, 0.0f, 1.0f};
+  vec3 up     = {0.0f, 1.0f, 0.0f};
+  mat4x4_look_at(view, eye, center, up);
+
+  float extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
+  float extent_height       = static_cast<float>(engine.generic_handles.extent2D.height);
+  float aspect_ratio        = extent_width / extent_height;
+  float fov                 = to_rad(90.0f);
+  float near_clipping_plane = 0.1f;
+  float far_clipping_plane  = 1000.0f;
+  mat4x4_perspective(projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
 }
 
 void Game::teardown(Engine&)
@@ -292,7 +304,6 @@ void Game::teardown(Engine&)
 
 void Game::update(Engine& engine, float current_time_sec)
 {
-  (void)current_time_sec;
   uint64_t start_function_ticks = SDL_GetPerformanceCounter();
 
   ImGuiIO& io = ImGui::GetIO();
@@ -411,7 +422,9 @@ void Game::update(Engine& engine, float current_time_sec)
                        ImVec2(300, 20));
   ImGui::PlotHistogram("render times", render_times, SDL_arraysize(render_times), 0, nullptr, 0.0, 0.03,
                        ImVec2(300, 20));
+
   ImGui::InputFloat3("robot position", robot_position);
+  ImGui::InputFloat3("helmet position", helmet_translation);
 
   ImGui::Text("animation: %s, %.2f", animatedBox.animation_enabled ? "ongoing" : "stopped",
               animatedBox.animation_enabled ? current_time_sec - animatedBox.animation_start_time : 0.0f);
@@ -576,6 +589,14 @@ void Game::update(Engine& engine, float current_time_sec)
 
   int last_element           = SDL_arraysize(update_times) - 1;
   update_times[last_element] = (float)ticks_elapsed / (float)SDL_GetPerformanceFrequency();
+
+  camera_position[0] = SDL_cosf(current_time_sec / 4.0f)*2.0f;
+  camera_position[1] = SDL_cosf(current_time_sec / 2.0f);
+  camera_position[2] = SDL_sinf(current_time_sec / 4.0f)-2.0f;
+
+  vec3 center = {0.0f, 0.0f, 2.0f};
+  vec3 up     = {0.0f, 1.0f, 0.0f};
+  mat4x4_look_at(view, camera_position, center, up);
 }
 
 void Game::render(Engine& engine, float current_time_sec)
@@ -614,18 +635,8 @@ void Game::render(Engine& engine, float current_time_sec)
       mat4x4 view;
     } vertpush{};
 
-    vec3 eye    = {0.0f, 0.0f, 0.0f};
-    vec3 center = {0.0f, 0.0f, 1.0f};
-    vec3 up     = {0.0f, 1.0f, 0.0f};
-    mat4x4_look_at(vertpush.view, eye, center, up);
-
-    float extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
-    float extent_height       = static_cast<float>(engine.generic_handles.extent2D.height);
-    float aspect_ratio        = extent_width / extent_height;
-    float fov                 = to_rad(100.0f);
-    float near_clipping_plane = 0.1f;
-    float far_clipping_plane  = 10.0f;
-    mat4x4_perspective(vertpush.projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
+    mat4x4_dup(vertpush.projection, projection);
+    mat4x4_dup(vertpush.view, view);
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       renderer.pipelines[Engine::SimpleRendering::Passes::Skybox]);
@@ -666,23 +677,16 @@ void Game::render(Engine& engine, float current_time_sec)
 
     gltf::MVP push_const{};
 
-    vec3 eye    = {6.0f, 6.7f, 30.0f};
-    vec3 center = {-3.0f, 0.0f, -1.0f};
-    vec3 up     = {0.0f, 1.0f, 0.0f};
-    mat4x4_look_at(push_const.view, eye, center, up);
+    mat4x4_dup(push_const.projection, projection);
+    mat4x4_dup(push_const.view, view);
 
-    float extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
-    float extent_height       = static_cast<float>(engine.generic_handles.extent2D.height);
-    float aspect_ratio        = extent_width / extent_height;
-    float fov                 = 100.0f;
-    float near_clipping_plane = 0.001f;
-    float far_clipping_plane  = 10000.0f;
-    mat4x4_perspective(push_const.projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
+    for (int i = 0; i < 3; ++i)
+      push_const.camera_position[i] = camera_position[i];
 
     mat4x4_identity(push_const.model);
     mat4x4_translate(push_const.model, helmet_translation[0], helmet_translation[1], helmet_translation[2]);
-    mat4x4_rotate_Y(push_const.model, push_const.model, SDL_sinf(current_time_sec * 0.3f));
-    mat4x4_rotate_X(push_const.model, push_const.model, to_rad(90.0));
+    // mat4x4_rotate_Y(push_const.model, push_const.model, SDL_sinf(current_time_sec * 0.3f));
+    mat4x4_rotate_X(push_const.model, push_const.model, -to_rad(90.0));
     mat4x4_scale_aniso(push_const.model, push_const.model, 1.6f, 1.6f, 1.6f);
     helmet.render(engine, cmd, push_const);
 
@@ -716,18 +720,8 @@ void Game::render(Engine& engine, float current_time_sec)
 
     gltf::MVP push_const{};
 
-    vec3 eye    = {6.0f, 6.7f, 30.0f};
-    vec3 center = {-3.0f, 0.0f, -1.0f};
-    vec3 up     = {0.0f, 1.0f, 0.0f};
-    mat4x4_look_at(push_const.view, eye, center, up);
-
-    float extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
-    float extent_height       = static_cast<float>(engine.generic_handles.extent2D.height);
-    float aspect_ratio        = extent_width / extent_height;
-    float fov                 = 100.0f;
-    float near_clipping_plane = 0.001f;
-    float far_clipping_plane  = 10000.0f;
-    mat4x4_perspective(push_const.projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
+    mat4x4_dup(push_const.projection, projection);
+    mat4x4_dup(push_const.view, view);
 
     for (int i = 0; i < light_sources_count; ++i)
     {
@@ -761,8 +755,26 @@ void Game::render(Engine& engine, float current_time_sec)
       quat orientation = {};
       quat_identity(orientation);
 
+      {
+        quat a    = {};
+        vec3 axis = {1.0, 0.0, 0.0};
+        quat_rotate(a, to_rad(90.0f * current_time_sec/2.0f), axis);
+
+        quat b     = {};
+        vec3 axis2 = {0.0, 1.0, 0.0};
+        quat_rotate(b, to_rad(140.0f * current_time_sec/3.0f), axis2);
+
+        quat ab = {};
+        quat_mul(ab, b, a);
+
+        quat c     = {};
+        vec3 axis3 = {0.0, 0.0, 1.0};
+        quat_rotate(c, to_rad(90.0f * current_time_sec/9.0f), axis3);
+        quat_mul(orientation, c, ab);
+      }
+
       // todo: global transform "orientation" does not work well with animations. Object transformation needs review
-      float coefficient           = (SDL_sinf(current_time_sec) + 1.0f) / 2.0f;
+      float coefficient           = 1.0f;//(SDL_sinf(current_time_sec) + 1.0f) / 2.0f;
       float constant_scale_factor = 0.5f * coefficient;
       vec3  scale = {0.5f + constant_scale_factor, 0.5f + constant_scale_factor, 0.5f + constant_scale_factor};
       vec3  color = {0.0, 1.0, 0.0};

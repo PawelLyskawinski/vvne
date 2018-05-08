@@ -5,10 +5,10 @@
 #endif
 
 #include "engine.hh"
+#include <linmath.h>
 #include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_log.h>
 #include <SDL2/SDL_vulkan.h>
-#include <linmath.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #pragma GCC diagnostic push
@@ -1494,7 +1494,7 @@ void Engine::setup_simple_rendering()
 
     ranges[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     ranges[0].offset     = 0;
-    ranges[0].size       = 3 * sizeof(mat4x4);
+    ranges[0].size       = 3 * sizeof(mat4x4) + sizeof(vec3);
 
     VkPipelineLayoutCreateInfo ci{};
     ci.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;

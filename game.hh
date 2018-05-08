@@ -33,7 +33,6 @@ struct Game
 
   float robot_position[3];
 
-  // int environment_equirectangular_texture_idx; // highly detailed, takes ~100MB on gpu ram
   int environment_cubemap_idx;
   int irradiance_cubemap_idx;
   int prefiltered_cubemap_idx;
@@ -42,6 +41,10 @@ struct Game
   float update_times[50];
   float render_times[50];
   float helmet_translation[3];
+
+  mat4x4 projection;
+  mat4x4 view;
+  vec3   camera_position;
 
   struct LightSource
   {

@@ -5,6 +5,7 @@ layout(push_constant) uniform Transformation
   mat4 projection;
   mat4 view;
   mat4 model;
+  vec3 camPos;
 }
 transformation;
 
@@ -107,10 +108,8 @@ void main()
   float ao_color        = texture(ambient_occlusion_map, inTexCoord).r;
   vec3  normal          = texture(normal_map, inTexCoord).rgb;
 
-  vec3 camPos = vec3(6.0, 6.7, 30.0);
-
   vec3 N = getNormalFromMap();
-  vec3 V = normalize(camPos - inWorldPos);
+  vec3 V = normalize(transformation.camPos - inWorldPos);
 
   // calculate reflectance at normal incidence; if dia-electric (like plastic) use F0
   // of 0.04 and if it's a metal, use the albedo color as F0 (metallic workflow)
