@@ -590,9 +590,9 @@ void Game::update(Engine& engine, float current_time_sec)
   int last_element           = SDL_arraysize(update_times) - 1;
   update_times[last_element] = (float)ticks_elapsed / (float)SDL_GetPerformanceFrequency();
 
-  camera_position[0] = SDL_cosf(current_time_sec / 4.0f)*2.0f;
+  camera_position[0] = SDL_cosf(current_time_sec / 4.0f) * 2.0f;
   camera_position[1] = SDL_cosf(current_time_sec / 2.0f);
-  camera_position[2] = SDL_sinf(current_time_sec / 4.0f)-2.0f;
+  camera_position[2] = SDL_sinf(current_time_sec / 4.0f) - 2.0f;
 
   vec3 center = {0.0f, 0.0f, 2.0f};
   vec3 up     = {0.0f, 1.0f, 0.0f};
@@ -758,26 +758,23 @@ void Game::render(Engine& engine, float current_time_sec)
       {
         quat a    = {};
         vec3 axis = {1.0, 0.0, 0.0};
-        quat_rotate(a, to_rad(90.0f * current_time_sec/2.0f), axis);
+        quat_rotate(a, to_rad(90.0f * current_time_sec / 20.0f), axis);
 
         quat b     = {};
         vec3 axis2 = {0.0, 1.0, 0.0};
-        quat_rotate(b, to_rad(140.0f * current_time_sec/3.0f), axis2);
+        quat_rotate(b, to_rad(140.0f * current_time_sec / 30.0f), axis2);
 
         quat ab = {};
         quat_mul(ab, b, a);
 
         quat c     = {};
         vec3 axis3 = {0.0, 0.0, 1.0};
-        quat_rotate(c, to_rad(90.0f * current_time_sec/9.0f), axis3);
+        quat_rotate(c, to_rad(90.0f * current_time_sec / 90.0f), axis3);
         quat_mul(orientation, c, ab);
       }
 
-      // todo: global transform "orientation" does not work well with animations. Object transformation needs review
-      float coefficient           = 1.0f;//(SDL_sinf(current_time_sec) + 1.0f) / 2.0f;
-      float constant_scale_factor = 0.5f * coefficient;
-      vec3  scale = {0.5f + constant_scale_factor, 0.5f + constant_scale_factor, 0.5f + constant_scale_factor};
-      vec3  color = {0.0, 1.0, 0.0};
+      vec3 scale = {1.0f, 1.0f, 1.0f};
+      vec3 color = {0.0, 1.0, 0.0};
       animatedBox.renderColored(engine, cmd, push_const.projection, push_const.view, robot_position, orientation, scale,
                                 color);
     }

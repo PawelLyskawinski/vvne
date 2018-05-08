@@ -10,12 +10,4 @@ template <typename T, int N> void copy(T* dst, T* src)
   }
 };
 
-template <typename T> void generate_incremental(T* collection, T startval, long long unsigned int count)
-{
-  for (T i = 0; i < count; ++i)
-  {
-    collection[i] = startval + i;
-  }
-};
-
 } // namespace utility

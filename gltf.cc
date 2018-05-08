@@ -788,8 +788,15 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
                                     vec4 global_position, quat global_orientation, vec3 model_scale,
                                     vec3 color) noexcept
 {
-  uint8_t node_parent_hierarchy[32];
-  utility::generate_incremental(node_parent_hierarchy, uint8_t(0), SDL_arraysize(node_parent_hierarchy));
+  vec3    node_positions[32]         = {};
+  quat    node_orientations[32]      = {};
+  uint8_t node_parent_hierarchy[32]  = {};
+  uint8_t node_shall_be_rendered[32] = {};
+
+  for (uint8_t i = 0; i < SDL_arraysize(node_parent_hierarchy); ++i)
+  {
+    node_parent_hierarchy[i] = i;
+  }
 
   for (uint8_t node_idx = 0; node_idx < scene_graph.nodes.count; ++node_idx)
   {
@@ -800,15 +807,7 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
     }
   }
 
-  struct NodeTransforms
-  {
-    vec3 positions[32];
-    quat orientations[32];
-  };
-
-  NodeTransforms node_transforms = {};
-
-  for (quat& orientation : node_transforms.orientations)
+  for (quat& orientation : node_orientations)
   {
     orientation[3] = 1.f;
   }
@@ -817,8 +816,8 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
   ArrayView<int>& scene_root_node_indices = scene_graph.scenes[0].nodes;
   for (int node_idx : scene_root_node_indices)
   {
-    utility::copy<float, 4>(node_transforms.orientations[node_idx], global_orientation);
-    utility::copy<float, 3>(node_transforms.positions[node_idx], global_position);
+    utility::copy<float, 4>(node_orientations[node_idx], global_orientation);
+    utility::copy<float, 3>(node_positions[node_idx], global_position);
   }
 
   // propagate transformations downstream
@@ -827,10 +826,10 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
     Node&   current    = scene_graph.nodes.data[node_idx];
     uint8_t parent_idx = node_parent_hierarchy[node_idx];
 
-    float* current_orientation = node_transforms.orientations[node_idx];
-    float* current_position    = node_transforms.positions[node_idx];
-    float* parent_orientation  = node_transforms.orientations[parent_idx];
-    float* parent_position     = node_transforms.positions[parent_idx];
+    float* current_orientation = node_orientations[node_idx];
+    float* current_position    = node_positions[node_idx];
+    float* parent_orientation  = node_orientations[parent_idx];
+    float* parent_position     = node_positions[parent_idx];
 
     {
       quat tmp = {};
@@ -842,21 +841,15 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
 
     if (animation_enabled)
     {
-      {
-        quat tmp = {};
-        quat_mul(tmp, current_orientation, animation_rotations[node_idx]);
-        utility::copy<float, 4>(current_orientation, tmp);
-      }
+      quat final_animated_orientation = {};
+      quat_mul(final_animated_orientation, current_orientation, animation_rotations[node_idx]);
+      utility::copy<float, 4>(current_orientation, final_animated_orientation);
 
-      {
-          vec3 animated_position = {};
-          quat_mul_vec3(animated_position, current_orientation, animation_translations[node_idx]);
-          vec3_add(current_position, current_position, animated_position);
-      }
+      vec3 final_animated_position = {};
+      quat_mul_vec3(final_animated_position, current_orientation, animation_translations[node_idx]);
+      vec3_add(current_position, current_position, final_animated_position);
     }
   }
-
-  uint8_t node_shall_be_rendered[32] = {};
 
   for (int i = 0; i < scene_root_node_indices.count; ++i)
   {
@@ -883,9 +876,9 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
     if (node_shall_be_rendered[node_idx] and scene_graph.nodes.data[node_idx].has(Node::MeshBit))
     {
       mat4x4 rotation = {};
-      mat4x4_from_quat(rotation, node_transforms.orientations[node_idx]);
+      mat4x4_from_quat(rotation, node_orientations[node_idx]);
 
-      float* position_src = node_transforms.positions[node_idx];
+      float* position_src = node_positions[node_idx];
 
       mat4x4 model = {};
       mat4x4_identity(model);
