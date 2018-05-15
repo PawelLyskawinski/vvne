@@ -53,24 +53,32 @@ class Node
 {
 public:
   ArrayView<int> children;
-  vec4           rotation;
-  int            mesh;
 
-  enum
+  quat rotation;
+  vec3 translation;
+  vec3 scale;
+
+  int mesh;
+  int skin;
+
+  enum Property
   {
-    ChildrenBit = 1 << 0,
-    RotationBit = 1 << 1,
-    MeshBit     = 1 << 2
+    Children,
+    Rotation,
+    Translation,
+    Scale,
+    Mesh,
+    Skin
   };
 
-  bool has(unsigned bit) const
+  bool has(Property property) const
   {
-    return static_cast<bool>(flags & bit);
+    return static_cast<bool>(flags & (1 << property));
   }
 
-  void set(int bit)
+  void set(Property property)
   {
-    flags |= bit;
+    flags |= (1 << property);
   }
 
 private:
@@ -87,7 +95,8 @@ struct AnimationChannel
   enum class Path
   {
     Rotation,
-    Translation
+    Translation,
+    Scale
   };
 
   int  sampler_idx;
@@ -110,6 +119,13 @@ struct Animation
   ArrayView<AnimationSampler> samplers;
 };
 
+struct Skin
+{
+  ArrayView<mat4x4> inverse_bind_matrices;
+  ArrayView<int>    joints;
+  int               skeleton;
+};
+
 struct SceneGraph
 {
   ArrayView<Material>  materials;
@@ -117,6 +133,7 @@ struct SceneGraph
   ArrayView<Node>      nodes;
   ArrayView<Scene>     scenes;
   ArrayView<Animation> animations;
+  ArrayView<Skin>      skins;
 };
 
 namespace gltf {
@@ -133,15 +150,18 @@ struct RenderableModel
 {
   SceneGraph scene_graph;
 
-  bool  animation_enabled;
-  float animation_start_time;
-  vec4  animation_translations[32];
-  quat  animation_rotations[32];
+  bool    animation_enabled;
+  float   animation_start_time;
+  vec3    animation_translations[32];
+  quat    animation_rotations[32];
+  vec3    animation_scales[32];
+  uint8_t animation_properties[32];
 
   void loadGLB(Engine& engine, const char* path) noexcept;
   void render(Engine& engine, VkCommandBuffer cmd, MVP& mvp) const noexcept;
-  void renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 projection, mat4x4 view, vec4 global_position,
-                     quat global_orientation, vec3 model_scale, vec3 color) noexcept;
+  void renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 projection, mat4x4 view, vec3 global_position,
+                     quat global_orientation, vec3 model_scale, vec3 color, Engine::SimpleRendering::Passes pass,
+                     VkDeviceSize joint_ubo_offset) noexcept;
   void renderRaw(Engine& engine, VkCommandBuffer cmd) const noexcept;
 };
 

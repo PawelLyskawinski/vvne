@@ -34,6 +34,9 @@ size_t find_substring_idx(const char* big_string, const size_t big_string_length
   size_t result              = 0;
   size_t small_string_length = SDL_strlen(small_string);
 
+  if (small_string_length > big_string_length)
+    return 0;
+
   for (size_t i = 0; i < (big_string_length - small_string_length); ++i)
   {
     if (0 == SDL_memcmp(&big_string[i], small_string, small_string_length))
@@ -174,9 +177,17 @@ struct Seeker
 
   float idx_float(const int desired_array_element) const
   {
-    Seeker      element  = idx(desired_array_element);
-    const char* adjusted = &element.data[1];
-    double      result   = SDL_strtod(adjusted, nullptr);
+    Seeker element = idx(desired_array_element);
+
+#ifdef __linux__
+    double result = SDL_strtod(element.data, nullptr);
+#else
+    // Apperently SDL_strtod on windows does not read scientific
+    // notation correctly when not compiled with correct compilation
+    // flag.
+    double result = strtod(element.data, nullptr);
+#endif
+
     return static_cast<float>(result);
   }
 
@@ -291,6 +302,12 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
     scene_graph.animations.data  = engine.double_ended_stack.allocate_front<Animation>(scene_graph.animations.count);
   }
 
+  if (document.has("skins"))
+  {
+    scene_graph.skins.count = document.node("skins").elements_count();
+    scene_graph.skins.data  = engine.double_ended_stack.allocate_front<Skin>(scene_graph.animations.count);
+  }
+
   // ---------------------------------------------------------------------------
   // MATERIALS
   // ---------------------------------------------------------------------------
@@ -362,13 +379,24 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
       vec2 texcoord;
     };
 
+    struct SkinnedVertex
+    {
+      vec3     position;
+      vec3     normal;
+      vec2     texcoord;
+      uint16_t joint[4];
+      vec4     weight;
+    };
+
     const bool is_index_type_uint16 = (IndexType::UINT16 == index_type);
 
     mesh.indices_count = static_cast<uint32_t>(index_accessor.integer("count"));
     mesh.indices_type  = is_index_type_uint16 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
 
+    const bool is_skinning_used = attributes.has("JOINTS_0") and attributes.has("WEIGHTS_0");
+
     const int required_index_space  = mesh.indices_count * (is_index_type_uint16 ? sizeof(uint16_t) : sizeof(uint32_t));
-    const int required_vertex_space = position_count * sizeof(Vertex);
+    const int required_vertex_space = position_count * (is_skinning_used ? sizeof(SkinnedVertex) : sizeof(Vertex));
     const int total_upload_buffer_size = required_index_space + required_vertex_space;
     uint8_t*  upload_buffer            = engine.double_ended_stack.allocate_back<uint8_t>(total_upload_buffer_size);
     const int index_buffer_glb_offset =
@@ -397,24 +425,28 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
       SDL_memcpy(upload_buffer, &binary_data[index_buffer_glb_offset], static_cast<size_t>(required_index_space));
     }
 
+    const int dst_elements_begin_offset = required_index_space;
+    const int dst_element_size          = is_skinning_used ? sizeof(SkinnedVertex) : sizeof(Vertex);
+
     {
       Seeker    buffer_view         = buffer_views.idx(position_buffer_view);
       const int view_glb_offset     = buffer_view.integer("byteOffset");
       const int accessor_glb_offset = position_accessor.integer("byteOffset");
       const int start_offset        = view_glb_offset + accessor_glb_offset;
-      Vertex*   dst_vertices        = reinterpret_cast<Vertex*>(&upload_buffer[required_index_space]);
 
-      int stride = buffer_view.integer("stride");
-      stride     = stride ? stride : sizeof(vec3);
+      int dst_offset_to_position =
+          static_cast<int>(is_skinning_used ? offsetof(SkinnedVertex, position) : offsetof(Vertex, position));
+
+      int src_stride = buffer_view.integer("stride");
+      src_stride     = src_stride ? src_stride : sizeof(vec3);
 
       for (int i = 0; i < position_count; ++i)
       {
-        Vertex&      current = dst_vertices[i];
-        float*       dst     = current.position;
-        const float* src     = reinterpret_cast<const float*>(&binary_data[start_offset + (stride * i)]);
-
-        for (int j = 0; j < 3; ++j)
-          dst[j] = src[j];
+        int          upload_buffer_offset = dst_elements_begin_offset + (dst_element_size * i) + dst_offset_to_position;
+        uint8_t*     dst_raw_ptr          = &upload_buffer[upload_buffer_offset];
+        float*       dst                  = reinterpret_cast<float*>(dst_raw_ptr);
+        const float* src = reinterpret_cast<const float*>(&binary_data[start_offset + (src_stride * i)]);
+        utility::copy<float, 3>(dst, src);
       }
     }
 
@@ -424,19 +456,20 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
       const int view_glb_offset     = buffer_view.integer("byteOffset");
       const int accessor_glb_offset = accessor.integer("byteOffset");
       const int start_offset        = view_glb_offset + accessor_glb_offset;
-      Vertex*   dst_vertices        = reinterpret_cast<Vertex*>(&upload_buffer[required_index_space]);
 
-      int stride = buffer_view.integer("stride");
-      stride     = stride ? stride : sizeof(vec3);
+      int dst_offset_to_normal =
+          static_cast<int>(is_skinning_used ? offsetof(SkinnedVertex, normal) : offsetof(Vertex, normal));
+
+      int src_stride = buffer_view.integer("stride");
+      src_stride     = src_stride ? src_stride : sizeof(vec3);
 
       for (int i = 0; i < position_count; ++i)
       {
-        Vertex&      current = dst_vertices[i];
-        float*       dst     = current.normal;
-        const float* src     = reinterpret_cast<const float*>(&binary_data[start_offset + (stride * i)]);
-
-        for (int j = 0; j < 3; ++j)
-          dst[j] = src[j];
+        int          upload_buffer_offset = dst_elements_begin_offset + (dst_element_size * i) + dst_offset_to_normal;
+        uint8_t*     dst_raw_ptr          = &upload_buffer[upload_buffer_offset];
+        float*       dst                  = reinterpret_cast<float*>(dst_raw_ptr);
+        const float* src = reinterpret_cast<const float*>(&binary_data[start_offset + (src_stride * i)]);
+        utility::copy<float, 3>(dst, src);
       }
     }
 
@@ -447,19 +480,61 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
       const int view_glb_offset     = buffer_view.integer("byteOffset");
       const int accessor_glb_offset = accessor.integer("byteOffset");
       const int start_offset        = view_glb_offset + accessor_glb_offset;
-      Vertex*   dst_vertices        = reinterpret_cast<Vertex*>(&upload_buffer[required_index_space]);
 
-      int stride = buffer_view.integer("stride");
-      stride     = stride ? stride : sizeof(vec2);
+      int dst_offset_to_texcoord =
+          static_cast<int>(is_skinning_used ? offsetof(SkinnedVertex, texcoord) : offsetof(Vertex, texcoord));
+
+      int src_stride = buffer_view.integer("stride");
+      src_stride     = src_stride ? src_stride : sizeof(vec2);
 
       for (int i = 0; i < position_count; ++i)
       {
-        Vertex&      current = dst_vertices[i];
-        float*       dst     = current.texcoord;
-        const float* src     = reinterpret_cast<const float*>(&binary_data[start_offset + (stride * i)]);
+        int          upload_buffer_offset = dst_elements_begin_offset + (dst_element_size * i) + dst_offset_to_texcoord;
+        uint8_t*     dst_raw_ptr          = &upload_buffer[upload_buffer_offset];
+        float*       dst                  = reinterpret_cast<float*>(dst_raw_ptr);
+        const float* src = reinterpret_cast<const float*>(&binary_data[start_offset + (src_stride * i)]);
+        utility::copy<float, 2>(dst, src);
+      }
+    }
 
-        for (int j = 0; j < 2; ++j)
-          dst[j] = src[j];
+    if (is_skinning_used)
+    {
+      {
+        Seeker         accessor            = accessors.idx(attributes.integer("JOINTS_0"));
+        Seeker         buffer_view         = buffer_views.idx(accessor.integer("bufferView"));
+        const int      view_glb_offset     = buffer_view.integer("byteOffset");
+        const int      accessor_glb_offset = accessor.integer("byteOffset");
+        const int      start_offset        = view_glb_offset + accessor_glb_offset;
+        SkinnedVertex* dst_vertices        = reinterpret_cast<SkinnedVertex*>(&upload_buffer[required_index_space]);
+
+        int src_stride = buffer_view.integer("stride");
+        src_stride     = src_stride ? src_stride : (4 * sizeof(uint16_t));
+
+        for (int i = 0; i < position_count; ++i)
+        {
+          uint16_t*       dst = dst_vertices[i].joint;
+          const uint16_t* src = reinterpret_cast<const uint16_t*>(&binary_data[start_offset + (src_stride * i)]);
+          utility::copy<uint16_t, 4>(dst, src);
+        }
+      }
+
+      {
+        Seeker         accessor            = accessors.idx(attributes.integer("WEIGHTS_0"));
+        Seeker         buffer_view         = buffer_views.idx(accessor.integer("bufferView"));
+        const int      view_glb_offset     = buffer_view.integer("byteOffset");
+        const int      accessor_glb_offset = accessor.integer("byteOffset");
+        const int      start_offset        = view_glb_offset + accessor_glb_offset;
+        SkinnedVertex* dst_vertices        = reinterpret_cast<SkinnedVertex*>(&upload_buffer[required_index_space]);
+
+        int src_stride = buffer_view.integer("stride");
+        src_stride     = src_stride ? src_stride : sizeof(vec4);
+
+        for (int i = 0; i < position_count; ++i)
+        {
+          float*       dst = dst_vertices[i].weight;
+          const float* src = reinterpret_cast<const float*>(&binary_data[start_offset + (src_stride * i)]);
+          utility::copy<float, 4>(dst, src);
+        }
       }
     }
 
@@ -569,7 +644,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
 
     if (node_json.has("children"))
     {
-      node.set(Node::ChildrenBit);
+      node.set(Node::Property::Children);
       node.children.count = node_json.node("children").elements_count();
       node.children.data  = engine.double_ended_stack.allocate_front<int>(node.children.count);
 
@@ -586,7 +661,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
 
     if (node_json.has("rotation"))
     {
-      node.set(Node::RotationBit);
+      node.set(Node::Property::Rotation);
       Seeker rotation = node_json.node("rotation");
       for (int i = 0; i < 4; ++i)
       {
@@ -594,10 +669,36 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
       }
     }
 
+    if (node_json.has("translation"))
+    {
+      node.set(Node::Property::Translation);
+      Seeker translation = node_json.node("translation");
+      for (int i = 0; i < 3; ++i)
+      {
+        node.translation[i] = translation.idx_float(i);
+      }
+    }
+
+    if (node_json.has("scale"))
+    {
+      node.set(Node::Property::Scale);
+      Seeker scale = node_json.node("scale");
+      for (int i = 0; i < 3; ++i)
+      {
+        node.scale[i] = scale.idx_float(i);
+      }
+    }
+
     if (node_json.has("mesh"))
     {
-      node.set(Node::MeshBit);
+      node.set(Node::Property::Mesh);
       node.mesh = node_json.integer("mesh");
+    }
+
+    if (node_json.has("skin"))
+    {
+      node.set(Node::Property::Skin);
+      node.skin = node_json.integer("skin");
     }
   }
 
@@ -655,8 +756,22 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
       Seeker      path_json  = target_json.node("path");
       const char* path_value = &path_json.data[8];
 
-      current_channel.target_path = (0 == SDL_memcmp(path_value, "rotation", 8)) ? AnimationChannel::Path::Rotation
-                                                                                 : AnimationChannel::Path::Translation;
+      if (0 == SDL_memcmp(path_value, "rotation", 8))
+      {
+        current_channel.target_path = AnimationChannel::Path::Rotation;
+      }
+      else if (0 == SDL_memcmp(path_value, "translation", 11))
+      {
+        current_channel.target_path = AnimationChannel::Path::Translation;
+      }
+      else if (0 == SDL_memcmp(path_value, "scale", 5))
+      {
+        current_channel.target_path = AnimationChannel::Path::Scale;
+      }
+      else
+      {
+        SDL_assert(false);
+      }
     }
 
     for (int sampler_idx = 0; sampler_idx < samplers_count; ++sampler_idx)
@@ -677,8 +792,11 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
 
       current_sampler.keyframes_count = input_elements;
 
-      Seeker input_buffer_view  = buffer_views.idx(input_accessor.integer("bufferView"));
-      Seeker output_buffer_view = buffer_views.idx(output_accessor.integer("bufferView"));
+      int input_buffer_view_idx  = input_accessor.integer("bufferView");
+      int output_buffer_view_idx = output_accessor.integer("bufferView");
+
+      Seeker input_buffer_view  = buffer_views.idx(input_buffer_view_idx);
+      Seeker output_buffer_view = buffer_views.idx(output_buffer_view_idx);
 
       enum class Type : unsigned
       {
@@ -712,6 +830,8 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
       current_sampler.values =
           engine.double_ended_stack.allocate_front<float>(static_cast<unsigned>(output_type) * input_elements);
 
+      SDL_Log("sampler %d", sampler_idx);
+
       {
         const int input_view_glb_offset     = input_buffer_view.integer("byteOffset");
         const int input_accessor_glb_offset = input_accessor.integer("byteOffset");
@@ -724,6 +844,8 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
         {
           float*       dst = &current_sampler.times[i];
           const float* src = reinterpret_cast<const float*>(&binary_data[input_start_offset + (input_stride * i)]);
+
+          SDL_Log("time %.3f", *src);
 
           *dst = *src;
         }
@@ -749,8 +871,52 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
           {
             dst[j] = src[j];
           }
+
+          SDL_Log("value %.3f %.3f %.3f", dst[0], dst[1], dst[2]);
         }
       }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // SKINS
+  // ---------------------------------------------------------------------------
+  SDL_Log("%s : %d skin(s)", path, scene_graph.skins.count);
+
+  Seeker skins_json = document.node("skins");
+  for (int skin_idx = 0; skin_idx < scene_graph.skins.count; ++skin_idx)
+  {
+    Seeker skin_json = skins_json.idx(skin_idx);
+    Skin&  skin      = scene_graph.skins[skin_idx];
+
+    skin.skeleton = skin_json.integer("skeleton");
+
+    Seeker joints_json = skin_json.node("joints");
+    skin.joints.count  = joints_json.elements_count();
+    skin.joints.data   = engine.double_ended_stack.allocate_front<int>(skin.joints.count);
+
+    for (int i = 0; i < skin.joints.count; ++i)
+    {
+      skin.joints[i] = joints_json.idx_integer(i);
+    }
+
+    int    inverse_bind_matrices_accessor_idx = skin_json.integer("inverseBindMatrices");
+    Seeker accessor                           = accessors.idx(inverse_bind_matrices_accessor_idx);
+
+    skin.inverse_bind_matrices.count = accessor.integer("count");
+    skin.inverse_bind_matrices.data =
+        engine.double_ended_stack.allocate_front<mat4x4>(skin.inverse_bind_matrices.count);
+
+    Seeker buffer_view = buffer_views.idx(accessor.integer("bufferView"));
+
+    int glb_start_offset = buffer_view.integer("byteOffset") + accessor.integer("byteOffset");
+    int glb_stride       = buffer_view.integer("stride");
+    glb_stride           = glb_stride ? glb_stride : sizeof(mat4x4);
+
+    for (int i = 0; i < skin.inverse_bind_matrices.count; ++i)
+    {
+      const uint8_t* src = &binary_data[glb_start_offset + (glb_stride * i)];
+      SDL_memcpy(skin.inverse_bind_matrices[i], src, sizeof(mat4x4));
     }
   }
 
@@ -770,7 +936,7 @@ void RenderableModel::render(Engine& engine, VkCommandBuffer cmd, MVP& mvp) cons
     int         node_idx = node_indices.data[i];
     const Node& node     = scene_graph.nodes.data[node_idx];
 
-    if (node.has(Node::MeshBit))
+    if (node.has(Node::Property::Mesh))
     {
       Mesh& mesh = scene_graph.meshes.data[node.mesh];
       // todo: think how to integrate materials into this node hopping rendering
@@ -785,8 +951,8 @@ void RenderableModel::render(Engine& engine, VkCommandBuffer cmd, MVP& mvp) cons
 }
 
 void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 projection, mat4x4 view,
-                                    vec4 global_position, quat global_orientation, vec3 model_scale,
-                                    vec3 color) noexcept
+                                    vec4 global_position, quat global_orientation, vec3 model_scale, vec3 color,
+                                    Engine::SimpleRendering::Passes pass, VkDeviceSize joint_ubo_offset) noexcept
 {
   vec3    node_positions[32]         = {};
   quat    node_orientations[32]      = {};
@@ -807,9 +973,9 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
     }
   }
 
-  for (quat& orientation : node_orientations)
+  for (int node_idx = 0; node_idx < scene_graph.nodes.count; ++node_idx)
   {
-    orientation[3] = 1.f;
+    quat_identity(node_orientations[node_idx]);
   }
 
   // initialize scene nodes to start with global transforms
@@ -823,7 +989,7 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
   // propagate transformations downstream
   for (uint8_t node_idx = 0; node_idx < scene_graph.nodes.count; ++node_idx)
   {
-    Node&   current    = scene_graph.nodes.data[node_idx];
+    Node&   current    = scene_graph.nodes[node_idx];
     uint8_t parent_idx = node_parent_hierarchy[node_idx];
 
     float* current_orientation = node_orientations[node_idx];
@@ -836,24 +1002,38 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
       quat_mul(tmp, parent_orientation, current_orientation);
       utility::copy<float, 4>(current_orientation, tmp);
     }
-
     utility::copy<float, 3>(current_position, parent_position);
 
-    if (animation_enabled)
+    if (animation_properties[node_idx] & Node::Property::Rotation)
     {
       quat final_animated_orientation = {};
       quat_mul(final_animated_orientation, current_orientation, animation_rotations[node_idx]);
       utility::copy<float, 4>(current_orientation, final_animated_orientation);
+    }
+    else if (current.has(Node::Property::Rotation))
+    {
+      quat final_orientation = {};
+      quat_mul(final_orientation, current_orientation, current.rotation);
+      utility::copy<float, 4>(current_orientation, final_orientation);
+    }
 
+    if (animation_properties[node_idx] & Node::Property::Translation)
+    {
       vec3 final_animated_position = {};
       quat_mul_vec3(final_animated_position, current_orientation, animation_translations[node_idx]);
       vec3_add(current_position, current_position, final_animated_position);
+    }
+    else if (current.has(Node::Property::Translation))
+    {
+      vec3 final_position = {};
+      quat_mul_vec3(final_position, current_orientation, current.translation);
+      vec3_add(current_position, current_position, final_position);
     }
   }
 
   for (int i = 0; i < scene_root_node_indices.count; ++i)
   {
-    node_shall_be_rendered[scene_root_node_indices.data[i]] = 1;
+    node_shall_be_rendered[scene_root_node_indices.data[i]] = SDL_TRUE;
   }
 
   for (int i = 0; i < SDL_arraysize(node_shall_be_rendered); ++i)
@@ -868,12 +1048,71 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
     }
   }
 
+  if (Engine::SimpleRendering::Passes::ColoredGeometrySkinned == pass)
+  {
+    Skin& skin = scene_graph.skins[0];
+
+    mat4x4 global_transform = {};
+    mat4x4_identity(global_transform);
+    mat4x4_translate_in_place(global_transform, global_position[0], global_position[1], global_position[2]);
+
+    mat4x4 rotation = {};
+    mat4x4_from_quat(rotation, global_orientation);
+    mat4x4_mul(global_transform, global_transform, rotation);
+
+    mat4x4 inverted_global_transform = {};
+    mat4x4_invert(inverted_global_transform, global_transform);
+
+    //
+    // BRUTE-FORCE FOR NOW!!
+    // todo: replace this with a good quality code when the feature works
+    //
+    mat4x4 local_transform_matrices[32] = {};
+
+    for (int i = 0; i < 32; ++i)
+    {
+      mat4x4 rotation = {};
+      mat4x4_from_quat(rotation, node_orientations[i]);
+
+      float* position_src = node_positions[i];
+
+      mat4x4 model = {};
+      mat4x4_identity(model);
+      mat4x4_translate(model, position_src[0], position_src[1], position_src[2]);
+      mat4x4_mul(model, model, rotation);
+      //mat4x4_scale_aniso(model, model, model_scale[0], model_scale[1], model_scale[2]);
+
+      mat4x4_dup(local_transform_matrices[i], model);
+    }
+
+    uint8_t* gpu_joint_matrices = nullptr;
+    vkMapMemory(engine.generic_handles.device, engine.ubo_host_visible.memory, joint_ubo_offset, 12 * sizeof(mat4x4), 0,
+                (void**)(&gpu_joint_matrices));
+
+    SDL_assert(skin.joints.count <= 12);
+
+    for (int joint_id = 0; joint_id < skin.joints.count; ++joint_id)
+    {
+      int joint_node_id = skin.joints[joint_id];
+
+      mat4x4 tmp = {};
+      mat4x4_mul(tmp, local_transform_matrices[joint_node_id], inverted_global_transform);
+
+      mat4x4 joint_matrix = {};
+      mat4x4_mul(joint_matrix, skin.inverse_bind_matrices[joint_id], tmp);
+
+      SDL_memcpy(&gpu_joint_matrices[sizeof(mat4x4) * joint_id], joint_matrix, sizeof(mat4x4));
+    }
+
+    vkUnmapMemory(engine.generic_handles.device, engine.ubo_host_visible.memory);
+  }
+
   mat4x4 projection_view = {};
   mat4x4_mul(projection_view, projection, view);
 
   for (int node_idx = 0; node_idx < scene_graph.nodes.count; ++node_idx)
   {
-    if (node_shall_be_rendered[node_idx] and scene_graph.nodes.data[node_idx].has(Node::MeshBit))
+    if (node_shall_be_rendered[node_idx] and scene_graph.nodes.data[node_idx].has(Node::Property::Mesh))
     {
       mat4x4 rotation = {};
       mat4x4_from_quat(rotation, node_orientations[node_idx]);
@@ -894,13 +1133,11 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
       mat4x4 calculated_mvp = {};
       mat4x4_mul(calculated_mvp, projection_view, model);
 
-      vkCmdPushConstants(cmd,
-                         engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometry],
-                         VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), calculated_mvp);
+      vkCmdPushConstants(cmd, engine.simple_rendering.pipeline_layouts[pass], VK_SHADER_STAGE_VERTEX_BIT, 0,
+                         sizeof(mat4x4), calculated_mvp);
 
-      vkCmdPushConstants(cmd,
-                         engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometry],
-                         VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(vec3), color);
+      vkCmdPushConstants(cmd, engine.simple_rendering.pipeline_layouts[pass], VK_SHADER_STAGE_FRAGMENT_BIT,
+                         sizeof(mat4x4), sizeof(vec3), color);
 
       vkCmdDrawIndexed(cmd, mesh.indices_count, 1, 0, 0, 0);
     }

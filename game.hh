@@ -15,8 +15,8 @@ struct Game
 
     enum
     {
-      VERTEX_BUFFER_CAPACITY_BYTES = 40 * 1024,
-      INDEX_BUFFER_CAPACITY_BYTES  = 30 * 1024
+      VERTEX_BUFFER_CAPACITY_BYTES = 100 * 1024,
+      INDEX_BUFFER_CAPACITY_BYTES  = 80 * 1024
     };
 
     VkDeviceSize vertex_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
@@ -26,25 +26,35 @@ struct Game
   VkDescriptorSet skybox_dset;
   VkDescriptorSet helmet_dset;
   VkDescriptorSet imgui_dset;
+  VkDescriptorSet rig_dsets[SWAPCHAIN_IMAGES_COUNT]; // ubo per swap
 
   gltf::RenderableModel helmet;
   gltf::RenderableModel box;
   gltf::RenderableModel animatedBox;
+  gltf::RenderableModel riggedSimple;
 
   float robot_position[3];
+  float rigged_position[3];
+  float helmet_translation[3];
 
   int environment_cubemap_idx;
   int irradiance_cubemap_idx;
   int prefiltered_cubemap_idx;
   int brdf_lookup_idx;
 
+  VkDeviceSize rig_skimming_matrices_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
+
   float update_times[50];
   float render_times[50];
-  float helmet_translation[3];
 
   mat4x4 projection;
   mat4x4 view;
   vec3   camera_position;
+
+  struct AnimationProfiler
+  {
+      bool opened;
+  } animation_profiler;
 
   struct LightSource
   {

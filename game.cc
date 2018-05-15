@@ -15,6 +15,92 @@ constexpr float to_rad(float deg) noexcept
   return (float(M_PI) * deg) / 180.0f;
 }
 
+float normalize_quat(quat q)
+{
+  float x = q[0] * q[0];
+  float y = q[1] * q[1];
+  float z = q[2] * q[2];
+  float w = q[3] * q[3];
+
+  float norm = SDL_sqrtf(x + y + z + w);
+  q[0] /= norm;
+  q[1] /= norm;
+  q[2] /= norm;
+}
+
+float clamp(float val, float min, float max)
+{
+  return (val < min) ? min : (val > max) ? max : val;
+}
+
+void quat_copy(quat into, quat from)
+{
+  for (int i = 0; i < 4; ++i)
+    into[i] = from[i];
+}
+
+void slerp(quat a, quat b, quat c, float time)
+{
+  float       dotproduct = quat_inner_product(a, b);
+  const float limit      = 0.9995f;
+
+  if (dotproduct > limit)
+  {
+    quat_mul(c, b, a);
+    normalize_quat(c);
+  }
+  else
+  {
+    dotproduct   = clamp(dotproduct, -1.0f, 1.0f);
+    float theta0 = static_cast<float>(SDL_acos(dotproduct));
+    float theta  = theta0 * time;
+
+    quat tmp = {};
+    quat_copy(tmp, a);
+    quat_scale(tmp, tmp, dotproduct);
+
+    quat v2 = {};
+    quat_mul(v2, b, tmp);
+    normalize_quat(v2);
+
+    quat a_scaled = {};
+    quat_scale(a_scaled, a, SDL_cosf(theta));
+
+    quat v2_scaled = {};
+    quat_scale(v2_scaled, v2, SDL_sinf(theta));
+
+    quat_add(c, a_scaled, v2_scaled);
+  }
+}
+
+int find_first_higher(float* times, float current)
+{
+  int iter = 0;
+  while (current > times[iter])
+    iter += 1;
+  return iter;
+}
+
+void quat_lerp(float* a, float* b, float* c, float time)
+{
+  float reminder_time = 1.0f - time;
+  for (int i = 0; i < 4; ++i)
+  {
+    c[i] = reminder_time * a[i] + time * b[i];
+  }
+  vec4_norm(c, c);
+}
+
+void lerp(float* a, float* b, float* c, int len, float time)
+{
+  for (int i = 0; i < len; ++i)
+  {
+    float difference = b[i] - a[i];
+    float progressed = difference * time;
+    c[i]             = a[i] + progressed;
+  }
+}
+
 } // namespace
 
 void Game::startup(Engine& engine)
@@ -103,6 +189,7 @@ void Game::startup(Engine& engine)
   helmet.loadGLB(engine, "../assets/DamagedHelmet.glb");
   box.loadGLB(engine, "../assets/Box.glb");
   animatedBox.loadGLB(engine, "../assets/BoxAnimated.glb");
+  riggedSimple.loadGLB(engine, "../assets/RiggedSimple.glb");
 
   lights_ubo_offset = engine.ubo_host_visible.allocate(sizeof(light_sources));
 
@@ -155,6 +242,11 @@ void Game::startup(Engine& engine)
     vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &skybox_dset);
     vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &helmet_dset);
     vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &imgui_dset);
+
+    for (int i = 0; i < SDL_arraysize(rig_dsets); ++i)
+    {
+      vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &rig_dsets[i]);
+    }
   }
 
   {
@@ -236,6 +328,41 @@ void Game::startup(Engine& engine)
     vkUpdateDescriptorSets(engine.generic_handles.device, SDL_arraysize(writes), writes, 0, nullptr);
   }
 
+  // for(int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
+  {
+    for (int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
+    {
+      VkDeviceSize& offset = rig_skimming_matrices_ubo_offsets[swapchain_image_idx];
+      offset               = engine.ubo_host_visible.allocate(12 * sizeof(mat4x4));
+    }
+
+    VkDescriptorBufferInfo ubo_infos[SWAPCHAIN_IMAGES_COUNT]{};
+    for (int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
+    {
+      VkDescriptorBufferInfo& ubo_info = ubo_infos[swapchain_image_idx];
+
+      ubo_info.buffer = engine.ubo_host_visible.buffer;
+      ubo_info.offset = rig_skimming_matrices_ubo_offsets[swapchain_image_idx];
+      ubo_info.range  = 12 * sizeof(mat4x4);
+    }
+
+    VkWriteDescriptorSet writes[SWAPCHAIN_IMAGES_COUNT]{};
+    for (int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
+    {
+      VkWriteDescriptorSet& write = writes[swapchain_image_idx];
+
+      write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+      write.dstBinding      = 9;
+      write.dstArrayElement = 0;
+      write.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+      write.descriptorCount = 1;
+      write.pBufferInfo     = &ubo_infos[swapchain_image_idx];
+      write.dstSet          = rig_dsets[swapchain_image_idx];
+    }
+
+    vkUpdateDescriptorSets(engine.generic_handles.device, SDL_arraysize(writes), writes, 0, nullptr);
+  }
+
   helmet_translation[0] = -1.0f;
   helmet_translation[1] = 1.0f;
   helmet_translation[2] = 3.0f;
@@ -243,6 +370,10 @@ void Game::startup(Engine& engine)
   robot_position[0] = 2.0f;
   robot_position[1] = 2.5f;
   robot_position[2] = 3.0f;
+
+  rigged_position[0] = 2.0f;
+  rigged_position[1] = 0.0f;
+  rigged_position[2] = 1.0f;
 
   {
     LightSource& red = light_sources[0];
@@ -279,6 +410,16 @@ void Game::startup(Engine& engine)
       SDL_memcpy(dst[i].position, light_sources[i].position, 3 * sizeof(float));
       SDL_memcpy(dst[i].color, light_sources[i].color, 3 * sizeof(float));
     }
+    vkUnmapMemory(engine.generic_handles.device, engine.ubo_host_visible.memory);
+  }
+
+  for (int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
+  {
+    float* dst = nullptr;
+    vkMapMemory(engine.generic_handles.device, engine.ubo_host_visible.memory,
+                rig_skimming_matrices_ubo_offsets[swapchain_image_idx], 12 * sizeof(mat4x4), 0, (void**)(&dst));
+    SDL_memcpy(dst, riggedSimple.scene_graph.skins[0].inverse_bind_matrices.data,
+               riggedSimple.scene_graph.skins[0].inverse_bind_matrices.count * sizeof(mat4x4));
     vkUnmapMemory(engine.generic_handles.device, engine.ubo_host_visible.memory);
   }
 
@@ -425,11 +566,12 @@ void Game::update(Engine& engine, float current_time_sec)
 
   ImGui::InputFloat3("robot position", robot_position);
   ImGui::InputFloat3("helmet position", helmet_translation);
+  ImGui::InputFloat3("rigged position", rigged_position);
 
   ImGui::Text("animation: %s, %.2f", animatedBox.animation_enabled ? "ongoing" : "stopped",
               animatedBox.animation_enabled ? current_time_sec - animatedBox.animation_start_time : 0.0f);
 
-  if (ImGui::Button("restart animation"))
+  if (ImGui::Button("restart cube animation"))
   {
     animatedBox.animation_enabled    = true;
     animatedBox.animation_start_time = current_time_sec;
@@ -439,7 +581,29 @@ void Game::update(Engine& engine, float current_time_sec)
       quat_identity(rotation);
     }
 
-    for (vec4& translation : animatedBox.animation_translations)
+    for (vec3& translation : animatedBox.animation_translations)
+    {
+      for (int i = 0; i < 4; ++i)
+      {
+        translation[i] = 0.0f;
+      }
+    }
+  }
+
+  ImGui::Text("animation: %s, %.2f", riggedSimple.animation_enabled ? "ongoing" : "stopped",
+              riggedSimple.animation_enabled ? current_time_sec - riggedSimple.animation_start_time : 0.0f);
+
+  if (ImGui::Button("restart rigged animation"))
+  {
+    riggedSimple.animation_enabled    = true;
+    riggedSimple.animation_start_time = current_time_sec;
+
+    for (quat& rotation : riggedSimple.animation_rotations)
+    {
+      quat_identity(rotation);
+    }
+
+    for (vec3& translation : riggedSimple.animation_translations)
     {
       for (int i = 0; i < 4; ++i)
       {
@@ -461,6 +625,13 @@ void Game::update(Engine& engine, float current_time_sec)
 
   ImGui::Text("Average render time: %f", avg_time);
 
+  if (ImGui::Button("quit"))
+  {
+    SDL_Event event;
+    event.type = SDL_QUIT;
+    SDL_PushEvent(&event);
+  }
+
   // simple animation for testing purposes
   if (animatedBox.animation_enabled)
   {
@@ -479,88 +650,19 @@ void Game::update(Engine& engine, float current_time_sec)
 
         if (sampler.time_frame[0] < animation_time)
         {
-          auto find_first_higher = [](float* times, float current) -> int {
-            int iter = 0;
-            while (current > times[iter])
-              iter += 1;
-            return iter;
-          };
-
           int   keyframe_upper         = find_first_higher(sampler.times, animation_time);
           int   keyframe_lower         = keyframe_upper - 1;
           float time_between_keyframes = sampler.times[keyframe_upper] - sampler.times[keyframe_lower];
           float keyframe_uniform_time  = (animation_time - sampler.times[keyframe_lower]) / time_between_keyframes;
-
-          auto lerp = [](float* a, float* b, float* c, int len, float time) {
-            for (int i = 0; i < len; ++i)
-            {
-              float difference = b[i] - a[i];
-              float progressed = difference * time;
-              c[i]             = a[i] + progressed;
-            }
-          };
-
-          auto slerp = [](quat a, quat b, quat c, float time) {
-
-            auto normalize = [](quat q) -> float {
-              float x = q[0] * q[0];
-              float y = q[1] * q[1];
-              float z = q[2] * q[2];
-              float w = q[3] * q[3];
-
-              float norm = SDL_sqrtf(x + y + z + w);
-              q[0] /= norm;
-              q[1] /= norm;
-              q[2] /= norm;
-            };
-
-            auto clamp = [](float val, float min, float max) -> float {
-              return (val < min) ? min : (val > max) ? max : val;
-            };
-
-            auto quat_copy = [](quat into, quat from) {
-              for (int i = 0; i < 4; ++i)
-                into[i] = from[i];
-            };
-
-            float       dotproduct = quat_inner_product(a, b);
-            const float limit      = 0.9995f;
-
-            if (dotproduct > limit)
-            {
-              quat_mul(c, b, a);
-              normalize(c);
-            }
-            else
-            {
-              dotproduct   = clamp(dotproduct, -1.0f, 1.0f);
-              float theta0 = static_cast<float>(SDL_acos(dotproduct));
-              float theta  = theta0 * time;
-
-              quat tmp = {};
-              quat_copy(tmp, a);
-              quat_scale(tmp, tmp, dotproduct);
-
-              quat v2 = {};
-              quat_mul(v2, b, tmp);
-              normalize(v2);
-
-              quat a_scaled = {};
-              quat_scale(a_scaled, a, SDL_cosf(theta));
-
-              quat v2_scaled = {};
-              quat_scale(v2_scaled, v2, SDL_sinf(theta));
-
-              quat_add(c, a_scaled, v2_scaled);
-            }
-          };
 
           if (AnimationChannel::Path::Rotation == channel.target_path)
           {
             float* a = &sampler.values[4 * keyframe_lower];
             float* b = &sampler.values[4 * keyframe_upper];
             float* c = animatedBox.animation_rotations[channel.target_node_idx];
-            slerp(a, b, c, keyframe_uniform_time);
+            quat_lerp(a, b, c, keyframe_uniform_time);
+
+            animatedBox.animation_properties[channel.target_node_idx] |= Node::Property::Rotation;
           }
           else if (AnimationChannel::Path::Translation == channel.target_path)
           {
@@ -568,6 +670,8 @@ void Game::update(Engine& engine, float current_time_sec)
             float* b = &sampler.values[3 * keyframe_upper];
             float* c = animatedBox.animation_translations[channel.target_node_idx];
             lerp(a, b, c, 3, keyframe_uniform_time);
+
+            animatedBox.animation_properties[channel.target_node_idx] |= Node::Property::Translation;
           }
         }
       }
@@ -576,6 +680,59 @@ void Game::update(Engine& engine, float current_time_sec)
     if (not any_sampler_ongoing)
     {
       animatedBox.animation_enabled = false;
+    }
+  }
+
+  // simple skinning animation for testing purposes
+  if (riggedSimple.animation_enabled)
+  {
+    bool  any_sampler_ongoing = false;
+    float animation_time      = current_time_sec - riggedSimple.animation_start_time;
+
+    for (int anim_channel_idx = 0; anim_channel_idx < riggedSimple.scene_graph.animations.data[0].channels.count;
+         ++anim_channel_idx)
+    // for (int anim_channel_idx = 3; anim_channel_idx < 6; ++anim_channel_idx)
+    {
+      const AnimationChannel& channel = riggedSimple.scene_graph.animations.data[0].channels.data[anim_channel_idx];
+      const AnimationSampler& sampler = riggedSimple.scene_graph.animations.data[0].samplers.data[channel.sampler_idx];
+
+      if (sampler.time_frame[1] > animation_time)
+      {
+        any_sampler_ongoing = true;
+
+        if (sampler.time_frame[0] < animation_time)
+        {
+          int   keyframe_upper         = find_first_higher(sampler.times, animation_time);
+          int   keyframe_lower         = keyframe_upper - 1;
+          float time_between_keyframes = sampler.times[keyframe_upper] - sampler.times[keyframe_lower];
+          float keyframe_uniform_time  = (animation_time - sampler.times[keyframe_lower]) / time_between_keyframes;
+
+          if (AnimationChannel::Path::Rotation == channel.target_path)
+          {
+            float* a = &sampler.values[4 * keyframe_lower];
+            float* b = &sampler.values[4 * keyframe_upper];
+            float* c = riggedSimple.animation_rotations[channel.target_node_idx];
+            quat_lerp(a, b, c, keyframe_uniform_time);
+
+            riggedSimple.animation_properties[channel.target_node_idx] |= Node::Property::Rotation;
+          }
+          else if (AnimationChannel::Path::Translation == channel.target_path)
+          {
+            float* a = &sampler.values[3 * keyframe_lower];
+            float* b = &sampler.values[3 * keyframe_upper];
+            float* c = riggedSimple.animation_translations[channel.target_node_idx];
+            lerp(a, b, c, 3, keyframe_uniform_time);
+
+            riggedSimple.animation_properties[channel.target_node_idx] |= Node::Property::Translation;
+          }
+        }
+      }
+    }
+
+    if (not any_sampler_ongoing)
+    {
+      riggedSimple.animation_enabled = false;
+      SDL_memset(riggedSimple.animation_properties, 0, sizeof(riggedSimple.animation_properties));
     }
   }
 
@@ -748,7 +905,7 @@ void Game::render(Engine& engine, float current_time_sec)
 
       vec3 scale = {0.05f, 0.05f, 0.05f};
       box.renderColored(engine, cmd, push_const.projection, push_const.view, light_sources[i].position, orientation,
-                        scale, light_sources[i].color);
+                        scale, light_sources[i].color, Engine::SimpleRendering::Passes::ColoredGeometry, 0);
     }
 
     {
@@ -776,7 +933,64 @@ void Game::render(Engine& engine, float current_time_sec)
       vec3 scale = {1.0f, 1.0f, 1.0f};
       vec3 color = {0.0, 1.0, 0.0};
       animatedBox.renderColored(engine, cmd, push_const.projection, push_const.view, robot_position, orientation, scale,
-                                color);
+                                color, Engine::SimpleRendering::Passes::ColoredGeometry, 0);
+    }
+
+#if 0
+        {
+          quat orientation = {};
+          vec3 axis        = {1.0, 0.0, 0.0};
+          quat_rotate(orientation, to_rad(45.0f), axis);
+
+          vec3 scale = {0.3f, 0.3f, 0.3f};
+          vec3 color = {0.0, 0.0, 1.0};
+          riggedSimple.renderColored(engine, cmd, push_const.projection, push_const.view, rigged_position, orientation,
+                                     scale, color);
+        }
+#endif
+
+    vkEndCommandBuffer(cmd);
+  }
+
+  {
+    VkCommandBuffer cmd = renderer.secondary_command_buffers[Engine::SimpleRendering::Passes::Count * image_index +
+                                                             Engine::SimpleRendering::Passes::ColoredGeometrySkinned];
+
+    {
+      VkCommandBufferInheritanceInfo inheritance{};
+      inheritance.sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+      inheritance.renderPass           = renderer.render_pass;
+      inheritance.subpass              = Engine::SimpleRendering::Passes::ColoredGeometrySkinned;
+      inheritance.framebuffer          = renderer.framebuffers[image_index];
+      inheritance.occlusionQueryEnable = VK_FALSE;
+
+      VkCommandBufferBeginInfo begin{};
+      begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+      begin.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+      begin.pInheritanceInfo = &inheritance;
+      vkBeginCommandBuffer(cmd, &begin);
+    }
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      renderer.pipelines[Engine::SimpleRendering::Passes::ColoredGeometrySkinned]);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometrySkinned], 0, 1,
+                            &rig_dsets[image_index], 0, nullptr);
+
+    gltf::MVP push_const{};
+    mat4x4_dup(push_const.projection, projection);
+    mat4x4_dup(push_const.view, view);
+
+    {
+      quat orientation = {};
+      vec3 axis        = {1.0, 0.0, 0.0};
+      quat_rotate(orientation, to_rad(90.0f), axis);
+
+      vec3 scale = {0.2f, 0.2f, 0.2f};
+      vec3 color = {0.0, 0.0, 1.0};
+      riggedSimple.renderColored(engine, cmd, push_const.projection, push_const.view, rigged_position, orientation,
+                                 scale, color, Engine::SimpleRendering::Passes::ColoredGeometrySkinned,
+                                 rig_skimming_matrices_ubo_offsets[image_index]);
     }
 
     vkEndCommandBuffer(cmd);

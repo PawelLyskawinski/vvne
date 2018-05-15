@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.9)
 project(vvne)
 
 set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -fno-exceptions -fno-rtti")# -Wall -Wextra -Werror")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fno-exceptions -fno-rtti")# -Wall -Wextra -Werror")
 
 if(WIN32)
 include_directories(
@@ -34,12 +34,6 @@ add_executable(${PROJECT_NAME}
         thirdparty/imgui_draw.cpp
         thirdparty/imgui_internal.h
         thirdparty/linmath.h
-        assets/triangle_push.vert
-        assets/triangle_push.frag
-        assets/imgui.vert
-        assets/imgui.frag
-        assets/skybox.vert
-        assets/skybox.frag
 		)
 
 if(WIN32)
@@ -50,12 +44,13 @@ target_link_libraries(${PROJECT_NAME}
 else()
 target_link_libraries(${PROJECT_NAME}
         ${CMAKE_CURRENT_LIST_DIR}/bin/libSDL2-2.0.so.0
-        /usr/lib/x86_64-linux-gnu/libvulkan.so.1
+        ~/Pobrane/VulkanSDK/1.1.70.1/x86_64/lib/libvulkan.so
         )
 endif()
 
-if(WIN32)
-else()
 add_executable(tests unit_tests/SeekerTests.cc)
+if(WIN32)
+target_link_libraries(tests ${CMAKE_CURRENT_LIST_DIR}/bin/SDL2.dll)
+else()
 target_link_libraries(tests ${CMAKE_CURRENT_LIST_DIR}/bin/libSDL2-2.0.so.0)
 endif()

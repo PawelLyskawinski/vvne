@@ -146,6 +146,7 @@ struct Engine
       Skybox = 0,
       Scene3D,
       ColoredGeometry,
+      ColoredGeometrySkinned,
       ImGui,
       Count
     };

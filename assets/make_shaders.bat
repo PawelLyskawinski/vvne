@@ -8,6 +8,8 @@ call:compile skybox.frag
 call:compile skybox.vert
 call:compile colored_geometry.frag
 call:compile colored_geometry.vert
+call:compile colored_geometry_skinned.frag
+call:compile colored_geometry_skinned.vert
 call:compile equirectangular_to_cubemap.frag
 call:compile equirectangular_to_cubemap.vert
 call:compile cubemap_to_irradiance.frag

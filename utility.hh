@@ -2,7 +2,7 @@
 
 namespace utility {
 
-template <typename T, int N> void copy(T* dst, T* src)
+template <typename T, int N> void copy(T* dst, const T* src)
 {
   for (int i = 0; i < N; ++i)
   {

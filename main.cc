@@ -38,7 +38,7 @@ int main(int argc, char* argv[])
 
     uint64_t    frame_time_counter         = SDL_GetPerformanceCounter() - start_of_frame_ticks;
     float       elapsed_ms                 = 1000.0f * ((float)frame_time_counter / (float)performance_frequency);
-    const int   desired_frames_per_sec     = 120;
+    const int   desired_frames_per_sec     = 80;
     const float desired_frame_duration_sec = (1000.0f / (float)desired_frames_per_sec);
 
     if (elapsed_ms < desired_frame_duration_sec)

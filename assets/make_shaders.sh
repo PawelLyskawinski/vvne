@@ -12,6 +12,8 @@ compile skybox.frag
 compile skybox.vert
 compile colored_geometry.frag
 compile colored_geometry.vert
+compile colored_geometry_skinned.frag
+compile colored_geometry_skinned.vert
 compile equirectangular_to_cubemap.frag
 compile equirectangular_to_cubemap.vert
 compile cubemap_to_irradiance.frag
