@@ -190,6 +190,7 @@ void Game::startup(Engine& engine)
   box.loadGLB(engine, "../assets/Box.glb");
   animatedBox.loadGLB(engine, "../assets/BoxAnimated.glb");
   riggedSimple.loadGLB(engine, "../assets/RiggedSimple.glb");
+  riggedFigure.loadGLB(engine, "../assets/RiggedFigure.glb");
 
   lights_ubo_offset = engine.ubo_host_visible.allocate(sizeof(light_sources));
 
@@ -246,6 +247,7 @@ void Game::startup(Engine& engine)
     for (int i = 0; i < SDL_arraysize(rig_dsets); ++i)
     {
       vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &rig_dsets[i]);
+      vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &fig_dsets[i]);
     }
   }
 
@@ -328,12 +330,15 @@ void Game::startup(Engine& engine)
     vkUpdateDescriptorSets(engine.generic_handles.device, SDL_arraysize(writes), writes, 0, nullptr);
   }
 
-  // for(int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
   {
     for (int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
     {
-      VkDeviceSize& offset = rig_skimming_matrices_ubo_offsets[swapchain_image_idx];
-      offset               = engine.ubo_host_visible.allocate(12 * sizeof(mat4x4));
+      rig_skinning_matrices_ubo_offsets[swapchain_image_idx] = engine.ubo_host_visible.allocate(32 * sizeof(mat4x4));
+    }
+
+    for (int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
+    {
+      fig_skinning_matrices_ubo_offsets[swapchain_image_idx] = engine.ubo_host_visible.allocate(32 * sizeof(mat4x4));
     }
 
     VkDescriptorBufferInfo ubo_infos[SWAPCHAIN_IMAGES_COUNT]{};
@@ -342,8 +347,8 @@ void Game::startup(Engine& engine)
       VkDescriptorBufferInfo& ubo_info = ubo_infos[swapchain_image_idx];
 
       ubo_info.buffer = engine.ubo_host_visible.buffer;
-      ubo_info.offset = rig_skimming_matrices_ubo_offsets[swapchain_image_idx];
-      ubo_info.range  = 12 * sizeof(mat4x4);
+      ubo_info.offset = rig_skinning_matrices_ubo_offsets[swapchain_image_idx];
+      ubo_info.range  = 32 * sizeof(mat4x4);
     }
 
     VkWriteDescriptorSet writes[SWAPCHAIN_IMAGES_COUNT]{};
@@ -361,6 +366,18 @@ void Game::startup(Engine& engine)
     }
 
     vkUpdateDescriptorSets(engine.generic_handles.device, SDL_arraysize(writes), writes, 0, nullptr);
+
+    for (int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
+    {
+      ubo_infos[swapchain_image_idx].offset = fig_skinning_matrices_ubo_offsets[swapchain_image_idx];
+    }
+
+    for (int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
+    {
+      writes[swapchain_image_idx].dstSet = fig_dsets[swapchain_image_idx];
+    }
+
+    vkUpdateDescriptorSets(engine.generic_handles.device, SDL_arraysize(writes), writes, 0, nullptr);
   }
 
   helmet_translation[0] = -1.0f;
@@ -373,7 +390,7 @@ void Game::startup(Engine& engine)
 
   rigged_position[0] = 2.0f;
   rigged_position[1] = 0.0f;
-  rigged_position[2] = 1.0f;
+  rigged_position[2] = 3.0f;
 
   {
     LightSource& red = light_sources[0];
@@ -410,16 +427,6 @@ void Game::startup(Engine& engine)
       SDL_memcpy(dst[i].position, light_sources[i].position, 3 * sizeof(float));
       SDL_memcpy(dst[i].color, light_sources[i].color, 3 * sizeof(float));
     }
-    vkUnmapMemory(engine.generic_handles.device, engine.ubo_host_visible.memory);
-  }
-
-  for (int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
-  {
-    float* dst = nullptr;
-    vkMapMemory(engine.generic_handles.device, engine.ubo_host_visible.memory,
-                rig_skimming_matrices_ubo_offsets[swapchain_image_idx], 12 * sizeof(mat4x4), 0, (void**)(&dst));
-    SDL_memcpy(dst, riggedSimple.scene_graph.skins[0].inverse_bind_matrices.data,
-               riggedSimple.scene_graph.skins[0].inverse_bind_matrices.count * sizeof(mat4x4));
     vkUnmapMemory(engine.generic_handles.device, engine.ubo_host_visible.memory);
   }
 
@@ -482,6 +489,10 @@ void Game::update(Engine& engine, float current_time_sec)
         {
         case SDL_BUTTON_LEFT:
           debug_gui.mousepressed[0] = true;
+          lmb_clicked               = true;
+          SDL_GetMouseState(&lmb_initial_cursor_position[0], &lmb_initial_cursor_position[1]);
+          lmb_current_cursor_position[0] = lmb_initial_cursor_position[0];
+          lmb_current_cursor_position[1] = lmb_initial_cursor_position[1];
           break;
         case SDL_BUTTON_RIGHT:
           debug_gui.mousepressed[1] = true;
@@ -491,6 +502,24 @@ void Game::update(Engine& engine, float current_time_sec)
           break;
         default:
           break;
+        }
+      }
+      break;
+
+      case SDL_MOUSEMOTION:
+      {
+        if (lmb_clicked)
+        {
+          SDL_GetMouseState(&lmb_current_cursor_position[0], &lmb_current_cursor_position[1]);
+        }
+      }
+      break;
+
+      case SDL_MOUSEBUTTONUP:
+      {
+        if (SDL_BUTTON_LEFT == event.button.button)
+        {
+          lmb_clicked = false;
         }
       }
       break;
@@ -568,6 +597,9 @@ void Game::update(Engine& engine, float current_time_sec)
   ImGui::InputFloat3("helmet position", helmet_translation);
   ImGui::InputFloat3("rigged position", rigged_position);
 
+  ImGui::Text("%d %d | %d %d", lmb_initial_cursor_position[0], lmb_initial_cursor_position[1],
+              lmb_current_cursor_position[0], lmb_current_cursor_position[1]);
+
   ImGui::Text("animation: %s, %.2f", animatedBox.animation_enabled ? "ongoing" : "stopped",
               animatedBox.animation_enabled ? current_time_sec - animatedBox.animation_start_time : 0.0f);
 
@@ -604,6 +636,28 @@ void Game::update(Engine& engine, float current_time_sec)
     }
 
     for (vec3& translation : riggedSimple.animation_translations)
+    {
+      for (int i = 0; i < 4; ++i)
+      {
+        translation[i] = 0.0f;
+      }
+    }
+  }
+
+  ImGui::Text("animation: %s, %.2f", riggedFigure.animation_enabled ? "ongoing" : "stopped",
+              riggedFigure.animation_enabled ? current_time_sec - riggedFigure.animation_start_time : 0.0f);
+
+  if (ImGui::Button("restart figure animation"))
+  {
+    riggedFigure.animation_enabled    = true;
+    riggedFigure.animation_start_time = current_time_sec;
+
+    for (quat& rotation : riggedFigure.animation_rotations)
+    {
+      quat_identity(rotation);
+    }
+
+    for (vec3& translation : riggedFigure.animation_translations)
     {
       for (int i = 0; i < 4; ++i)
       {
@@ -733,6 +787,57 @@ void Game::update(Engine& engine, float current_time_sec)
     {
       riggedSimple.animation_enabled = false;
       SDL_memset(riggedSimple.animation_properties, 0, sizeof(riggedSimple.animation_properties));
+    }
+  }
+
+  if (riggedFigure.animation_enabled)
+  {
+    bool  any_sampler_ongoing = false;
+    float animation_time      = current_time_sec - riggedFigure.animation_start_time;
+
+    for (int anim_channel_idx = 0; anim_channel_idx < riggedFigure.scene_graph.animations.data[0].channels.count;
+         ++anim_channel_idx)
+    {
+      const AnimationChannel& channel = riggedFigure.scene_graph.animations.data[0].channels.data[anim_channel_idx];
+      const AnimationSampler& sampler = riggedFigure.scene_graph.animations.data[0].samplers.data[channel.sampler_idx];
+
+      if (sampler.time_frame[1] > animation_time)
+      {
+        any_sampler_ongoing = true;
+
+        if (sampler.time_frame[0] < animation_time)
+        {
+          int   keyframe_upper         = find_first_higher(sampler.times, animation_time);
+          int   keyframe_lower         = keyframe_upper - 1;
+          float time_between_keyframes = sampler.times[keyframe_upper] - sampler.times[keyframe_lower];
+          float keyframe_uniform_time  = (animation_time - sampler.times[keyframe_lower]) / time_between_keyframes;
+
+          if (AnimationChannel::Path::Rotation == channel.target_path)
+          {
+            float* a = &sampler.values[4 * keyframe_lower];
+            float* b = &sampler.values[4 * keyframe_upper];
+            float* c = riggedFigure.animation_rotations[channel.target_node_idx];
+            quat_lerp(a, b, c, keyframe_uniform_time);
+
+            riggedFigure.animation_properties[channel.target_node_idx] |= Node::Property::Rotation;
+          }
+          else if (AnimationChannel::Path::Translation == channel.target_path)
+          {
+            float* a = &sampler.values[3 * keyframe_lower];
+            float* b = &sampler.values[3 * keyframe_upper];
+            float* c = riggedFigure.animation_translations[channel.target_node_idx];
+            lerp(a, b, c, 3, keyframe_uniform_time);
+
+            riggedFigure.animation_properties[channel.target_node_idx] |= Node::Property::Translation;
+          }
+        }
+      }
+    }
+
+    if (not any_sampler_ongoing)
+    {
+      riggedFigure.animation_enabled = false;
+      SDL_memset(riggedFigure.animation_properties, 0, sizeof(riggedFigure.animation_properties));
     }
   }
 
@@ -936,19 +1041,6 @@ void Game::render(Engine& engine, float current_time_sec)
                                 color, Engine::SimpleRendering::Passes::ColoredGeometry, 0);
     }
 
-#if 0
-        {
-          quat orientation = {};
-          vec3 axis        = {1.0, 0.0, 0.0};
-          quat_rotate(orientation, to_rad(45.0f), axis);
-
-          vec3 scale = {0.3f, 0.3f, 0.3f};
-          vec3 color = {0.0, 0.0, 1.0};
-          riggedSimple.renderColored(engine, cmd, push_const.projection, push_const.view, rigged_position, orientation,
-                                     scale, color);
-        }
-#endif
-
     vkEndCommandBuffer(cmd);
   }
 
@@ -973,24 +1065,43 @@ void Game::render(Engine& engine, float current_time_sec)
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       renderer.pipelines[Engine::SimpleRendering::Passes::ColoredGeometrySkinned]);
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometrySkinned], 0, 1,
-                            &rig_dsets[image_index], 0, nullptr);
 
     gltf::MVP push_const{};
     mat4x4_dup(push_const.projection, projection);
     mat4x4_dup(push_const.view, view);
 
     {
+      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometrySkinned], 0, 1,
+                              &rig_dsets[image_index], 0, nullptr);
+
       quat orientation = {};
       vec3 axis        = {1.0, 0.0, 0.0};
       quat_rotate(orientation, to_rad(90.0f), axis);
 
-      vec3 scale = {0.2f, 0.2f, 0.2f};
+      vec3 scale = {0.5f, 0.5f, 0.5f};
       vec3 color = {0.0, 0.0, 1.0};
       riggedSimple.renderColored(engine, cmd, push_const.projection, push_const.view, rigged_position, orientation,
                                  scale, color, Engine::SimpleRendering::Passes::ColoredGeometrySkinned,
-                                 rig_skimming_matrices_ubo_offsets[image_index]);
+                                 rig_skinning_matrices_ubo_offsets[image_index]);
+    }
+
+    {
+      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometrySkinned], 0, 1,
+                              &fig_dsets[image_index], 0, nullptr);
+
+      quat orientation = {};
+      vec3 axis        = {1.0, 0.0, 0.0};
+      quat_rotate(orientation, to_rad(90.0f), axis);
+
+      vec3 scale    = {1.0f, 1.0f, 1.0f};
+      vec3 color    = {1.0, 0.0, 0.0};
+      vec3 position = {0.0f, 0.0f, 1.0f};
+
+      riggedFigure.renderColored(engine, cmd, push_const.projection, push_const.view, position, orientation, scale,
+                                 color, Engine::SimpleRendering::Passes::ColoredGeometrySkinned,
+                                 fig_skinning_matrices_ubo_offsets[image_index]);
     }
 
     vkEndCommandBuffer(cmd);

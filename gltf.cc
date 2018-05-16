@@ -954,10 +954,9 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
                                     vec4 global_position, quat global_orientation, vec3 model_scale, vec3 color,
                                     Engine::SimpleRendering::Passes pass, VkDeviceSize joint_ubo_offset) noexcept
 {
-  vec3    node_positions[32]         = {};
-  quat    node_orientations[32]      = {};
   uint8_t node_parent_hierarchy[32]  = {};
   uint8_t node_shall_be_rendered[32] = {};
+  mat4x4  transforms[32]             = {};
 
   for (uint8_t i = 0; i < SDL_arraysize(node_parent_hierarchy); ++i)
   {
@@ -973,67 +972,101 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
     }
   }
 
-  for (int node_idx = 0; node_idx < scene_graph.nodes.count; ++node_idx)
-  {
-    quat_identity(node_orientations[node_idx]);
-  }
-
-  // initialize scene nodes to start with global transforms
-  ArrayView<int>& scene_root_node_indices = scene_graph.scenes[0].nodes;
-  for (int node_idx : scene_root_node_indices)
-  {
-    utility::copy<float, 4>(node_orientations[node_idx], global_orientation);
-    utility::copy<float, 3>(node_positions[node_idx], global_position);
-  }
-
-  // propagate transformations downstream
   for (uint8_t node_idx = 0; node_idx < scene_graph.nodes.count; ++node_idx)
   {
-    Node&   current    = scene_graph.nodes[node_idx];
-    uint8_t parent_idx = node_parent_hierarchy[node_idx];
+    mat4x4_identity(transforms[node_idx]);
+  }
 
-    float* current_orientation = node_orientations[node_idx];
-    float* current_position    = node_positions[node_idx];
-    float* parent_orientation  = node_orientations[parent_idx];
-    float* parent_position     = node_positions[parent_idx];
+  {
+    mat4x4 translation_matrix = {};
+    mat4x4_translate(translation_matrix, global_position[0], global_position[1], global_position[2]);
 
+    mat4x4 rotation_matrix = {};
+    mat4x4_from_quat(rotation_matrix, global_orientation);
+
+    mat4x4 scale_matrix = {};
+    mat4x4_identity(scale_matrix);
+    mat4x4_scale_aniso(scale_matrix, scale_matrix, model_scale[0], model_scale[1], model_scale[2]);
+
+    mat4x4 tmp = {};
+    mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+
+    mat4x4 global_transform = {};
+    mat4x4_mul(global_transform, tmp, scale_matrix);
+
+    // initialize scene nodes to start with global transforms
+    for (int node_idx : scene_graph.scenes[0].nodes)
     {
-      quat tmp = {};
-      quat_mul(tmp, parent_orientation, current_orientation);
-      utility::copy<float, 4>(current_orientation, tmp);
+      mat4x4_dup(transforms[node_idx], global_transform);
     }
-    utility::copy<float, 3>(current_position, parent_position);
+
+    if (scene_graph.skins.count)
+    {
+      int node_idx            = scene_graph.skins[0].skeleton;
+      int skeleton_parent_idx = node_parent_hierarchy[node_idx];
+      mat4x4_dup(transforms[skeleton_parent_idx], global_transform);
+    }
+  }
+
+  // calculate global transforms
+  for (uint8_t node_idx = 0; node_idx < scene_graph.nodes.count; ++node_idx)
+  {
+    Node&  current            = scene_graph.nodes[node_idx];
+    mat4x4 rotation_matrix    = {};
+    mat4x4 translation_matrix = {};
+    mat4x4 local_transform    = {};
+    mat4x4 initial_transform  = {};
+
+    mat4x4_identity(rotation_matrix);
+    mat4x4_identity(translation_matrix);
 
     if (animation_properties[node_idx] & Node::Property::Rotation)
     {
-      quat final_animated_orientation = {};
-      quat_mul(final_animated_orientation, current_orientation, animation_rotations[node_idx]);
-      utility::copy<float, 4>(current_orientation, final_animated_orientation);
+      mat4x4_from_quat(rotation_matrix, animation_rotations[node_idx]);
     }
     else if (current.has(Node::Property::Rotation))
     {
-      quat final_orientation = {};
-      quat_mul(final_orientation, current_orientation, current.rotation);
-      utility::copy<float, 4>(current_orientation, final_orientation);
+      mat4x4_from_quat(rotation_matrix, current.rotation);
     }
 
     if (animation_properties[node_idx] & Node::Property::Translation)
     {
-      vec3 final_animated_position = {};
-      quat_mul_vec3(final_animated_position, current_orientation, animation_translations[node_idx]);
-      vec3_add(current_position, current_position, final_animated_position);
+      float* t = animation_translations[node_idx];
+      mat4x4_translate(translation_matrix, t[0], t[1], t[2]);
     }
     else if (current.has(Node::Property::Translation))
     {
-      vec3 final_position = {};
-      quat_mul_vec3(final_position, current_orientation, current.translation);
-      vec3_add(current_position, current_position, final_position);
+      float* t = current.translation;
+      mat4x4_translate(translation_matrix, t[0], t[1], t[2]);
+    }
+
+    mat4x4_mul(local_transform, translation_matrix, rotation_matrix);
+    mat4x4_dup(initial_transform, transforms[node_idx]);
+    mat4x4_mul(transforms[node_idx], initial_transform, local_transform);
+  }
+
+  // local to global transforms
+  for (uint8_t node_idx = 0; node_idx < scene_graph.nodes.count; ++node_idx)
+  {
+    uint8_t parent_idx = node_parent_hierarchy[node_idx];
+
+    if (node_idx != parent_idx)
+    {
+      mat4x4 local_transform = {};
+      mat4x4_dup(local_transform, transforms[node_idx]);
+
+      mat4x4 parent_transform = {};
+      mat4x4_dup(parent_transform, transforms[parent_idx]);
+
+      mat4x4 global_transform = {};
+      mat4x4_mul(global_transform, parent_transform, local_transform);
+      mat4x4_dup(transforms[node_idx], global_transform);
     }
   }
 
-  for (int i = 0; i < scene_root_node_indices.count; ++i)
+  for (int i = 0; i < scene_graph.scenes[0].nodes.count; ++i)
   {
-    node_shall_be_rendered[scene_root_node_indices.data[i]] = SDL_TRUE;
+    node_shall_be_rendered[scene_graph.scenes[0].nodes.data[i]] = SDL_TRUE;
   }
 
   for (int i = 0; i < SDL_arraysize(node_shall_be_rendered); ++i)
@@ -1063,43 +1096,21 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
     mat4x4 inverted_global_transform = {};
     mat4x4_invert(inverted_global_transform, global_transform);
 
-    //
-    // BRUTE-FORCE FOR NOW!!
-    // todo: replace this with a good quality code when the feature works
-    //
-    mat4x4 local_transform_matrices[32] = {};
-
-    for (int i = 0; i < 32; ++i)
-    {
-      mat4x4 rotation = {};
-      mat4x4_from_quat(rotation, node_orientations[i]);
-
-      float* position_src = node_positions[i];
-
-      mat4x4 model = {};
-      mat4x4_identity(model);
-      mat4x4_translate(model, position_src[0], position_src[1], position_src[2]);
-      mat4x4_mul(model, model, rotation);
-      //mat4x4_scale_aniso(model, model, model_scale[0], model_scale[1], model_scale[2]);
-
-      mat4x4_dup(local_transform_matrices[i], model);
-    }
-
     uint8_t* gpu_joint_matrices = nullptr;
-    vkMapMemory(engine.generic_handles.device, engine.ubo_host_visible.memory, joint_ubo_offset, 12 * sizeof(mat4x4), 0,
+    vkMapMemory(engine.generic_handles.device, engine.ubo_host_visible.memory, joint_ubo_offset, 32 * sizeof(mat4x4), 0,
                 (void**)(&gpu_joint_matrices));
 
-    SDL_assert(skin.joints.count <= 12);
+    SDL_assert(skin.joints.count <= 32);
 
     for (int joint_id = 0; joint_id < skin.joints.count; ++joint_id)
     {
       int joint_node_id = skin.joints[joint_id];
 
       mat4x4 tmp = {};
-      mat4x4_mul(tmp, local_transform_matrices[joint_node_id], inverted_global_transform);
+      mat4x4_mul(tmp, inverted_global_transform, transforms[joint_node_id]);
 
       mat4x4 joint_matrix = {};
-      mat4x4_mul(joint_matrix, skin.inverse_bind_matrices[joint_id], tmp);
+      mat4x4_mul(joint_matrix, tmp, skin.inverse_bind_matrices[joint_id]);
 
       SDL_memcpy(&gpu_joint_matrices[sizeof(mat4x4) * joint_id], joint_matrix, sizeof(mat4x4));
     }
@@ -1114,24 +1125,13 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
   {
     if (node_shall_be_rendered[node_idx] and scene_graph.nodes.data[node_idx].has(Node::Property::Mesh))
     {
-      mat4x4 rotation = {};
-      mat4x4_from_quat(rotation, node_orientations[node_idx]);
-
-      float* position_src = node_positions[node_idx];
-
-      mat4x4 model = {};
-      mat4x4_identity(model);
-      mat4x4_translate(model, position_src[0], position_src[1], position_src[2]);
-      mat4x4_mul(model, model, rotation);
-      mat4x4_scale_aniso(model, model, model_scale[0], model_scale[1], model_scale[2]);
-
       int         mesh_idx = scene_graph.nodes.data[node_idx].mesh;
       const Mesh& mesh     = scene_graph.meshes.data[mesh_idx];
       vkCmdBindIndexBuffer(cmd, engine.gpu_static_geometry.buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_static_geometry.buffer, &mesh.vertices_offset);
 
       mat4x4 calculated_mvp = {};
-      mat4x4_mul(calculated_mvp, projection_view, model);
+      mat4x4_mul(calculated_mvp, projection_view, transforms[node_idx]);
 
       vkCmdPushConstants(cmd, engine.simple_rendering.pipeline_layouts[pass], VK_SHADER_STAGE_VERTEX_BIT, 0,
                          sizeof(mat4x4), calculated_mvp);

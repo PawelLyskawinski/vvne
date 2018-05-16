@@ -162,6 +162,10 @@ struct RenderableModel
   void renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 projection, mat4x4 view, vec3 global_position,
                      quat global_orientation, vec3 model_scale, vec3 color, Engine::SimpleRendering::Passes pass,
                      VkDeviceSize joint_ubo_offset) noexcept;
+  void renderSkeletonJoints(Engine& engine, RenderableModel& box_model,
+                            VkCommandBuffer cmd, mat4x4 projection, mat4x4 view, vec3 global_position,
+                            quat global_orientation, vec3 model_scale, vec3 color) noexcept;
+
   void renderRaw(Engine& engine, VkCommandBuffer cmd) const noexcept;
 };
 

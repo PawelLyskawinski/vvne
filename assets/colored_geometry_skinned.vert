@@ -8,7 +8,7 @@ transformation;
 
 layout(set = 0, binding = 9) uniform UBO
 {
-  mat4 joint_matrix[12];
+  mat4 joint_matrix[32];
 }
 ubo;
 
