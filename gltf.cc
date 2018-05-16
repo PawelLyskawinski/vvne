@@ -956,7 +956,7 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
 {
   uint8_t node_parent_hierarchy[32]  = {};
   uint8_t node_shall_be_rendered[32] = {};
-  mat4x4  transforms[32]             = {};
+  mat4x4  transforms[64]             = {};
 
   for (uint8_t i = 0; i < SDL_arraysize(node_parent_hierarchy); ++i)
   {
@@ -1097,10 +1097,10 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
     mat4x4_invert(inverted_global_transform, global_transform);
 
     uint8_t* gpu_joint_matrices = nullptr;
-    vkMapMemory(engine.generic_handles.device, engine.ubo_host_visible.memory, joint_ubo_offset, 32 * sizeof(mat4x4), 0,
+    vkMapMemory(engine.generic_handles.device, engine.ubo_host_visible.memory, joint_ubo_offset, 64 * sizeof(mat4x4), 0,
                 (void**)(&gpu_joint_matrices));
 
-    SDL_assert(skin.joints.count <= 32);
+    SDL_assert(skin.joints.count <= 64);
 
     for (int joint_id = 0; joint_id < skin.joints.count; ++joint_id)
     {

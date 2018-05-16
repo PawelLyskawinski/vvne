@@ -272,12 +272,12 @@ void Engine::startup()
 
   // Pool sizes below are just an suggestions. They have to be adjusted for the final release builds
   {
-    VkDescriptorPoolSize pool_sizes[] = {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 30 * SWAPCHAIN_IMAGES_COUNT},
-                                         {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 30 * SWAPCHAIN_IMAGES_COUNT}};
+    VkDescriptorPoolSize pool_sizes[] = {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 40 * SWAPCHAIN_IMAGES_COUNT},
+                                         {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 40 * SWAPCHAIN_IMAGES_COUNT}};
 
     VkDescriptorPoolCreateInfo ci{};
     ci.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    ci.maxSets       = 10 * SWAPCHAIN_IMAGES_COUNT;
+    ci.maxSets       = 40 * SWAPCHAIN_IMAGES_COUNT;
     ci.poolSizeCount = SDL_arraysize(pool_sizes);
     ci.pPoolSizes    = pool_sizes;
 

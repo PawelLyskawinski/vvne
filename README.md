@@ -18,3 +18,6 @@ There are a lot of publicly available engines / demos on github which use vulkan
 - vulkan SDK (libvulkan/vulkan-1, glslang)
 - compiled SDL2 library
 - "Old Industrial Hall" pack from http://www.hdrlabs.com/sibl/archive.html (too big to include into repo)
+### todos
+- refactor: animation system, node transformations in gltf.c, whole asset system
+- unify gltf modeling methods

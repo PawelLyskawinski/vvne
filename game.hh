@@ -28,16 +28,19 @@ struct Game
   VkDescriptorSet imgui_dset;
   VkDescriptorSet rig_dsets[SWAPCHAIN_IMAGES_COUNT]; // ubo per swap
   VkDescriptorSet fig_dsets[SWAPCHAIN_IMAGES_COUNT]; // ubo per swap
+  VkDescriptorSet monster_dsets[SWAPCHAIN_IMAGES_COUNT];
 
   gltf::RenderableModel helmet;
   gltf::RenderableModel box;
   gltf::RenderableModel animatedBox;
   gltf::RenderableModel riggedSimple;
   gltf::RenderableModel riggedFigure;
+  gltf::RenderableModel monster;
 
   float robot_position[3];
   float rigged_position[3];
   float helmet_translation[3];
+  float monster_position[3];
 
   int environment_cubemap_idx;
   int irradiance_cubemap_idx;
@@ -46,6 +49,7 @@ struct Game
 
   VkDeviceSize rig_skinning_matrices_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
   VkDeviceSize fig_skinning_matrices_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize monster_skinning_matrices_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
 
   float update_times[50];
   float render_times[50];
