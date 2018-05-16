@@ -929,8 +929,8 @@ void Game::update(Engine& engine, float current_time_sec)
 
     if (not any_sampler_ongoing)
     {
-      riggedFigure.animation_enabled = false;
-      SDL_memset(riggedFigure.animation_properties, 0, sizeof(riggedFigure.animation_properties));
+      monster.animation_enabled = false;
+      SDL_memset(monster.animation_properties, 0, sizeof(monster.animation_properties));
     }
   }
 

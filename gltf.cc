@@ -724,8 +724,6 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
   // ---------------------------------------------------------------------------
   // ANIMATIONS
   // ---------------------------------------------------------------------------
-  SDL_Log("%s : %d animation(s)", path, scene_graph.animations.count);
-
   Seeker animations_json = document.node("animations");
   for (int animation_idx = 0; animation_idx < scene_graph.animations.count; ++animation_idx)
   {
@@ -830,8 +828,6 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
       current_sampler.values =
           engine.double_ended_stack.allocate_front<float>(static_cast<unsigned>(output_type) * input_elements);
 
-      SDL_Log("sampler %d", sampler_idx);
-
       {
         const int input_view_glb_offset     = input_buffer_view.integer("byteOffset");
         const int input_accessor_glb_offset = input_accessor.integer("byteOffset");
@@ -844,9 +840,6 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
         {
           float*       dst = &current_sampler.times[i];
           const float* src = reinterpret_cast<const float*>(&binary_data[input_start_offset + (input_stride * i)]);
-
-          SDL_Log("time %.3f", *src);
-
           *dst = *src;
         }
       }
@@ -871,8 +864,6 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
           {
             dst[j] = src[j];
           }
-
-          SDL_Log("value %.3f %.3f %.3f", dst[0], dst[1], dst[2]);
         }
       }
     }
@@ -881,8 +872,6 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
   // ---------------------------------------------------------------------------
   // SKINS
   // ---------------------------------------------------------------------------
-  SDL_Log("%s : %d skin(s)", path, scene_graph.skins.count);
-
   Seeker skins_json = document.node("skins");
   for (int skin_idx = 0; skin_idx < scene_graph.skins.count; ++skin_idx)
   {
