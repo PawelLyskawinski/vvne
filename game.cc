@@ -450,11 +450,6 @@ void Game::startup(Engine& engine)
     vkUnmapMemory(engine.generic_handles.device, engine.ubo_host_visible.memory);
   }
 
-  vec3 eye    = {0.0f, 0.0f, 0.0f};
-  vec3 center = {0.0f, 0.0f, 1.0f};
-  vec3 up     = {0.0f, 1.0f, 0.0f};
-  mat4x4_look_at(view, eye, center, up);
-
   float extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
   float extent_height       = static_cast<float>(engine.generic_handles.extent2D.height);
   float aspect_ratio        = extent_width / extent_height;

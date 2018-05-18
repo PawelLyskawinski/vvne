@@ -167,7 +167,7 @@ void main()
   kD *= 1.0 - metallic_color;
   vec3        irradiance         = texture(irradiance_map, N).rgb;
   vec3        diffuse            = irradiance * albedo_color;
-  vec3        R                  = reflect(V, N);
+  vec3        R                  = reflect(-V, N);
   const float MAX_REFLECTION_LOD = 4.0;
   vec3        prefilteredColor   = textureLod(prefilter_map, R, roughness_color * MAX_REFLECTION_LOD).rgb;
   vec2        envBRDF            = texture(brdf_lut, vec2(max(dot(N, V), 0.0), roughness_color)).rg;
