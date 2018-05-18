@@ -2236,7 +2236,7 @@ void Engine::setup_simple_rendering()
     VkPipelineMultisampleStateCreateInfo multisample_state{};
     multisample_state.sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisample_state.rasterizationSamples  = MSAA_SAMPLE_COUNT;
-    multisample_state.sampleShadingEnable   = VK_TRUE;
+    multisample_state.sampleShadingEnable   = VK_FALSE;
     multisample_state.minSampleShading      = 1.0f;
     multisample_state.alphaToCoverageEnable = VK_FALSE;
     multisample_state.alphaToOneEnable      = VK_FALSE;
