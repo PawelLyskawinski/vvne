@@ -54,3 +54,11 @@ target_link_libraries(tests ${CMAKE_CURRENT_LIST_DIR}/bin/SDL2.dll)
 else()
 target_link_libraries(tests ${CMAKE_CURRENT_LIST_DIR}/bin/libSDL2-2.0.so.0)
 endif()
+
+add_executable(level_generaotr_tests unit_tests/LevelGenerator.cc)
+if(WIN32)
+target_link_libraries(level_generaotr_tests ${CMAKE_CURRENT_LIST_DIR}/bin/SDL2.dll)
+else()
+target_link_libraries(level_generaotr_tests ${CMAKE_CURRENT_LIST_DIR}/bin/libSDL2-2.0.so.0)
+endif()
+
