@@ -1,12 +1,13 @@
 #include "game.hh"
 #include "cubemap.hh"
+#include "level_generator_vr.hh"
+#include "utility.hh"
 #include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_clipboard.h>
 #include <SDL2/SDL_events.h>
 #include <SDL2/SDL_log.h>
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_timer.h>
-#include <stb_image.h>
 
 namespace {
 
@@ -457,6 +458,35 @@ void Game::startup(Engine& engine)
   float near_clipping_plane = 0.1f;
   float far_clipping_plane  = 1000.0f;
   mat4x4_perspective(projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
+
+  VrLevelLoadResult result = level_generator_vr(&engine);
+
+  vr_level_vertex_buffer_offset = result.level_load_data.vertex_target_offset;
+  vr_level_index_buffer_offset  = result.level_load_data.index_target_offset;
+  vr_level_index_type           = result.level_load_data.index_type;
+  vr_level_index_count          = result.level_load_data.index_count;
+
+  utility::copy<float, 2>(vr_level_entry, result.entrance_point);
+  utility::copy<float, 2>(vr_level_goal, result.target_goal);
+
+  vr_level_entry[0] *= 15.0f;
+  vr_level_entry[1] *= 15.0f;
+
+  vr_level_goal[0] *= 15.0f;
+  vr_level_goal[1] *= 15.0f;
+
+  player_position[0] = vr_level_entry[0];
+  player_position[1] = 2.0f;
+  player_position[2] = vr_level_entry[1];
+  quat_identity(player_orientation);
+
+  player_acceleration[0] = 0.0f;
+  player_acceleration[1] = 0.0f;
+  player_acceleration[2] = 0.0f;
+
+  player_velocity[0] = 0.0f;
+  player_velocity[1] = 0.0f;
+  player_velocity[2] = 0.0f;
 }
 
 void Game::teardown(Engine&)
@@ -505,9 +535,9 @@ void Game::update(Engine& engine, float current_time_sec)
         case SDL_BUTTON_LEFT:
           debug_gui.mousepressed[0] = true;
           lmb_clicked               = true;
-          SDL_GetMouseState(&lmb_initial_cursor_position[0], &lmb_initial_cursor_position[1]);
-          lmb_current_cursor_position[0] = lmb_initial_cursor_position[0];
-          lmb_current_cursor_position[1] = lmb_initial_cursor_position[1];
+          SDL_GetMouseState(&lmb_last_cursor_position[0], &lmb_last_cursor_position[1]);
+          lmb_current_cursor_position[0] = lmb_last_cursor_position[0];
+          lmb_current_cursor_position[1] = lmb_last_cursor_position[1];
           break;
         case SDL_BUTTON_RIGHT:
           debug_gui.mousepressed[1] = true;
@@ -523,6 +553,12 @@ void Game::update(Engine& engine, float current_time_sec)
 
       case SDL_MOUSEMOTION:
       {
+        if (SDL_GetRelativeMouseMode())
+        {
+          camera_angle -= (0.01f * event.motion.xrel);
+          camera_updown_angle -= (0.01f * event.motion.yrel);
+        }
+
         if (lmb_clicked)
         {
           SDL_GetMouseState(&lmb_current_cursor_position[0], &lmb_current_cursor_position[1]);
@@ -548,7 +584,33 @@ void Game::update(Engine& engine, float current_time_sec)
         io.KeyCtrl  = ((SDL_GetModState() & KMOD_CTRL) != 0);
         io.KeyAlt   = ((SDL_GetModState() & KMOD_ALT) != 0);
         io.KeySuper = ((SDL_GetModState() & KMOD_GUI) != 0);
+
+        if (SDL_SCANCODE_W == event.key.keysym.scancode)
+        {
+          player_forward_pressed = (SDL_KEYDOWN == event.type);
+        }
+        else if (SDL_SCANCODE_S == event.key.keysym.scancode)
+        {
+          player_back_pressed = (SDL_KEYDOWN == event.type);
+        }
+        else if (SDL_SCANCODE_A == event.key.keysym.scancode)
+        {
+          player_strafe_left_pressed = (SDL_KEYDOWN == event.type);
+        }
+        else if (SDL_SCANCODE_D == event.key.keysym.scancode)
+        {
+          player_strafe_right_pressed = (SDL_KEYDOWN == event.type);
+        }
+        else if ((SDL_SCANCODE_F1 == event.key.keysym.scancode) and (SDL_KEYDOWN == event.type))
+        {
+          SDL_SetRelativeMouseMode(SDL_TRUE);
+        }
+        else if ((SDL_SCANCODE_F2 == event.key.keysym.scancode) and (SDL_KEYDOWN == event.type))
+        {
+          SDL_SetRelativeMouseMode(SDL_FALSE);
+        }
       }
+
       break;
 
       default:
@@ -612,8 +674,8 @@ void Game::update(Engine& engine, float current_time_sec)
   ImGui::InputFloat3("helmet position", helmet_translation);
   ImGui::InputFloat3("rigged position", rigged_position);
 
-  ImGui::Text("%d %d | %d %d", lmb_initial_cursor_position[0], lmb_initial_cursor_position[1],
-              lmb_current_cursor_position[0], lmb_current_cursor_position[1]);
+  ImGui::Text("%d %d | %d %d", lmb_last_cursor_position[0], lmb_last_cursor_position[1], lmb_current_cursor_position[0],
+              lmb_current_cursor_position[1]);
 
   ImGui::Text("animation: %s, %.2f", animatedBox.animation_enabled ? "ongoing" : "stopped",
               animatedBox.animation_enabled ? current_time_sec - animatedBox.animation_start_time : 0.0f);
@@ -940,11 +1002,42 @@ void Game::update(Engine& engine, float current_time_sec)
   int last_element           = SDL_arraysize(update_times) - 1;
   update_times[last_element] = (float)ticks_elapsed / (float)SDL_GetPerformanceFrequency();
 
-  camera_position[0] = SDL_cosf(current_time_sec / 4.0f) * 2.0f;
-  camera_position[1] = SDL_cosf(current_time_sec / 2.0f);
-  camera_position[2] = SDL_sinf(current_time_sec / 4.0f) - 2.0f;
+  if (player_forward_pressed)
+  {
+    float step         = 0.4f;
+    player_position[0] = player_position[0] + SDL_sinf(camera_angle - M_PI_2) * step;
+    player_position[2] = player_position[2] + SDL_cosf(camera_angle - M_PI_2) * step;
+  }
+  else if (player_back_pressed)
+  {
+    float step         = 0.4f;
+    player_position[0] = player_position[0] + SDL_sinf(camera_angle + M_PI_2) * step;
+    player_position[2] = player_position[2] + SDL_cosf(camera_angle + M_PI_2) * step;
+  }
 
-  vec3 center = {0.0f, 0.0f, 2.0f};
+  if (player_strafe_left_pressed)
+  {
+    float step         = 0.4f;
+    player_position[0] = player_position[0] + SDL_sinf(camera_angle) * step;
+    player_position[2] = player_position[2] + SDL_cosf(camera_angle) * step;
+  }
+  else if (player_strafe_right_pressed)
+  {
+    float step         = 0.4f;
+    player_position[0] = player_position[0] + SDL_sinf(camera_angle + M_PI) * step;
+    player_position[2] = player_position[2] + SDL_cosf(camera_angle + M_PI) * step;
+  }
+
+  float camera_distance = 2.5f;
+  float x_camera_offset = SDL_cosf(camera_angle) * camera_distance;
+  float y_camera_offset = SDL_sinf(camera_updown_angle) * camera_distance;
+  float z_camera_offset = SDL_sinf(camera_angle) * camera_distance;
+
+  camera_position[0] = player_position[0] + x_camera_offset;
+  camera_position[1] = y_camera_offset;
+  camera_position[2] = player_position[2] - z_camera_offset;
+
+  vec3 center = {player_position[0], 0.0f, player_position[2]};
   vec3 up     = {0.0f, 1.0f, 0.0f};
   mat4x4_look_at(view, camera_position, center, up);
 }
@@ -1034,7 +1127,7 @@ void Game::render(Engine& engine, float current_time_sec)
       push_const.camera_position[i] = camera_position[i];
 
     mat4x4_identity(push_const.model);
-    mat4x4_translate(push_const.model, helmet_translation[0], helmet_translation[1], helmet_translation[2]);
+    mat4x4_translate(push_const.model, vr_level_goal[0], 0.0f, vr_level_goal[1]);
     // mat4x4_rotate_Y(push_const.model, push_const.model, SDL_sinf(current_time_sec * 0.3f));
     mat4x4_rotate_X(push_const.model, push_const.model, -to_rad(90.0));
     mat4x4_scale_aniso(push_const.model, push_const.model, 1.6f, 1.6f, 1.6f);
@@ -1129,6 +1222,44 @@ void Game::render(Engine& engine, float current_time_sec)
                                 color, Engine::SimpleRendering::Passes::ColoredGeometry, 0);
     }
 
+    {
+      mat4x4 projection_view = {};
+      mat4x4_mul(projection_view, projection, view);
+
+      mat4x4 translation_matrix = {};
+      mat4x4_translate(translation_matrix, 0.0, 2.5, 0.0);
+
+      mat4x4 rotation_matrix = {};
+      mat4x4_identity(rotation_matrix);
+
+      mat4x4 scale_matrix = {};
+      mat4x4_identity(scale_matrix);
+      mat4x4_scale_aniso(scale_matrix, scale_matrix, 15.0f, 15.0f, 15.0f);
+
+      mat4x4 tmp = {};
+      mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+
+      mat4x4 model = {};
+      mat4x4_mul(model, tmp, scale_matrix);
+
+      mat4x4 mvp = {};
+      mat4x4_mul(mvp, projection_view, model);
+
+      vkCmdBindIndexBuffer(cmd, engine.gpu_static_geometry.buffer, vr_level_index_buffer_offset, vr_level_index_type);
+      vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_static_geometry.buffer, &vr_level_vertex_buffer_offset);
+
+      vec3 color = {0.5, 0.5, 1.0};
+      vkCmdPushConstants(cmd,
+                         engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometry],
+                         VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(vec3), color);
+
+      vkCmdPushConstants(cmd,
+                         engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometry],
+                         VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
+
+      vkCmdDrawIndexed(cmd, static_cast<uint32_t>(vr_level_index_count), 1, 0, 0, 0);
+    }
+
     vkEndCommandBuffer(cmd);
   }
 
@@ -1179,16 +1310,42 @@ void Game::render(Engine& engine, float current_time_sec)
                               renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometrySkinned], 0, 1,
                               &fig_dsets[image_index], 0, nullptr);
 
-      quat orientation = {};
-      vec3 axis        = {1.0, 0.0, 0.0};
-      quat_rotate(orientation, to_rad(90.0f), axis);
+      quat orientation{};
 
-      vec3 scale    = {1.0f, 1.0f, 1.0f};
-      vec3 color    = {1.0, 0.0, 0.0};
-      vec3 position = {0.0f, 0.0f, 1.0f};
+      {
+        quat standing_pose_orientation{};
+        {
+          vec3 axis = {1.0, 0.0, 0.0};
+          quat_rotate(standing_pose_orientation, to_rad(90.0f), axis);
+        }
 
-      riggedFigure.renderColored(engine, cmd, push_const.projection, push_const.view, position, orientation, scale,
-                                 color, Engine::SimpleRendering::Passes::ColoredGeometrySkinned,
+        quat rotate_back_orientation{};
+        {
+          vec3  axis     = {0.0, 0.0, 1.0};
+          float rotation = to_rad(90.0f);
+          if (player_position[0] < camera_position[0])
+            rotation = -rotation;
+          quat_rotate(rotate_back_orientation, rotation, axis);
+        }
+
+        quat camera_orientation{};
+        {
+          float x_delta = player_position[0] - camera_position[0];
+          float z_delta = player_position[2] - camera_position[2];
+          vec3  axis    = {0.0, 0.0, 1.0};
+          quat_rotate(camera_orientation, static_cast<float>(SDL_atan(z_delta / x_delta)), axis);
+        }
+
+        quat tmp{};
+        quat_mul(tmp, standing_pose_orientation, rotate_back_orientation);
+        quat_mul(orientation, tmp, camera_orientation);
+      }
+
+      vec3 scale = {1.0f, 1.0f, 1.0f};
+      vec3 color = {1.0, 0.0, 0.0};
+
+      riggedFigure.renderColored(engine, cmd, push_const.projection, push_const.view, player_position, orientation,
+                                 scale, color, Engine::SimpleRendering::Passes::ColoredGeometrySkinned,
                                  fig_skinning_matrices_ubo_offsets[image_index]);
     }
 

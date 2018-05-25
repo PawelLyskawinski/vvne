@@ -28,6 +28,8 @@ add_executable(${PROJECT_NAME}
         cubemap.cc
         cubemap.hh
         utility.hh
+        level_generator_vr.cc
+        level_generator_vr.hh
         thirdparty/imconfig.h
         thirdparty/imgui.cpp
         thirdparty/imgui.h
@@ -55,10 +57,11 @@ else()
 target_link_libraries(tests ${CMAKE_CURRENT_LIST_DIR}/bin/libSDL2-2.0.so.0)
 endif()
 
-add_executable(level_generaotr_tests unit_tests/LevelGenerator.cc)
+add_executable(level_generator_tests unit_tests/LevelGenerator.cc)
 if(WIN32)
-target_link_libraries(level_generaotr_tests ${CMAKE_CURRENT_LIST_DIR}/bin/SDL2.dll)
+target_link_libraries(level_generator_tests ${CMAKE_CURRENT_LIST_DIR}/bin/SDL2.dll)
 else()
-target_link_libraries(level_generaotr_tests ${CMAKE_CURRENT_LIST_DIR}/bin/libSDL2-2.0.so.0)
+target_link_libraries(level_generator_tests ${CMAKE_CURRENT_LIST_DIR}/bin/libSDL2-2.0.so.0)
 endif()
 
+add_executable(sandbox unit_tests/sandbox.cc)

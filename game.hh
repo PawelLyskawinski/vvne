@@ -58,6 +58,25 @@ struct Game
   mat4x4 view;
   vec3   camera_position;
 
+  VkDeviceSize vr_level_vertex_buffer_offset;
+  VkDeviceSize vr_level_index_buffer_offset;
+  int          vr_level_index_count;
+  VkIndexType  vr_level_index_type;
+  vec2         vr_level_entry;
+  vec2         vr_level_goal;
+
+  float player_position[3];
+  quat  player_orientation;
+  float player_velocity[3];
+  float player_acceleration[3];
+  float camera_angle;
+  float camera_updown_angle;
+
+  bool player_forward_pressed;
+  bool player_back_pressed;
+  bool player_strafe_left_pressed;
+  bool player_strafe_right_pressed;
+
   struct LightSource
   {
     float position[3];
@@ -83,7 +102,7 @@ struct Game
   VkDeviceSize lights_ubo_offset;
 
   bool lmb_clicked;
-  int  lmb_initial_cursor_position[2];
+  int  lmb_last_cursor_position[2];
   int  lmb_current_cursor_position[2];
 
   void startup(Engine& engine);

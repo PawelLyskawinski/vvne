@@ -2,6 +2,7 @@
 #include "engine.hh"
 #include "game.hh"
 #include <SDL2/SDL.h>
+#include "time.h"
 
 int main(int argc, char* argv[])
 {
@@ -12,6 +13,10 @@ int main(int argc, char* argv[])
   SDL_SetHint(SDL_HINT_WINDOWS_DISABLE_THREAD_NAMING, "1");
   SDL_SetHint(SDL_HINT_FRAMEBUFFER_ACCELERATION, "1");
   SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO | SDL_INIT_EVENTS);
+
+  // maybe there is a way to make the random number generator without standard library?
+  // todo: investigate other options
+  srand(static_cast<unsigned int>(time(nullptr)));
 
   void*   engine_memory = SDL_calloc(1, sizeof(Engine));
   Engine& engine        = *reinterpret_cast<Engine*>(engine_memory);

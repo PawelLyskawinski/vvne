@@ -64,7 +64,7 @@ struct Engine
   {
     enum
     {
-      MAX_MEMORY_SIZE_MB    = 1,
+      MAX_MEMORY_SIZE_MB    = 5,
       MAX_MEMORY_SIZE_KB    = MAX_MEMORY_SIZE_MB * 1024,
       MAX_MEMORY_SIZE_BYTES = MAX_MEMORY_SIZE_KB * 1024,
       MAX_MEMORY_SIZE       = MAX_MEMORY_SIZE_BYTES
@@ -77,7 +77,7 @@ struct Engine
   {
     enum
     {
-      MAX_MEMORY_SIZE_MB    = 1,
+      MAX_MEMORY_SIZE_MB    = 5,
       MAX_MEMORY_SIZE_KB    = MAX_MEMORY_SIZE_MB * 1024,
       MAX_MEMORY_SIZE_BYTES = MAX_MEMORY_SIZE_KB * 1024,
       MAX_MEMORY_SIZE       = MAX_MEMORY_SIZE_BYTES
