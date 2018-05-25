@@ -9,6 +9,8 @@
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_timer.h>
 
+#define VR_LEVEL_SCALE 25.0f
+
 namespace {
 
 constexpr float to_rad(float deg) noexcept
@@ -469,11 +471,11 @@ void Game::startup(Engine& engine)
   utility::copy<float, 2>(vr_level_entry, result.entrance_point);
   utility::copy<float, 2>(vr_level_goal, result.target_goal);
 
-  vr_level_entry[0] *= 15.0f;
-  vr_level_entry[1] *= 15.0f;
+  vr_level_entry[0] *= VR_LEVEL_SCALE;
+  vr_level_entry[1] *= VR_LEVEL_SCALE;
 
-  vr_level_goal[0] *= 15.0f;
-  vr_level_goal[1] *= 15.0f;
+  vr_level_goal[0] *= VR_LEVEL_SCALE;
+  vr_level_goal[1] *= VR_LEVEL_SCALE;
 
   player_position[0] = vr_level_entry[0];
   player_position[1] = 2.0f;
@@ -487,6 +489,9 @@ void Game::startup(Engine& engine)
   player_velocity[0] = 0.0f;
   player_velocity[1] = 0.0f;
   player_velocity[2] = 0.0f;
+
+  camera_angle        = static_cast<float>(M_PI_2);
+  camera_updown_angle = -1.2f;
 }
 
 void Game::teardown(Engine&)
@@ -495,7 +500,7 @@ void Game::teardown(Engine&)
     SDL_FreeCursor(cursor);
 }
 
-void Game::update(Engine& engine, float current_time_sec)
+void Game::update(Engine& engine, float current_time_sec, float time_delta_since_last_frame)
 {
   uint64_t start_function_ticks = SDL_GetPerformanceCounter();
 
@@ -1013,31 +1018,53 @@ void Game::update(Engine& engine, float current_time_sec)
   int last_element           = SDL_arraysize(update_times) - 1;
   update_times[last_element] = (float)ticks_elapsed / (float)SDL_GetPerformanceFrequency();
 
+  for (int i = 0; i < 3; ++i)
+  {
+    player_position[i] += player_velocity[i] * time_delta_since_last_frame;
+    const float friction = 0.2f;
+    float       drag     = friction * player_velocity[i];
+    player_velocity[i] += player_acceleration[i] * time_delta_since_last_frame;
+
+    if (player_velocity[i])
+    {
+      player_velocity[i] -= drag;
+    }
+    else
+    {
+      player_velocity[i] += drag;
+    }
+
+    const float max_speed = 1.0f;
+    player_velocity[i] = clamp(player_velocity[i], -max_speed, max_speed);
+
+    player_acceleration[i] = 0.0f;
+  }
+
+  const float acceleration = 0.0006f;
   if (player_forward_pressed)
   {
-    float step         = 0.6f;
-    player_position[0] = player_position[0] + SDL_sinf(camera_angle - M_PI_2) * step;
-    player_position[2] = player_position[2] + SDL_cosf(camera_angle - M_PI_2) * step;
+    player_acceleration[0] += SDL_sinf(camera_angle - (float)M_PI_2) * acceleration;
+    player_acceleration[2] += SDL_cosf(camera_angle - (float)M_PI_2) * acceleration;
   }
   else if (player_back_pressed)
   {
-    float step         = 0.4f;
-    player_position[0] = player_position[0] + SDL_sinf(camera_angle + M_PI_2) * step;
-    player_position[2] = player_position[2] + SDL_cosf(camera_angle + M_PI_2) * step;
+    player_acceleration[0] += SDL_sinf(camera_angle + (float)M_PI_2) * acceleration;
+    player_acceleration[2] += SDL_cosf(camera_angle + (float)M_PI_2) * acceleration;
   }
 
   if (player_strafe_left_pressed)
   {
-    float step         = 0.4f;
-    player_position[0] = player_position[0] + SDL_sinf(camera_angle) * step;
-    player_position[2] = player_position[2] + SDL_cosf(camera_angle) * step;
+    player_acceleration[0] += SDL_sinf(camera_angle) * acceleration;
+    player_acceleration[2] += SDL_cosf(camera_angle) * acceleration;
   }
   else if (player_strafe_right_pressed)
   {
-    float step         = 0.4f;
-    player_position[0] = player_position[0] + SDL_sinf(camera_angle + M_PI) * step;
-    player_position[2] = player_position[2] + SDL_cosf(camera_angle + M_PI) * step;
+    player_acceleration[0] += SDL_sinf(camera_angle + (float)M_PI) * acceleration;
+    player_acceleration[2] += SDL_cosf(camera_angle + (float)M_PI) * acceleration;
   }
+
+  ImGui::Text("acceleration: %.2f %.2f %.2f", player_acceleration[0], player_acceleration[1], player_acceleration[2]);
+  ImGui::Text("velocity:     %.2f %.2f %.2f", player_velocity[0], player_velocity[1], player_velocity[2]);
 
   float camera_distance = 2.5f;
   float x_camera_offset = SDL_cosf(camera_angle) * camera_distance;
@@ -1245,7 +1272,7 @@ void Game::render(Engine& engine, float current_time_sec)
 
       mat4x4 scale_matrix = {};
       mat4x4_identity(scale_matrix);
-      mat4x4_scale_aniso(scale_matrix, scale_matrix, 15.0f, 15.0f, 15.0f);
+      mat4x4_scale_aniso(scale_matrix, scale_matrix, VR_LEVEL_SCALE, VR_LEVEL_SCALE, VR_LEVEL_SCALE);
 
       mat4x4 tmp = {};
       mat4x4_mul(tmp, translation_matrix, rotation_matrix);

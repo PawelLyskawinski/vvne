@@ -107,6 +107,6 @@ struct Game
 
   void startup(Engine& engine);
   void teardown(Engine& engine);
-  void update(Engine& engine, float current_time_sec);
+  void update(Engine& engine, float current_time_sec, float time_delta_since_last_frame);
   void render(Engine& engine, float current_time_sec);
 };

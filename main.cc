@@ -34,17 +34,17 @@ int main(int argc, char* argv[])
   SDL_ShowWindow(engine.generic_handles.window);
   while (!SDL_QuitRequested())
   {
-    uint64_t start_of_frame_ticks  = SDL_GetPerformanceCounter();
-    uint64_t ticks_from_game_start = start_of_frame_ticks - start_of_game_ticks;
-    float    current_time_sec      = (float)ticks_from_game_start / (float)performance_frequency;
-
-    game.update(engine, current_time_sec);
-    game.render(engine, current_time_sec);
-
-    uint64_t    frame_time_counter         = SDL_GetPerformanceCounter() - start_of_frame_ticks;
-    float       elapsed_ms                 = 1000.0f * ((float)frame_time_counter / (float)performance_frequency);
+    uint64_t    start_of_frame_ticks       = SDL_GetPerformanceCounter();
+    uint64_t    ticks_from_game_start      = start_of_frame_ticks - start_of_game_ticks;
+    float       current_time_sec           = (float)ticks_from_game_start / (float)performance_frequency;
     const int   desired_frames_per_sec     = 80;
     const float desired_frame_duration_sec = (1000.0f / (float)desired_frames_per_sec);
+
+    game.update(engine, current_time_sec, desired_frame_duration_sec);
+    game.render(engine, current_time_sec);
+
+    uint64_t frame_time_counter = SDL_GetPerformanceCounter() - start_of_frame_ticks;
+    float    elapsed_ms         = 1000.0f * ((float)frame_time_counter / (float)performance_frequency);
 
     if (elapsed_ms < desired_frame_duration_sec)
       SDL_Delay((uint32_t)SDL_fabs(desired_frame_duration_sec - elapsed_ms));
