@@ -1,5 +1,6 @@
 #include "level_generator_vr.hh"
 #include "stb_image.h"
+#include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_log.h>
 #include <SDL2/SDL_stdinc.h>
 #include <linmath.h>
@@ -158,6 +159,20 @@ void line_lengths(int xy_positions[], int n, int out_lengths[])
   }
 }
 
+int round_to_int(float in)
+{
+  int   counter = 0;
+  float tmp     = in;
+
+  while (1.0f < tmp)
+  {
+    counter += 1;
+    tmp -= 1.0f;
+  }
+
+  return counter + ((0.5 > tmp) ? 0 : 1);
+}
+
 struct RgbPixmap
 {
   int find_entrence_at_bottom_of_labitynth() const
@@ -169,7 +184,7 @@ struct RgbPixmap
   {
     int max_distance_from_line = 20;
     int points[12];
-    calculate_n_shaped_area_lines_uv_coordinates(20, 20, 50, max_distance_from_line, width, height, points);
+    calculate_n_shaped_area_lines_uv_coordinates(40, 40, 50, max_distance_from_line, width, height, points);
 
     int lengths[3];
     line_lengths(points, SDL_arraysize(lengths), lengths);
@@ -180,25 +195,24 @@ struct RgbPixmap
 
     float line_pts[4];
     for (int i = 0; i < 4; ++i)
-      line_pts[i] = static_cast<float>(points[2 * random_line + i]);
+      line_pts[i] = static_cast<float>(points[4 * random_line + i]);
 
     float goal[2] = {};
     calculate_normal_at_line_length(&line_pts[0], &line_pts[2], random_point_on_line, random_distance_from_line, goal);
 
     //
     // Ultimately the point should be in a room or corridor, so we'll have to
-    // snap to closest point. Floats are
+    // snap to closest point.
     //
-    int tile_approximation[2] = {static_cast<int>(dst[0]), static_cast<int>(dst[1])};
 
-    if (tile_used[(tile_approximation[1] * width) + tile_approximation[0]])
+    dst[0] = goal[0];
+    dst[1] = goal[1];
+
+    int tile_approximation[2] = {round_to_int(goal[0]), round_to_int(goal[1])};
+
+    if (SDL_FALSE == tile_used[(tile_approximation[1] * width) + tile_approximation[0]])
     {
-      dst[0] = tile_approximation[0];
-      dst[1] = height - tile_approximation[1];
-    }
-    else
-    {
-      const int searchbox_diameter = 5;
+      const int searchbox_diameter = 20;
       for (int layer = 1; layer < searchbox_diameter; ++layer)
       {
         const int layer_length = 4 * (2 * layer);
@@ -206,15 +220,30 @@ struct RgbPixmap
         {
           int position[2];
           pixel_position_on_squere(position, idx, layer);
+
+          if (0 > (tile_approximation[0] + position[0]))
+            continue;
+
+          if (0 > (tile_approximation[1] + position[1]))
+            continue;
+
+          if (width < (tile_approximation[0] + position[0]))
+            continue;
+
+          if (height < (tile_approximation[1] + position[1]))
+            continue;
+
           if (SDL_TRUE == tile_used[tile_approximation[0] + position[0], tile_approximation[1] + position[1]])
           {
-            dst[0] = tile_approximation[0] + position[0];
-            dst[1] = height - (tile_approximation[1] + position[1]);
+            dst[0] = goal[0] + (float)position[0];
+            dst[1] = goal[1] + (float)position[1];
             return;
           }
         }
       }
     }
+
+    SDL_assert(false);
   }
 
   void generate_herringbone_wang(stbhw_tileset* ts)
@@ -366,7 +395,7 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
   pixmap.generate_goal(result.target_goal);
 
   result.target_goal[0] = 0.1f * (result.target_goal[0] - (pixmap.width * 0.5f));
-  result.target_goal[1] = 0.1f * (pixmap.height - result.target_goal[1]);
+  result.target_goal[1] = 0.1f * (result.target_goal[1]);
 
   VkCommandBuffer cmd = VK_NULL_HANDLE;
 

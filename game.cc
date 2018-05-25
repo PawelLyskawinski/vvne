@@ -499,7 +499,8 @@ void Game::update(Engine& engine, float current_time_sec)
 {
   uint64_t start_function_ticks = SDL_GetPerformanceCounter();
 
-  ImGuiIO& io = ImGui::GetIO();
+  ImGuiIO& io             = ImGui::GetIO();
+  bool     quit_requested = false;
 
   // Event dispatching
   {
@@ -556,7 +557,7 @@ void Game::update(Engine& engine, float current_time_sec)
         if (SDL_GetRelativeMouseMode())
         {
           camera_angle -= (0.01f * event.motion.xrel);
-          camera_updown_angle -= (0.01f * event.motion.yrel);
+          camera_updown_angle -= (0.005f * event.motion.yrel);
         }
 
         if (lmb_clicked)
@@ -585,29 +586,32 @@ void Game::update(Engine& engine, float current_time_sec)
         io.KeyAlt   = ((SDL_GetModState() & KMOD_ALT) != 0);
         io.KeySuper = ((SDL_GetModState() & KMOD_GUI) != 0);
 
-        if (SDL_SCANCODE_W == event.key.keysym.scancode)
+        switch (event.key.keysym.scancode)
         {
+        case SDL_SCANCODE_W:
           player_forward_pressed = (SDL_KEYDOWN == event.type);
-        }
-        else if (SDL_SCANCODE_S == event.key.keysym.scancode)
-        {
+          break;
+        case SDL_SCANCODE_S:
           player_back_pressed = (SDL_KEYDOWN == event.type);
-        }
-        else if (SDL_SCANCODE_A == event.key.keysym.scancode)
-        {
+          break;
+        case SDL_SCANCODE_A:
           player_strafe_left_pressed = (SDL_KEYDOWN == event.type);
-        }
-        else if (SDL_SCANCODE_D == event.key.keysym.scancode)
-        {
+          break;
+        case SDL_SCANCODE_D:
           player_strafe_right_pressed = (SDL_KEYDOWN == event.type);
-        }
-        else if ((SDL_SCANCODE_F1 == event.key.keysym.scancode) and (SDL_KEYDOWN == event.type))
-        {
-          SDL_SetRelativeMouseMode(SDL_TRUE);
-        }
-        else if ((SDL_SCANCODE_F2 == event.key.keysym.scancode) and (SDL_KEYDOWN == event.type))
-        {
-          SDL_SetRelativeMouseMode(SDL_FALSE);
+          break;
+        case SDL_SCANCODE_ESCAPE:
+          quit_requested = true;
+          break;
+        case SDL_SCANCODE_F1:
+          if (SDL_KEYDOWN == event.type)
+            SDL_SetRelativeMouseMode(SDL_TRUE);
+          break;
+        case SDL_SCANCODE_F2:
+          if (SDL_KEYDOWN == event.type)
+            SDL_SetRelativeMouseMode(SDL_FALSE);
+        default:
+          break;
         }
       }
 
@@ -617,6 +621,13 @@ void Game::update(Engine& engine, float current_time_sec)
         break;
       }
     }
+  }
+
+  if (quit_requested)
+  {
+    SDL_Event event{};
+    event.type = SDL_QUIT;
+    SDL_PushEvent(&event);
   }
 
   {
@@ -1004,7 +1015,7 @@ void Game::update(Engine& engine, float current_time_sec)
 
   if (player_forward_pressed)
   {
-    float step         = 0.4f;
+    float step         = 0.6f;
     player_position[0] = player_position[0] + SDL_sinf(camera_angle - M_PI_2) * step;
     player_position[2] = player_position[2] + SDL_cosf(camera_angle - M_PI_2) * step;
   }
