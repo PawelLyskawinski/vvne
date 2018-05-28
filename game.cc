@@ -18,28 +18,9 @@ constexpr float to_rad(float deg) noexcept
   return (float(M_PI) * deg) / 180.0f;
 }
 
-float normalize_quat(quat q)
-{
-  float x = q[0] * q[0];
-  float y = q[1] * q[1];
-  float z = q[2] * q[2];
-  float w = q[3] * q[3];
-
-  float norm = SDL_sqrtf(x + y + z + w);
-  q[0] /= norm;
-  q[1] /= norm;
-  q[2] /= norm;
-}
-
 float clamp(float val, float min, float max)
 {
   return (val < min) ? min : (val > max) ? max : val;
-}
-
-void quat_copy(quat into, quat from)
-{
-  for (int i = 0; i < 4; ++i)
-    into[i] = from[i];
 }
 
 int find_first_higher(float* times, float current)
@@ -48,26 +29,6 @@ int find_first_higher(float* times, float current)
   while (current > times[iter])
     iter += 1;
   return iter;
-}
-
-void quat_lerp(float* a, float* b, float* c, float time)
-{
-  float reminder_time = 1.0f - time;
-  for (int i = 0; i < 4; ++i)
-  {
-    c[i] = reminder_time * a[i] + time * b[i];
-  }
-  vec4_norm(c, c);
-}
-
-void lerp(float* a, float* b, float* c, int len, float time)
-{
-  for (int i = 0; i < len; ++i)
-  {
-    float difference = b[i] - a[i];
-    float progressed = difference * time;
-    c[i]             = a[i] + progressed;
-  }
 }
 
 void animate_model(gltf::RenderableModel& model, float current_time_sec)
@@ -99,7 +60,14 @@ void animate_model(gltf::RenderableModel& model, float current_time_sec)
             float* a = &sampler.values[4 * keyframe_lower];
             float* b = &sampler.values[4 * keyframe_upper];
             float* c = model.animation_rotations[channel.target_node_idx];
-            quat_lerp(a, b, c, keyframe_uniform_time);
+
+            // quaternion lerp
+            float reminder_time = 1.0f - keyframe_uniform_time;
+            for (int i = 0; i < 4; ++i)
+            {
+              c[i] = reminder_time * a[i] + keyframe_uniform_time * b[i];
+            }
+            vec4_norm(c, c);
 
             model.animation_properties[channel.target_node_idx] |= Node::Property::Rotation;
           }
@@ -108,7 +76,14 @@ void animate_model(gltf::RenderableModel& model, float current_time_sec)
             float* a = &sampler.values[3 * keyframe_lower];
             float* b = &sampler.values[3 * keyframe_upper];
             float* c = model.animation_translations[channel.target_node_idx];
-            lerp(a, b, c, 3, keyframe_uniform_time);
+
+            // lerp
+            for (int i = 0; i < 3; ++i)
+            {
+              float difference = b[i] - a[i];
+              float progressed = difference * keyframe_uniform_time;
+              c[i]             = a[i] + progressed;
+            }
 
             model.animation_properties[channel.target_node_idx] |= Node::Property::Translation;
           }
