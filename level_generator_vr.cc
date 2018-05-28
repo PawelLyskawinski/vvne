@@ -13,6 +13,12 @@
 
 namespace {
 
+void set_point(int* point, int x, int y)
+{
+  point[0] = x;
+  point[1] = y;
+}
+
 //
 // ids for layer 1
 // 0 1 2   0 1 2 3 4
@@ -38,18 +44,16 @@ void pixel_position_on_squere(int dst[2], int idx, int layer)
   {
   default:
   case 0:
-    dst[0] = idx_on_side - layer;
-    dst[1] = layer;
+    set_point(dst, idx_on_side - layer, layer);
     break;
   case 1:
-    dst[0] = layer;
-    dst[1] = layer - idx_on_side;
+    set_point(dst, layer, layer - idx_on_side);
     break;
   case 2:
-    dst[0] = layer - idx_on_side;
-    dst[1] = -layer;
+    set_point(dst, layer - idx_on_side, -layer);
     break;
   case 3:
+    set_point(dst,
     dst[0] = -layer;
     dst[1] = idx_on_side - layer;
     break;

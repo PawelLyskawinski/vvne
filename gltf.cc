@@ -6,6 +6,10 @@
 #include <SDL2/SDL_timer.h>
 #include <linmath.h>
 
+#ifndef __linux__
+#include <stdlib.h>
+#endif
+
 namespace {
 
 uint32_t find_memory_type_index(VkPhysicalDeviceMemoryProperties* properties, VkMemoryRequirements* reqs,
