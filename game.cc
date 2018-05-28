@@ -649,9 +649,8 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
   ImGui::PlotHistogram("render times", render_times, SDL_arraysize(render_times), 0, nullptr, 0.0, 0.03,
                        ImVec2(300, 20));
 
-  ImGui::InputFloat3("robot position", robot_position);
-  ImGui::InputFloat3("helmet position", helmet_translation);
-  ImGui::InputFloat3("rigged position", rigged_position);
+  ImGui::Text("Booster jet fluel");
+  ImGui::ProgressBar(booster_jet_fuel);
 
   ImGui::Text("%d %d | %d %d", lmb_last_cursor_position[0], lmb_last_cursor_position[1], lmb_current_cursor_position[0],
               lmb_current_cursor_position[1]);
@@ -815,13 +814,13 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
 
   if (player_forward_pressed)
   {
-    player_acceleration[0] += SDL_sinf(camera_angle - (float)M_PI/2) * acceleration;
-    player_acceleration[2] += SDL_cosf(camera_angle - (float)M_PI/2) * acceleration;
+    player_acceleration[0] += SDL_sinf(camera_angle - (float)M_PI / 2) * acceleration;
+    player_acceleration[2] += SDL_cosf(camera_angle - (float)M_PI / 2) * acceleration;
   }
   else if (player_back_pressed)
   {
-    player_acceleration[0] += SDL_sinf(camera_angle + (float)M_PI/2) * acceleration;
-    player_acceleration[2] += SDL_cosf(camera_angle + (float)M_PI/2) * acceleration;
+    player_acceleration[0] += SDL_sinf(camera_angle + (float)M_PI / 2) * acceleration;
+    player_acceleration[2] += SDL_cosf(camera_angle + (float)M_PI / 2) * acceleration;
   }
 
   if (player_strafe_left_pressed)
