@@ -42,40 +42,6 @@ void quat_copy(quat into, quat from)
     into[i] = from[i];
 }
 
-void slerp(quat a, quat b, quat c, float time)
-{
-  float       dotproduct = quat_inner_product(a, b);
-  const float limit      = 0.9995f;
-
-  if (dotproduct > limit)
-  {
-    quat_mul(c, b, a);
-    normalize_quat(c);
-  }
-  else
-  {
-    dotproduct   = clamp(dotproduct, -1.0f, 1.0f);
-    float theta0 = static_cast<float>(SDL_acos(dotproduct));
-    float theta  = theta0 * time;
-
-    quat tmp = {};
-    quat_copy(tmp, a);
-    quat_scale(tmp, tmp, dotproduct);
-
-    quat v2 = {};
-    quat_mul(v2, b, tmp);
-    normalize_quat(v2);
-
-    quat a_scaled = {};
-    quat_scale(a_scaled, a, SDL_cosf(theta));
-
-    quat v2_scaled = {};
-    quat_scale(v2_scaled, v2, SDL_sinf(theta));
-
-    quat_add(c, a_scaled, v2_scaled);
-  }
-}
-
 int find_first_higher(float* times, float current)
 {
   int iter = 0;
@@ -101,6 +67,59 @@ void lerp(float* a, float* b, float* c, int len, float time)
     float difference = b[i] - a[i];
     float progressed = difference * time;
     c[i]             = a[i] + progressed;
+  }
+}
+
+void animate_model(gltf::RenderableModel& model, float current_time_sec)
+{
+  if (model.animation_enabled)
+  {
+    bool  any_sampler_ongoing = false;
+    float animation_time      = current_time_sec - model.animation_start_time;
+
+    for (int anim_channel_idx = 0; anim_channel_idx < model.scene_graph.animations.data[0].channels.count;
+         ++anim_channel_idx)
+    {
+      const AnimationChannel& channel = model.scene_graph.animations.data[0].channels.data[anim_channel_idx];
+      const AnimationSampler& sampler = model.scene_graph.animations.data[0].samplers.data[channel.sampler_idx];
+
+      if (sampler.time_frame[1] > animation_time)
+      {
+        any_sampler_ongoing = true;
+
+        if (sampler.time_frame[0] < animation_time)
+        {
+          int   keyframe_upper         = find_first_higher(sampler.times, animation_time);
+          int   keyframe_lower         = keyframe_upper - 1;
+          float time_between_keyframes = sampler.times[keyframe_upper] - sampler.times[keyframe_lower];
+          float keyframe_uniform_time  = (animation_time - sampler.times[keyframe_lower]) / time_between_keyframes;
+
+          if (AnimationChannel::Path::Rotation == channel.target_path)
+          {
+            float* a = &sampler.values[4 * keyframe_lower];
+            float* b = &sampler.values[4 * keyframe_upper];
+            float* c = model.animation_rotations[channel.target_node_idx];
+            quat_lerp(a, b, c, keyframe_uniform_time);
+
+            model.animation_properties[channel.target_node_idx] |= Node::Property::Rotation;
+          }
+          else if (AnimationChannel::Path::Translation == channel.target_path)
+          {
+            float* a = &sampler.values[3 * keyframe_lower];
+            float* b = &sampler.values[3 * keyframe_upper];
+            float* c = model.animation_translations[channel.target_node_idx];
+            lerp(a, b, c, 3, keyframe_uniform_time);
+
+            model.animation_properties[channel.target_node_idx] |= Node::Property::Translation;
+          }
+        }
+      }
+    }
+
+    if (not any_sampler_ongoing)
+    {
+      model.animation_enabled = false;
+    }
   }
 }
 
@@ -490,7 +509,7 @@ void Game::startup(Engine& engine)
   player_velocity[1] = 0.0f;
   player_velocity[2] = 0.0f;
 
-  camera_angle        = static_cast<float>(M_PI_2);
+  camera_angle        = static_cast<float>(M_PI / 2);
   camera_updown_angle = -1.2f;
 }
 
@@ -801,211 +820,10 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
     SDL_PushEvent(&event);
   }
 
-  // simple animation for testing purposes
-  if (animatedBox.animation_enabled)
-  {
-    bool  any_sampler_ongoing = false;
-    float animation_time      = current_time_sec - animatedBox.animation_start_time;
-
-    for (int anim_channel_idx = 0; anim_channel_idx < animatedBox.scene_graph.animations.data[0].channels.count;
-         ++anim_channel_idx)
-    {
-      const AnimationChannel& channel = animatedBox.scene_graph.animations.data[0].channels.data[anim_channel_idx];
-      const AnimationSampler& sampler = animatedBox.scene_graph.animations.data[0].samplers.data[channel.sampler_idx];
-
-      if (sampler.time_frame[1] > animation_time)
-      {
-        any_sampler_ongoing = true;
-
-        if (sampler.time_frame[0] < animation_time)
-        {
-          int   keyframe_upper         = find_first_higher(sampler.times, animation_time);
-          int   keyframe_lower         = keyframe_upper - 1;
-          float time_between_keyframes = sampler.times[keyframe_upper] - sampler.times[keyframe_lower];
-          float keyframe_uniform_time  = (animation_time - sampler.times[keyframe_lower]) / time_between_keyframes;
-
-          if (AnimationChannel::Path::Rotation == channel.target_path)
-          {
-            float* a = &sampler.values[4 * keyframe_lower];
-            float* b = &sampler.values[4 * keyframe_upper];
-            float* c = animatedBox.animation_rotations[channel.target_node_idx];
-            quat_lerp(a, b, c, keyframe_uniform_time);
-
-            animatedBox.animation_properties[channel.target_node_idx] |= Node::Property::Rotation;
-          }
-          else if (AnimationChannel::Path::Translation == channel.target_path)
-          {
-            float* a = &sampler.values[3 * keyframe_lower];
-            float* b = &sampler.values[3 * keyframe_upper];
-            float* c = animatedBox.animation_translations[channel.target_node_idx];
-            lerp(a, b, c, 3, keyframe_uniform_time);
-
-            animatedBox.animation_properties[channel.target_node_idx] |= Node::Property::Translation;
-          }
-        }
-      }
-    }
-
-    if (not any_sampler_ongoing)
-    {
-      animatedBox.animation_enabled = false;
-    }
-  }
-
-  // simple skinning animation for testing purposes
-  if (riggedSimple.animation_enabled)
-  {
-    bool  any_sampler_ongoing = false;
-    float animation_time      = current_time_sec - riggedSimple.animation_start_time;
-
-    for (int anim_channel_idx = 0; anim_channel_idx < riggedSimple.scene_graph.animations.data[0].channels.count;
-         ++anim_channel_idx)
-    // for (int anim_channel_idx = 3; anim_channel_idx < 6; ++anim_channel_idx)
-    {
-      const AnimationChannel& channel = riggedSimple.scene_graph.animations.data[0].channels.data[anim_channel_idx];
-      const AnimationSampler& sampler = riggedSimple.scene_graph.animations.data[0].samplers.data[channel.sampler_idx];
-
-      if (sampler.time_frame[1] > animation_time)
-      {
-        any_sampler_ongoing = true;
-
-        if (sampler.time_frame[0] < animation_time)
-        {
-          int   keyframe_upper         = find_first_higher(sampler.times, animation_time);
-          int   keyframe_lower         = keyframe_upper - 1;
-          float time_between_keyframes = sampler.times[keyframe_upper] - sampler.times[keyframe_lower];
-          float keyframe_uniform_time  = (animation_time - sampler.times[keyframe_lower]) / time_between_keyframes;
-
-          if (AnimationChannel::Path::Rotation == channel.target_path)
-          {
-            float* a = &sampler.values[4 * keyframe_lower];
-            float* b = &sampler.values[4 * keyframe_upper];
-            float* c = riggedSimple.animation_rotations[channel.target_node_idx];
-            quat_lerp(a, b, c, keyframe_uniform_time);
-
-            riggedSimple.animation_properties[channel.target_node_idx] |= Node::Property::Rotation;
-          }
-          else if (AnimationChannel::Path::Translation == channel.target_path)
-          {
-            float* a = &sampler.values[3 * keyframe_lower];
-            float* b = &sampler.values[3 * keyframe_upper];
-            float* c = riggedSimple.animation_translations[channel.target_node_idx];
-            lerp(a, b, c, 3, keyframe_uniform_time);
-
-            riggedSimple.animation_properties[channel.target_node_idx] |= Node::Property::Translation;
-          }
-        }
-      }
-    }
-
-    if (not any_sampler_ongoing)
-    {
-      riggedSimple.animation_enabled = false;
-      SDL_memset(riggedSimple.animation_properties, 0, sizeof(riggedSimple.animation_properties));
-    }
-  }
-
-  if (riggedFigure.animation_enabled)
-  {
-    bool  any_sampler_ongoing = false;
-    float animation_time      = current_time_sec - riggedFigure.animation_start_time;
-
-    for (int anim_channel_idx = 0; anim_channel_idx < riggedFigure.scene_graph.animations.data[0].channels.count;
-         ++anim_channel_idx)
-    {
-      const AnimationChannel& channel = riggedFigure.scene_graph.animations.data[0].channels.data[anim_channel_idx];
-      const AnimationSampler& sampler = riggedFigure.scene_graph.animations.data[0].samplers.data[channel.sampler_idx];
-
-      if (sampler.time_frame[1] > animation_time)
-      {
-        any_sampler_ongoing = true;
-
-        if (sampler.time_frame[0] < animation_time)
-        {
-          int   keyframe_upper         = find_first_higher(sampler.times, animation_time);
-          int   keyframe_lower         = keyframe_upper - 1;
-          float time_between_keyframes = sampler.times[keyframe_upper] - sampler.times[keyframe_lower];
-          float keyframe_uniform_time  = (animation_time - sampler.times[keyframe_lower]) / time_between_keyframes;
-
-          if (AnimationChannel::Path::Rotation == channel.target_path)
-          {
-            float* a = &sampler.values[4 * keyframe_lower];
-            float* b = &sampler.values[4 * keyframe_upper];
-            float* c = riggedFigure.animation_rotations[channel.target_node_idx];
-            quat_lerp(a, b, c, keyframe_uniform_time);
-
-            riggedFigure.animation_properties[channel.target_node_idx] |= Node::Property::Rotation;
-          }
-          else if (AnimationChannel::Path::Translation == channel.target_path)
-          {
-            float* a = &sampler.values[3 * keyframe_lower];
-            float* b = &sampler.values[3 * keyframe_upper];
-            float* c = riggedFigure.animation_translations[channel.target_node_idx];
-            lerp(a, b, c, 3, keyframe_uniform_time);
-
-            riggedFigure.animation_properties[channel.target_node_idx] |= Node::Property::Translation;
-          }
-        }
-      }
-    }
-
-    if (not any_sampler_ongoing)
-    {
-      riggedFigure.animation_enabled = false;
-      SDL_memset(riggedFigure.animation_properties, 0, sizeof(riggedFigure.animation_properties));
-    }
-  }
-
-  if (monster.animation_enabled)
-  {
-    bool  any_sampler_ongoing = false;
-    float animation_time      = current_time_sec - monster.animation_start_time;
-
-    for (int anim_channel_idx = 0; anim_channel_idx < riggedFigure.scene_graph.animations.data[0].channels.count;
-         ++anim_channel_idx)
-    {
-      const AnimationChannel& channel = monster.scene_graph.animations.data[0].channels.data[anim_channel_idx];
-      const AnimationSampler& sampler = monster.scene_graph.animations.data[0].samplers.data[channel.sampler_idx];
-
-      if (sampler.time_frame[1] > animation_time)
-      {
-        any_sampler_ongoing = true;
-
-        if (sampler.time_frame[0] < animation_time)
-        {
-          int   keyframe_upper         = find_first_higher(sampler.times, animation_time);
-          int   keyframe_lower         = keyframe_upper - 1;
-          float time_between_keyframes = sampler.times[keyframe_upper] - sampler.times[keyframe_lower];
-          float keyframe_uniform_time  = (animation_time - sampler.times[keyframe_lower]) / time_between_keyframes;
-
-          if (AnimationChannel::Path::Rotation == channel.target_path)
-          {
-            float* a = &sampler.values[4 * keyframe_lower];
-            float* b = &sampler.values[4 * keyframe_upper];
-            float* c = monster.animation_rotations[channel.target_node_idx];
-            quat_lerp(a, b, c, keyframe_uniform_time);
-
-            monster.animation_properties[channel.target_node_idx] |= Node::Property::Rotation;
-          }
-          else if (AnimationChannel::Path::Translation == channel.target_path)
-          {
-            float* a = &sampler.values[3 * keyframe_lower];
-            float* b = &sampler.values[3 * keyframe_upper];
-            float* c = monster.animation_translations[channel.target_node_idx];
-            lerp(a, b, c, 3, keyframe_uniform_time);
-
-            monster.animation_properties[channel.target_node_idx] |= Node::Property::Translation;
-          }
-        }
-      }
-    }
-
-    if (not any_sampler_ongoing)
-    {
-      monster.animation_enabled = false;
-      SDL_memset(monster.animation_properties, 0, sizeof(monster.animation_properties));
-    }
-  }
+  animate_model(animatedBox, current_time_sec);
+  animate_model(riggedSimple, current_time_sec);
+  animate_model(riggedFigure, current_time_sec);
+  animate_model(monster, current_time_sec);
 
   uint64_t end_function_ticks = SDL_GetPerformanceCounter();
   uint64_t ticks_elapsed      = end_function_ticks - start_function_ticks;
@@ -1035,7 +853,7 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
     }
 
     const float max_speed = 1.0f;
-    player_velocity[i] = clamp(player_velocity[i], -max_speed, max_speed);
+    player_velocity[i]    = clamp(player_velocity[i], -max_speed, max_speed);
 
     player_acceleration[i] = 0.0f;
   }
@@ -1043,13 +861,13 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
   const float acceleration = 0.0006f;
   if (player_forward_pressed)
   {
-    player_acceleration[0] += SDL_sinf(camera_angle - (float)M_PI_2) * acceleration;
-    player_acceleration[2] += SDL_cosf(camera_angle - (float)M_PI_2) * acceleration;
+    player_acceleration[0] += SDL_sinf(camera_angle - (float)M_PI / 2) * acceleration;
+    player_acceleration[2] += SDL_cosf(camera_angle - (float)M_PI / 2) * acceleration;
   }
   else if (player_back_pressed)
   {
-    player_acceleration[0] += SDL_sinf(camera_angle + (float)M_PI_2) * acceleration;
-    player_acceleration[2] += SDL_cosf(camera_angle + (float)M_PI_2) * acceleration;
+    player_acceleration[0] += SDL_sinf(camera_angle + (float)M_PI / 2) * acceleration;
+    player_acceleration[2] += SDL_cosf(camera_angle + (float)M_PI / 2) * acceleration;
   }
 
   if (player_strafe_left_pressed)
@@ -1427,7 +1245,7 @@ void Game::render(Engine& engine, float current_time_sec)
       for (int n = 0; n < draw_data->CmdListsCount; ++n)
       {
         const ImDrawList* cmd_list = draw_data->CmdLists[n];
-        memcpy(vtx_dst, cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size * sizeof(ImDrawVert));
+        SDL_memcpy(vtx_dst, cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size * sizeof(ImDrawVert));
         vtx_dst += cmd_list->VtxBuffer.Size;
       }
       vkUnmapMemory(engine.generic_handles.device, engine.gpu_host_visible.memory);
@@ -1441,7 +1259,7 @@ void Game::render(Engine& engine, float current_time_sec)
       for (int n = 0; n < draw_data->CmdListsCount; ++n)
       {
         const ImDrawList* cmd_list = draw_data->CmdLists[n];
-        memcpy(idx_dst, cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx));
+        SDL_memcpy(idx_dst, cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx));
         idx_dst += cmd_list->IdxBuffer.Size;
       }
       vkUnmapMemory(engine.generic_handles.device, engine.gpu_host_visible.memory);

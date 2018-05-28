@@ -79,13 +79,13 @@ void calculate_normal_at_line_length(float line_pt_a[2], float line_pt_b[2], flo
 {
   float x_delta         = line_pt_b[0] - line_pt_a[0];
   float y_delta         = line_pt_b[1] - line_pt_a[1];
-  float angle           = atanf(y_delta / x_delta);
-  float normal_point[2] = {line_pt_a[0] + cosf(angle) * length, line_pt_a[1] + sinf(angle) * length};
+  float angle           = static_cast<float>(SDL_atan(y_delta / x_delta));
+  float normal_point[2] = {line_pt_a[0] + SDL_cosf(angle) * length, line_pt_a[1] + SDL_sinf(angle) * length};
   float _90deg_radian   = (float)(M_PI) / 2.0f;
   float new_angle       = angle + (0.0f < distance ? -_90deg_radian : _90deg_radian);
 
-  result[0] = normal_point[0] + (cosf(new_angle) * distance);
-  result[1] = normal_point[1] + (sinf(new_angle) * distance);
+  result[0] = normal_point[0] + (SDL_cosf(new_angle) * distance);
+  result[1] = normal_point[1] + (SDL_sinf(new_angle) * distance);
 }
 
 //
