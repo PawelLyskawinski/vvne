@@ -511,6 +511,8 @@ void Game::startup(Engine& engine)
 
   camera_angle        = static_cast<float>(M_PI / 2);
   camera_updown_angle = -1.2f;
+
+  booster_jet_fuel = 1.0f;
 }
 
 void Game::teardown(Engine&)
@@ -623,6 +625,9 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
           break;
         case SDL_SCANCODE_D:
           player_strafe_right_pressed = (SDL_KEYDOWN == event.type);
+          break;
+        case SDL_SCANCODE_LSHIFT:
+          player_booster_activated = (SDL_KEYDOWN == event.type);
           break;
         case SDL_SCANCODE_ESCAPE:
           quit_requested = true;
@@ -858,16 +863,26 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
     player_acceleration[i] = 0.0f;
   }
 
-  const float acceleration = 0.0006f;
+  float acceleration = 0.0002f;
+  if (player_booster_activated and
+      (player_forward_pressed or player_back_pressed or player_strafe_left_pressed or player_strafe_right_pressed))
+  {
+    if (booster_jet_fuel > 0.0f)
+    {
+      booster_jet_fuel -= 0.001f;
+      acceleration = 0.0006f;
+    }
+  }
+
   if (player_forward_pressed)
   {
-    player_acceleration[0] += SDL_sinf(camera_angle - (float)M_PI / 2) * acceleration;
-    player_acceleration[2] += SDL_cosf(camera_angle - (float)M_PI / 2) * acceleration;
+    player_acceleration[0] += SDL_sinf(camera_angle - (float)M_PI/2) * acceleration;
+    player_acceleration[2] += SDL_cosf(camera_angle - (float)M_PI/2) * acceleration;
   }
   else if (player_back_pressed)
   {
-    player_acceleration[0] += SDL_sinf(camera_angle + (float)M_PI / 2) * acceleration;
-    player_acceleration[2] += SDL_cosf(camera_angle + (float)M_PI / 2) * acceleration;
+    player_acceleration[0] += SDL_sinf(camera_angle + (float)M_PI/2) * acceleration;
+    player_acceleration[2] += SDL_cosf(camera_angle + (float)M_PI/2) * acceleration;
   }
 
   if (player_strafe_left_pressed)

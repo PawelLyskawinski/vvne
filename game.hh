@@ -76,6 +76,10 @@ struct Game
   bool player_back_pressed;
   bool player_strafe_left_pressed;
   bool player_strafe_right_pressed;
+  bool player_booster_activated;
+
+  // gameplay mechanics
+  float booster_jet_fuel;
 
   struct LightSource
   {
