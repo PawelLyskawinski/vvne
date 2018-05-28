@@ -3,34 +3,7 @@
 struct Engine;
 struct Game;
 
-struct CubemapGenerator
-{
-  const char* filepath;
-  Engine*     engine;
-  Game*       game;
-  int         desired_size[2];
-
-  int generate();
-};
-
-struct IrradianceGenerator
-{
-  int     environment_cubemap_idx;
-  Engine* engine;
-  Game*   game;
-  int     desired_size[2];
-
-  int generate();
-};
-
-struct PrefilteredCubemapGenerator
-{
-  int     environment_cubemap_idx;
-  Engine* engine;
-  Game*   game;
-  int     desired_size[2];
-
-  int generate();
-};
-
-int generateBRDFlookup(Engine *engine, int size);
+int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_filepath, int desired_size[2]);
+int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cubemap_idx, int desired_size[2]);
+int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cubemap_idx, int desired_size[2]);
+int generate_brdf_lookup(Engine* engine, int size);

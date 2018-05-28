@@ -98,6 +98,13 @@ void animate_model(gltf::RenderableModel& model, float current_time_sec)
   }
 }
 
+void vec3_set(float* vec, float x, float y, float z)
+{
+  vec[0] = x;
+  vec[1] = y;
+  vec[2] = z;
+}
+
 } // namespace
 
 void Game::startup(Engine& engine)
@@ -190,42 +197,31 @@ void Game::startup(Engine& engine)
   riggedFigure.loadGLB(engine, "../assets/RiggedFigure.glb");
   monster.loadGLB(engine, "../assets/Monster.glb");
 
-  lights_ubo_offset = engine.ubo_host_visible.allocate(sizeof(light_sources));
-
   {
-    CubemapGenerator generator{};
-    generator.filepath        = "../assets/old_industrial_hall.jpg";
-    generator.engine          = &engine;
-    generator.game            = this;
-    generator.desired_size[0] = 512;
-    generator.desired_size[1] = 512;
-
-    environment_cubemap_idx = generator.generate();
+    int cubemap_size[2]     = {512, 512};
+    environment_cubemap_idx = generate_cubemap(&engine, this, "../assets/old_industrial_hall.jpg", cubemap_size);
+    irradiance_cubemap_idx  = generate_irradiance_cubemap(&engine, this, environment_cubemap_idx, cubemap_size);
+    prefiltered_cubemap_idx = generate_prefiltered_cubemap(&engine, this, environment_cubemap_idx, cubemap_size);
+    brdf_lookup_idx         = generate_brdf_lookup(&engine, cubemap_size[0]);
   }
 
+  struct LightSource
   {
-    IrradianceGenerator generator{};
-    generator.environment_cubemap_idx = environment_cubemap_idx;
-    generator.engine                  = &engine;
-    generator.game                    = this;
-    generator.desired_size[0]         = 512;
-    generator.desired_size[1]         = 512;
+    vec3 position;
+    vec3 color;
+  };
 
-    irradiance_cubemap_idx = generator.generate();
-  }
+  const VkDeviceSize light_sources_ubo_size = SDL_arraysize(light_source_positions) * sizeof(LightSource);
+  lights_ubo_offset                         = engine.ubo_host_visible.allocate(light_sources_ubo_size);
 
-  {
-    PrefilteredCubemapGenerator generator{};
-    generator.environment_cubemap_idx = environment_cubemap_idx;
-    generator.engine                  = &engine;
-    generator.game                    = this;
-    generator.desired_size[0]         = 512;
-    generator.desired_size[1]         = 512;
+  for (VkDeviceSize& offset : rig_skinning_matrices_ubo_offsets)
+    offset = engine.ubo_host_visible.allocate(64 * sizeof(mat4x4));
 
-    prefiltered_cubemap_idx = generator.generate();
-  }
+  for (VkDeviceSize& offset : fig_skinning_matrices_ubo_offsets)
+    offset = engine.ubo_host_visible.allocate(64 * sizeof(mat4x4));
 
-  brdf_lookup_idx = generateBRDFlookup(&engine, 512);
+  for (VkDeviceSize& offset : monster_skinning_matrices_ubo_offsets)
+    offset = engine.ubo_host_visible.allocate(64 * sizeof(mat4x4));
 
   // ----------------------------------------------------------------------------------------------
   // Descriptor sets
@@ -242,7 +238,7 @@ void Game::startup(Engine& engine)
     vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &helmet_dset);
     vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &imgui_dset);
 
-    for (int i = 0; i < SDL_arraysize(rig_dsets); ++i)
+    for (int i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
     {
       vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &rig_dsets[i]);
       vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &fig_dsets[i]);
@@ -256,97 +252,90 @@ void Game::startup(Engine& engine)
     skybox_image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     skybox_image.imageView   = engine.images.image_views[environment_cubemap_idx];
 
+    VkWriteDescriptorSet skybox_write{};
+    skybox_write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    skybox_write.dstBinding      = 0;
+    skybox_write.dstArrayElement = 0;
+    skybox_write.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    skybox_write.descriptorCount = 1;
+    skybox_write.pImageInfo      = &skybox_image;
+    skybox_write.dstSet          = skybox_dset;
+
+    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &skybox_write, 0, nullptr);
+  }
+
+  {
     VkDescriptorImageInfo imgui_image{};
     imgui_image.sampler     = engine.generic_handles.texture_sampler;
     imgui_image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     imgui_image.imageView   = engine.images.image_views[debug_gui.font_texture_idx];
 
-    VkDescriptorImageInfo helmet_images[8]{};
-    for (VkDescriptorImageInfo& info : helmet_images)
+    VkWriteDescriptorSet imgui_write{};
+    imgui_write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    imgui_write.dstBinding      = 0;
+    imgui_write.dstArrayElement = 0;
+    imgui_write.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    imgui_write.descriptorCount = 1;
+    imgui_write.pImageInfo      = &imgui_image;
+    imgui_write.dstSet          = imgui_dset;
+
+    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &imgui_write, 0, nullptr);
+  }
+
+  {
+    const Material& material = helmet.scene_graph.materials.data[0];
+
+    int ts[8] = {};
+
+    ts[0] = material.albedo_texture_idx;
+    ts[1] = material.metal_roughness_texture_idx;
+    ts[2] = material.emissive_texture_idx;
+    ts[3] = material.AO_texture_idx;
+    ts[4] = material.normal_texture_idx;
+    ts[5] = irradiance_cubemap_idx;
+    ts[6] = prefiltered_cubemap_idx;
+    ts[7] = brdf_lookup_idx;
+
+    VkDescriptorImageInfo helmet_images[8] = {};
+
+    for (int i = 0; i < SDL_arraysize(helmet_images); ++i)
     {
-      info.sampler     = engine.generic_handles.texture_sampler;
-      info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+      helmet_images[i].sampler     = engine.generic_handles.texture_sampler;
+      helmet_images[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+      helmet_images[i].imageView   = engine.images.image_views[ts[i]];
     }
 
-    // todo: refactor
+    VkWriteDescriptorSet helmet_write{};
+    helmet_write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    helmet_write.dstBinding      = 0;
+    helmet_write.dstArrayElement = 0;
+    helmet_write.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    helmet_write.descriptorCount = SDL_arraysize(helmet_images);
+    helmet_write.pImageInfo      = helmet_images;
+    helmet_write.dstSet          = helmet_dset;
 
-    {
-      const Material& material   = helmet.scene_graph.materials.data[0];
-      helmet_images[0].imageView = engine.images.image_views[material.albedo_texture_idx];
-      helmet_images[1].imageView = engine.images.image_views[material.metal_roughness_texture_idx];
-      helmet_images[2].imageView = engine.images.image_views[material.emissive_texture_idx];
-      helmet_images[3].imageView = engine.images.image_views[material.AO_texture_idx];
-      helmet_images[4].imageView = engine.images.image_views[material.normal_texture_idx];
-    }
-
-    helmet_images[5].imageView = engine.images.image_views[irradiance_cubemap_idx];
-    helmet_images[6].imageView = engine.images.image_views[prefiltered_cubemap_idx];
-    helmet_images[7].imageView = engine.images.image_views[brdf_lookup_idx];
+    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &helmet_write, 0, nullptr);
 
     VkDescriptorBufferInfo helmet_ubo{};
     helmet_ubo.buffer = engine.ubo_host_visible.buffer;
     helmet_ubo.offset = lights_ubo_offset;
-    helmet_ubo.range  = sizeof(light_sources);
+    helmet_ubo.range  = light_sources_ubo_size;
 
-    VkWriteDescriptorSet writes[4]{};
+    VkWriteDescriptorSet helmet_ubo_write{};
+    helmet_ubo_write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    helmet_ubo_write.dstBinding      = 8;
+    helmet_ubo_write.dstArrayElement = 0;
+    helmet_ubo_write.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    helmet_ubo_write.descriptorCount = 1;
+    helmet_ubo_write.pBufferInfo     = &helmet_ubo;
+    helmet_ubo_write.dstSet          = helmet_dset;
 
-    VkWriteDescriptorSet& skybox_write = writes[0];
-    skybox_write.sType                 = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    skybox_write.dstBinding            = 0;
-    skybox_write.dstArrayElement       = 0;
-    skybox_write.descriptorType        = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    skybox_write.descriptorCount       = 1;
-    skybox_write.pImageInfo            = &skybox_image;
-    skybox_write.dstSet                = skybox_dset;
-
-    VkWriteDescriptorSet& helmet_write = writes[1];
-    helmet_write.sType                 = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    helmet_write.dstBinding            = 0;
-    helmet_write.dstArrayElement       = 0;
-    helmet_write.descriptorType        = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    helmet_write.descriptorCount       = SDL_arraysize(helmet_images);
-    helmet_write.pImageInfo            = helmet_images;
-    helmet_write.dstSet                = helmet_dset;
-
-    VkWriteDescriptorSet& helmet_ubo_write = writes[2];
-    helmet_ubo_write.sType                 = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    helmet_ubo_write.dstBinding            = 8;
-    helmet_ubo_write.dstArrayElement       = 0;
-    helmet_ubo_write.descriptorType        = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    helmet_ubo_write.descriptorCount       = 1;
-    helmet_ubo_write.pBufferInfo           = &helmet_ubo;
-    helmet_ubo_write.dstSet                = helmet_dset;
-
-    VkWriteDescriptorSet& imgui_write = writes[3];
-    imgui_write.sType                 = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    imgui_write.dstBinding            = 0;
-    imgui_write.dstArrayElement       = 0;
-    imgui_write.descriptorType        = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    imgui_write.descriptorCount       = 1;
-    imgui_write.pImageInfo            = &imgui_image;
-    imgui_write.dstSet                = imgui_dset;
-
-    vkUpdateDescriptorSets(engine.generic_handles.device, SDL_arraysize(writes), writes, 0, nullptr);
+    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &helmet_ubo_write, 0, nullptr);
   }
 
   {
-    for (int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
-    {
-      rig_skinning_matrices_ubo_offsets[swapchain_image_idx] = engine.ubo_host_visible.allocate(64 * sizeof(mat4x4));
-    }
-
-    for (int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
-    {
-      fig_skinning_matrices_ubo_offsets[swapchain_image_idx] = engine.ubo_host_visible.allocate(64 * sizeof(mat4x4));
-    }
-
-    for (int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
-    {
-      monster_skinning_matrices_ubo_offsets[swapchain_image_idx] =
-          engine.ubo_host_visible.allocate(64 * sizeof(mat4x4));
-    }
-
     VkDescriptorBufferInfo ubo_infos[SWAPCHAIN_IMAGES_COUNT]{};
+
     for (int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
     {
       VkDescriptorBufferInfo& ubo_info = ubo_infos[swapchain_image_idx];
@@ -397,53 +386,35 @@ void Game::startup(Engine& engine)
     vkUpdateDescriptorSets(engine.generic_handles.device, SDL_arraysize(writes), writes, 0, nullptr);
   }
 
-  helmet_translation[0] = -1.0f;
-  helmet_translation[1] = 1.0f;
-  helmet_translation[2] = 3.0f;
-
-  robot_position[0] = 2.0f;
-  robot_position[1] = 2.5f;
-  robot_position[2] = 3.0f;
-
-  rigged_position[0] = 2.0f;
-  rigged_position[1] = 0.0f;
-  rigged_position[2] = 3.0f;
+  vec3_set(helmet_translation, -1.0f, 1.0f, 3.0f);
+  vec3_set(robot_position, 2.0f, 2.5f, 3.0f);
+  vec3_set(rigged_position, 2.0f, 0.0f, 3.0f);
 
   {
-    LightSource& red = light_sources[0];
-    red.setPosition(-2.0, 0.0, 1.0);
-    red.setColor(2.0, 0.0, 0.0);
-
-    LightSource& green = light_sources[1];
-    green.setPosition(0.0, 0.0, 1.0);
-    green.setColor(0.0, 0.0, 2.0);
-
-    LightSource& blue = light_sources[2];
-    blue.setPosition(-2.0, 2.0, 1.0);
-    blue.setColor(0.0, 0.0, 2.0);
-
-    LightSource& white = light_sources[3];
-    white.setPosition(0.0, 2.0, 1.0);
-    white.setColor(2.0, 0.0, 0.0);
-
     light_sources_count = 4;
+
+    vec3_set(light_source_positions[0], -2.0f, 0.0f, 1.0f);
+    vec3_set(light_source_positions[1], 0.0f, 0.0f, 1.0f);
+    vec3_set(light_source_positions[2], -2.0f, 2.0f, 1.0f);
+    vec3_set(light_source_positions[3], 0.0f, 2.0f, 1.0f);
+
+    vec3_set(light_source_colors[0], 2.0, 0.0, 0.0);
+    vec3_set(light_source_colors[1], 0.0, 0.0, 2.0);
+    vec3_set(light_source_colors[2], 0.0, 0.0, 2.0);
+    vec3_set(light_source_colors[3], 1.0, 0.0, 0.0);
   }
 
   {
-    struct LightSourceAtShader
-    {
-      float position[4];
-      float color[4];
-    };
-
-    LightSourceAtShader* dst = nullptr;
+    LightSource* dst = nullptr;
     vkMapMemory(engine.generic_handles.device, engine.ubo_host_visible.memory, lights_ubo_offset,
-                SDL_arraysize(light_sources) * sizeof(LightSourceAtShader), 0, (void**)(&dst));
+                light_sources_ubo_size, 0, (void**)(&dst));
+
     for (int i = 0; i < 10; ++i)
     {
-      SDL_memcpy(dst[i].position, light_sources[i].position, 3 * sizeof(float));
-      SDL_memcpy(dst[i].color, light_sources[i].color, 3 * sizeof(float));
+      SDL_memcpy(dst[i].position, light_source_positions[i], sizeof(vec3));
+      SDL_memcpy(dst[i].color, light_source_colors[i], sizeof(vec3));
     }
+
     vkUnmapMemory(engine.generic_handles.device, engine.ubo_host_visible.memory);
   }
 
@@ -471,18 +442,11 @@ void Game::startup(Engine& engine)
   vr_level_goal[0] *= VR_LEVEL_SCALE;
   vr_level_goal[1] *= VR_LEVEL_SCALE;
 
-  player_position[0] = vr_level_entry[0];
-  player_position[1] = 2.0f;
-  player_position[2] = vr_level_entry[1];
+  vec3_set(player_position, vr_level_entry[0], 2.0f, vr_level_entry[1]);
   quat_identity(player_orientation);
 
-  player_acceleration[0] = 0.0f;
-  player_acceleration[1] = 0.0f;
-  player_acceleration[2] = 0.0f;
-
-  player_velocity[0] = 0.0f;
-  player_velocity[1] = 0.0f;
-  player_velocity[2] = 0.0f;
+  vec3_set(player_acceleration, 0.0f, 0.0f, 0.0f);
+  vec3_set(player_velocity, 0.0f, 0.0f, 0.0f);
 
   camera_angle        = static_cast<float>(M_PI / 2);
   camera_updown_angle = -1.2f;
@@ -1036,8 +1000,8 @@ void Game::render(Engine& engine, float current_time_sec)
       }
 
       vec3 scale = {0.05f, 0.05f, 0.05f};
-      box.renderColored(engine, cmd, push_const.projection, push_const.view, light_sources[i].position, orientation,
-                        scale, light_sources[i].color, Engine::SimpleRendering::Passes::ColoredGeometry, 0);
+      box.renderColored(engine, cmd, push_const.projection, push_const.view, light_source_positions[i], orientation,
+                        scale, light_source_colors[i], Engine::SimpleRendering::Passes::ColoredGeometry, 0);
     }
 
     {
