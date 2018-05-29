@@ -16,7 +16,7 @@ constexpr float calculate_mip_divisor(int mip_level)
   return static_cast<float>(mip_level ? SDL_pow(2, mip_level) : 1);
 }
 
-void generate_cubemap_views(mat4x4 views[5])
+void generate_cubemap_views(mat4x4 views[6])
 {
   vec3 eye = {0.0f, 0.0f, 0.0f};
 
@@ -26,38 +26,32 @@ void generate_cubemap_views(mat4x4 views[5])
     vec3 up;
   } inputs[] = {
       {
-          {1.0f, 0.0f, 0.0f},
-          {0.0f, -1.0f, 0.0f},
+          {1.0f, 0.0f, 0.0f}, {0.0f, -1.0f, 0.0f},
       },
       {
-          {-1.0f, 0.0f, 0.0f},
-          {0.0f, -1.0f, 0.0f},
+          {-1.0f, 0.0f, 0.0f}, {0.0f, -1.0f, 0.0f},
       },
       {
-          {0.0f, 1.0f, 0.0f},
-          {0.0f, 0.0f, 1.0f},
+          {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f},
       },
       {
-          {0.0f, -1.0f, 0.0f},
-          {0.0f, 0.0f, -1.0f},
+          {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f, -1.0f},
       },
       {
-          {0.0f, 0.0f, 1.0f},
-          {0.0f, -1.0f, 0.0f},
+          {0.0f, 0.0f, 1.0f}, {0.0f, -1.0f, 0.0f},
       },
       {
-          {0.0f, 0.0f, -1.0f},
-          {0.0f, -1.0f, 0.0f},
+          {0.0f, 0.0f, -1.0f}, {0.0f, -1.0f, 0.0f},
       },
   };
 
-  for (int i = 0; i < SDL_arraysize(inputs); ++i)
+  for (unsigned i = 0; i < SDL_arraysize(inputs); ++i)
     mat4x4_look_at(views[i], eye, inputs[i].center, inputs[i].up);
 }
 
 } // namespace
 
-int CubemapGenerator::generate()
+int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_filepath, int desired_size[2])
 {
   struct OperationContext
   {
@@ -120,7 +114,7 @@ int CubemapGenerator::generate()
     vkCreateImageView(egh.device, &ci, nullptr, &operation.cubemap_image_view);
   }
 
-  for (int i = 0; i < SDL_arraysize(operation.cubemap_image_side_views); ++i)
+  for (unsigned i = 0; i < SDL_arraysize(operation.cubemap_image_side_views); ++i)
   {
     VkImageSubresourceRange sr{};
     sr.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -140,7 +134,7 @@ int CubemapGenerator::generate()
 
   int result_idx = engine->images.loaded_count;
   engine->images.add(operation.cubemap_image, operation.cubemap_image_view);
-  int plain_texture_idx = engine->load_texture(filepath);
+  int plain_texture_idx = engine->load_texture(equirectangular_filepath);
 
   {
     VkAttachmentDescription attachments[6]{};
@@ -157,14 +151,14 @@ int CubemapGenerator::generate()
     }
 
     VkAttachmentReference color_references[6]{};
-    for (int i = 0; i < SDL_arraysize(color_references); ++i)
+    for (unsigned i = 0; i < SDL_arraysize(color_references); ++i)
     {
       color_references[i].attachment = static_cast<uint32_t>(i);
       color_references[i].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
 
     VkSubpassDescription subpasses[6]{};
-    for (int i = 0; i < SDL_arraysize(subpasses); ++i)
+    for (unsigned i = 0; i < SDL_arraysize(subpasses); ++i)
     {
       subpasses[i].pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS;
       subpasses[i].colorAttachmentCount = 1;
@@ -367,7 +361,7 @@ int CubemapGenerator::generate()
     color_blend_state.attachmentCount = 1;
     color_blend_state.pAttachments    = &color_blend_attachment;
 
-    for (int i = 0; i < SDL_arraysize(operation.pipelines); ++i)
+    for (unsigned i = 0; i < SDL_arraysize(operation.pipelines); ++i)
     {
       VkGraphicsPipelineCreateInfo ci{};
       ci.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -514,7 +508,7 @@ int CubemapGenerator::generate()
   return result_idx;
 }
 
-int IrradianceGenerator::generate()
+int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cubemap_idx, int desired_size[2])
 {
   struct OperationContext
   {
@@ -577,7 +571,7 @@ int IrradianceGenerator::generate()
     vkCreateImageView(egh.device, &ci, nullptr, &operation.cubemap_image_view);
   }
 
-  for (int i = 0; i < SDL_arraysize(operation.cubemap_image_side_views); ++i)
+  for (unsigned i = 0; i < SDL_arraysize(operation.cubemap_image_side_views); ++i)
   {
     VkImageSubresourceRange sr{};
     sr.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -613,14 +607,14 @@ int IrradianceGenerator::generate()
     }
 
     VkAttachmentReference color_references[6]{};
-    for (int i = 0; i < SDL_arraysize(color_references); ++i)
+    for (unsigned i = 0; i < SDL_arraysize(color_references); ++i)
     {
       color_references[i].attachment = static_cast<uint32_t>(i);
       color_references[i].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
 
     VkSubpassDescription subpasses[6]{};
-    for (int i = 0; i < SDL_arraysize(subpasses); ++i)
+    for (unsigned i = 0; i < SDL_arraysize(subpasses); ++i)
     {
       subpasses[i].pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS;
       subpasses[i].colorAttachmentCount = 1;
@@ -823,7 +817,7 @@ int IrradianceGenerator::generate()
     color_blend_state.attachmentCount = 1;
     color_blend_state.pAttachments    = &color_blend_attachment;
 
-    for (int i = 0; i < SDL_arraysize(operation.pipelines); ++i)
+    for (unsigned i = 0; i < SDL_arraysize(operation.pipelines); ++i)
     {
       VkGraphicsPipelineCreateInfo ci{};
       ci.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -963,7 +957,7 @@ int IrradianceGenerator::generate()
   return result_idx;
 }
 
-int PrefilteredCubemapGenerator::generate()
+int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cubemap_idx, int desired_size[2])
 {
   enum
   {
@@ -1072,14 +1066,14 @@ int PrefilteredCubemapGenerator::generate()
     }
 
     VkAttachmentReference color_references[CUBE_SIDES]{};
-    for (int i = 0; i < SDL_arraysize(color_references); ++i)
+    for (unsigned i = 0; i < SDL_arraysize(color_references); ++i)
     {
       color_references[i].attachment = static_cast<uint32_t>(i);
       color_references[i].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
 
     VkSubpassDescription subpasses[CUBE_SIDES]{};
-    for (int i = 0; i < SDL_arraysize(subpasses); ++i)
+    for (unsigned i = 0; i < SDL_arraysize(subpasses); ++i)
     {
       subpasses[i].pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS;
       subpasses[i].colorAttachmentCount = 1;
@@ -1442,7 +1436,7 @@ int PrefilteredCubemapGenerator::generate()
   return result_idx;
 }
 
-int generateBRDFlookup(Engine* engine, int size)
+int generate_brdf_lookup(Engine* engine, int size)
 {
   struct OperationContext
   {

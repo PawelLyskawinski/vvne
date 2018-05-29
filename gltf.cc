@@ -12,27 +12,6 @@
 
 namespace {
 
-uint32_t find_memory_type_index(VkPhysicalDeviceMemoryProperties* properties, VkMemoryRequirements* reqs,
-                                VkMemoryPropertyFlags searched)
-{
-  for (uint32_t i = 0; i < properties->memoryTypeCount; ++i)
-  {
-    if (0 == (reqs->memoryTypeBits & (1 << i)))
-      continue;
-
-    VkMemoryPropertyFlags memory_type_properties = properties->memoryTypes[i].propertyFlags;
-
-    if (searched == (memory_type_properties & searched))
-    {
-      return i;
-    }
-  }
-
-  // this code fragment should never be reached!
-  SDL_assert(false);
-  return 0;
-}
-
 size_t find_substring_idx(const char* big_string, const size_t big_string_length, const char* small_string)
 {
   size_t result              = 0;
@@ -413,7 +392,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
       uint32_t*      dst = reinterpret_cast<uint32_t*>(upload_buffer);
       const uint8_t* src = &binary_data[index_buffer_glb_offset];
 
-      for (int i = 0; i < mesh.indices_count; ++i)
+      for (unsigned i = 0; i < mesh.indices_count; ++i)
         dst[i] = src[i];
     }
     else if (IndexType::UINT16 == index_type)
@@ -421,7 +400,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
       uint16_t*       dst = reinterpret_cast<uint16_t*>(upload_buffer);
       const uint16_t* src = reinterpret_cast<const uint16_t*>(&binary_data[index_buffer_glb_offset]);
 
-      for (int i = 0; i < mesh.indices_count; ++i)
+      for (unsigned i = 0; i < mesh.indices_count; ++i)
         dst[i] = src[i];
     }
     else
@@ -864,7 +843,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
           float*       dst = &current_sampler.values[static_cast<unsigned>(output_type) * i];
           const float* src = reinterpret_cast<const float*>(&binary_data[output_start_offset + (output_stride * i)]);
 
-          for (int j = 0; j < static_cast<unsigned>(output_type); ++j)
+          for (unsigned j = 0; j < static_cast<unsigned>(output_type); ++j)
           {
             dst[j] = src[j];
           }
@@ -1062,7 +1041,7 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
     node_shall_be_rendered[scene_graph.scenes[0].nodes.data[i]] = SDL_TRUE;
   }
 
-  for (int i = 0; i < SDL_arraysize(node_shall_be_rendered); ++i)
+  for (unsigned i = 0; i < SDL_arraysize(node_shall_be_rendered); ++i)
   {
     uint8_t is_rendered        = node_shall_be_rendered[i];
     uint8_t parent             = node_parent_hierarchy[i];

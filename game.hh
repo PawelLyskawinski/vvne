@@ -76,29 +76,15 @@ struct Game
   bool player_back_pressed;
   bool player_strafe_left_pressed;
   bool player_strafe_right_pressed;
+  bool player_booster_activated;
 
-  struct LightSource
-  {
-    float position[3];
-    float color[3];
+  // gameplay mechanics
+  float booster_jet_fuel;
 
-    void setPosition(float x, float y, float z)
-    {
-      position[0] = x;
-      position[1] = y;
-      position[2] = z;
-    }
+  vec3 light_source_positions[10];
+  vec3 light_source_colors[10];
+  int  light_sources_count;
 
-    void setColor(float r, float g, float b)
-    {
-      color[0] = r;
-      color[1] = g;
-      color[2] = b;
-    }
-  };
-
-  LightSource  light_sources[10];
-  int          light_sources_count;
   VkDeviceSize lights_ubo_offset;
 
   bool lmb_clicked;

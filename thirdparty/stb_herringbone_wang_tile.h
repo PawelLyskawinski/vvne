@@ -747,7 +747,7 @@ STBHW_EXTERN int stbhw_generate_image(stbhw_tileset *ts, int **weighting, unsign
          } else {
             i = phase-4;
          }
-         for (i;; i += 4) {
+         for (;; i += 4) {
             int xpos = i * sidelen;
             if (xpos >= w)
                break;
@@ -798,7 +798,7 @@ STBHW_EXTERN int stbhw_generate_image(stbhw_tileset *ts, int **weighting, unsign
          } else {
             i = phase-4;
          }
-         for (i;; i += 4) {
+         for (;; i += 4) {
             int xpos = i * sidelen;
             if (xpos >= w)
                break;

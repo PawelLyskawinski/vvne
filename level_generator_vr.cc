@@ -8,6 +8,8 @@
 #define STB_HERRINGBONE_WANG_TILE_IMPLEMENTATION
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wwrite-strings"
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 #include "stb_herringbone_wang_tile.h"
 #pragma GCC diagnostic pop
 
@@ -237,7 +239,7 @@ struct RgbPixmap
           if (height < (tile_approximation[1] + position[1]))
             continue;
 
-          if (SDL_TRUE == tile_used[tile_approximation[0] + position[0], tile_approximation[1] + position[1]])
+          if (SDL_TRUE == tile_used[tile_approximation[0] + position[0] + (tile_approximation[1] + position[1])*width])
           {
             dst[0] = goal[0] + (float)position[0];
             dst[1] = goal[1] + (float)position[1];
