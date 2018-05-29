@@ -55,9 +55,7 @@ void pixel_position_on_squere(int dst[2], int idx, int layer)
     set_point(dst, layer - idx_on_side, -layer);
     break;
   case 3:
-    set_point(dst,
-    dst[0] = -layer;
-    dst[1] = idx_on_side - layer;
+    set_point(dst, -layer, idx_on_side - layer);
     break;
   }
 }
