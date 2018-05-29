@@ -298,7 +298,7 @@ void Game::startup(Engine& engine)
 
     VkDescriptorImageInfo helmet_images[8] = {};
 
-    for (int i = 0; i < SDL_arraysize(helmet_images); ++i)
+    for (unsigned i = 0; i < SDL_arraysize(helmet_images); ++i)
     {
       helmet_images[i].sampler     = engine.generic_handles.texture_sampler;
       helmet_images[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;

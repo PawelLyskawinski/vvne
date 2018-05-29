@@ -45,7 +45,7 @@ void generate_cubemap_views(mat4x4 views[6])
       },
   };
 
-  for (int i = 0; i < SDL_arraysize(inputs); ++i)
+  for (unsigned i = 0; i < SDL_arraysize(inputs); ++i)
     mat4x4_look_at(views[i], eye, inputs[i].center, inputs[i].up);
 }
 
@@ -114,7 +114,7 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
     vkCreateImageView(egh.device, &ci, nullptr, &operation.cubemap_image_view);
   }
 
-  for (int i = 0; i < SDL_arraysize(operation.cubemap_image_side_views); ++i)
+  for (unsigned i = 0; i < SDL_arraysize(operation.cubemap_image_side_views); ++i)
   {
     VkImageSubresourceRange sr{};
     sr.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -151,14 +151,14 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
     }
 
     VkAttachmentReference color_references[6]{};
-    for (int i = 0; i < SDL_arraysize(color_references); ++i)
+    for (unsigned i = 0; i < SDL_arraysize(color_references); ++i)
     {
       color_references[i].attachment = static_cast<uint32_t>(i);
       color_references[i].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
 
     VkSubpassDescription subpasses[6]{};
-    for (int i = 0; i < SDL_arraysize(subpasses); ++i)
+    for (unsigned i = 0; i < SDL_arraysize(subpasses); ++i)
     {
       subpasses[i].pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS;
       subpasses[i].colorAttachmentCount = 1;
@@ -361,7 +361,7 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
     color_blend_state.attachmentCount = 1;
     color_blend_state.pAttachments    = &color_blend_attachment;
 
-    for (int i = 0; i < SDL_arraysize(operation.pipelines); ++i)
+    for (unsigned i = 0; i < SDL_arraysize(operation.pipelines); ++i)
     {
       VkGraphicsPipelineCreateInfo ci{};
       ci.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -571,7 +571,7 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
     vkCreateImageView(egh.device, &ci, nullptr, &operation.cubemap_image_view);
   }
 
-  for (int i = 0; i < SDL_arraysize(operation.cubemap_image_side_views); ++i)
+  for (unsigned i = 0; i < SDL_arraysize(operation.cubemap_image_side_views); ++i)
   {
     VkImageSubresourceRange sr{};
     sr.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -607,14 +607,14 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
     }
 
     VkAttachmentReference color_references[6]{};
-    for (int i = 0; i < SDL_arraysize(color_references); ++i)
+    for (unsigned i = 0; i < SDL_arraysize(color_references); ++i)
     {
       color_references[i].attachment = static_cast<uint32_t>(i);
       color_references[i].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
 
     VkSubpassDescription subpasses[6]{};
-    for (int i = 0; i < SDL_arraysize(subpasses); ++i)
+    for (unsigned i = 0; i < SDL_arraysize(subpasses); ++i)
     {
       subpasses[i].pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS;
       subpasses[i].colorAttachmentCount = 1;
@@ -817,7 +817,7 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
     color_blend_state.attachmentCount = 1;
     color_blend_state.pAttachments    = &color_blend_attachment;
 
-    for (int i = 0; i < SDL_arraysize(operation.pipelines); ++i)
+    for (unsigned i = 0; i < SDL_arraysize(operation.pipelines); ++i)
     {
       VkGraphicsPipelineCreateInfo ci{};
       ci.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -1066,14 +1066,14 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
     }
 
     VkAttachmentReference color_references[CUBE_SIDES]{};
-    for (int i = 0; i < SDL_arraysize(color_references); ++i)
+    for (unsigned i = 0; i < SDL_arraysize(color_references); ++i)
     {
       color_references[i].attachment = static_cast<uint32_t>(i);
       color_references[i].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
 
     VkSubpassDescription subpasses[CUBE_SIDES]{};
-    for (int i = 0; i < SDL_arraysize(subpasses); ++i)
+    for (unsigned i = 0; i < SDL_arraysize(subpasses); ++i)
     {
       subpasses[i].pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS;
       subpasses[i].colorAttachmentCount = 1;
