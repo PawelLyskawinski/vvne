@@ -288,7 +288,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
   if (document.has("skins"))
   {
     scene_graph.skins.count = document.node("skins").elements_count();
-    scene_graph.skins.data  = engine.double_ended_stack.allocate_front<Skin>(scene_graph.animations.count);
+    scene_graph.skins.data  = engine.double_ended_stack.allocate_front<Skin>(scene_graph.skins.count);
   }
 
   // ---------------------------------------------------------------------------
