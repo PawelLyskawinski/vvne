@@ -70,7 +70,7 @@ void Engine::startup()
     ai.engineVersion      = 1;
     ai.apiVersion         = VK_API_VERSION_1_0;
 
-    const char* instance_layers[] = {"VK_LAYER_LUNARG_standard_validation"};
+    const char* instance_layers[]     = {"VK_LAYER_LUNARG_standard_validation"};
     const char* instance_extensions[] = {VK_KHR_SURFACE_EXTENSION_NAME,
 #ifdef __linux__
                                          "VK_KHR_xlib_surface",
@@ -157,7 +157,7 @@ void Engine::startup()
     graphics.pQueuePriorities = queue_priorities;
 
     VkPhysicalDeviceFeatures device_features = {};
-    device_features.sampleRateShading = VK_TRUE;
+    device_features.sampleRateShading        = VK_TRUE;
 
     VkDeviceCreateInfo ci{};
     ci.sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -370,56 +370,6 @@ void Engine::startup()
     vkCreateSampler(ctx.device, &ci, nullptr, &ctx.texture_sampler);
   }
 
-  {
-    VkCommandBuffer command_buffer = VK_NULL_HANDLE;
-
-    {
-      VkCommandBufferAllocateInfo alloc{};
-      alloc.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-      alloc.commandPool        = ctx.graphics_command_pool;
-      alloc.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-      alloc.commandBufferCount = 1;
-      vkAllocateCommandBuffers(ctx.device, &alloc, &command_buffer);
-    }
-
-    {
-      VkCommandBufferBeginInfo begin{};
-      begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-      begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-      vkBeginCommandBuffer(command_buffer, &begin);
-    }
-
-    {
-      VkImageMemoryBarrier barrier{};
-      barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-      barrier.dstAccessMask =
-          VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-      barrier.oldLayout                   = VK_IMAGE_LAYOUT_UNDEFINED;
-      barrier.newLayout                   = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-      barrier.srcQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
-      barrier.dstQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
-      barrier.image                       = ctx.depth_image;
-      barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-      barrier.subresourceRange.levelCount = 1;
-      barrier.subresourceRange.layerCount = 1;
-      vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                           VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
-    }
-
-    vkEndCommandBuffer(command_buffer);
-
-    {
-      VkSubmitInfo submit{};
-      submit.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-      submit.commandBufferCount = 1;
-      submit.pCommandBuffers    = &command_buffer;
-      vkQueueSubmit(ctx.graphics_queue, 1, &submit, VK_NULL_HANDLE);
-    }
-
-    vkQueueWaitIdle(ctx.graphics_queue);
-    vkFreeCommandBuffers(ctx.device, ctx.graphics_command_pool, 1, &command_buffer);
-  }
-
   // STATIC_GEOMETRY
 
   {
@@ -528,6 +478,56 @@ void Engine::startup()
     VkMemoryRequirements reqs{};
     vkGetImageMemoryRequirements(ctx.device, ctx.msaa_depth_image, &reqs);
     vkBindImageMemory(ctx.device, ctx.msaa_depth_image, images.memory, images.allocate(reqs.size));
+  }
+
+  {
+    VkCommandBuffer command_buffer = VK_NULL_HANDLE;
+
+    {
+      VkCommandBufferAllocateInfo alloc{};
+      alloc.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+      alloc.commandPool        = ctx.graphics_command_pool;
+      alloc.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+      alloc.commandBufferCount = 1;
+      vkAllocateCommandBuffers(ctx.device, &alloc, &command_buffer);
+    }
+
+    {
+      VkCommandBufferBeginInfo begin{};
+      begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+      begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+      vkBeginCommandBuffer(command_buffer, &begin);
+    }
+
+    {
+      VkImageMemoryBarrier barrier{};
+      barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+      barrier.dstAccessMask =
+          VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+      barrier.oldLayout                   = VK_IMAGE_LAYOUT_UNDEFINED;
+      barrier.newLayout                   = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+      barrier.srcQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+      barrier.dstQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+      barrier.image                       = ctx.depth_image;
+      barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+      barrier.subresourceRange.levelCount = 1;
+      barrier.subresourceRange.layerCount = 1;
+      vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                           VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+    }
+
+    vkEndCommandBuffer(command_buffer);
+
+    {
+      VkSubmitInfo submit{};
+      submit.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+      submit.commandBufferCount = 1;
+      submit.pCommandBuffers    = &command_buffer;
+      vkQueueSubmit(ctx.graphics_queue, 1, &submit, VK_NULL_HANDLE);
+    }
+
+    vkQueueWaitIdle(ctx.graphics_queue);
+    vkFreeCommandBuffers(ctx.device, ctx.graphics_command_pool, 1, &command_buffer);
   }
 
   // image views can only be created when memory is bound to the image handle

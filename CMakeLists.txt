@@ -1,21 +1,28 @@
 cmake_minimum_required(VERSION 3.9)
-project(vvne)
+project(vvne CXX)
 
 set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -fno-exceptions -fno-rtti -Wall -Wextra -Werror")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -fno-exceptions -fno-rtti -Wall")# -Wextra -Werror")
+
+include_directories(${CMAKE_CURRENT_LIST_DIR}/thirdparty)
 
 if(WIN32)
-include_directories(
-        C:/Users/pawel.lyskawinski/Downloads/MinGW/include
-        C:/VulkanSDK/1.0.65.0/Include
-        ${CMAKE_CURRENT_LIST_DIR}/thirdparty
-        )
+include_directories(C:/Users/pawel.lyskawinski/Downloads/MinGW/include
+                    C:/VulkanSDK/1.0.65.0/Include)
+
+set(SDL_LIBRARY    ${CMAKE_CURRENT_LIST_DIR}/bin/SDL2.dll)
+set(VULKAN_LIBRARY C:/Windows/System32/vulkan-1.dll)
 else()
-include_directories(
-	    ~/Pobrane/VulkanSDK/1.1.70.1/x86_64/include
-        ${CMAKE_CURRENT_LIST_DIR}/thirdparty
-        )
+include_directories(~/Pobrane/VulkanSDK/1.1.70.1/x86_64/include
+                    ${CMAKE_CURRENT_LIST_DIR}/thirdparty)
+
+set(SDL_LIBRARY    /usr/lib/libSDL2-2.0.so)
+set(VULKAN_LIBRARY /usr/lib/libvulkan.so)
 endif()
+
+add_executable(tests unit_tests/SeekerTests.cc)
+add_executable(level_generator_tests unit_tests/LevelGenerator.cc)
+add_executable(sandbox unit_tests/sandbox.cc)
 
 add_executable(${PROJECT_NAME}
         main.cc
@@ -38,30 +45,7 @@ add_executable(${PROJECT_NAME}
         thirdparty/linmath.h
 		)
 
-if(WIN32)
-target_link_libraries(${PROJECT_NAME}
-        ${CMAKE_CURRENT_LIST_DIR}/bin/SDL2.dll
-        C:/Windows/System32/vulkan-1.dll
-        )
-else()
-target_link_libraries(${PROJECT_NAME}
-        ${CMAKE_CURRENT_LIST_DIR}/bin/libSDL2-2.0.so.0
-        ~/Pobrane/VulkanSDK/1.1.70.1/x86_64/lib/libvulkan.so
-        )
-endif()
+target_link_libraries(${PROJECT_NAME} ${SDL_LIBRARY} ${VULKAN_LIBRARY})
+target_link_libraries(tests ${SDL_LIBRARY})
+target_link_libraries(level_generator_tests ${SDL_LIBRARY})
 
-add_executable(tests unit_tests/SeekerTests.cc)
-if(WIN32)
-target_link_libraries(tests ${CMAKE_CURRENT_LIST_DIR}/bin/SDL2.dll)
-else()
-target_link_libraries(tests ${CMAKE_CURRENT_LIST_DIR}/bin/libSDL2-2.0.so.0)
-endif()
-
-add_executable(level_generator_tests unit_tests/LevelGenerator.cc)
-if(WIN32)
-target_link_libraries(level_generator_tests ${CMAKE_CURRENT_LIST_DIR}/bin/SDL2.dll)
-else()
-target_link_libraries(level_generator_tests ${CMAKE_CURRENT_LIST_DIR}/bin/libSDL2-2.0.so.0)
-endif()
-
-add_executable(sandbox unit_tests/sandbox.cc)
