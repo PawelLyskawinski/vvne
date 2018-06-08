@@ -391,10 +391,13 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
   }
 
   VrLevelLoadResult result = {
-      .level_load_data.index_count          = 6 * tile_count,
-      .level_load_data.index_type           = VK_INDEX_TYPE_UINT16,
-      .level_load_data.vertex_target_offset = engine->gpu_static_geometry.allocate(vertex_buffer_size),
-      .level_load_data.index_target_offset  = engine->gpu_static_geometry.allocate(index_buffer_size),
+      .level_load_data =
+          {
+              .vertex_target_offset = engine->gpu_static_geometry.allocate(vertex_buffer_size),
+              .index_target_offset  = engine->gpu_static_geometry.allocate(index_buffer_size),
+              .index_count          = 6 * tile_count,
+              .index_type           = VK_INDEX_TYPE_UINT16,
+          },
   };
 
   result.entrance_point[0] = 0.1f * (pixmap.find_entrence_at_bottom_of_labitynth() - (pixmap.width * 0.5f));
@@ -430,14 +433,14 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
   {
     VkBufferCopy copies[] = {
         {
-            .size      = vertex_buffer_size,
             .srcOffset = host_vertex_offset,
             .dstOffset = result.level_load_data.vertex_target_offset,
+            .size      = vertex_buffer_size,
         },
         {
-            .size      = index_buffer_size,
             .srcOffset = host_index_offset,
             .dstOffset = result.level_load_data.index_target_offset,
+            .size      = index_buffer_size,
         },
     };
 

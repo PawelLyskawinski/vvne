@@ -560,14 +560,14 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
     {
       VkBufferCopy copies[] = {
           {
-              .size      = static_cast<VkDeviceSize>(required_index_space),
               .srcOffset = 0,
               .dstOffset = mesh.indices_offset,
+              .size      = static_cast<VkDeviceSize>(required_index_space),
           },
           {
-              .size      = static_cast<VkDeviceSize>(required_vertex_space),
               .srcOffset = static_cast<VkDeviceSize>(required_index_space),
               .dstOffset = mesh.vertices_offset,
+              .size      = static_cast<VkDeviceSize>(required_vertex_space),
           },
       };
 
