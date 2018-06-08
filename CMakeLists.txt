@@ -13,7 +13,7 @@ include_directories(C:/Users/pawel.lyskawinski/Downloads/MinGW/include
 set(SDL_LIBRARY    ${CMAKE_CURRENT_LIST_DIR}/bin/SDL2.dll)
 set(VULKAN_LIBRARY C:/Windows/System32/vulkan-1.dll)
 else()
-include_directories(~/Pobrane/VulkanSDK/1.1.70.1/x86_64/include
+include_directories(/usr/include/
                     ${CMAKE_CURRENT_LIST_DIR}/thirdparty)
 
 set(SDL_LIBRARY    /usr/lib/libSDL2-2.0.so)

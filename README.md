@@ -15,9 +15,11 @@ There are a lot of publicly available engines / demos on github which use vulkan
 - PBR with IBL
 - MSAA
 ### additional external dependencies
+- GCC 8.1 (for C99 designated initializers in C++)
 - vulkan SDK (libvulkan/vulkan-1, glslang)
-- compiled SDL2 library
+- SDL2
 - "Old Industrial Hall" pack from http://www.hdrlabs.com/sibl/archive.html (too big to include into repo)
 ### todos
+- add walls in generated level
 - refactor: animation system, node transformations in gltf.c, whole asset system
 - unify gltf modeling methods

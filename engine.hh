@@ -207,10 +207,10 @@ struct Engine
   void print_memory_statistics();
   void submit_simple_rendering(uint32_t image_index);
 
-  VkShaderModule load_shader(const char* filepath);
+  VkShaderModule load_shader(const char* file_path);
 
   int load_texture(const char* filepath);
-  int load_texture_hdr(const char* filepath);
+  int load_texture_hdr(const char* filename);
   int load_texture(SDL_Surface* surface);
 
   // internals

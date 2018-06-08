@@ -237,7 +237,8 @@ struct RgbPixmap
           if (height < (tile_approximation[1] + position[1]))
             continue;
 
-          if (SDL_TRUE == tile_used[tile_approximation[0] + position[0] + (tile_approximation[1] + position[1])*width])
+          if (SDL_TRUE ==
+              tile_used[tile_approximation[0] + position[0] + (tile_approximation[1] + position[1]) * width])
           {
             dst[0] = goal[0] + (float)position[0];
             dst[1] = goal[1] + (float)position[1];
@@ -276,10 +277,10 @@ struct RgbPixmap
     return counter;
   }
 
-  uint8_t* pixels;
-  uint8_t* tile_used;
   int      width;
   int      height;
+  uint8_t* pixels;
+  uint8_t* tile_used;
 };
 
 } // namespace
@@ -297,11 +298,13 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
     stbi_image_free(data);
   }
 
-  RgbPixmap pixmap = {};
-  pixmap.width     = 300;
-  pixmap.height    = 150;
-  pixmap.pixels    = engine->double_ended_stack.allocate_back<uint8_t>(3 * pixmap.width * pixmap.height);
-  pixmap.tile_used = engine->double_ended_stack.allocate_back<uint8_t>(pixmap.width * pixmap.height);
+  RgbPixmap pixmap = {
+      .width     = 300,
+      .height    = 150,
+      .pixels    = engine->double_ended_stack.allocate_back<uint8_t>(3 * pixmap.width * pixmap.height),
+      .tile_used = engine->double_ended_stack.allocate_back<uint8_t>(pixmap.width * pixmap.height),
+  };
+
   pixmap.generate_herringbone_wang(&ts);
 
   int tile_count = pixmap.count_tiles();
@@ -387,11 +390,15 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
     vkUnmapMemory(engine->generic_handles.device, engine->gpu_static_transfer.memory);
   }
 
-  VrLevelLoadResult result{};
-  result.level_load_data.index_count          = 6 * tile_count;
-  result.level_load_data.index_type           = VK_INDEX_TYPE_UINT16;
-  result.level_load_data.vertex_target_offset = engine->gpu_static_geometry.allocate(vertex_buffer_size);
-  result.level_load_data.index_target_offset  = engine->gpu_static_geometry.allocate(index_buffer_size);
+  VrLevelLoadResult result = {
+      .level_load_data =
+          {
+              .vertex_target_offset = engine->gpu_static_geometry.allocate(vertex_buffer_size),
+              .index_target_offset  = engine->gpu_static_geometry.allocate(index_buffer_size),
+              .index_count          = 6 * tile_count,
+              .index_type           = VK_INDEX_TYPE_UINT16,
+          },
+  };
 
   result.entrance_point[0] = 0.1f * (pixmap.find_entrence_at_bottom_of_labitynth() - (pixmap.width * 0.5f));
   result.entrance_point[1] = 0.0f;
@@ -404,56 +411,66 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
   VkCommandBuffer cmd = VK_NULL_HANDLE;
 
   {
-    VkCommandBufferAllocateInfo allocate{};
-    allocate.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocate.commandPool        = engine->generic_handles.graphics_command_pool;
-    allocate.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocate.commandBufferCount = 1;
+    VkCommandBufferAllocateInfo allocate = {
+        .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool        = engine->generic_handles.graphics_command_pool,
+        .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+
     vkAllocateCommandBuffers(engine->generic_handles.device, &allocate, &cmd);
   }
 
   {
-    VkCommandBufferBeginInfo begin{};
-    begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    VkCommandBufferBeginInfo begin = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+
     vkBeginCommandBuffer(cmd, &begin);
   }
 
   {
-    VkBufferCopy copies[2] = {};
-
-    copies[0].size      = vertex_buffer_size;
-    copies[0].srcOffset = host_vertex_offset;
-    copies[0].dstOffset = result.level_load_data.vertex_target_offset;
-
-    copies[1].size      = index_buffer_size;
-    copies[1].srcOffset = host_index_offset;
-    copies[1].dstOffset = result.level_load_data.index_target_offset;
+    VkBufferCopy copies[] = {
+        {
+            .srcOffset = host_vertex_offset,
+            .dstOffset = result.level_load_data.vertex_target_offset,
+            .size      = vertex_buffer_size,
+        },
+        {
+            .srcOffset = host_index_offset,
+            .dstOffset = result.level_load_data.index_target_offset,
+            .size      = index_buffer_size,
+        },
+    };
 
     vkCmdCopyBuffer(cmd, engine->gpu_static_transfer.buffer, engine->gpu_static_geometry.buffer, SDL_arraysize(copies),
                     copies);
   }
 
   {
-    VkBufferMemoryBarrier barriers[2] = {};
-
-    barriers[0].sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    barriers[0].srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
-    barriers[0].dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
-    barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barriers[0].buffer              = engine->gpu_static_geometry.buffer;
-    barriers[0].offset              = result.level_load_data.vertex_target_offset;
-    barriers[0].size                = vertex_buffer_size;
-
-    barriers[1].sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    barriers[1].srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
-    barriers[1].dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
-    barriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barriers[1].buffer              = engine->gpu_static_geometry.buffer;
-    barriers[1].offset              = result.level_load_data.index_target_offset;
-    barriers[1].size                = index_buffer_size;
+    VkBufferMemoryBarrier barriers[] = {
+        {
+            .sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .dstAccessMask       = VK_ACCESS_SHADER_READ_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer              = engine->gpu_static_geometry.buffer,
+            .offset              = result.level_load_data.vertex_target_offset,
+            .size                = vertex_buffer_size,
+        },
+        {
+            .sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .dstAccessMask       = VK_ACCESS_SHADER_READ_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer              = engine->gpu_static_geometry.buffer,
+            .offset              = result.level_load_data.index_target_offset,
+            .size                = index_buffer_size,
+        },
+    };
 
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, 0, 0, nullptr,
                          SDL_arraysize(barriers), barriers, 0, nullptr);
@@ -464,16 +481,17 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
   VkFence data_upload_fence = VK_NULL_HANDLE;
 
   {
-    VkFenceCreateInfo ci{};
-    ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    VkFenceCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
     vkCreateFence(engine->generic_handles.device, &ci, nullptr, &data_upload_fence);
   }
 
   {
-    VkSubmitInfo submit{};
-    submit.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit.commandBufferCount = 1;
-    submit.pCommandBuffers    = &cmd;
+    VkSubmitInfo submit = {
+        .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers    = &cmd,
+    };
+
     vkQueueSubmit(engine->generic_handles.graphics_queue, 1, &submit, data_upload_fence);
   }
 
