@@ -608,8 +608,7 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
 
   if (quit_requested)
   {
-    SDL_Event event{};
-    event.type = SDL_QUIT;
+    SDL_Event event = {.type = SDL_QUIT};
     SDL_PushEvent(&event);
   }
 
@@ -851,6 +850,11 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
 
   ImGui::Text("acceleration: %.2f %.2f %.2f", player_acceleration[0], player_acceleration[1], player_acceleration[2]);
   ImGui::Text("velocity:     %.2f %.2f %.2f", player_velocity[0], player_velocity[1], player_velocity[2]);
+
+  ImGui::Text("WASD - movement");
+  ImGui::Text("F1 - enable first person view");
+  ImGui::Text("F2 - disable first person view");
+  ImGui::Text("ESC - exit");
 
   float camera_distance = 2.5f;
   float x_camera_offset = SDL_cosf(camera_angle) * camera_distance;
