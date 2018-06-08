@@ -228,11 +228,12 @@ void Game::startup(Engine& engine)
   // ----------------------------------------------------------------------------------------------
 
   {
-    VkDescriptorSetAllocateInfo allocate{};
-    allocate.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocate.descriptorPool     = engine.generic_handles.descriptor_pool;
-    allocate.descriptorSetCount = 1;
-    allocate.pSetLayouts        = &engine.simple_rendering.descriptor_set_layout;
+    VkDescriptorSetAllocateInfo allocate = {
+        .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool     = engine.generic_handles.descriptor_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts        = &engine.simple_rendering.descriptor_set_layout,
+    };
 
     vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &skybox_dset);
     vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &helmet_dset);
@@ -247,37 +248,41 @@ void Game::startup(Engine& engine)
   }
 
   {
-    VkDescriptorImageInfo skybox_image{};
-    skybox_image.sampler     = engine.generic_handles.texture_sampler;
-    skybox_image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    skybox_image.imageView   = engine.images.image_views[environment_cubemap_idx];
+    VkDescriptorImageInfo skybox_image = {
+        .sampler     = engine.generic_handles.texture_sampler,
+        .imageView   = engine.images.image_views[environment_cubemap_idx],
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    };
 
-    VkWriteDescriptorSet skybox_write{};
-    skybox_write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    skybox_write.dstBinding      = 0;
-    skybox_write.dstArrayElement = 0;
-    skybox_write.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    skybox_write.descriptorCount = 1;
-    skybox_write.pImageInfo      = &skybox_image;
-    skybox_write.dstSet          = skybox_dset;
+    VkWriteDescriptorSet skybox_write = {
+        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet          = skybox_dset,
+        .dstBinding      = 0,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .pImageInfo      = &skybox_image,
+    };
 
     vkUpdateDescriptorSets(engine.generic_handles.device, 1, &skybox_write, 0, nullptr);
   }
 
   {
-    VkDescriptorImageInfo imgui_image{};
-    imgui_image.sampler     = engine.generic_handles.texture_sampler;
-    imgui_image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    imgui_image.imageView   = engine.images.image_views[debug_gui.font_texture_idx];
+    VkDescriptorImageInfo imgui_image = {
+        .sampler     = engine.generic_handles.texture_sampler,
+        .imageView   = engine.images.image_views[debug_gui.font_texture_idx],
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    };
 
-    VkWriteDescriptorSet imgui_write{};
-    imgui_write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    imgui_write.dstBinding      = 0;
-    imgui_write.dstArrayElement = 0;
-    imgui_write.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    imgui_write.descriptorCount = 1;
-    imgui_write.pImageInfo      = &imgui_image;
-    imgui_write.dstSet          = imgui_dset;
+    VkWriteDescriptorSet imgui_write = {
+        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet          = imgui_dset,
+        .dstBinding      = 0,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .pImageInfo      = &imgui_image,
+    };
 
     vkUpdateDescriptorSets(engine.generic_handles.device, 1, &imgui_write, 0, nullptr);
   }
@@ -305,58 +310,68 @@ void Game::startup(Engine& engine)
       helmet_images[i].imageView   = engine.images.image_views[ts[i]];
     }
 
-    VkWriteDescriptorSet helmet_write{};
-    helmet_write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    helmet_write.dstBinding      = 0;
-    helmet_write.dstArrayElement = 0;
-    helmet_write.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    helmet_write.descriptorCount = SDL_arraysize(helmet_images);
-    helmet_write.pImageInfo      = helmet_images;
-    helmet_write.dstSet          = helmet_dset;
+    VkWriteDescriptorSet helmet_write = {
+        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet          = helmet_dset,
+        .dstBinding      = 0,
+        .dstArrayElement = 0,
+        .descriptorCount = SDL_arraysize(helmet_images),
+        .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .pImageInfo      = helmet_images,
+    };
 
     vkUpdateDescriptorSets(engine.generic_handles.device, 1, &helmet_write, 0, nullptr);
 
-    VkDescriptorBufferInfo helmet_ubo{};
-    helmet_ubo.buffer = engine.ubo_host_visible.buffer;
-    helmet_ubo.offset = lights_ubo_offset;
-    helmet_ubo.range  = light_sources_ubo_size;
+    VkDescriptorBufferInfo helmet_ubo = {
+        .buffer = engine.ubo_host_visible.buffer,
+        .offset = lights_ubo_offset,
+        .range  = light_sources_ubo_size,
+    };
 
-    VkWriteDescriptorSet helmet_ubo_write{};
-    helmet_ubo_write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    helmet_ubo_write.dstBinding      = 8;
-    helmet_ubo_write.dstArrayElement = 0;
-    helmet_ubo_write.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    helmet_ubo_write.descriptorCount = 1;
-    helmet_ubo_write.pBufferInfo     = &helmet_ubo;
-    helmet_ubo_write.dstSet          = helmet_dset;
+    VkWriteDescriptorSet helmet_ubo_write = {
+        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet          = helmet_dset,
+        .dstBinding      = 8,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .pBufferInfo     = &helmet_ubo,
+    };
 
     vkUpdateDescriptorSets(engine.generic_handles.device, 1, &helmet_ubo_write, 0, nullptr);
   }
 
   {
-    VkDescriptorBufferInfo ubo_infos[SWAPCHAIN_IMAGES_COUNT]{};
+    VkDescriptorBufferInfo ubo_infos[SWAPCHAIN_IMAGES_COUNT] = {
+        {
+            .buffer = engine.ubo_host_visible.buffer,
+            .range  = 64 * sizeof(mat4x4),
+        },
+    };
+
+    for (unsigned i = 1; i < SDL_arraysize(ubo_infos); ++i)
+      ubo_infos[i] = ubo_infos[0];
+
+    for (int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
+      ubo_infos[swapchain_image_idx].offset = rig_skinning_matrices_ubo_offsets[swapchain_image_idx];
+
+    VkWriteDescriptorSet writes[SWAPCHAIN_IMAGES_COUNT] = {
+        {
+            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstBinding      = 9,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        },
+    };
+
+    for (unsigned i = 1; i < SDL_arraysize(writes); ++i)
+      writes[i] = writes[0];
 
     for (int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
     {
-      VkDescriptorBufferInfo& ubo_info = ubo_infos[swapchain_image_idx];
-
-      ubo_info.buffer = engine.ubo_host_visible.buffer;
-      ubo_info.offset = rig_skinning_matrices_ubo_offsets[swapchain_image_idx];
-      ubo_info.range  = 64 * sizeof(mat4x4);
-    }
-
-    VkWriteDescriptorSet writes[SWAPCHAIN_IMAGES_COUNT]{};
-    for (int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
-    {
-      VkWriteDescriptorSet& write = writes[swapchain_image_idx];
-
-      write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-      write.dstBinding      = 9;
-      write.dstArrayElement = 0;
-      write.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-      write.descriptorCount = 1;
-      write.pBufferInfo     = &ubo_infos[swapchain_image_idx];
-      write.dstSet          = rig_dsets[swapchain_image_idx];
+      writes[swapchain_image_idx].pBufferInfo = &ubo_infos[swapchain_image_idx];
+      writes[swapchain_image_idx].dstSet      = rig_dsets[swapchain_image_idx];
     }
 
     vkUpdateDescriptorSets(engine.generic_handles.device, SDL_arraysize(writes), writes, 0, nullptr);
@@ -867,17 +882,20 @@ void Game::render(Engine& engine, float current_time_sec)
                                                              Engine::SimpleRendering::Passes::Skybox];
 
     {
-      VkCommandBufferInheritanceInfo inheritance{};
-      inheritance.sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
-      inheritance.renderPass           = renderer.render_pass;
-      inheritance.subpass              = Engine::SimpleRendering::Passes::Skybox;
-      inheritance.framebuffer          = renderer.framebuffers[image_index];
-      inheritance.occlusionQueryEnable = VK_FALSE;
+      VkCommandBufferInheritanceInfo inheritance = {
+          .sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+          .renderPass           = renderer.render_pass,
+          .subpass              = Engine::SimpleRendering::Passes::Skybox,
+          .framebuffer          = renderer.framebuffers[image_index],
+          .occlusionQueryEnable = VK_FALSE,
+      };
 
-      VkCommandBufferBeginInfo begin{};
-      begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-      begin.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
-      begin.pInheritanceInfo = &inheritance;
+      VkCommandBufferBeginInfo begin = {
+          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+          .flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
+          .pInheritanceInfo = &inheritance,
+      };
+
       vkBeginCommandBuffer(cmd, &begin);
     }
 
@@ -907,17 +925,20 @@ void Game::render(Engine& engine, float current_time_sec)
                                                              Engine::SimpleRendering::Passes::Scene3D];
 
     {
-      VkCommandBufferInheritanceInfo inheritance{};
-      inheritance.sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
-      inheritance.renderPass           = renderer.render_pass;
-      inheritance.subpass              = Engine::SimpleRendering::Passes::Scene3D;
-      inheritance.framebuffer          = renderer.framebuffers[image_index];
-      inheritance.occlusionQueryEnable = VK_FALSE;
+      VkCommandBufferInheritanceInfo inheritance = {
+          .sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+          .renderPass           = renderer.render_pass,
+          .subpass              = Engine::SimpleRendering::Passes::Scene3D,
+          .framebuffer          = renderer.framebuffers[image_index],
+          .occlusionQueryEnable = VK_FALSE,
+      };
 
-      VkCommandBufferBeginInfo begin{};
-      begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-      begin.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
-      begin.pInheritanceInfo = &inheritance;
+      VkCommandBufferBeginInfo begin = {
+          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+          .flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
+          .pInheritanceInfo = &inheritance,
+      };
+
       vkBeginCommandBuffer(cmd, &begin);
     }
 
@@ -950,17 +971,20 @@ void Game::render(Engine& engine, float current_time_sec)
                                                              Engine::SimpleRendering::Passes::ColoredGeometry];
 
     {
-      VkCommandBufferInheritanceInfo inheritance{};
-      inheritance.sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
-      inheritance.renderPass           = renderer.render_pass;
-      inheritance.subpass              = Engine::SimpleRendering::Passes::ColoredGeometry;
-      inheritance.framebuffer          = renderer.framebuffers[image_index];
-      inheritance.occlusionQueryEnable = VK_FALSE;
+      VkCommandBufferInheritanceInfo inheritance = {
+          .sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+          .renderPass           = renderer.render_pass,
+          .subpass              = Engine::SimpleRendering::Passes::ColoredGeometry,
+          .framebuffer          = renderer.framebuffers[image_index],
+          .occlusionQueryEnable = VK_FALSE,
+      };
 
-      VkCommandBufferBeginInfo begin{};
-      begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-      begin.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
-      begin.pInheritanceInfo = &inheritance;
+      VkCommandBufferBeginInfo begin = {
+          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+          .flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
+          .pInheritanceInfo = &inheritance,
+      };
+
       vkBeginCommandBuffer(cmd, &begin);
     }
 
@@ -1077,17 +1101,20 @@ void Game::render(Engine& engine, float current_time_sec)
                                                              Engine::SimpleRendering::Passes::ColoredGeometrySkinned];
 
     {
-      VkCommandBufferInheritanceInfo inheritance{};
-      inheritance.sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
-      inheritance.renderPass           = renderer.render_pass;
-      inheritance.subpass              = Engine::SimpleRendering::Passes::ColoredGeometrySkinned;
-      inheritance.framebuffer          = renderer.framebuffers[image_index];
-      inheritance.occlusionQueryEnable = VK_FALSE;
+      VkCommandBufferInheritanceInfo inheritance = {
+          .sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+          .renderPass           = renderer.render_pass,
+          .subpass              = Engine::SimpleRendering::Passes::ColoredGeometrySkinned,
+          .framebuffer          = renderer.framebuffers[image_index],
+          .occlusionQueryEnable = VK_FALSE,
+      };
 
-      VkCommandBufferBeginInfo begin{};
-      begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-      begin.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
-      begin.pInheritanceInfo = &inheritance;
+      VkCommandBufferBeginInfo begin = {
+          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+          .flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
+          .pInheritanceInfo = &inheritance,
+      };
+
       vkBeginCommandBuffer(cmd, &begin);
     }
 
@@ -1223,17 +1250,20 @@ void Game::render(Engine& engine, float current_time_sec)
                                            Engine::SimpleRendering::Passes::ImGui];
 
     {
-      VkCommandBufferInheritanceInfo inheritance{};
-      inheritance.sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
-      inheritance.renderPass           = renderer.render_pass;
-      inheritance.subpass              = Engine::SimpleRendering::Passes::ImGui;
-      inheritance.framebuffer          = renderer.framebuffers[image_index];
-      inheritance.occlusionQueryEnable = VK_FALSE;
+      VkCommandBufferInheritanceInfo inheritance = {
+          .sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+          .renderPass           = renderer.render_pass,
+          .subpass              = Engine::SimpleRendering::Passes::ImGui,
+          .framebuffer          = renderer.framebuffers[image_index],
+          .occlusionQueryEnable = VK_FALSE,
+      };
 
-      VkCommandBufferBeginInfo begin{};
-      begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-      begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
-      begin.pInheritanceInfo = &inheritance;
+      VkCommandBufferBeginInfo begin = {
+          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+          .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+          .pInheritanceInfo = &inheritance,
+      };
+
       vkBeginCommandBuffer(command_buffer, &begin);
     }
 

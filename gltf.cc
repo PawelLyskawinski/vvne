@@ -538,56 +538,66 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
     VkCommandBuffer cmd = VK_NULL_HANDLE;
 
     {
-      VkCommandBufferAllocateInfo allocate{};
-      allocate.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-      allocate.commandPool        = engine.generic_handles.graphics_command_pool;
-      allocate.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-      allocate.commandBufferCount = 1;
+      VkCommandBufferAllocateInfo allocate = {
+          .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+          .commandPool        = engine.generic_handles.graphics_command_pool,
+          .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+          .commandBufferCount = 1,
+      };
+
       vkAllocateCommandBuffers(engine.generic_handles.device, &allocate, &cmd);
     }
 
     {
-      VkCommandBufferBeginInfo begin{};
-      begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-      begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+      VkCommandBufferBeginInfo begin = {
+          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+          .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+      };
+
       vkBeginCommandBuffer(cmd, &begin);
     }
 
     {
-      VkBufferCopy copies[2] = {};
-
-      copies[0].size      = static_cast<VkDeviceSize>(required_index_space);
-      copies[0].srcOffset = 0;
-      copies[0].dstOffset = mesh.indices_offset;
-
-      copies[1].size      = static_cast<VkDeviceSize>(required_vertex_space);
-      copies[1].srcOffset = static_cast<VkDeviceSize>(required_index_space);
-      copies[1].dstOffset = mesh.vertices_offset;
+      VkBufferCopy copies[] = {
+          {
+              .size      = static_cast<VkDeviceSize>(required_index_space),
+              .srcOffset = 0,
+              .dstOffset = mesh.indices_offset,
+          },
+          {
+              .size      = static_cast<VkDeviceSize>(required_vertex_space),
+              .srcOffset = static_cast<VkDeviceSize>(required_index_space),
+              .dstOffset = mesh.vertices_offset,
+          },
+      };
 
       vkCmdCopyBuffer(cmd, engine.gpu_static_transfer.buffer, engine.gpu_static_geometry.buffer, SDL_arraysize(copies),
                       copies);
     }
 
     {
-      VkBufferMemoryBarrier barriers[2] = {};
-
-      barriers[0].sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-      barriers[0].srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
-      barriers[0].dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
-      barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      barriers[0].buffer              = engine.gpu_static_geometry.buffer;
-      barriers[0].offset              = mesh.indices_offset;
-      barriers[0].size                = static_cast<VkDeviceSize>(required_index_space);
-
-      barriers[1].sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-      barriers[1].srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
-      barriers[1].dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
-      barriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      barriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      barriers[1].buffer              = engine.gpu_static_geometry.buffer;
-      barriers[1].offset              = mesh.vertices_offset;
-      barriers[1].size                = static_cast<VkDeviceSize>(required_vertex_space);
+      VkBufferMemoryBarrier barriers[] = {
+          {
+              .sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+              .srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT,
+              .dstAccessMask       = VK_ACCESS_SHADER_READ_BIT,
+              .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+              .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+              .buffer              = engine.gpu_static_geometry.buffer,
+              .offset              = mesh.indices_offset,
+              .size                = static_cast<VkDeviceSize>(required_index_space),
+          },
+          {
+              .sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+              .srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT,
+              .dstAccessMask       = VK_ACCESS_SHADER_READ_BIT,
+              .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+              .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+              .buffer              = engine.gpu_static_geometry.buffer,
+              .offset              = mesh.vertices_offset,
+              .size                = static_cast<VkDeviceSize>(required_vertex_space),
+          },
+      };
 
       vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, 0, 0, nullptr,
                            SDL_arraysize(barriers), barriers, 0, nullptr);
@@ -597,16 +607,17 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
 
     VkFence data_upload_fence = VK_NULL_HANDLE;
     {
-      VkFenceCreateInfo ci{};
-      ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+      VkFenceCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
       vkCreateFence(engine.generic_handles.device, &ci, nullptr, &data_upload_fence);
     }
 
     {
-      VkSubmitInfo submit{};
-      submit.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-      submit.commandBufferCount = 1;
-      submit.pCommandBuffers    = &cmd;
+      VkSubmitInfo submit = {
+          .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+          .commandBufferCount = 1,
+          .pCommandBuffers    = &cmd,
+      };
+
       vkQueueSubmit(engine.generic_handles.graphics_queue, 1, &submit, data_upload_fence);
     }
 
@@ -823,7 +834,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
         {
           float*       dst = &current_sampler.times[i];
           const float* src = reinterpret_cast<const float*>(&binary_data[input_start_offset + (input_stride * i)]);
-          *dst = *src;
+          *dst             = *src;
         }
       }
 
