@@ -8,6 +8,6 @@ template <typename T, int N> void copy(T* dst, const T* src)
   {
     dst[i] = src[i];
   }
-};
+}
 
 } // namespace utility
