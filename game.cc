@@ -868,8 +868,6 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
   vec3 center = {player_position[0], 0.0f, player_position[2]};
   vec3 up     = {0.0f, 1.0f, 0.0f};
   mat4x4_look_at(view, camera_position, center, up);
-
-  ImGui::Text("F1 - first person view, F2 - unblock cursor");
 }
 
 void Game::render(Engine& engine, float current_time_sec)
