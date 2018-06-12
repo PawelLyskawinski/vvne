@@ -1223,6 +1223,7 @@ void Game::render(Engine& engine, float current_time_sec)
     SDL_assert(DebugGui::VERTEX_BUFFER_CAPACITY_BYTES >= vertex_size);
     SDL_assert(DebugGui::INDEX_BUFFER_CAPACITY_BYTES >= index_size);
 
+    if (0 < vertex_size)
     {
       ImDrawVert* vtx_dst = nullptr;
       vkMapMemory(engine.generic_handles.device, engine.gpu_host_visible.memory,
@@ -1237,6 +1238,7 @@ void Game::render(Engine& engine, float current_time_sec)
       vkUnmapMemory(engine.generic_handles.device, engine.gpu_host_visible.memory);
     }
 
+    if (0 < index_size)
     {
       ImDrawIdx* idx_dst = nullptr;
       vkMapMemory(engine.generic_handles.device, engine.gpu_host_visible.memory,
@@ -1273,66 +1275,70 @@ void Game::render(Engine& engine, float current_time_sec)
       vkBeginCommandBuffer(command_buffer, &begin);
     }
 
-    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      renderer.pipelines[Engine::SimpleRendering::Passes::ImGui]);
-
-    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, renderer.pipeline_layouts[1], 0, 1,
-                            &imgui_dset, 0, nullptr);
-
-    vkCmdBindIndexBuffer(command_buffer, engine.gpu_host_visible.buffer, debug_gui.index_buffer_offsets[image_index],
-                         VK_INDEX_TYPE_UINT16);
-
-    vkCmdBindVertexBuffers(command_buffer, 0, 1, &engine.gpu_host_visible.buffer,
-                           &debug_gui.vertex_buffer_offsets[image_index]);
-
+    if (vertex_size and index_size)
     {
-      VkViewport viewport{};
-      viewport.width    = io.DisplaySize.x;
-      viewport.height   = io.DisplaySize.y;
-      viewport.minDepth = 0.0f;
-      viewport.maxDepth = 1.0f;
-      vkCmdSetViewport(command_buffer, 0, 1, &viewport);
-    }
 
-    float scale[]     = {2.0f / io.DisplaySize.x, 2.0f / io.DisplaySize.y};
-    float translate[] = {-1.0f, -1.0f};
+      vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        renderer.pipelines[Engine::SimpleRendering::Passes::ImGui]);
 
-    vkCmdPushConstants(command_buffer, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ImGui],
-                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float) * 2, scale);
-    vkCmdPushConstants(command_buffer, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ImGui],
-                       VK_SHADER_STAGE_VERTEX_BIT, sizeof(float) * 2, sizeof(float) * 2, translate);
+      vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, renderer.pipeline_layouts[1], 0, 1,
+                              &imgui_dset, 0, nullptr);
 
-    {
-      ImDrawData* draw_data = ImGui::GetDrawData();
+      vkCmdBindIndexBuffer(command_buffer, engine.gpu_host_visible.buffer, debug_gui.index_buffer_offsets[image_index],
+                           VK_INDEX_TYPE_UINT16);
 
-      int vtx_offset = 0;
-      int idx_offset = 0;
+      vkCmdBindVertexBuffers(command_buffer, 0, 1, &engine.gpu_host_visible.buffer,
+                             &debug_gui.vertex_buffer_offsets[image_index]);
 
-      for (int n = 0; n < draw_data->CmdListsCount; n++)
       {
-        const ImDrawList* cmd_list = draw_data->CmdLists[n];
-        for (int cmd_i = 0; cmd_i < cmd_list->CmdBuffer.Size; cmd_i++)
+        VkViewport viewport{};
+        viewport.width    = io.DisplaySize.x;
+        viewport.height   = io.DisplaySize.y;
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+      }
+
+      float scale[]     = {2.0f / io.DisplaySize.x, 2.0f / io.DisplaySize.y};
+      float translate[] = {-1.0f, -1.0f};
+
+      vkCmdPushConstants(command_buffer, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ImGui],
+                         VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float) * 2, scale);
+      vkCmdPushConstants(command_buffer, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ImGui],
+                         VK_SHADER_STAGE_VERTEX_BIT, sizeof(float) * 2, sizeof(float) * 2, translate);
+
+      {
+        ImDrawData* draw_data = ImGui::GetDrawData();
+
+        int vtx_offset = 0;
+        int idx_offset = 0;
+
+        for (int n = 0; n < draw_data->CmdListsCount; n++)
         {
-          const ImDrawCmd* pcmd = &cmd_list->CmdBuffer[cmd_i];
-          if (pcmd->UserCallback)
+          const ImDrawList* cmd_list = draw_data->CmdLists[n];
+          for (int cmd_i = 0; cmd_i < cmd_list->CmdBuffer.Size; cmd_i++)
           {
-            pcmd->UserCallback(cmd_list, pcmd);
-          }
-          else
-          {
+            const ImDrawCmd* pcmd = &cmd_list->CmdBuffer[cmd_i];
+            if (pcmd->UserCallback)
             {
-              VkRect2D scissor{};
-              scissor.offset.x      = (int32_t)(pcmd->ClipRect.x) > 0 ? (int32_t)(pcmd->ClipRect.x) : 0;
-              scissor.offset.y      = (int32_t)(pcmd->ClipRect.y) > 0 ? (int32_t)(pcmd->ClipRect.y) : 0;
-              scissor.extent.width  = (uint32_t)(pcmd->ClipRect.z - pcmd->ClipRect.x);
-              scissor.extent.height = (uint32_t)(pcmd->ClipRect.w - pcmd->ClipRect.y + 1); // FIXME: Why +1 here?
-              vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+              pcmd->UserCallback(cmd_list, pcmd);
             }
-            vkCmdDrawIndexed(command_buffer, pcmd->ElemCount, 1, idx_offset, vtx_offset, 0);
+            else
+            {
+              {
+                VkRect2D scissor{};
+                scissor.offset.x      = (int32_t)(pcmd->ClipRect.x) > 0 ? (int32_t)(pcmd->ClipRect.x) : 0;
+                scissor.offset.y      = (int32_t)(pcmd->ClipRect.y) > 0 ? (int32_t)(pcmd->ClipRect.y) : 0;
+                scissor.extent.width  = (uint32_t)(pcmd->ClipRect.z - pcmd->ClipRect.x);
+                scissor.extent.height = (uint32_t)(pcmd->ClipRect.w - pcmd->ClipRect.y + 1); // FIXME: Why +1 here?
+                vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+              }
+              vkCmdDrawIndexed(command_buffer, pcmd->ElemCount, 1, idx_offset, vtx_offset, 0);
+            }
+            idx_offset += pcmd->ElemCount;
           }
-          idx_offset += pcmd->ElemCount;
+          vtx_offset += cmd_list->VtxBuffer.Size;
         }
-        vtx_offset += cmd_list->VtxBuffer.Size;
       }
     }
 
