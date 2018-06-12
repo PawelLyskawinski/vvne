@@ -785,7 +785,7 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
   uint64_t end_function_ticks = SDL_GetPerformanceCounter();
   uint64_t ticks_elapsed      = end_function_ticks - start_function_ticks;
 
-  for (int i = 0; i < (static_cast<int>(SDL_arraysize(update_times)) - 1); ++i)
+  for (unsigned i = 0; i < (SDL_arraysize(update_times) - 1); ++i)
   {
     update_times[i] = update_times[i + 1];
   }
