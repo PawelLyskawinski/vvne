@@ -105,6 +105,110 @@ void vec3_set(float* vec, float x, float y, float z)
   vec[2] = z;
 }
 
+class PushBuffer
+{
+public:
+  PushBuffer(float* container, int capacity)
+      : container(container)
+      , capacity(capacity)
+  {
+  }
+
+  void push(float value)
+  {
+    // rotate left
+    for (int i = 0; i < (capacity - 1); ++i)
+    {
+      container[i] = container[i + 1];
+    }
+
+    container[capacity - 1] = value;
+  }
+
+private:
+  float* container;
+  int    capacity;
+};
+
+class FunctionTimer
+{
+public:
+  explicit FunctionTimer(PushBuffer push_buffer)
+      : start_ticks(SDL_GetPerformanceCounter())
+      , storage(push_buffer)
+  {
+  }
+
+  FunctionTimer(float* container, int capacity)
+      : FunctionTimer(PushBuffer(container, capacity))
+  {
+  }
+
+  ~FunctionTimer()
+  {
+    uint64_t end_function_ticks = SDL_GetPerformanceCounter();
+    uint64_t ticks_elapsed      = end_function_ticks - start_ticks;
+    float    duration           = (float)ticks_elapsed / (float)SDL_GetPerformanceFrequency();
+    storage.push(duration);
+  }
+
+private:
+  uint64_t   start_ticks;
+  PushBuffer storage;
+};
+
+class CommandBufferSelector
+{
+public:
+  CommandBufferSelector(Engine::SimpleRendering& renderer, int image_index)
+      : collection(renderer.secondary_command_buffers)
+      , image_index(image_index)
+  {
+  }
+
+  VkCommandBuffer select(int subpass) const
+  {
+    return collection[Engine::SimpleRendering::Passes::Count * image_index + subpass];
+  }
+
+private:
+  VkCommandBuffer* collection;
+  int              image_index;
+};
+
+class CommandBufferStarter
+{
+public:
+  CommandBufferStarter(VkRenderPass render_pass, VkFramebuffer framebuffer)
+      : render_pass(render_pass)
+      , framebuffer(framebuffer)
+  {
+  }
+
+  void begin(VkCommandBuffer cmd, uint32_t subpass)
+  {
+    VkCommandBufferInheritanceInfo inheritance = {
+        .sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .renderPass           = render_pass,
+        .subpass              = subpass,
+        .framebuffer          = framebuffer,
+        .occlusionQueryEnable = VK_FALSE,
+    };
+
+    VkCommandBufferBeginInfo begin = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
+        .pInheritanceInfo = &inheritance,
+    };
+
+    vkBeginCommandBuffer(cmd, &begin);
+  }
+
+private:
+  VkRenderPass  render_pass;
+  VkFramebuffer framebuffer;
+};
+
 } // namespace
 
 void Game::startup(Engine& engine)
@@ -477,7 +581,7 @@ void Game::teardown(Engine&)
 
 void Game::update(Engine& engine, float current_time_sec, float time_delta_since_last_frame)
 {
-  uint64_t start_function_ticks = SDL_GetPerformanceCounter();
+  FunctionTimer timer(update_times, SDL_arraysize(update_times));
 
   ImGuiIO& io             = ImGui::GetIO();
   bool     quit_requested = false;
@@ -782,17 +886,6 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
   animate_model(riggedFigure, current_time_sec);
   animate_model(monster, current_time_sec);
 
-  uint64_t end_function_ticks = SDL_GetPerformanceCounter();
-  uint64_t ticks_elapsed      = end_function_ticks - start_function_ticks;
-
-  for (unsigned i = 0; i < (SDL_arraysize(update_times) - 1); ++i)
-  {
-    update_times[i] = update_times[i + 1];
-  }
-
-  int last_element           = SDL_arraysize(update_times) - 1;
-  update_times[last_element] = (float)ticks_elapsed / (float)SDL_GetPerformanceFrequency();
-
   for (int i = 0; i < 3; ++i)
   {
     player_position[i] += player_velocity[i] * time_delta_since_last_frame;
@@ -872,8 +965,8 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
 
 void Game::render(Engine& engine, float current_time_sec)
 {
-  uint64_t                 start_function_ticks = SDL_GetPerformanceCounter();
-  Engine::SimpleRendering& renderer             = engine.simple_rendering;
+  FunctionTimer            timer(render_times, SDL_arraysize(render_times));
+  Engine::SimpleRendering& renderer = engine.simple_rendering;
 
   uint32_t image_index = 0;
   vkAcquireNextImageKHR(engine.generic_handles.device, engine.generic_handles.swapchain, UINT64_MAX,
@@ -881,27 +974,12 @@ void Game::render(Engine& engine, float current_time_sec)
   vkWaitForFences(engine.generic_handles.device, 1, &renderer.submition_fences[image_index], VK_TRUE, UINT64_MAX);
   vkResetFences(engine.generic_handles.device, 1, &renderer.submition_fences[image_index]);
 
+  CommandBufferSelector command_selector(engine.simple_rendering, image_index);
+  CommandBufferStarter  command_starter(renderer.render_pass, renderer.framebuffers[image_index]);
+
   {
-    VkCommandBuffer cmd = renderer.secondary_command_buffers[Engine::SimpleRendering::Passes::Count * image_index +
-                                                             Engine::SimpleRendering::Passes::Skybox];
-
-    {
-      VkCommandBufferInheritanceInfo inheritance = {
-          .sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-          .renderPass           = renderer.render_pass,
-          .subpass              = Engine::SimpleRendering::Passes::Skybox,
-          .framebuffer          = renderer.framebuffers[image_index],
-          .occlusionQueryEnable = VK_FALSE,
-      };
-
-      VkCommandBufferBeginInfo begin = {
-          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-          .flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
-          .pInheritanceInfo = &inheritance,
-      };
-
-      vkBeginCommandBuffer(cmd, &begin);
-    }
+    VkCommandBuffer cmd = command_selector.select(Engine::SimpleRendering::Passes::Skybox);
+    command_starter.begin(cmd, Engine::SimpleRendering::Passes::Skybox);
 
     struct VertPush
     {
@@ -925,26 +1003,8 @@ void Game::render(Engine& engine, float current_time_sec)
   }
 
   {
-    VkCommandBuffer cmd = renderer.secondary_command_buffers[Engine::SimpleRendering::Passes::Count * image_index +
-                                                             Engine::SimpleRendering::Passes::Scene3D];
-
-    {
-      VkCommandBufferInheritanceInfo inheritance = {
-          .sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-          .renderPass           = renderer.render_pass,
-          .subpass              = Engine::SimpleRendering::Passes::Scene3D,
-          .framebuffer          = renderer.framebuffers[image_index],
-          .occlusionQueryEnable = VK_FALSE,
-      };
-
-      VkCommandBufferBeginInfo begin = {
-          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-          .flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
-          .pInheritanceInfo = &inheritance,
-      };
-
-      vkBeginCommandBuffer(cmd, &begin);
-    }
+    VkCommandBuffer cmd = command_selector.select(Engine::SimpleRendering::Passes::Scene3D);
+    command_starter.begin(cmd, Engine::SimpleRendering::Scene3D);
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       renderer.pipelines[Engine::SimpleRendering::Passes::Scene3D]);
@@ -971,26 +1031,8 @@ void Game::render(Engine& engine, float current_time_sec)
   }
 
   {
-    VkCommandBuffer cmd = renderer.secondary_command_buffers[Engine::SimpleRendering::Passes::Count * image_index +
-                                                             Engine::SimpleRendering::Passes::ColoredGeometry];
-
-    {
-      VkCommandBufferInheritanceInfo inheritance = {
-          .sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-          .renderPass           = renderer.render_pass,
-          .subpass              = Engine::SimpleRendering::Passes::ColoredGeometry,
-          .framebuffer          = renderer.framebuffers[image_index],
-          .occlusionQueryEnable = VK_FALSE,
-      };
-
-      VkCommandBufferBeginInfo begin = {
-          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-          .flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
-          .pInheritanceInfo = &inheritance,
-      };
-
-      vkBeginCommandBuffer(cmd, &begin);
-    }
+    VkCommandBuffer cmd = command_selector.select(Engine::SimpleRendering::Passes::ColoredGeometry);
+    command_starter.begin(cmd, Engine::SimpleRendering::Passes::ColoredGeometry);
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       renderer.pipelines[Engine::SimpleRendering::Passes::ColoredGeometry]);
@@ -1101,26 +1143,8 @@ void Game::render(Engine& engine, float current_time_sec)
   }
 
   {
-    VkCommandBuffer cmd = renderer.secondary_command_buffers[Engine::SimpleRendering::Passes::Count * image_index +
-                                                             Engine::SimpleRendering::Passes::ColoredGeometrySkinned];
-
-    {
-      VkCommandBufferInheritanceInfo inheritance = {
-          .sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-          .renderPass           = renderer.render_pass,
-          .subpass              = Engine::SimpleRendering::Passes::ColoredGeometrySkinned,
-          .framebuffer          = renderer.framebuffers[image_index],
-          .occlusionQueryEnable = VK_FALSE,
-      };
-
-      VkCommandBufferBeginInfo begin = {
-          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-          .flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
-          .pInheritanceInfo = &inheritance,
-      };
-
-      vkBeginCommandBuffer(cmd, &begin);
-    }
+    VkCommandBuffer cmd = command_selector.select(Engine::SimpleRendering::Passes::ColoredGeometrySkinned);
+    command_starter.begin(cmd, Engine::SimpleRendering::Passes::ColoredGeometrySkinned);
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       renderer.pipelines[Engine::SimpleRendering::Passes::ColoredGeometrySkinned]);
@@ -1251,27 +1275,8 @@ void Game::render(Engine& engine, float current_time_sec)
       vkUnmapMemory(engine.generic_handles.device, engine.gpu_host_visible.memory);
     }
 
-    VkCommandBuffer command_buffer =
-        renderer.secondary_command_buffers[Engine::SimpleRendering::Passes::Count * image_index +
-                                           Engine::SimpleRendering::Passes::ImGui];
-
-    {
-      VkCommandBufferInheritanceInfo inheritance = {
-          .sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-          .renderPass           = renderer.render_pass,
-          .subpass              = Engine::SimpleRendering::Passes::ImGui,
-          .framebuffer          = renderer.framebuffers[image_index],
-          .occlusionQueryEnable = VK_FALSE,
-      };
-
-      VkCommandBufferBeginInfo begin = {
-          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-          .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-          .pInheritanceInfo = &inheritance,
-      };
-
-      vkBeginCommandBuffer(command_buffer, &begin);
-    }
+    VkCommandBuffer command_buffer = command_selector.select(Engine::SimpleRendering::Passes::ImGui);
+    command_starter.begin(command_buffer, Engine::SimpleRendering::Passes::ImGui);
 
     if (vertex_size and index_size)
     {
@@ -1344,15 +1349,4 @@ void Game::render(Engine& engine, float current_time_sec)
   }
 
   engine.submit_simple_rendering(image_index);
-
-  uint64_t end_function_ticks = SDL_GetPerformanceCounter();
-  uint64_t ticks_elapsed      = end_function_ticks - start_function_ticks;
-
-  for (int i = 0; i < (static_cast<int>(SDL_arraysize(render_times)) - 1); ++i)
-  {
-    render_times[i] = render_times[i + 1];
-  }
-
-  int last_element           = SDL_arraysize(render_times) - 1;
-  render_times[last_element] = (float)ticks_elapsed / (float)SDL_GetPerformanceFrequency();
 }
