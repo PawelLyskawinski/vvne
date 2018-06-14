@@ -235,22 +235,25 @@ public:
   {
   }
 
-  void rotateX(float rads)
+  Quaternion& rotateX(float rads)
   {
     vec3 axis = {1.0, 0.0, 0.0};
     rotate(axis, rads);
+    return *this;
   }
 
-  void rotateY(float rads)
+  Quaternion& rotateY(float rads)
   {
     vec3 axis = {0.0, 1.0, 0.0};
     rotate(axis, rads);
+    return *this;
   }
 
-  void rotateZ(float rads)
+  Quaternion& rotateZ(float rads)
   {
     vec3 axis = {0.0, 0.0, 1.0};
     rotate(axis, rads);
+    return *this;
   }
 
   Quaternion operator*(Quaternion& rhs)
@@ -309,6 +312,27 @@ private:
   VkDevice       device;
   VkDeviceMemory memory;
 };
+
+bool is_any(bool* array, int n)
+{
+  for (int i = 0; i < n; ++i)
+    if (array[i])
+      return true;
+  return false;
+}
+
+void restart_animation(gltf::RenderableModel& model, float current_time_sec)
+{
+  model.animation_enabled    = true;
+  model.animation_start_time = current_time_sec;
+
+  for (quat& rotation : model.animation_rotations)
+    quat_identity(rotation);
+
+  for (vec3& translation : model.animation_translations)
+    for (int i = 0; i < 4; ++i)
+      translation[i] = 0.0f;
+}
 
 } // namespace
 
@@ -694,14 +718,11 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
       {
       case SDL_MOUSEWHEEL:
       {
-        bool scroll_up   = event.wheel.y > 0.0;
-        bool scroll_down = event.wheel.y < 0.0;
-
-        if (scroll_up)
+        if (event.wheel.y > 0.0)
         {
           io.MouseWheel = 1.0f;
         }
-        else if (scroll_down)
+        else if (event.wheel.y < 0.0)
         {
           io.MouseWheel = -1.0f;
         }
@@ -835,18 +856,20 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
     for (bool& iter : debug_gui.mousepressed)
       iter = false;
 
-    if ((SDL_GetWindowFlags(window) & (SDL_WINDOW_MOUSE_FOCUS | SDL_WINDOW_MOUSE_CAPTURE)) != 0)
+    if (SDL_GetWindowFlags(window) & (SDL_WINDOW_MOUSE_FOCUS | SDL_WINDOW_MOUSE_CAPTURE))
       io.MousePos = ImVec2((float)mx, (float)my);
-    bool any_mouse_button_down = false;
-    for (int n = 0; n < IM_ARRAYSIZE(io.MouseDown); n++)
-      any_mouse_button_down |= io.MouseDown[n];
-    if (any_mouse_button_down && (SDL_GetWindowFlags(window) & SDL_WINDOW_MOUSE_CAPTURE) == 0)
+
+    const bool   any_mouse_button_down     = is_any(io.MouseDown, SDL_arraysize(io.MouseDown));
+    const Uint32 window_has_mouse_captured = SDL_GetWindowFlags(window) & SDL_WINDOW_MOUSE_CAPTURE;
+
+    if (any_mouse_button_down and (not window_has_mouse_captured))
       SDL_CaptureMouse(SDL_TRUE);
-    if (!any_mouse_button_down && (SDL_GetWindowFlags(window) & SDL_WINDOW_MOUSE_CAPTURE) != 0)
+
+    if ((not any_mouse_button_down) and window_has_mouse_captured)
       SDL_CaptureMouse(SDL_FALSE);
 
     ImGuiMouseCursor cursor = ImGui::GetMouseCursor();
-    if (io.MouseDrawCursor || ImGuiMouseCursor_None == cursor)
+    if (io.MouseDrawCursor or (ImGuiMouseCursor_None == cursor))
     {
       SDL_ShowCursor(0);
     }
@@ -865,100 +888,33 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
                        ImVec2(300, 20));
   ImGui::PlotHistogram("render times", render_times, SDL_arraysize(render_times), 0, nullptr, 0.0, 0.03,
                        ImVec2(300, 20));
-
   ImGui::Text("Booster jet fluel");
   ImGui::ProgressBar(booster_jet_fuel);
-
   ImGui::Text("%d %d | %d %d", lmb_last_cursor_position[0], lmb_last_cursor_position[1], lmb_current_cursor_position[0],
               lmb_current_cursor_position[1]);
-
   ImGui::Text("animation: %s, %.2f", animatedBox.animation_enabled ? "ongoing" : "stopped",
               animatedBox.animation_enabled ? current_time_sec - animatedBox.animation_start_time : 0.0f);
 
+  auto print_animation_stat = [](gltf::RenderableModel& model, float current_time_sec) {
+    ImGui::Text("animation: %s, %.2f", model.animation_enabled ? "ongoing" : "stopped",
+                model.animation_enabled ? current_time_sec - model.animation_start_time : 0.0f);
+  };
+
   if (ImGui::Button("restart cube animation"))
-  {
-    animatedBox.animation_enabled    = true;
-    animatedBox.animation_start_time = current_time_sec;
-
-    for (quat& rotation : animatedBox.animation_rotations)
-    {
-      quat_identity(rotation);
-    }
-
-    for (vec3& translation : animatedBox.animation_translations)
-    {
-      for (int i = 0; i < 4; ++i)
-      {
-        translation[i] = 0.0f;
-      }
-    }
-  }
-
-  ImGui::Text("animation: %s, %.2f", riggedSimple.animation_enabled ? "ongoing" : "stopped",
-              riggedSimple.animation_enabled ? current_time_sec - riggedSimple.animation_start_time : 0.0f);
+    restart_animation(animatedBox, current_time_sec);
+  print_animation_stat(animatedBox, current_time_sec);
 
   if (ImGui::Button("restart rigged animation"))
-  {
-    riggedSimple.animation_enabled    = true;
-    riggedSimple.animation_start_time = current_time_sec;
-
-    for (quat& rotation : riggedSimple.animation_rotations)
-    {
-      quat_identity(rotation);
-    }
-
-    for (vec3& translation : riggedSimple.animation_translations)
-    {
-      for (int i = 0; i < 4; ++i)
-      {
-        translation[i] = 0.0f;
-      }
-    }
-  }
-
-  ImGui::Text("animation: %s, %.2f", riggedFigure.animation_enabled ? "ongoing" : "stopped",
-              riggedFigure.animation_enabled ? current_time_sec - riggedFigure.animation_start_time : 0.0f);
+    restart_animation(riggedSimple, current_time_sec);
+  print_animation_stat(riggedSimple, current_time_sec);
 
   if (ImGui::Button("restart figure animation"))
-  {
-    riggedFigure.animation_enabled    = true;
-    riggedFigure.animation_start_time = current_time_sec;
-
-    for (quat& rotation : riggedFigure.animation_rotations)
-    {
-      quat_identity(rotation);
-    }
-
-    for (vec3& translation : riggedFigure.animation_translations)
-    {
-      for (int i = 0; i < 4; ++i)
-      {
-        translation[i] = 0.0f;
-      }
-    }
-  }
-
-  ImGui::Text("animation: %s, %.2f", monster.animation_enabled ? "ongoing" : "stopped",
-              monster.animation_enabled ? current_time_sec - monster.animation_start_time : 0.0f);
+    restart_animation(riggedFigure, current_time_sec);
+  print_animation_stat(riggedFigure, current_time_sec);
 
   if (ImGui::Button("monster animation"))
-  {
-    monster.animation_enabled    = true;
-    monster.animation_start_time = current_time_sec;
-
-    for (quat& rotation : monster.animation_rotations)
-    {
-      quat_identity(rotation);
-    }
-
-    for (vec3& translation : monster.animation_translations)
-    {
-      for (int i = 0; i < 4; ++i)
-      {
-        translation[i] = 0.0f;
-      }
-    }
-  }
+    restart_animation(monster, current_time_sec);
+  print_animation_stat(monster, current_time_sec);
 
   ImGui::Text("Average update time: %f", avg(update_times, SDL_arraysize(update_times)));
   ImGui::Text("Average render time: %f", avg(render_times, SDL_arraysize(render_times)));
@@ -1132,20 +1088,9 @@ void Game::render(Engine& engine, float current_time_sec)
 
     for (int i = 0; i < light_sources_count; ++i)
     {
-      Quaternion orientation;
-
-      {
-        Quaternion a;
-        a.rotateX(to_rad(60.0f * current_time_sec));
-
-        Quaternion b;
-        b.rotateY(to_rad(280.0f * current_time_sec));
-
-        Quaternion c;
-        c.rotateZ(to_rad(100.0f * current_time_sec));
-
-        orientation = c * b * c;
-      }
+      Quaternion orientation = Quaternion().rotateZ(to_rad(100.0f * current_time_sec)) *
+                               Quaternion().rotateY(to_rad(280.0f * current_time_sec)) *
+                               Quaternion().rotateX(to_rad(60.0f * current_time_sec));
 
       vec3 scale = {0.05f, 0.05f, 0.05f};
       box.renderColored(engine, cmd, push_const.projection, push_const.view, light_source_positions[i],
@@ -1154,20 +1099,9 @@ void Game::render(Engine& engine, float current_time_sec)
     }
 
     {
-      Quaternion orientation;
-
-      {
-        Quaternion a;
-        a.rotateX(to_rad(90.0f * current_time_sec / 20.0f));
-
-        Quaternion b;
-        b.rotateY(to_rad(140.0f * current_time_sec / 30.0f));
-
-        Quaternion c;
-        c.rotateZ(to_rad(90.0f * current_time_sec / 90.0f));
-
-        orientation = c * b * a;
-      }
+      Quaternion orientation = Quaternion().rotateZ(to_rad(90.0f * current_time_sec / 90.0f)) *
+                               Quaternion().rotateY(to_rad(140.0f * current_time_sec / 30.0f)) *
+                               Quaternion().rotateX(to_rad(90.0f * current_time_sec / 20.0f));
 
       vec3 scale = {1.0f, 1.0f, 1.0f};
       vec3 color = {0.0, 1.0, 0.0};
@@ -1301,32 +1235,30 @@ void Game::render(Engine& engine, float current_time_sec)
 
     if (0 < vertex_size)
     {
-      ImDrawVert* vtx_dst = nullptr;
-      vkMapMemory(engine.generic_handles.device, engine.gpu_host_visible.memory,
-                  debug_gui.vertex_buffer_offsets[image_index], vertex_size, 0, (void**)(&vtx_dst));
+      ScopedMemoryMap memory_map(engine.generic_handles.device, engine.gpu_host_visible.memory,
+                                 debug_gui.vertex_buffer_offsets[image_index], vertex_size);
 
+      ImDrawVert* vtx_dst = memory_map.get<ImDrawVert>();
       for (int n = 0; n < draw_data->CmdListsCount; ++n)
       {
         const ImDrawList* cmd_list = draw_data->CmdLists[n];
         SDL_memcpy(vtx_dst, cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size * sizeof(ImDrawVert));
         vtx_dst += cmd_list->VtxBuffer.Size;
       }
-      vkUnmapMemory(engine.generic_handles.device, engine.gpu_host_visible.memory);
     }
 
     if (0 < index_size)
     {
-      ImDrawIdx* idx_dst = nullptr;
-      vkMapMemory(engine.generic_handles.device, engine.gpu_host_visible.memory,
-                  debug_gui.index_buffer_offsets[image_index], index_size, 0, (void**)(&idx_dst));
+      ScopedMemoryMap memory_map(engine.generic_handles.device, engine.gpu_host_visible.memory,
+                                 debug_gui.index_buffer_offsets[image_index], index_size);
 
+      ImDrawIdx* idx_dst = memory_map.get<ImDrawIdx>();
       for (int n = 0; n < draw_data->CmdListsCount; ++n)
       {
         const ImDrawList* cmd_list = draw_data->CmdLists[n];
         SDL_memcpy(idx_dst, cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx));
         idx_dst += cmd_list->IdxBuffer.Size;
       }
-      vkUnmapMemory(engine.generic_handles.device, engine.gpu_host_visible.memory);
     }
 
     VkCommandBuffer command_buffer = command_selector.select(Engine::SimpleRendering::Passes::ImGui);
@@ -1334,7 +1266,6 @@ void Game::render(Engine& engine, float current_time_sec)
 
     if (vertex_size and index_size)
     {
-
       vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                         renderer.pipelines[Engine::SimpleRendering::Passes::ImGui]);
 
@@ -1348,11 +1279,12 @@ void Game::render(Engine& engine, float current_time_sec)
                              &debug_gui.vertex_buffer_offsets[image_index]);
 
       {
-        VkViewport viewport{};
-        viewport.width    = io.DisplaySize.x;
-        viewport.height   = io.DisplaySize.y;
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
+        VkViewport viewport = {
+            .width    = io.DisplaySize.x,
+            .height   = io.DisplaySize.y,
+            .minDepth = 0.0f,
+            .maxDepth = 1.0f,
+        };
         vkCmdSetViewport(command_buffer, 0, 1, &viewport);
       }
 
