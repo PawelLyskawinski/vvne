@@ -33,67 +33,71 @@ int find_first_higher(float* times, float current)
 
 void animate_model(gltf::RenderableModel& model, float current_time_sec)
 {
-  if (model.animation_enabled)
+  if (not model.animation_enabled)
+    return;
+
+  const Animation& animation      = model.scene_graph.animations.data[0];
+  const float      animation_time = current_time_sec - model.animation_start_time;
+
+  bool is_animation_still_ongoing = false;
+  for (const AnimationChannel& channel : animation.channels)
   {
-    bool  any_sampler_ongoing = false;
-    float animation_time      = current_time_sec - model.animation_start_time;
-
-    for (int anim_channel_idx = 0; anim_channel_idx < model.scene_graph.animations.data[0].channels.count;
-         ++anim_channel_idx)
+    const AnimationSampler& sampler = animation.samplers[channel.sampler_idx];
+    if (sampler.time_frame[1] > animation_time)
     {
-      const AnimationChannel& channel = model.scene_graph.animations.data[0].channels.data[anim_channel_idx];
-      const AnimationSampler& sampler = model.scene_graph.animations.data[0].samplers.data[channel.sampler_idx];
-
-      if (sampler.time_frame[1] > animation_time)
-      {
-        any_sampler_ongoing = true;
-
-        if (sampler.time_frame[0] < animation_time)
-        {
-          int   keyframe_upper         = find_first_higher(sampler.times, animation_time);
-          int   keyframe_lower         = keyframe_upper - 1;
-          float time_between_keyframes = sampler.times[keyframe_upper] - sampler.times[keyframe_lower];
-          float keyframe_uniform_time  = (animation_time - sampler.times[keyframe_lower]) / time_between_keyframes;
-
-          if (AnimationChannel::Path::Rotation == channel.target_path)
-          {
-            float* a = &sampler.values[4 * keyframe_lower];
-            float* b = &sampler.values[4 * keyframe_upper];
-            float* c = model.animation_rotations[channel.target_node_idx];
-
-            // quaternion lerp
-            float reminder_time = 1.0f - keyframe_uniform_time;
-            for (int i = 0; i < 4; ++i)
-            {
-              c[i] = reminder_time * a[i] + keyframe_uniform_time * b[i];
-            }
-            vec4_norm(c, c);
-
-            model.animation_properties[channel.target_node_idx] |= Node::Property::Rotation;
-          }
-          else if (AnimationChannel::Path::Translation == channel.target_path)
-          {
-            float* a = &sampler.values[3 * keyframe_lower];
-            float* b = &sampler.values[3 * keyframe_upper];
-            float* c = model.animation_translations[channel.target_node_idx];
-
-            // lerp
-            for (int i = 0; i < 3; ++i)
-            {
-              float difference = b[i] - a[i];
-              float progressed = difference * keyframe_uniform_time;
-              c[i]             = a[i] + progressed;
-            }
-
-            model.animation_properties[channel.target_node_idx] |= Node::Property::Translation;
-          }
-        }
-      }
+      is_animation_still_ongoing = true;
+      break;
     }
+  }
 
-    if (not any_sampler_ongoing)
+  if (not is_animation_still_ongoing)
+  {
+    model.animation_enabled = false;
+    return;
+  }
+
+  for (const AnimationChannel& channel : animation.channels)
+  {
+    const AnimationSampler& sampler = animation.samplers[channel.sampler_idx];
+    if ((sampler.time_frame[1] > animation_time) and (sampler.time_frame[0] < animation_time))
     {
-      model.animation_enabled = false;
+      int   keyframe_upper         = find_first_higher(sampler.times, animation_time);
+      int   keyframe_lower         = keyframe_upper - 1;
+      float time_between_keyframes = sampler.times[keyframe_upper] - sampler.times[keyframe_lower];
+      float keyframe_uniform_time  = (animation_time - sampler.times[keyframe_lower]) / time_between_keyframes;
+
+      if (AnimationChannel::Path::Rotation == channel.target_path)
+      {
+        float* a = &sampler.values[4 * keyframe_lower];
+        float* b = &sampler.values[4 * keyframe_upper];
+        float* c = model.animation_rotations[channel.target_node_idx];
+
+        // quaternion lerp
+        float reminder_time = 1.0f - keyframe_uniform_time;
+        for (int i = 0; i < 4; ++i)
+        {
+          c[i] = reminder_time * a[i] + keyframe_uniform_time * b[i];
+        }
+        vec4_norm(c, c);
+
+        model.animation_properties[channel.target_node_idx] |= Node::Property::Rotation;
+      }
+      else if (AnimationChannel::Path::Translation == channel.target_path)
+      {
+        float* a = &sampler.values[3 * keyframe_lower];
+        float* b = &sampler.values[3 * keyframe_upper];
+        float* c = model.animation_translations[channel.target_node_idx];
+
+        // lerp
+        for (int i = 0; i < 3; ++i)
+        {
+          float difference = b[i] - a[i];
+          float progressed = difference * keyframe_uniform_time;
+          c[i]             = a[i] + progressed;
+        }
+
+        model.animation_properties[channel.target_node_idx] |= Node::Property::Translation;
+      }
     }
   }
 }
@@ -116,18 +120,14 @@ public:
 
   void push(float value)
   {
-    // rotate left
     for (int i = 0; i < (capacity - 1); ++i)
-    {
       container[i] = container[i + 1];
-    }
-
     container[capacity - 1] = value;
   }
 
 private:
-  float* container;
-  int    capacity;
+  float*    container;
+  const int capacity;
 };
 
 class FunctionTimer
@@ -153,8 +153,8 @@ public:
   }
 
 private:
-  uint64_t   start_ticks;
-  PushBuffer storage;
+  const uint64_t start_ticks;
+  PushBuffer     storage;
 };
 
 class CommandBufferSelector
@@ -173,7 +173,24 @@ public:
 
 private:
   VkCommandBuffer* collection;
-  int              image_index;
+  const int        image_index;
+};
+
+class ScopedCommand
+{
+public:
+  explicit ScopedCommand(VkCommandBuffer cmd)
+      : cmd(cmd)
+  {
+  }
+
+  ~ScopedCommand()
+  {
+    vkEndCommandBuffer(cmd);
+  }
+
+private:
+  VkCommandBuffer cmd;
 };
 
 class CommandBufferStarter
@@ -185,7 +202,7 @@ public:
   {
   }
 
-  void begin(VkCommandBuffer cmd, uint32_t subpass)
+  ScopedCommand begin(VkCommandBuffer cmd, uint32_t subpass)
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
@@ -202,11 +219,95 @@ public:
     };
 
     vkBeginCommandBuffer(cmd, &begin);
+    return ScopedCommand(cmd);
   }
 
 private:
   VkRenderPass  render_pass;
   VkFramebuffer framebuffer;
+};
+
+class Quaternion
+{
+public:
+  Quaternion()
+      : orientation{0.0f, 0.0f, 0.0f, 1.0f}
+  {
+  }
+
+  void rotateX(float rads)
+  {
+    vec3 axis = {1.0, 0.0, 0.0};
+    rotate(axis, rads);
+  }
+
+  void rotateY(float rads)
+  {
+    vec3 axis = {0.0, 1.0, 0.0};
+    rotate(axis, rads);
+  }
+
+  void rotateZ(float rads)
+  {
+    vec3 axis = {0.0, 0.0, 1.0};
+    rotate(axis, rads);
+  }
+
+  Quaternion operator*(Quaternion& rhs)
+  {
+    Quaternion result;
+    quat_mul(result.orientation, orientation, rhs.orientation);
+    return result;
+  }
+
+  float* data()
+  {
+    return orientation;
+  }
+
+private:
+  void rotate(vec3 axis, float rads)
+  {
+    quat_rotate(orientation, rads, axis);
+  }
+
+  quat orientation;
+};
+
+float avg(float* values, int n)
+{
+  float sum = 0.0f;
+  for (int i = 0; i < n; ++i)
+    sum += values[i];
+  sum /= n;
+  return sum;
+}
+
+class ScopedMemoryMap
+{
+public:
+  ScopedMemoryMap(VkDevice device, VkDeviceMemory memory, VkDeviceSize offset, VkDeviceSize size)
+      : data(nullptr)
+      , device(device)
+      , memory(memory)
+  {
+    vkMapMemory(device, memory, offset, size, 0, (void**)(&data));
+  }
+
+  ~ScopedMemoryMap()
+  {
+    vkUnmapMemory(device, memory);
+  }
+
+  template <typename T> T* get()
+  {
+    return reinterpret_cast<T*>(data);
+  }
+
+private:
+  void*          data;
+  VkDevice       device;
+  VkDeviceMemory memory;
 };
 
 } // namespace
@@ -524,17 +625,15 @@ void Game::startup(Engine& engine)
   }
 
   {
-    LightSource* dst = nullptr;
-    vkMapMemory(engine.generic_handles.device, engine.ubo_host_visible.memory, lights_ubo_offset,
-                light_sources_ubo_size, 0, (void**)(&dst));
+    ScopedMemoryMap memory_map(engine.generic_handles.device, engine.ubo_host_visible.memory, lights_ubo_offset,
+                               light_sources_ubo_size);
 
+    LightSource* dst = memory_map.get<LightSource>();
     for (int i = 0; i < 10; ++i)
     {
       SDL_memcpy(dst[i].position, light_source_positions[i], sizeof(vec3));
       SDL_memcpy(dst[i].color, light_source_colors[i], sizeof(vec3));
     }
-
-    vkUnmapMemory(engine.generic_handles.device, engine.ubo_host_visible.memory);
   }
 
   float extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
@@ -729,9 +828,9 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
     bool   is_mouse_in_window_area = 0 < (SDL_GetWindowFlags(window) & SDL_WINDOW_MOUSE_FOCUS);
     io.MousePos = is_mouse_in_window_area ? ImVec2((float)mx, (float)my) : ImVec2(-FLT_MAX, -FLT_MAX);
 
-    io.MouseDown[0] = debug_gui.mousepressed[0] || (mouseMask & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
-    io.MouseDown[1] = debug_gui.mousepressed[1] || (mouseMask & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
-    io.MouseDown[2] = debug_gui.mousepressed[2] || (mouseMask & SDL_BUTTON(SDL_BUTTON_MIDDLE)) != 0;
+    io.MouseDown[0] = debug_gui.mousepressed[0] or (0 != (mouseMask & SDL_BUTTON(SDL_BUTTON_LEFT)));
+    io.MouseDown[1] = debug_gui.mousepressed[1] or (0 != (mouseMask & SDL_BUTTON(SDL_BUTTON_RIGHT)));
+    io.MouseDown[2] = debug_gui.mousepressed[2] or (0 != (mouseMask & SDL_BUTTON(SDL_BUTTON_MIDDLE)));
 
     for (bool& iter : debug_gui.mousepressed)
       iter = false;
@@ -861,18 +960,8 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
     }
   }
 
-  float avg_time = 0.0f;
-  for (float time : update_times)
-    avg_time += time;
-  avg_time /= SDL_arraysize(update_times);
-
-  ImGui::Text("Average update time: %f", avg_time);
-
-  for (float time : render_times)
-    avg_time += time;
-  avg_time /= SDL_arraysize(render_times);
-
-  ImGui::Text("Average render time: %f", avg_time);
+  ImGui::Text("Average update time: %f", avg(update_times, SDL_arraysize(update_times)));
+  ImGui::Text("Average render time: %f", avg(render_times, SDL_arraysize(render_times)));
 
   if (ImGui::Button("quit"))
   {
@@ -978,8 +1067,8 @@ void Game::render(Engine& engine, float current_time_sec)
   CommandBufferStarter  command_starter(renderer.render_pass, renderer.framebuffers[image_index]);
 
   {
-    VkCommandBuffer cmd = command_selector.select(Engine::SimpleRendering::Passes::Skybox);
-    command_starter.begin(cmd, Engine::SimpleRendering::Passes::Skybox);
+    VkCommandBuffer cmd       = command_selector.select(Engine::SimpleRendering::Passes::Skybox);
+    ScopedCommand   cmd_scope = command_starter.begin(cmd, Engine::SimpleRendering::Passes::Skybox);
 
     struct VertPush
     {
@@ -998,13 +1087,11 @@ void Game::render(Engine& engine, float current_time_sec)
     vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Skybox],
                        VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(VertPush), &vertpush);
     box.renderRaw(engine, cmd);
-
-    vkEndCommandBuffer(cmd);
   }
 
   {
-    VkCommandBuffer cmd = command_selector.select(Engine::SimpleRendering::Passes::Scene3D);
-    command_starter.begin(cmd, Engine::SimpleRendering::Scene3D);
+    VkCommandBuffer cmd       = command_selector.select(Engine::SimpleRendering::Passes::Scene3D);
+    ScopedCommand   cmd_scope = command_starter.begin(cmd, Engine::SimpleRendering::Scene3D);
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       renderer.pipelines[Engine::SimpleRendering::Passes::Scene3D]);
@@ -1026,13 +1113,11 @@ void Game::render(Engine& engine, float current_time_sec)
     mat4x4_rotate_X(push_const.model, push_const.model, -to_rad(90.0));
     mat4x4_scale_aniso(push_const.model, push_const.model, 1.6f, 1.6f, 1.6f);
     helmet.render(engine, cmd, push_const);
-
-    vkEndCommandBuffer(cmd);
   }
 
   {
-    VkCommandBuffer cmd = command_selector.select(Engine::SimpleRendering::Passes::ColoredGeometry);
-    command_starter.begin(cmd, Engine::SimpleRendering::Passes::ColoredGeometry);
+    VkCommandBuffer cmd       = command_selector.select(Engine::SimpleRendering::Passes::ColoredGeometry);
+    ScopedCommand   cmd_scope = command_starter.begin(cmd, Engine::SimpleRendering::Passes::ColoredGeometry);
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       renderer.pipelines[Engine::SimpleRendering::Passes::ColoredGeometry]);
@@ -1047,58 +1132,47 @@ void Game::render(Engine& engine, float current_time_sec)
 
     for (int i = 0; i < light_sources_count; ++i)
     {
-      quat orientation = {};
-      quat_identity(orientation);
+      Quaternion orientation;
 
       {
-        quat a    = {};
-        vec3 axis = {1.0, 0.0, 0.0};
-        quat_rotate(a, to_rad(60.0 * current_time_sec), axis);
+        Quaternion a;
+        a.rotateX(to_rad(60.0f * current_time_sec));
 
-        quat b     = {};
-        vec3 axis2 = {0.0, 1.0, 0.0};
-        quat_rotate(b, to_rad(280.0f * current_time_sec), axis2);
+        Quaternion b;
+        b.rotateY(to_rad(280.0f * current_time_sec));
 
-        quat ab = {};
-        quat_mul(ab, b, a);
+        Quaternion c;
+        c.rotateZ(to_rad(100.0f * current_time_sec));
 
-        quat c     = {};
-        vec3 axis3 = {0.0, 0.0, 1.0};
-        quat_rotate(c, to_rad(100.0f * current_time_sec), axis3);
-        quat_mul(orientation, c, ab);
+        orientation = c * b * c;
       }
 
       vec3 scale = {0.05f, 0.05f, 0.05f};
-      box.renderColored(engine, cmd, push_const.projection, push_const.view, light_source_positions[i], orientation,
-                        scale, light_source_colors[i], Engine::SimpleRendering::Passes::ColoredGeometry, 0);
+      box.renderColored(engine, cmd, push_const.projection, push_const.view, light_source_positions[i],
+                        orientation.data(), scale, light_source_colors[i],
+                        Engine::SimpleRendering::Passes::ColoredGeometry, 0);
     }
 
     {
-      quat orientation = {};
-      quat_identity(orientation);
+      Quaternion orientation;
 
       {
-        quat a    = {};
-        vec3 axis = {1.0, 0.0, 0.0};
-        quat_rotate(a, to_rad(90.0f * current_time_sec / 20.0f), axis);
+        Quaternion a;
+        a.rotateX(to_rad(90.0f * current_time_sec / 20.0f));
 
-        quat b     = {};
-        vec3 axis2 = {0.0, 1.0, 0.0};
-        quat_rotate(b, to_rad(140.0f * current_time_sec / 30.0f), axis2);
+        Quaternion b;
+        b.rotateY(to_rad(140.0f * current_time_sec / 30.0f));
 
-        quat ab = {};
-        quat_mul(ab, b, a);
+        Quaternion c;
+        c.rotateZ(to_rad(90.0f * current_time_sec / 90.0f));
 
-        quat c     = {};
-        vec3 axis3 = {0.0, 0.0, 1.0};
-        quat_rotate(c, to_rad(90.0f * current_time_sec / 90.0f), axis3);
-        quat_mul(orientation, c, ab);
+        orientation = c * b * a;
       }
 
       vec3 scale = {1.0f, 1.0f, 1.0f};
       vec3 color = {0.0, 1.0, 0.0};
-      animatedBox.renderColored(engine, cmd, push_const.projection, push_const.view, robot_position, orientation, scale,
-                                color, Engine::SimpleRendering::Passes::ColoredGeometry, 0);
+      animatedBox.renderColored(engine, cmd, push_const.projection, push_const.view, robot_position, orientation.data(),
+                                scale, color, Engine::SimpleRendering::Passes::ColoredGeometry, 0);
     }
 
     {
@@ -1138,13 +1212,11 @@ void Game::render(Engine& engine, float current_time_sec)
 
       vkCmdDrawIndexed(cmd, static_cast<uint32_t>(vr_level_index_count), 1, 0, 0, 0);
     }
-
-    vkEndCommandBuffer(cmd);
   }
 
   {
-    VkCommandBuffer cmd = command_selector.select(Engine::SimpleRendering::Passes::ColoredGeometrySkinned);
-    command_starter.begin(cmd, Engine::SimpleRendering::Passes::ColoredGeometrySkinned);
+    VkCommandBuffer cmd       = command_selector.select(Engine::SimpleRendering::Passes::ColoredGeometrySkinned);
+    ScopedCommand   cmd_scope = command_starter.begin(cmd, Engine::SimpleRendering::Passes::ColoredGeometrySkinned);
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       renderer.pipelines[Engine::SimpleRendering::Passes::ColoredGeometrySkinned]);
@@ -1158,15 +1230,14 @@ void Game::render(Engine& engine, float current_time_sec)
                               renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometrySkinned], 0, 1,
                               &rig_dsets[image_index], 0, nullptr);
 
-      quat orientation = {};
-      vec3 axis        = {1.0, 0.0, 0.0};
-      quat_rotate(orientation, to_rad(90.0f), axis);
+      Quaternion orientation;
+      orientation.rotateX(to_rad(90.0f));
 
       vec3 scale = {0.5f, 0.5f, 0.5f};
       vec3 color = {0.0, 0.0, 1.0};
-      riggedSimple.renderColored(engine, cmd, push_const.projection, push_const.view, rigged_position, orientation,
-                                 scale, color, Engine::SimpleRendering::Passes::ColoredGeometrySkinned,
-                                 rig_skinning_matrices_ubo_offsets[image_index]);
+      riggedSimple.renderColored(
+          engine, cmd, push_const.projection, push_const.view, rigged_position, orientation.data(), scale, color,
+          Engine::SimpleRendering::Passes::ColoredGeometrySkinned, rig_skinning_matrices_ubo_offsets[image_index]);
     }
 
     {
@@ -1174,43 +1245,29 @@ void Game::render(Engine& engine, float current_time_sec)
                               renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometrySkinned], 0, 1,
                               &fig_dsets[image_index], 0, nullptr);
 
-      quat orientation{};
+      Quaternion orientation;
 
       {
-        quat standing_pose_orientation{};
-        {
-          vec3 axis = {1.0, 0.0, 0.0};
-          quat_rotate(standing_pose_orientation, to_rad(90.0f), axis);
-        }
+        Quaternion standing_pose;
+        standing_pose.rotateX(to_rad(90.0f));
 
-        quat rotate_back_orientation{};
-        {
-          vec3  axis     = {0.0, 0.0, 1.0};
-          float rotation = to_rad(90.0f);
-          if (player_position[0] < camera_position[0])
-            rotation = -rotation;
-          quat_rotate(rotate_back_orientation, rotation, axis);
-        }
+        Quaternion rotate_back;
+        rotate_back.rotateZ(player_position[0] < camera_position[0] ? -to_rad(90.0f) : to_rad(90.0f));
 
-        quat camera_orientation{};
-        {
-          float x_delta = player_position[0] - camera_position[0];
-          float z_delta = player_position[2] - camera_position[2];
-          vec3  axis    = {0.0, 0.0, 1.0};
-          quat_rotate(camera_orientation, static_cast<float>(SDL_atan(z_delta / x_delta)), axis);
-        }
+        float      x_delta = player_position[0] - camera_position[0];
+        float      z_delta = player_position[2] - camera_position[2];
+        Quaternion camera;
+        camera.rotateZ(static_cast<float>(SDL_atan(z_delta / x_delta)));
 
-        quat tmp{};
-        quat_mul(tmp, standing_pose_orientation, rotate_back_orientation);
-        quat_mul(orientation, tmp, camera_orientation);
+        orientation = standing_pose * rotate_back * camera;
       }
 
       vec3 scale = {1.0f, 1.0f, 1.0f};
       vec3 color = {1.0, 0.0, 0.0};
 
-      riggedFigure.renderColored(engine, cmd, push_const.projection, push_const.view, player_position, orientation,
-                                 scale, color, Engine::SimpleRendering::Passes::ColoredGeometrySkinned,
-                                 fig_skinning_matrices_ubo_offsets[image_index]);
+      riggedFigure.renderColored(
+          engine, cmd, push_const.projection, push_const.view, player_position, orientation.data(), scale, color,
+          Engine::SimpleRendering::Passes::ColoredGeometrySkinned, fig_skinning_matrices_ubo_offsets[image_index]);
     }
 
     {
@@ -1218,20 +1275,17 @@ void Game::render(Engine& engine, float current_time_sec)
                               renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometrySkinned], 0, 1,
                               &monster_dsets[image_index], 0, nullptr);
 
-      quat orientation = {};
-      vec3 axis        = {1.0, 0.0, 0.0};
-      quat_rotate(orientation, to_rad(90.0f), axis);
+      Quaternion orientation;
+      orientation.rotateX(to_rad(90.0f));
 
       vec3 scale    = {0.02f, 0.02f, 0.02f};
       vec3 color    = {1.0, 1.0, 1.0};
       vec3 position = {1.5f, -0.2f, 1.0f};
 
-      monster.renderColored(engine, cmd, push_const.projection, push_const.view, position, orientation, scale, color,
-                            Engine::SimpleRendering::Passes::ColoredGeometrySkinned,
+      monster.renderColored(engine, cmd, push_const.projection, push_const.view, position, orientation.data(), scale,
+                            color, Engine::SimpleRendering::Passes::ColoredGeometrySkinned,
                             monster_skinning_matrices_ubo_offsets[image_index]);
     }
-
-    vkEndCommandBuffer(cmd);
   }
 
   {
@@ -1276,7 +1330,7 @@ void Game::render(Engine& engine, float current_time_sec)
     }
 
     VkCommandBuffer command_buffer = command_selector.select(Engine::SimpleRendering::Passes::ImGui);
-    command_starter.begin(command_buffer, Engine::SimpleRendering::Passes::ImGui);
+    ScopedCommand   cmd_scope      = command_starter.begin(command_buffer, Engine::SimpleRendering::Passes::ImGui);
 
     if (vertex_size and index_size)
     {
@@ -1329,11 +1383,18 @@ void Game::render(Engine& engine, float current_time_sec)
             else
             {
               {
-                VkRect2D scissor{};
-                scissor.offset.x      = (int32_t)(pcmd->ClipRect.x) > 0 ? (int32_t)(pcmd->ClipRect.x) : 0;
-                scissor.offset.y      = (int32_t)(pcmd->ClipRect.y) > 0 ? (int32_t)(pcmd->ClipRect.y) : 0;
-                scissor.extent.width  = (uint32_t)(pcmd->ClipRect.z - pcmd->ClipRect.x);
-                scissor.extent.height = (uint32_t)(pcmd->ClipRect.w - pcmd->ClipRect.y + 1); // FIXME: Why +1 here?
+                VkRect2D scissor = {
+                    .offset =
+                        {
+                            .x = (int32_t)(pcmd->ClipRect.x) > 0 ? (int32_t)(pcmd->ClipRect.x) : 0,
+                            .y = (int32_t)(pcmd->ClipRect.y) > 0 ? (int32_t)(pcmd->ClipRect.y) : 0,
+                        },
+                    .extent =
+                        {
+                            .width  = (uint32_t)(pcmd->ClipRect.z - pcmd->ClipRect.x),
+                            .height = (uint32_t)(pcmd->ClipRect.w - pcmd->ClipRect.y + 1) // FIXME: Why +1 here?
+                        },
+                };
                 vkCmdSetScissor(command_buffer, 0, 1, &scissor);
               }
               vkCmdDrawIndexed(command_buffer, pcmd->ElemCount, 1, idx_offset, vtx_offset, 0);
@@ -1344,8 +1405,6 @@ void Game::render(Engine& engine, float current_time_sec)
         }
       }
     }
-
-    vkEndCommandBuffer(command_buffer);
   }
 
   engine.submit_simple_rendering(image_index);

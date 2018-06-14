@@ -29,6 +29,16 @@ template <typename T> struct ArrayView
   {
     return &data[count];
   }
+
+  T* begin() const
+  {
+    return data;
+  }
+
+  T* end() const
+  {
+    return &data[count];
+  }
 };
 
 struct Material
