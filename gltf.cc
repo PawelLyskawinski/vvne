@@ -1,6 +1,5 @@
 #include "gltf.hh"
 #include "stb_image.h"
-#include "utility.hh"
 #include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_log.h>
 #include <SDL2/SDL_timer.h>
@@ -429,7 +428,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
         uint8_t*     dst_raw_ptr          = &upload_buffer[upload_buffer_offset];
         float*       dst                  = reinterpret_cast<float*>(dst_raw_ptr);
         const float* src = reinterpret_cast<const float*>(&binary_data[start_offset + (src_stride * i)]);
-        utility::copy<float, 3>(dst, src);
+        SDL_memcpy(dst, src, sizeof(vec3));
       }
     }
 
@@ -452,7 +451,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
         uint8_t*     dst_raw_ptr          = &upload_buffer[upload_buffer_offset];
         float*       dst                  = reinterpret_cast<float*>(dst_raw_ptr);
         const float* src = reinterpret_cast<const float*>(&binary_data[start_offset + (src_stride * i)]);
-        utility::copy<float, 3>(dst, src);
+        SDL_memcpy(dst, src, sizeof(vec3));
       }
     }
 
@@ -476,7 +475,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
         uint8_t*     dst_raw_ptr          = &upload_buffer[upload_buffer_offset];
         float*       dst                  = reinterpret_cast<float*>(dst_raw_ptr);
         const float* src = reinterpret_cast<const float*>(&binary_data[start_offset + (src_stride * i)]);
-        utility::copy<float, 2>(dst, src);
+        SDL_memcpy(dst, src, sizeof(vec2));
       }
     }
 
@@ -497,7 +496,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
         {
           uint16_t*       dst = dst_vertices[i].joint;
           const uint16_t* src = reinterpret_cast<const uint16_t*>(&binary_data[start_offset + (src_stride * i)]);
-          utility::copy<uint16_t, 4>(dst, src);
+          SDL_memcpy(dst, src, 4 * sizeof(uint16_t));
         }
       }
 
@@ -516,7 +515,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
         {
           float*       dst = dst_vertices[i].weight;
           const float* src = reinterpret_cast<const float*>(&binary_data[start_offset + (src_stride * i)]);
-          utility::copy<float, 4>(dst, src);
+          SDL_memcpy(dst, src, sizeof(vec4));
         }
       }
     }

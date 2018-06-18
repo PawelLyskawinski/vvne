@@ -18,8 +18,8 @@
 
 #pragma GCC diagnostic pop
 
-#define INITIAL_WINDOW_WIDTH 1000
-#define INITIAL_WINDOW_HEIGHT 700
+#define INITIAL_WINDOW_WIDTH 1200
+#define INITIAL_WINDOW_HEIGHT 800
 
 VkBool32
 #ifndef __linux__

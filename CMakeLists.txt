@@ -35,8 +35,6 @@ add_executable(${PROJECT_NAME}
         cubemap.cc
         cubemap.hh
         utility.hh
-        level_generator_vr.cc
-        level_generator_vr.hh
         thirdparty/imconfig.h
         thirdparty/imgui.cpp
         thirdparty/imgui.h

@@ -1,7 +1,5 @@
 #include "game.hh"
 #include "cubemap.hh"
-#include "level_generator_vr.hh"
-#include "utility.hh"
 #include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_clipboard.h>
 #include <SDL2/SDL_events.h>
@@ -332,6 +330,262 @@ void restart_animation(gltf::RenderableModel& model, float current_time_sec)
   for (vec3& translation : model.animation_translations)
     for (int i = 0; i < 4; ++i)
       translation[i] = 0.0f;
+}
+
+struct VrLevelLoadResult
+{
+  float entrance_point[2];
+  float target_goal[2];
+
+  VkDeviceSize vertex_target_offset;
+  VkDeviceSize index_target_offset;
+  int          index_count;
+  VkIndexType  index_type;
+};
+
+VrLevelLoadResult level_generator_vr(Engine* engine)
+{
+  struct Rectangle
+  {
+    vec2 size;
+    vec2 position;
+  };
+
+  struct Building
+  {
+    vec2  size;
+    vec2  position;
+    float height;
+  };
+
+  // @todo: add reading saved data from file
+  Rectangle rooms[] = {
+      {
+          .size     = {1.0f, 1.0f},
+          .position = {0.0f, 0.0f},
+      },
+  };
+
+  Building buildings[] = {
+      {
+          .size     = {1.0f, 1.0f},
+          .position = {0.0f, 0.0f},
+          .height   = 3.0f,
+      },
+  };
+
+  int vertex_count = (SDL_arraysize(rooms) * 4) +     // rooms
+                     (SDL_arraysize(buildings) * 20); // buildings
+
+  int index_count = (SDL_arraysize(rooms) * 6) +     // rooms
+                    (SDL_arraysize(buildings) * 30); // buildings
+
+  using IndexType = uint16_t;
+
+  struct Vertex
+  {
+    vec3 position;
+    vec3 normal;
+    vec2 texcoord;
+  };
+
+  VkDeviceSize host_vertex_offset = engine->gpu_static_transfer.allocate(vertex_count * sizeof(Vertex));
+  VkDeviceSize host_index_offset  = engine->gpu_static_transfer.allocate(index_count * sizeof(IndexType));
+
+  {
+    ScopedMemoryMap memory_map(engine->generic_handles.device, engine->gpu_static_transfer.memory, host_vertex_offset,
+                               vertex_count * sizeof(Vertex));
+
+    Vertex* dst_vertices = memory_map.get<Vertex>();
+    Vertex* current      = dst_vertices;
+
+    for (const Rectangle& r : rooms)
+    {
+      float left   = r.position[0] - r.size[0] / 2.0f;
+      float right  = r.position[0] + r.size[0] / 2.0f;
+      float top    = r.position[1] + r.size[1] / 2.0f;
+      float bottom = r.position[1] - r.size[1] / 2.0f;
+
+      vec3 positions[] = {
+          {left, 0.0f, bottom},
+          {right, 0.0f, bottom},
+          {right, 0.0f, top},
+          {left, 0.0f, top},
+      };
+
+      for (unsigned i = 0; i < SDL_arraysize(positions); ++i)
+      {
+        SDL_memcpy(current[i].position, positions[i], sizeof(vec3));
+        SDL_memset(current->normal, 0, sizeof(vec3));
+        SDL_memset(current->texcoord, 0, sizeof(vec3));
+      }
+
+      current = &current[SDL_arraysize(positions)];
+    }
+
+    for (const Building& b : buildings)
+    {
+      float left   = b.position[0] - b.size[0] / 2.0f;
+      float right  = b.position[0] + b.size[0] / 2.0f;
+      float top    = b.position[1] + b.size[1] / 2.0f;
+      float bottom = b.position[1] - b.size[1] / 2.0f;
+      float height = b.height;
+
+      vec3 vertices[] = {
+          // rooftop
+          {left, height, bottom},
+          {right, height, bottom},
+          {right, height, top},
+          {left, height, top},
+          // front wall
+          {left, 0.0f, bottom},
+          {right, 0.0f, bottom},
+          {right, height, bottom},
+          {left, height, bottom},
+          // right wall
+          {right, 0.0f, bottom},
+          {right, 0.0f, top},
+          {right, height, top},
+          {right, height, bottom},
+          // left wall
+          {left, 0.0f, top},
+          {left, 0.0f, bottom},
+          {left, height, bottom},
+          {left, height, top},
+          // back wall
+          {right, 0.0f, top},
+          {left, 0.0f, top},
+          {left, height, top},
+          {right, height, top},
+      };
+
+      for (unsigned i = 0; i < SDL_arraysize(vertices); ++i)
+      {
+        SDL_memcpy(current[i].position, vertices[i], sizeof(vec3));
+        SDL_memset(current->normal, 0, sizeof(vec3));
+        SDL_memset(current->texcoord, 0, sizeof(vec3));
+      }
+
+      current = &current[SDL_arraysize(vertices)];
+    }
+  }
+
+  {
+    ScopedMemoryMap memory_map(engine->generic_handles.device, engine->gpu_static_transfer.memory, host_index_offset,
+                               index_count * sizeof(IndexType));
+    uint16_t*       dst_indices = memory_map.get<uint16_t>();
+
+    for (uint16_t i = 0; i < SDL_arraysize(rooms); ++i)
+    {
+      uint16_t     rectangle_indices[] = {0, 1, 2, 2, 3, 0};
+      const size_t stride              = SDL_arraysize(rectangle_indices);
+
+      for (uint16_t& idx : rectangle_indices)
+        idx += 4 * i;
+
+      SDL_memcpy(&dst_indices[stride * i], rectangle_indices, stride);
+    }
+  }
+
+  VkDeviceSize device_vertex_offset = engine->gpu_static_geometry.allocate(vertex_count * sizeof(Vertex));
+  VkDeviceSize device_index_offset  = engine->gpu_static_geometry.allocate(index_count * sizeof(IndexType));
+
+  VrLevelLoadResult result = {
+      .entrance_point       = {0.0f, 0.0f},
+      .target_goal          = {0.0f, 0.2f},
+      .vertex_target_offset = device_vertex_offset,
+      .index_target_offset  = device_index_offset,
+      .index_count          = index_count,
+      .index_type           = VK_INDEX_TYPE_UINT16,
+  };
+
+  {
+    VkCommandBuffer cmd = VK_NULL_HANDLE;
+
+    VkCommandBufferAllocateInfo allocate = {
+        .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool        = engine->generic_handles.graphics_command_pool,
+        .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+
+    vkAllocateCommandBuffers(engine->generic_handles.device, &allocate, &cmd);
+
+    VkCommandBufferBeginInfo begin = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+
+    vkBeginCommandBuffer(cmd, &begin);
+
+    VkBufferCopy copies[] = {
+        {
+            .srcOffset = host_vertex_offset,
+            .dstOffset = device_vertex_offset,
+            .size      = vertex_count * sizeof(Vertex),
+        },
+        {
+            .srcOffset = host_index_offset,
+            .dstOffset = device_index_offset,
+            .size      = index_count * sizeof(IndexType),
+        },
+    };
+
+    vkCmdCopyBuffer(cmd, engine->gpu_static_transfer.buffer, engine->gpu_static_geometry.buffer, SDL_arraysize(copies),
+                    copies);
+
+    VkBufferMemoryBarrier barriers[] = {
+        {
+            .sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .dstAccessMask       = VK_ACCESS_SHADER_READ_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer              = engine->gpu_static_geometry.buffer,
+            .offset              = device_vertex_offset,
+            .size                = vertex_count * sizeof(Vertex),
+        },
+        {
+            .sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .dstAccessMask       = VK_ACCESS_SHADER_READ_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer              = engine->gpu_static_geometry.buffer,
+            .offset              = device_index_offset,
+            .size                = index_count * sizeof(IndexType),
+        },
+    };
+
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, 0, 0, nullptr,
+                         SDL_arraysize(barriers), barriers, 0, nullptr);
+    vkEndCommandBuffer(cmd);
+
+    VkFence data_upload_fence = VK_NULL_HANDLE;
+
+    {
+      VkFenceCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+      vkCreateFence(engine->generic_handles.device, &ci, nullptr, &data_upload_fence);
+    }
+
+    {
+      VkSubmitInfo submit = {
+          .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+          .commandBufferCount = 1,
+          .pCommandBuffers    = &cmd,
+      };
+
+      vkQueueSubmit(engine->generic_handles.graphics_queue, 1, &submit, data_upload_fence);
+    }
+
+    vkWaitForFences(engine->generic_handles.device, 1, &data_upload_fence, VK_TRUE, UINT64_MAX);
+    vkDestroyFence(engine->generic_handles.device, data_upload_fence, nullptr);
+    vkFreeCommandBuffers(engine->generic_handles.device, engine->generic_handles.graphics_command_pool, 1, &cmd);
+  }
+
+  engine->gpu_static_transfer.used_memory = 0;
+  engine->double_ended_stack.reset_back();
+  return result;
 }
 
 } // namespace
@@ -670,13 +924,13 @@ void Game::startup(Engine& engine)
 
   VrLevelLoadResult result = level_generator_vr(&engine);
 
-  vr_level_vertex_buffer_offset = result.level_load_data.vertex_target_offset;
-  vr_level_index_buffer_offset  = result.level_load_data.index_target_offset;
-  vr_level_index_type           = result.level_load_data.index_type;
-  vr_level_index_count          = result.level_load_data.index_count;
+  vr_level_vertex_buffer_offset = result.vertex_target_offset;
+  vr_level_index_buffer_offset  = result.index_target_offset;
+  vr_level_index_type           = result.index_type;
+  vr_level_index_count          = result.index_count;
 
-  utility::copy<float, 2>(vr_level_entry, result.entrance_point);
-  utility::copy<float, 2>(vr_level_goal, result.target_goal);
+  SDL_memcpy(vr_level_entry, result.entrance_point, sizeof(vec2));
+  SDL_memcpy(vr_level_goal, result.target_goal, sizeof(vec2));
 
   vr_level_entry[0] *= VR_LEVEL_SCALE;
   vr_level_entry[1] *= VR_LEVEL_SCALE;
