@@ -163,8 +163,7 @@ struct RenderableModel
 
   void loadGLB(Engine& engine, const char* path) noexcept;
   void renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 projection, mat4x4 view, mat4x4 world_transform,
-                     vec3 color, Engine::SimpleRendering::Passes pass, VkDeviceSize joint_ubo_offset,
-                     vec3 camera_position) noexcept;
+                     vec3 color, int pipeline, VkDeviceSize joint_ubo_offset, vec3 camera_position) noexcept;
   void renderRaw(Engine& engine, VkCommandBuffer cmd) const noexcept;
 };
 

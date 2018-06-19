@@ -1447,14 +1447,14 @@ void Engine::setup_simple_rendering()
 
     VkSubpassDescription subpasses[] = {
         {
-            // skybox
+            // skybox pass
             .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
             .colorAttachmentCount = 1,
             .pColorAttachments    = &color_reference,
             .pResolveAttachments  = &resolve_reference,
         },
         {
-            // scene3d
+            // objects3d pass
             .pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS,
             .colorAttachmentCount    = 1,
             .pColorAttachments       = &color_reference,
@@ -1462,23 +1462,7 @@ void Engine::setup_simple_rendering()
             .pDepthStencilAttachment = &depth_reference,
         },
         {
-            // colored geometry
-            .pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS,
-            .colorAttachmentCount    = 1,
-            .pColorAttachments       = &color_reference,
-            .pResolveAttachments     = &resolve_reference,
-            .pDepthStencilAttachment = &depth_reference,
-        },
-        {
-            // colored geometry skinned
-            .pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS,
-            .colorAttachmentCount    = 1,
-            .pColorAttachments       = &color_reference,
-            .pResolveAttachments     = &resolve_reference,
-            .pDepthStencilAttachment = &depth_reference,
-        },
-        {
-            // imgui
+            // imgui pass
             .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
             .colorAttachmentCount = 1,
             .pColorAttachments    = &color_reference,
@@ -1489,44 +1473,29 @@ void Engine::setup_simple_rendering()
     VkSubpassDependency dependencies[] = {
         {
             .srcSubpass    = VK_SUBPASS_EXTERNAL,
-            .dstSubpass    = SimpleRendering::Passes::Skybox,
+            .dstSubpass    = SimpleRendering::Pass::Skybox,
             .srcStageMask  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
             .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
             .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
             .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
         },
         {
-            .srcSubpass    = SimpleRendering::Passes::Skybox,
-            .dstSubpass    = SimpleRendering::Passes::Scene3D,
+            .srcSubpass    = SimpleRendering::Pass::Skybox,
+            .dstSubpass    = SimpleRendering::Pass::Objects3D,
             .srcStageMask  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
             .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
             .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
             .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
         },
         {
-            .srcSubpass    = SimpleRendering::Passes::Scene3D,
-            .dstSubpass    = SimpleRendering::Passes::ColoredGeometry,
+            .srcSubpass    = SimpleRendering::Pass::Objects3D,
+            .dstSubpass    = SimpleRendering::Pass::ImGui,
             .srcStageMask  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
             .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
             .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
             .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
         },
-        {
-            .srcSubpass    = SimpleRendering::Passes::ColoredGeometry,
-            .dstSubpass    = SimpleRendering::Passes::ColoredGeometrySkinned,
-            .srcStageMask  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-            .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
-            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-        },
-        {
-            .srcSubpass    = SimpleRendering::Passes::ColoredGeometrySkinned,
-            .dstSubpass    = SimpleRendering::Passes::ImGui,
-            .srcStageMask  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-            .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
-            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-        }};
+    };
 
     VkRenderPassCreateInfo ci = {
         .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
@@ -1588,7 +1557,7 @@ void Engine::setup_simple_rendering()
         .pPushConstantRanges    = ranges,
     };
 
-    vkCreatePipelineLayout(ctx.device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Passes::Skybox]);
+    vkCreatePipelineLayout(ctx.device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Pipeline::Skybox]);
   }
 
   {
@@ -1608,7 +1577,7 @@ void Engine::setup_simple_rendering()
         .pPushConstantRanges    = ranges,
     };
 
-    vkCreatePipelineLayout(ctx.device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Passes::Scene3D]);
+    vkCreatePipelineLayout(ctx.device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Pipeline::Scene3D]);
   }
 
   {
@@ -1635,7 +1604,7 @@ void Engine::setup_simple_rendering()
     };
 
     vkCreatePipelineLayout(ctx.device, &ci, nullptr,
-                           &renderer.pipeline_layouts[SimpleRendering::Passes::ColoredGeometry]);
+                           &renderer.pipeline_layouts[SimpleRendering::Pipeline::ColoredGeometry]);
   }
 
   {
@@ -1661,7 +1630,7 @@ void Engine::setup_simple_rendering()
     };
 
     vkCreatePipelineLayout(ctx.device, &ci, nullptr,
-                           &renderer.pipeline_layouts[SimpleRendering::Passes::ColoredGeometrySkinned]);
+                           &renderer.pipeline_layouts[SimpleRendering::Pipeline::ColoredGeometrySkinned]);
   }
 
   {
@@ -1681,7 +1650,7 @@ void Engine::setup_simple_rendering()
         .pPushConstantRanges    = ranges,
     };
 
-    vkCreatePipelineLayout(ctx.device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Passes::ImGui]);
+    vkCreatePipelineLayout(ctx.device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Pipeline::ImGui]);
   }
 
   {
@@ -1829,15 +1798,15 @@ void Engine::setup_simple_rendering()
         .pMultisampleState   = &multisample_state,
         .pDepthStencilState  = &depth_stencil_state,
         .pColorBlendState    = &color_blend_state,
-        .layout              = renderer.pipeline_layouts[SimpleRendering::Passes::Skybox],
+        .layout              = renderer.pipeline_layouts[SimpleRendering::Pipeline::Skybox],
         .renderPass          = renderer.render_pass,
-        .subpass             = SimpleRendering::Passes::Skybox,
+        .subpass             = SimpleRendering::Pass::Skybox,
         .basePipelineHandle  = VK_NULL_HANDLE,
         .basePipelineIndex   = -1,
     };
 
     vkCreateGraphicsPipelines(ctx.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-                              &renderer.pipelines[SimpleRendering::Passes::Skybox]);
+                              &renderer.pipelines[SimpleRendering::Pipeline::Skybox]);
 
     for (auto& shader_stage : shader_stages)
       vkDestroyShaderModule(ctx.device, shader_stage.module, nullptr);
@@ -2001,15 +1970,15 @@ void Engine::setup_simple_rendering()
         .pMultisampleState   = &multisample_state,
         .pDepthStencilState  = &depth_stencil_state,
         .pColorBlendState    = &color_blend_state,
-        .layout              = renderer.pipeline_layouts[SimpleRendering::Passes::Scene3D],
+        .layout              = renderer.pipeline_layouts[SimpleRendering::Pipeline::Scene3D],
         .renderPass          = renderer.render_pass,
-        .subpass             = SimpleRendering::Passes::Scene3D,
+        .subpass             = SimpleRendering::Pass::Objects3D,
         .basePipelineHandle  = VK_NULL_HANDLE,
         .basePipelineIndex   = -1,
     };
 
     vkCreateGraphicsPipelines(ctx.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-                              &renderer.pipelines[SimpleRendering::Passes::Scene3D]);
+                              &renderer.pipelines[SimpleRendering::Pipeline::Scene3D]);
 
     for (auto& shader_stage : shader_stages)
       vkDestroyShaderModule(ctx.device, shader_stage.module, nullptr);
@@ -2160,15 +2129,15 @@ void Engine::setup_simple_rendering()
         .pMultisampleState   = &multisample_state,
         .pDepthStencilState  = &depth_stencil_state,
         .pColorBlendState    = &color_blend_state,
-        .layout              = renderer.pipeline_layouts[SimpleRendering::Passes::ColoredGeometry],
+        .layout              = renderer.pipeline_layouts[SimpleRendering::Pipeline::ColoredGeometry],
         .renderPass          = renderer.render_pass,
-        .subpass             = SimpleRendering::Passes::ColoredGeometry,
+        .subpass             = SimpleRendering::Pass::Objects3D,
         .basePipelineHandle  = VK_NULL_HANDLE,
         .basePipelineIndex   = -1,
     };
 
     vkCreateGraphicsPipelines(ctx.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-                              &renderer.pipelines[SimpleRendering::Passes::ColoredGeometry]);
+                              &renderer.pipelines[SimpleRendering::Pipeline::ColoredGeometry]);
 
     for (auto& shader_stage : shader_stages)
       vkDestroyShaderModule(ctx.device, shader_stage.module, nullptr);
@@ -2352,15 +2321,15 @@ void Engine::setup_simple_rendering()
         .pMultisampleState   = &multisample_state,
         .pDepthStencilState  = &depth_stencil_state,
         .pColorBlendState    = &color_blend_state,
-        .layout              = renderer.pipeline_layouts[SimpleRendering::Passes::ColoredGeometrySkinned],
+        .layout              = renderer.pipeline_layouts[SimpleRendering::Pipeline::ColoredGeometrySkinned],
         .renderPass          = renderer.render_pass,
-        .subpass             = SimpleRendering::Passes::ColoredGeometrySkinned,
+        .subpass             = SimpleRendering::Pass::Objects3D,
         .basePipelineHandle  = VK_NULL_HANDLE,
         .basePipelineIndex   = -1,
     };
 
     vkCreateGraphicsPipelines(ctx.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-                              &renderer.pipelines[SimpleRendering::Passes::ColoredGeometrySkinned]);
+                              &renderer.pipelines[SimpleRendering::Pipeline::ColoredGeometrySkinned]);
 
     for (auto& shader_stage : shader_stages)
       vkDestroyShaderModule(ctx.device, shader_stage.module, nullptr);
@@ -2520,15 +2489,15 @@ void Engine::setup_simple_rendering()
         .pMultisampleState   = &multisample_state,
         .pColorBlendState    = &color_blend_state,
         .pDynamicState       = &dynamic_state,
-        .layout              = renderer.pipeline_layouts[SimpleRendering::Passes::ImGui],
+        .layout              = renderer.pipeline_layouts[SimpleRendering::Pipeline::ImGui],
         .renderPass          = renderer.render_pass,
-        .subpass             = SimpleRendering::Passes::ImGui,
+        .subpass             = SimpleRendering::Pass::ImGui,
         .basePipelineHandle  = VK_NULL_HANDLE,
         .basePipelineIndex   = -1,
     };
 
     vkCreateGraphicsPipelines(ctx.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-                              &renderer.pipelines[SimpleRendering::Passes::ImGui]);
+                              &renderer.pipelines[SimpleRendering::Pipeline::ImGui]);
 
     for (auto& shader_stage : shader_stages)
       vkDestroyShaderModule(ctx.device, shader_stage.module, nullptr);
@@ -2611,18 +2580,16 @@ void Engine::submit_simple_rendering(uint32_t image_index)
     vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
   }
 
-  int              secondary_stride_offset = Engine::SimpleRendering::Passes::Count * image_index;
+  int              secondary_stride_offset = Engine::SimpleRendering::Pipeline::Count * image_index;
   VkCommandBuffer* secondary_cbs           = &simple_rendering.secondary_command_buffers[secondary_stride_offset];
 
-  vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Passes::Skybox]);
+  vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::Skybox]);
   vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-  vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Passes::Scene3D]);
+  vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::Scene3D]);
+  vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::ColoredGeometry]);
+  vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned]);
   vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-  vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Passes::ColoredGeometry]);
-  vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-  vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Passes::ColoredGeometrySkinned]);
-  vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-  vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Passes::ImGui]);
+  vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::ImGui]);
   vkCmdEndRenderPass(cmd);
   vkEndCommandBuffer(cmd);
 

@@ -938,7 +938,7 @@ void depth_first_renderable_propagate(Node* nodes, uint8_t* hierarchy_flags, con
 } // namespace
 
 void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 projection, mat4x4 view,
-                                    mat4x4 world_transform, vec3 color, Engine::SimpleRendering::Passes pass,
+                                    mat4x4 world_transform, vec3 color, int pipeline,
                                     VkDeviceSize joint_ubo_offset, vec3 camera_position) noexcept
 {
   uint8_t node_parent_hierarchy[32]  = {};
@@ -1044,7 +1044,7 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
     depth_first_renderable_propagate(scene_graph.nodes.data, node_shall_be_rendered, node_idx);
   }
 
-  if (Engine::SimpleRendering::Passes::ColoredGeometrySkinned == pass)
+  if (Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned == pipeline)
   {
     Skin& skin = scene_graph.skins[0];
 
@@ -1083,7 +1083,7 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
       int         mesh_idx = scene_graph.nodes.data[node_idx].mesh;
       const Mesh& mesh     = scene_graph.meshes.data[mesh_idx];
 
-      if (Engine::SimpleRendering::Passes::Scene3D == pass)
+      if (Engine::SimpleRendering::Pipeline::Scene3D == pipeline)
       {
         struct Ubo
         {
@@ -1101,7 +1101,7 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
 
         vkCmdBindIndexBuffer(cmd, engine.gpu_static_geometry.buffer, mesh.indices_offset, mesh.indices_type);
         vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_static_geometry.buffer, &mesh.vertices_offset);
-        vkCmdPushConstants(cmd, engine.simple_rendering.pipeline_layouts[pass],
+        vkCmdPushConstants(cmd, engine.simple_rendering.pipeline_layouts[pipeline],
                            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ubo), &ubo);
         vkCmdDrawIndexed(cmd, mesh.indices_count, 1, 0, 0, 0);
       }
@@ -1113,10 +1113,10 @@ void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 
         mat4x4 calculated_mvp = {};
         mat4x4_mul(calculated_mvp, projection_view, transforms[node_idx]);
 
-        vkCmdPushConstants(cmd, engine.simple_rendering.pipeline_layouts[pass], VK_SHADER_STAGE_VERTEX_BIT, 0,
+        vkCmdPushConstants(cmd, engine.simple_rendering.pipeline_layouts[pipeline], VK_SHADER_STAGE_VERTEX_BIT, 0,
                            sizeof(mat4x4), calculated_mvp);
 
-        vkCmdPushConstants(cmd, engine.simple_rendering.pipeline_layouts[pass], VK_SHADER_STAGE_FRAGMENT_BIT,
+        vkCmdPushConstants(cmd, engine.simple_rendering.pipeline_layouts[pipeline], VK_SHADER_STAGE_FRAGMENT_BIT,
                            sizeof(mat4x4), sizeof(vec3), color);
 
         vkCmdDrawIndexed(cmd, mesh.indices_count, 1, 0, 0, 0);

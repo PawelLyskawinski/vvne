@@ -141,19 +141,33 @@ struct Engine
     VkDescriptorSetLayout descriptor_set_layout;
     VkFramebuffer         framebuffers[SWAPCHAIN_IMAGES_COUNT];
 
-    enum Passes
+    struct Pass
     {
-      Skybox = 0,
-      Scene3D,
-      ColoredGeometry,
-      ColoredGeometrySkinned,
-      ImGui,
-      Count
+      enum
+      {
+        Skybox,
+        Objects3D,
+        ImGui,
+        Count
+      };
     };
 
-    VkPipelineLayout pipeline_layouts[Passes::Count];
-    VkPipeline       pipelines[Passes::Count];
-    VkCommandBuffer  secondary_command_buffers[SWAPCHAIN_IMAGES_COUNT * Passes::Count];
+    struct Pipeline
+    {
+      enum
+      {
+        Skybox,
+        Scene3D,
+        ColoredGeometry,
+        ColoredGeometrySkinned,
+        ImGui,
+        Count
+      };
+    };
+
+    VkPipelineLayout pipeline_layouts[Pipeline::Count];
+    VkPipeline       pipelines[Pipeline::Count];
+    VkCommandBuffer  secondary_command_buffers[SWAPCHAIN_IMAGES_COUNT * Pipeline::Count];
     VkCommandBuffer  primary_command_buffers[SWAPCHAIN_IMAGES_COUNT];
     VkFence          submition_fences[SWAPCHAIN_IMAGES_COUNT];
   } simple_rendering;

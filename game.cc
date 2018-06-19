@@ -164,9 +164,9 @@ public:
   {
   }
 
-  VkCommandBuffer select(int subpass) const
+  VkCommandBuffer select(int pipeline) const
   {
-    return collection[Engine::SimpleRendering::Passes::Count * image_index + subpass];
+    return collection[Engine::SimpleRendering::Pipeline::Count * image_index + pipeline];
   }
 
 private:
@@ -1362,8 +1362,8 @@ void Game::render(Engine& engine, float current_time_sec)
   CommandBufferStarter  command_starter(renderer.render_pass, renderer.framebuffers[image_index]);
 
   {
-    VkCommandBuffer cmd       = command_selector.select(Engine::SimpleRendering::Passes::Skybox);
-    ScopedCommand   cmd_scope = command_starter.begin(cmd, Engine::SimpleRendering::Passes::Skybox);
+    VkCommandBuffer cmd       = command_selector.select(Engine::SimpleRendering::Pipeline::Skybox);
+    ScopedCommand   cmd_scope = command_starter.begin(cmd, Engine::SimpleRendering::Pass::Skybox);
 
     struct VertPush
     {
@@ -1375,25 +1375,25 @@ void Game::render(Engine& engine, float current_time_sec)
     mat4x4_dup(vertpush.view, view);
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      renderer.pipelines[Engine::SimpleRendering::Passes::Skybox]);
+                      renderer.pipelines[Engine::SimpleRendering::Pipeline::Skybox]);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Skybox], 0, 1, &skybox_dset, 0,
+                            renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::Skybox], 0, 1, &skybox_dset, 0,
                             nullptr);
-    vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Skybox],
+    vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::Skybox],
                        VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(VertPush), &vertpush);
     box.renderRaw(engine, cmd);
   }
 
   {
-    VkCommandBuffer cmd       = command_selector.select(Engine::SimpleRendering::Passes::Scene3D);
-    ScopedCommand   cmd_scope = command_starter.begin(cmd, Engine::SimpleRendering::Scene3D);
+    VkCommandBuffer cmd       = command_selector.select(Engine::SimpleRendering::Pipeline::Scene3D);
+    ScopedCommand   cmd_scope = command_starter.begin(cmd, Engine::SimpleRendering::Pass::Objects3D);
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      renderer.pipelines[Engine::SimpleRendering::Passes::Scene3D]);
+                      renderer.pipelines[Engine::SimpleRendering::Pipeline::Scene3D]);
 
     {
       vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Scene3D], 0, 1, &helmet_dset,
+                              renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 0, 1, &helmet_dset,
                               0, nullptr);
 
       Quaternion orientation;
@@ -1418,12 +1418,12 @@ void Game::render(Engine& engine, float current_time_sec)
       vec3 color = {0.0f, 0.0f, 0.0f};
 
       helmet.renderColored(engine, cmd, projection, view, world_transform, color,
-                           Engine::SimpleRendering::Passes::Scene3D, 0, camera_position);
+                           Engine::SimpleRendering::Pipeline::Scene3D, 0, camera_position);
     }
 
     {
       vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Scene3D], 0, 1, &robot_dset, 0,
+                              renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 0, 1, &robot_dset, 0,
                               nullptr);
 
       Quaternion orientation;
@@ -1462,18 +1462,18 @@ void Game::render(Engine& engine, float current_time_sec)
       mat4x4_mul(world_transform, tmp, scale_matrix);
 
       robot.renderColored(engine, cmd, projection, view, world_transform, color,
-                          Engine::SimpleRendering::Passes::Scene3D, 0, camera_position);
+                          Engine::SimpleRendering::Pipeline::Scene3D, 0, camera_position);
     }
   }
 
   {
-    VkCommandBuffer cmd       = command_selector.select(Engine::SimpleRendering::Passes::ColoredGeometry);
-    ScopedCommand   cmd_scope = command_starter.begin(cmd, Engine::SimpleRendering::Passes::ColoredGeometry);
+    VkCommandBuffer cmd       = command_selector.select(Engine::SimpleRendering::Pipeline::ColoredGeometry);
+    ScopedCommand   cmd_scope = command_starter.begin(cmd, Engine::SimpleRendering::Pass::Objects3D);
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      renderer.pipelines[Engine::SimpleRendering::Passes::ColoredGeometry]);
+                      renderer.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometry]);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometry], 0, 1,
+                            renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometry], 0, 1,
                             &helmet_dset, 0, nullptr);
 
     for (int i = 0; i < light_sources_count; ++i)
@@ -1501,7 +1501,7 @@ void Game::render(Engine& engine, float current_time_sec)
       mat4x4_mul(world_transform, tmp, scale_matrix);
 
       box.renderColored(engine, cmd, projection, view, world_transform, light_source_colors[i],
-                        Engine::SimpleRendering::Passes::ColoredGeometry, 0, camera_position);
+                        Engine::SimpleRendering::Pipeline::ColoredGeometry, 0, camera_position);
     }
 
     {
@@ -1520,7 +1520,7 @@ void Game::render(Engine& engine, float current_time_sec)
 
       vec3 color = {0.0, 1.0, 0.0};
       animatedBox.renderColored(engine, cmd, projection, view, world_transform, color,
-                                Engine::SimpleRendering::Passes::ColoredGeometry, 0, camera_position);
+                                Engine::SimpleRendering::Pipeline::ColoredGeometry, 0, camera_position);
     }
 
     {
@@ -1551,11 +1551,11 @@ void Game::render(Engine& engine, float current_time_sec)
 
       vec3 color = {0.5, 0.5, 1.0};
       vkCmdPushConstants(cmd,
-                         engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometry],
+                         engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometry],
                          VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(vec3), color);
 
       vkCmdPushConstants(cmd,
-                         engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometry],
+                         engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometry],
                          VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
 
       vkCmdDrawIndexed(cmd, static_cast<uint32_t>(vr_level_index_count), 1, 0, 0, 0);
@@ -1563,15 +1563,15 @@ void Game::render(Engine& engine, float current_time_sec)
   }
 
   {
-    VkCommandBuffer cmd       = command_selector.select(Engine::SimpleRendering::Passes::ColoredGeometrySkinned);
-    ScopedCommand   cmd_scope = command_starter.begin(cmd, Engine::SimpleRendering::Passes::ColoredGeometrySkinned);
+    VkCommandBuffer cmd       = command_selector.select(Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned);
+    ScopedCommand   cmd_scope = command_starter.begin(cmd, Engine::SimpleRendering::Pass::Objects3D);
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      renderer.pipelines[Engine::SimpleRendering::Passes::ColoredGeometrySkinned]);
+                      renderer.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned]);
 
     {
       vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometrySkinned], 0, 1,
+                              renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned], 0, 1,
                               &rig_dsets[image_index], 0, nullptr);
 
       Quaternion orientation;
@@ -1595,13 +1595,13 @@ void Game::render(Engine& engine, float current_time_sec)
 
       vec3 color = {0.0, 0.0, 1.0};
       riggedSimple.renderColored(engine, cmd, projection, view, world_transform, color,
-                                 Engine::SimpleRendering::Passes::ColoredGeometrySkinned,
+                                 Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned,
                                  rig_skinning_matrices_ubo_offsets[image_index], camera_position);
     }
 
     {
       vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometrySkinned], 0, 1,
+                              renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned], 0, 1,
                               &monster_dsets[image_index], 0, nullptr);
 
       Quaternion orientation;
@@ -1626,7 +1626,7 @@ void Game::render(Engine& engine, float current_time_sec)
 
       vec3 color = {1.0, 1.0, 1.0};
       monster.renderColored(engine, cmd, projection, view, world_transform, color,
-                            Engine::SimpleRendering::Passes::ColoredGeometrySkinned,
+                            Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned,
                             monster_skinning_matrices_ubo_offsets[image_index], camera_position);
     }
   }
@@ -1670,13 +1670,13 @@ void Game::render(Engine& engine, float current_time_sec)
       }
     }
 
-    VkCommandBuffer command_buffer = command_selector.select(Engine::SimpleRendering::Passes::ImGui);
-    ScopedCommand   cmd_scope      = command_starter.begin(command_buffer, Engine::SimpleRendering::Passes::ImGui);
+    VkCommandBuffer command_buffer = command_selector.select(Engine::SimpleRendering::Pipeline::ImGui);
+    ScopedCommand   cmd_scope      = command_starter.begin(command_buffer, Engine::SimpleRendering::Pass::ImGui);
 
     if (vertex_size and index_size)
     {
       vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        renderer.pipelines[Engine::SimpleRendering::Passes::ImGui]);
+                        renderer.pipelines[Engine::SimpleRendering::Pipeline::ImGui]);
 
       vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, renderer.pipeline_layouts[1], 0, 1,
                               &imgui_dset, 0, nullptr);
@@ -1700,9 +1700,9 @@ void Game::render(Engine& engine, float current_time_sec)
       float scale[]     = {2.0f / io.DisplaySize.x, 2.0f / io.DisplaySize.y};
       float translate[] = {-1.0f, -1.0f};
 
-      vkCmdPushConstants(command_buffer, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ImGui],
+      vkCmdPushConstants(command_buffer, renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::ImGui],
                          VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float) * 2, scale);
-      vkCmdPushConstants(command_buffer, renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ImGui],
+      vkCmdPushConstants(command_buffer, renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::ImGui],
                          VK_SHADER_STAGE_VERTEX_BIT, sizeof(float) * 2, sizeof(float) * 2, translate);
 
       {
