@@ -64,9 +64,10 @@ class Node
 public:
   ArrayView<int> children;
 
-  quat rotation;
-  vec3 translation;
-  vec3 scale;
+  quat   rotation;
+  vec3   translation;
+  vec3   scale;
+  mat4x4 matrix;
 
   int mesh;
   int skin;
@@ -77,6 +78,7 @@ public:
     Rotation,
     Translation,
     Scale,
+    Matrix,
     Mesh,
     Skin
   };
@@ -148,14 +150,6 @@ struct SceneGraph
 
 namespace gltf {
 
-struct MVP
-{
-  float projection[4][4];
-  float view[4][4];
-  float model[4][4];
-  float camera_position[3];
-};
-
 struct RenderableModel
 {
   SceneGraph scene_graph;
@@ -168,10 +162,9 @@ struct RenderableModel
   uint8_t animation_properties[32];
 
   void loadGLB(Engine& engine, const char* path) noexcept;
-  void render(Engine& engine, VkCommandBuffer cmd, MVP& mvp) const noexcept;
-  void renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 projection, mat4x4 view, vec3 global_position,
-                     quat global_orientation, vec3 model_scale, vec3 color, Engine::SimpleRendering::Passes pass,
-                     VkDeviceSize joint_ubo_offset) noexcept;
+  void renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 projection, mat4x4 view, mat4x4 world_transform,
+                     vec3 color, Engine::SimpleRendering::Passes pass, VkDeviceSize joint_ubo_offset,
+                     vec3 camera_position) noexcept;
   void renderRaw(Engine& engine, VkCommandBuffer cmd) const noexcept;
 };
 

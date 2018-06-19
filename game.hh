@@ -29,13 +29,14 @@ struct Game
   VkDescriptorSet rig_dsets[SWAPCHAIN_IMAGES_COUNT]; // ubo per swap
   VkDescriptorSet fig_dsets[SWAPCHAIN_IMAGES_COUNT]; // ubo per swap
   VkDescriptorSet monster_dsets[SWAPCHAIN_IMAGES_COUNT];
+  VkDescriptorSet robot_dset;
 
   gltf::RenderableModel helmet;
   gltf::RenderableModel box;
   gltf::RenderableModel animatedBox;
   gltf::RenderableModel riggedSimple;
-  gltf::RenderableModel riggedFigure;
   gltf::RenderableModel monster;
+  gltf::RenderableModel robot;
 
   float robot_position[3];
   float rigged_position[3];

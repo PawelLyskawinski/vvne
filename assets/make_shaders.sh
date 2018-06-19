@@ -1,7 +1,7 @@
 #!/bin/bash
 
 function compile {
-  ~/Pobrane/VulkanSDK/1.1.70.1/x86_64/bin/glslangValidator -V $1 -o ../bin/$1.spv
+  glslangValidator -V $1 -o ../bin/$1.spv
 }
 
 compile imgui.frag

@@ -361,18 +361,30 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
   // @todo: add reading saved data from file
   Rectangle rooms[] = {
       {
-          .size     = {1.0f, 1.0f},
-          .position = {0.0f, 0.0f},
+          .size     = {0.4f, 1.0f},
+          .position = {0.0f, 0.5f},
       },
   };
 
-  Building buildings[] = {
-      {
-          .size     = {1.0f, 1.0f},
-          .position = {0.0f, 0.0f},
-          .height   = 3.0f,
-      },
-  };
+  float    building_dim  = 0.1f;
+  Building buildings[20] = {};
+
+  for (int i = 0; i < 10; ++i)
+  {
+    vec2 size = {building_dim, building_dim};
+    SDL_memcpy(buildings[i].size, size, sizeof(vec2));
+    SDL_memcpy(buildings[i + 10].size, size, sizeof(vec2));
+
+    vec2 left  = {0.2f + (building_dim / 2.0f), i * building_dim + (building_dim / 2.0f)};
+    vec2 right = {-0.2f - (building_dim / 2.0f), i * building_dim + (building_dim / 2.0f)};
+
+    SDL_memcpy(buildings[i].position, left, sizeof(vec2));
+    SDL_memcpy(buildings[i + 10].position, right, sizeof(vec2));
+
+    float height             = 0.08f;
+    buildings[i].height      = (SDL_sinf(i * 0.5f) * height) + height;
+    buildings[i + 10].height = (SDL_cosf(i * 0.5f) * height) + height;
+  }
 
   int vertex_count = (SDL_arraysize(rooms) * 4) +     // rooms
                      (SDL_arraysize(buildings) * 20); // buildings
@@ -401,10 +413,10 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
 
     for (const Rectangle& r : rooms)
     {
-      float left   = r.position[0] - r.size[0] / 2.0f;
-      float right  = r.position[0] + r.size[0] / 2.0f;
-      float top    = r.position[1] + r.size[1] / 2.0f;
-      float bottom = r.position[1] - r.size[1] / 2.0f;
+      float left   = r.position[0] - (r.size[0] / 2.0f);
+      float right  = r.position[0] + (r.size[0] / 2.0f);
+      float top    = r.position[1] + (r.size[1] / 2.0f);
+      float bottom = r.position[1] - (r.size[1] / 2.0f);
 
       vec3 positions[] = {
           {left, 0.0f, bottom},
@@ -416,8 +428,8 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
       for (unsigned i = 0; i < SDL_arraysize(positions); ++i)
       {
         SDL_memcpy(current[i].position, positions[i], sizeof(vec3));
-        SDL_memset(current->normal, 0, sizeof(vec3));
-        SDL_memset(current->texcoord, 0, sizeof(vec3));
+        SDL_memset(current[i].normal, 0, sizeof(vec3));
+        SDL_memset(current[i].texcoord, 0, sizeof(vec3));
       }
 
       current = &current[SDL_arraysize(positions)];
@@ -425,11 +437,11 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
 
     for (const Building& b : buildings)
     {
-      float left   = b.position[0] - b.size[0] / 2.0f;
-      float right  = b.position[0] + b.size[0] / 2.0f;
-      float top    = b.position[1] + b.size[1] / 2.0f;
-      float bottom = b.position[1] - b.size[1] / 2.0f;
-      float height = b.height;
+      float left   = b.position[0] - (b.size[0] / 2.0f);
+      float right  = b.position[0] + (b.size[0] / 2.0f);
+      float top    = b.position[1] + (b.size[1] / 2.0f);
+      float bottom = b.position[1] - (b.size[1] / 2.0f);
+      float height = -b.height;
 
       vec3 vertices[] = {
           // rooftop
@@ -462,8 +474,8 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
       for (unsigned i = 0; i < SDL_arraysize(vertices); ++i)
       {
         SDL_memcpy(current[i].position, vertices[i], sizeof(vec3));
-        SDL_memset(current->normal, 0, sizeof(vec3));
-        SDL_memset(current->texcoord, 0, sizeof(vec3));
+        SDL_memset(current[i].normal, 0, sizeof(vec3));
+        SDL_memset(current[i].texcoord, 0, sizeof(vec3));
       }
 
       current = &current[SDL_arraysize(vertices)];
@@ -483,7 +495,27 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
       for (uint16_t& idx : rectangle_indices)
         idx += 4 * i;
 
-      SDL_memcpy(&dst_indices[stride * i], rectangle_indices, stride);
+      uint16_t* dst_rectangle_indices = &dst_indices[stride * i];
+      SDL_memcpy(dst_rectangle_indices, rectangle_indices, sizeof(uint16_t) * stride);
+    }
+
+    for (uint16_t i = 0; i < SDL_arraysize(buildings); ++i)
+    {
+      const uint16_t rectangle_indices[]                       = {0, 1, 2, 2, 3, 0};
+      const size_t   total_indices_per_building                = 5 * SDL_arraysize(rectangle_indices);
+      uint16_t       total_indices[total_indices_per_building] = {};
+
+      for (unsigned j = 0; j < SDL_arraysize(total_indices); ++j)
+      {
+        const uint16_t rectangle_index   = rectangle_indices[j % SDL_arraysize(rectangle_indices)];
+        const uint16_t index_offset      = 4 * (j / SDL_arraysize(rectangle_indices));
+        const uint16_t building_offset   = i * uint16_t(20);
+        const uint16_t offset_from_rooms = 4 * SDL_arraysize(rooms);
+        total_indices[j]                 = rectangle_index + index_offset + building_offset + offset_from_rooms;
+      }
+
+      uint16_t* dst_building_indices = &dst_indices[(SDL_arraysize(rooms) * 6) + (SDL_arraysize(total_indices) * i)];
+      SDL_memcpy(dst_building_indices, total_indices, sizeof(uint16_t) * SDL_arraysize(total_indices));
     }
   }
 
@@ -677,8 +709,8 @@ void Game::startup(Engine& engine)
   box.loadGLB(engine, "../assets/Box.glb");
   animatedBox.loadGLB(engine, "../assets/BoxAnimated.glb");
   riggedSimple.loadGLB(engine, "../assets/RiggedSimple.glb");
-  riggedFigure.loadGLB(engine, "../assets/RiggedFigure.glb");
   monster.loadGLB(engine, "../assets/Monster.glb");
+  robot.loadGLB(engine, "../assets/robot.glb");
 
   {
     int cubemap_size[2]     = {512, 512};
@@ -721,6 +753,7 @@ void Game::startup(Engine& engine)
     vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &skybox_dset);
     vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &helmet_dset);
     vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &imgui_dset);
+    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &robot_dset);
 
     for (int i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
     {
@@ -825,6 +858,60 @@ void Game::startup(Engine& engine)
   }
 
   {
+    const Material& material = robot.scene_graph.materials.data[0];
+
+    int ts[8] = {};
+
+    ts[0] = material.albedo_texture_idx;
+    ts[1] = material.metal_roughness_texture_idx;
+    ts[2] = material.emissive_texture_idx;
+    ts[3] = material.AO_texture_idx;
+    ts[4] = material.normal_texture_idx;
+    ts[5] = irradiance_cubemap_idx;
+    ts[6] = prefiltered_cubemap_idx;
+    ts[7] = brdf_lookup_idx;
+
+    VkDescriptorImageInfo robot_images[8] = {};
+
+    for (unsigned i = 0; i < SDL_arraysize(robot_images); ++i)
+    {
+      robot_images[i].sampler     = engine.generic_handles.texture_sampler;
+      robot_images[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+      robot_images[i].imageView   = engine.images.image_views[ts[i]];
+    }
+
+    VkWriteDescriptorSet robot_write = {
+        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet          = robot_dset,
+        .dstBinding      = 0,
+        .dstArrayElement = 0,
+        .descriptorCount = SDL_arraysize(robot_images),
+        .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .pImageInfo      = robot_images,
+    };
+
+    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &robot_write, 0, nullptr);
+
+    VkDescriptorBufferInfo robot_ubo = {
+        .buffer = engine.ubo_host_visible.buffer,
+        .offset = lights_ubo_offset,
+        .range  = light_sources_ubo_size,
+    };
+
+    VkWriteDescriptorSet robot_ubo_write = {
+        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet          = robot_dset,
+        .dstBinding      = 8,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .pBufferInfo     = &robot_ubo,
+    };
+
+    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &robot_ubo_write, 0, nullptr);
+  }
+
+  {
     VkDescriptorBufferInfo ubo_infos[SWAPCHAIN_IMAGES_COUNT] = {
         {
             .buffer = engine.ubo_host_visible.buffer,
@@ -885,7 +972,7 @@ void Game::startup(Engine& engine)
   }
 
   vec3_set(helmet_translation, -1.0f, 1.0f, 3.0f);
-  vec3_set(robot_position, 2.0f, 2.5f, 3.0f);
+  vec3_set(robot_position, 2.0f, -1.0f, 3.0f);
   vec3_set(rigged_position, 2.0f, 0.0f, 3.0f);
 
   {
@@ -1162,10 +1249,6 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
     restart_animation(riggedSimple, current_time_sec);
   print_animation_stat(riggedSimple, current_time_sec);
 
-  if (ImGui::Button("restart figure animation"))
-    restart_animation(riggedFigure, current_time_sec);
-  print_animation_stat(riggedFigure, current_time_sec);
-
   if (ImGui::Button("monster animation"))
     restart_animation(monster, current_time_sec);
   print_animation_stat(monster, current_time_sec);
@@ -1182,7 +1265,6 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
 
   animate_model(animatedBox, current_time_sec);
   animate_model(riggedSimple, current_time_sec);
-  animate_model(riggedFigure, current_time_sec);
   animate_model(monster, current_time_sec);
 
   for (int i = 0; i < 3; ++i)
@@ -1240,14 +1322,6 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
     player_acceleration[2] += SDL_cosf(camera_angle + (float)M_PI) * acceleration;
   }
 
-  ImGui::Text("acceleration: %.2f %.2f %.2f", player_acceleration[0], player_acceleration[1], player_acceleration[2]);
-  ImGui::Text("velocity:     %.2f %.2f %.2f", player_velocity[0], player_velocity[1], player_velocity[2]);
-
-  ImGui::Text("WASD - movement");
-  ImGui::Text("F1 - enable first person view");
-  ImGui::Text("F2 - disable first person view");
-  ImGui::Text("ESC - exit");
-
   float camera_distance = 2.5f;
   float x_camera_offset = SDL_cosf(camera_angle) * camera_distance;
   float y_camera_offset = SDL_sinf(camera_updown_angle) * camera_distance;
@@ -1260,6 +1334,17 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
   vec3 center = {player_position[0], 0.0f, player_position[2]};
   vec3 up     = {0.0f, 1.0f, 0.0f};
   mat4x4_look_at(view, camera_position, center, up);
+
+  ImGui::Text("position:     %.2f %.2f %.2f", player_position[0], player_position[1], player_position[2]);
+  ImGui::Text("camera:       %.2f %.2f %.2f", camera_position[0], camera_position[1], camera_position[2]);
+  ImGui::Text("acceleration: %.2f %.2f %.2f", player_acceleration[0], player_acceleration[1], player_acceleration[2]);
+  ImGui::Text("velocity:     %.2f %.2f %.2f", player_velocity[0], player_velocity[1], player_velocity[2]);
+  ImGui::Text("time:         %.4f", current_time_sec);
+
+  ImGui::Text("WASD - movement");
+  ImGui::Text("F1 - enable first person view");
+  ImGui::Text("F2 - disable first person view");
+  ImGui::Text("ESC - exit");
 }
 
 void Game::render(Engine& engine, float current_time_sec)
@@ -1305,24 +1390,80 @@ void Game::render(Engine& engine, float current_time_sec)
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       renderer.pipelines[Engine::SimpleRendering::Passes::Scene3D]);
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Scene3D], 0, 1, &helmet_dset, 0,
-                            nullptr);
 
-    gltf::MVP push_const{};
+    {
+      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Scene3D], 0, 1, &helmet_dset,
+                              0, nullptr);
 
-    mat4x4_dup(push_const.projection, projection);
-    mat4x4_dup(push_const.view, view);
+      Quaternion orientation;
+      orientation.rotateX(to_rad(180.0));
 
-    for (int i = 0; i < 3; ++i)
-      push_const.camera_position[i] = camera_position[i];
+      mat4x4 translation_matrix = {};
+      mat4x4_translate(translation_matrix, vr_level_goal[0], 0.0f, vr_level_goal[1]);
 
-    mat4x4_identity(push_const.model);
-    mat4x4_translate(push_const.model, vr_level_goal[0], 0.0f, vr_level_goal[1]);
-    // mat4x4_rotate_Y(push_const.model, push_const.model, SDL_sinf(current_time_sec * 0.3f));
-    mat4x4_rotate_X(push_const.model, push_const.model, -to_rad(90.0));
-    mat4x4_scale_aniso(push_const.model, push_const.model, 1.6f, 1.6f, 1.6f);
-    helmet.render(engine, cmd, push_const);
+      mat4x4 rotation_matrix = {};
+      mat4x4_from_quat(rotation_matrix, orientation.data());
+
+      mat4x4 scale_matrix = {};
+      mat4x4_identity(scale_matrix);
+      mat4x4_scale_aniso(scale_matrix, scale_matrix, 1.6f, 1.6f, 1.6f);
+
+      mat4x4 tmp = {};
+      mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+
+      mat4x4 world_transform = {};
+      mat4x4_mul(world_transform, tmp, scale_matrix);
+
+      vec3 color = {0.0f, 0.0f, 0.0f};
+
+      helmet.renderColored(engine, cmd, projection, view, world_transform, color,
+                           Engine::SimpleRendering::Passes::Scene3D, 0, camera_position);
+    }
+
+    {
+      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              renderer.pipeline_layouts[Engine::SimpleRendering::Passes::Scene3D], 0, 1, &robot_dset, 0,
+                              nullptr);
+
+      Quaternion orientation;
+
+      {
+        Quaternion standing_pose;
+        standing_pose.rotateX(to_rad(180.0));
+
+        Quaternion rotate_back;
+        rotate_back.rotateY(player_position[0] < camera_position[0] ? to_rad(90.0f) : -to_rad(90.0f));
+
+        float      x_delta = player_position[0] - camera_position[0];
+        float      z_delta = player_position[2] - camera_position[2];
+        Quaternion camera;
+        camera.rotateY(static_cast<float>(SDL_atan(z_delta / x_delta)));
+
+        orientation = standing_pose * rotate_back * camera;
+      }
+
+      vec3 color = {0.0f, 0.0f, 0.0f};
+
+      mat4x4 translation_matrix = {};
+      mat4x4_translate(translation_matrix, player_position[0], player_position[1] - 1.0f, player_position[2]);
+
+      mat4x4 rotation_matrix = {};
+      mat4x4_from_quat(rotation_matrix, orientation.data());
+
+      mat4x4 scale_matrix = {};
+      mat4x4_identity(scale_matrix);
+      mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.5f, 0.5f, 0.5f);
+
+      mat4x4 tmp = {};
+      mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+
+      mat4x4 world_transform = {};
+      mat4x4_mul(world_transform, tmp, scale_matrix);
+
+      robot.renderColored(engine, cmd, projection, view, world_transform, color,
+                          Engine::SimpleRendering::Passes::Scene3D, 0, camera_position);
+    }
   }
 
   {
@@ -1335,21 +1476,32 @@ void Game::render(Engine& engine, float current_time_sec)
                             renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometry], 0, 1,
                             &helmet_dset, 0, nullptr);
 
-    gltf::MVP push_const{};
-
-    mat4x4_dup(push_const.projection, projection);
-    mat4x4_dup(push_const.view, view);
-
     for (int i = 0; i < light_sources_count; ++i)
     {
       Quaternion orientation = Quaternion().rotateZ(to_rad(100.0f * current_time_sec)) *
                                Quaternion().rotateY(to_rad(280.0f * current_time_sec)) *
                                Quaternion().rotateX(to_rad(60.0f * current_time_sec));
 
-      vec3 scale = {0.05f, 0.05f, 0.05f};
-      box.renderColored(engine, cmd, push_const.projection, push_const.view, light_source_positions[i],
-                        orientation.data(), scale, light_source_colors[i],
-                        Engine::SimpleRendering::Passes::ColoredGeometry, 0);
+      float* position = light_source_positions[i];
+
+      mat4x4 translation_matrix = {};
+      mat4x4_translate(translation_matrix, position[0], position[1], position[2]);
+
+      mat4x4 rotation_matrix = {};
+      mat4x4_from_quat(rotation_matrix, orientation.data());
+
+      mat4x4 scale_matrix = {};
+      mat4x4_identity(scale_matrix);
+      mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.05f, 0.05f, 0.05f);
+
+      mat4x4 tmp = {};
+      mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+
+      mat4x4 world_transform = {};
+      mat4x4_mul(world_transform, tmp, scale_matrix);
+
+      box.renderColored(engine, cmd, projection, view, world_transform, light_source_colors[i],
+                        Engine::SimpleRendering::Passes::ColoredGeometry, 0, camera_position);
     }
 
     {
@@ -1357,10 +1509,18 @@ void Game::render(Engine& engine, float current_time_sec)
                                Quaternion().rotateY(to_rad(140.0f * current_time_sec / 30.0f)) *
                                Quaternion().rotateX(to_rad(90.0f * current_time_sec / 20.0f));
 
-      vec3 scale = {1.0f, 1.0f, 1.0f};
+      mat4x4 translation_matrix = {};
+      mat4x4_translate(translation_matrix, robot_position[0], robot_position[1], robot_position[2]);
+
+      mat4x4 rotation_matrix = {};
+      mat4x4_from_quat(rotation_matrix, orientation.data());
+
+      mat4x4 world_transform = {};
+      mat4x4_mul(world_transform, translation_matrix, rotation_matrix);
+
       vec3 color = {0.0, 1.0, 0.0};
-      animatedBox.renderColored(engine, cmd, push_const.projection, push_const.view, robot_position, orientation.data(),
-                                scale, color, Engine::SimpleRendering::Passes::ColoredGeometry, 0);
+      animatedBox.renderColored(engine, cmd, projection, view, world_transform, color,
+                                Engine::SimpleRendering::Passes::ColoredGeometry, 0, camera_position);
     }
 
     {
@@ -1409,53 +1569,34 @@ void Game::render(Engine& engine, float current_time_sec)
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       renderer.pipelines[Engine::SimpleRendering::Passes::ColoredGeometrySkinned]);
 
-    gltf::MVP push_const{};
-    mat4x4_dup(push_const.projection, projection);
-    mat4x4_dup(push_const.view, view);
-
     {
       vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                               renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometrySkinned], 0, 1,
                               &rig_dsets[image_index], 0, nullptr);
 
       Quaternion orientation;
-      orientation.rotateX(to_rad(90.0f));
+      orientation.rotateX(to_rad(45.0f));
 
-      vec3 scale = {0.5f, 0.5f, 0.5f};
+      mat4x4 translation_matrix = {};
+      mat4x4_translate(translation_matrix, rigged_position[0], rigged_position[1], rigged_position[2]);
+
+      mat4x4 rotation_matrix = {};
+      mat4x4_from_quat(rotation_matrix, orientation.data());
+
+      mat4x4 scale_matrix = {};
+      mat4x4_identity(scale_matrix);
+      mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.5f, 0.5f, 0.5f);
+
+      mat4x4 tmp = {};
+      mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+
+      mat4x4 world_transform = {};
+      mat4x4_mul(world_transform, tmp, scale_matrix);
+
       vec3 color = {0.0, 0.0, 1.0};
-      riggedSimple.renderColored(
-          engine, cmd, push_const.projection, push_const.view, rigged_position, orientation.data(), scale, color,
-          Engine::SimpleRendering::Passes::ColoredGeometrySkinned, rig_skinning_matrices_ubo_offsets[image_index]);
-    }
-
-    {
-      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              renderer.pipeline_layouts[Engine::SimpleRendering::Passes::ColoredGeometrySkinned], 0, 1,
-                              &fig_dsets[image_index], 0, nullptr);
-
-      Quaternion orientation;
-
-      {
-        Quaternion standing_pose;
-        standing_pose.rotateX(to_rad(90.0f));
-
-        Quaternion rotate_back;
-        rotate_back.rotateZ(player_position[0] < camera_position[0] ? -to_rad(90.0f) : to_rad(90.0f));
-
-        float      x_delta = player_position[0] - camera_position[0];
-        float      z_delta = player_position[2] - camera_position[2];
-        Quaternion camera;
-        camera.rotateZ(static_cast<float>(SDL_atan(z_delta / x_delta)));
-
-        orientation = standing_pose * rotate_back * camera;
-      }
-
-      vec3 scale = {1.0f, 1.0f, 1.0f};
-      vec3 color = {1.0, 0.0, 0.0};
-
-      riggedFigure.renderColored(
-          engine, cmd, push_const.projection, push_const.view, player_position, orientation.data(), scale, color,
-          Engine::SimpleRendering::Passes::ColoredGeometrySkinned, fig_skinning_matrices_ubo_offsets[image_index]);
+      riggedSimple.renderColored(engine, cmd, projection, view, world_transform, color,
+                                 Engine::SimpleRendering::Passes::ColoredGeometrySkinned,
+                                 rig_skinning_matrices_ubo_offsets[image_index], camera_position);
     }
 
     {
@@ -1464,15 +1605,29 @@ void Game::render(Engine& engine, float current_time_sec)
                               &monster_dsets[image_index], 0, nullptr);
 
       Quaternion orientation;
-      orientation.rotateX(to_rad(90.0f));
+      orientation.rotateX(to_rad(45.0f));
 
-      vec3 scale    = {0.02f, 0.02f, 0.02f};
-      vec3 color    = {1.0, 1.0, 1.0};
-      vec3 position = {1.5f, -0.2f, 1.0f};
+      mat4x4 translation_matrix = {};
+      mat4x4_translate(translation_matrix, 2.0f, 0.5f, 0.5f);
 
-      monster.renderColored(engine, cmd, push_const.projection, push_const.view, position, orientation.data(), scale,
-                            color, Engine::SimpleRendering::Passes::ColoredGeometrySkinned,
-                            monster_skinning_matrices_ubo_offsets[image_index]);
+      mat4x4 rotation_matrix = {};
+      mat4x4_from_quat(rotation_matrix, orientation.data());
+
+      mat4x4 scale_matrix = {};
+      mat4x4_identity(scale_matrix);
+      float factor = 0.025f;
+      mat4x4_scale_aniso(scale_matrix, scale_matrix, factor, factor, factor);
+
+      mat4x4 tmp = {};
+      mat4x4_mul(tmp, rotation_matrix, translation_matrix);
+
+      mat4x4 world_transform = {};
+      mat4x4_mul(world_transform, tmp, scale_matrix);
+
+      vec3 color = {1.0, 1.0, 1.0};
+      monster.renderColored(engine, cmd, projection, view, world_transform, color,
+                            Engine::SimpleRendering::Passes::ColoredGeometrySkinned,
+                            monster_skinning_matrices_ubo_offsets[image_index], camera_position);
     }
   }
 

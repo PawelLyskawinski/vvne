@@ -12,5 +12,5 @@ layout(location = 0) out vec3 outPosition;
 void main()
 {
   gl_Position = transformation.mvp * vec4(inPosition, 1.0);
-  outPosition = inPosition;
+  outPosition = gl_Position.xyz;
 }

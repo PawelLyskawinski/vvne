@@ -34,7 +34,6 @@ add_executable(${PROJECT_NAME}
         gltf.cc
         cubemap.cc
         cubemap.hh
-        utility.hh
         thirdparty/imconfig.h
         thirdparty/imgui.cpp
         thirdparty/imgui.h
