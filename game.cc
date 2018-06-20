@@ -1311,76 +1311,87 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
   ImGui::Text("F2 - disable first person view");
   ImGui::Text("ESC - exit");
 
+  struct Light
   {
-    struct Light
+  public:
+    Light(vec4 position, vec4 color)
+        : p(position)
+        , c(color)
     {
-    public:
-      Light(vec4 position, vec4 color)
-          : p(position)
-          , c(color)
-      {
-      }
+    }
 
-      void x(float val)
-      {
-        p[0] = val;
-      }
+    Light(LightSources& ls, int idx)
+        : Light(ls.positions[idx], ls.colors[idx])
+    {
+    }
 
-      void y(float val)
-      {
-        p[1] = val;
-      }
+    void x(float val)
+    {
+      p[0] = val;
+    }
 
-      void z(float val)
-      {
-        p[2] = val;
-      }
+    void y(float val)
+    {
+      p[1] = val;
+    }
 
-      void rgb(float r, float g, float b)
-      {
-        c[0] = r;
-        c[1] = g;
-        c[2] = b;
-      }
+    void z(float val)
+    {
+      p[2] = val;
+    }
 
-    private:
-      float* p;
-      float* c;
-    };
+    void rgb(float r, float g, float b)
+    {
+      c[0] = r;
+      c[1] = g;
+      c[2] = b;
+    }
 
-    pbr_light_sources_cache.count = 5;
-    vec4* p                       = pbr_light_sources_cache.positions;
-    vec4* c                       = pbr_light_sources_cache.colors;
+  private:
+    float* p;
+    float* c;
+  };
 
-    Light l0(p[0], c[0]);
-    l0.x(SDL_sinf(current_time_sec));
-    l0.y(-0.5f);
-    l0.z(3.0f + SDL_cosf(current_time_sec));
-    l0.rgb(20.0, 0.0, 0.0);
+  pbr_light_sources_cache.count = 5;
 
-    Light l1(p[1], c[1]);
-    l1.x(0.8f * SDL_cosf(current_time_sec));
-    l1.y(-0.6f);
-    l1.z(3.0f + (0.8f * SDL_sinf(current_time_sec)));
-    l1.rgb(0.0, 20.0, 0.0);
+  {
+    Light l(pbr_light_sources_cache, 0);
+    l.x(SDL_sinf(current_time_sec));
+    l.y(-0.5f);
+    l.z(3.0f + SDL_cosf(current_time_sec));
+    l.rgb(20.0f + (5.0f * SDL_sinf(current_time_sec + 0.4f)), 0.0, 0.0);
+  }
 
-    Light l2(p[2], c[2]);
-    l2.x(0.8f * SDL_sinf(current_time_sec / 2.0f));
-    l2.y(-0.3f);
-    l2.z(3.0f + (0.8f * SDL_cosf(current_time_sec / 2.0f)));
-    l2.rgb(0.0, 0.0, 20.0);
+  {
+    Light l(pbr_light_sources_cache, 1);
+    l.x(0.8f * SDL_cosf(current_time_sec));
+    l.y(-0.6f);
+    l.z(3.0f + (0.8f * SDL_sinf(current_time_sec)));
+    l.rgb(0.0, 20.0, 0.0);
+  }
 
-    Light l3(p[3], c[3]);
-    l3.x(SDL_sinf(current_time_sec / 1.2f));
-    l3.y(-0.1f);
-    l3.z(2.5f * SDL_cosf(current_time_sec / 1.2f));
-    l3.rgb(8.0, 8.0, 8.0);
+  {
+    Light l(pbr_light_sources_cache, 2);
+    l.x(0.8f * SDL_sinf(current_time_sec / 2.0f));
+    l.y(-0.3f);
+    l.z(3.0f + (0.8f * SDL_cosf(current_time_sec / 2.0f)));
+    l.rgb(0.0, 0.0, 20.0);
+  }
 
-    Light l4(p[4], c[4]);
-    l4.x(0.0f);
-    l4.y(-1.0f);
-    l4.z(4.0f);
-    l4.rgb(10.0, 0.0, 10.0);
+  {
+    Light l(pbr_light_sources_cache, 3);
+    l.x(SDL_sinf(current_time_sec / 1.2f));
+    l.y(-0.1f);
+    l.z(2.5f * SDL_cosf(current_time_sec / 1.2f));
+    l.rgb(8.0, 8.0, 8.0);
+  }
+
+  {
+    Light l(pbr_light_sources_cache, 4);
+    l.x(0.0f);
+    l.y(-1.0f);
+    l.z(4.0f);
+    l.rgb(10.0, 0.0, 10.0);
   }
 }
 
