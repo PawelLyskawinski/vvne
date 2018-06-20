@@ -5,6 +5,13 @@
 #include "imgui.h"
 #include <SDL2/SDL_mouse.h>
 
+struct LightSources
+{
+  vec4 positions[64];
+  vec4 colors[64];
+  int  count;
+};
+
 struct Game
 {
   struct DebugGui
@@ -23,14 +30,26 @@ struct Game
     VkDeviceSize index_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
   } debug_gui;
 
-  VkDescriptorSet skybox_dset;
-  VkDescriptorSet helmet_dset;
-  VkDescriptorSet imgui_dset;
-  VkDescriptorSet rig_dsets[SWAPCHAIN_IMAGES_COUNT]; // ubo per swap
-  VkDescriptorSet fig_dsets[SWAPCHAIN_IMAGES_COUNT]; // ubo per swap
-  VkDescriptorSet monster_dsets[SWAPCHAIN_IMAGES_COUNT];
-  VkDescriptorSet robot_dset;
+  // materials
+  VkDescriptorSet pbr_ibl_environment_dset;
+  VkDescriptorSet helmet_pbr_material_dset;
+  VkDescriptorSet robot_pbr_material_dset;
+  VkDescriptorSet pbr_dynamic_lights_dset;
+  VkDescriptorSet skybox_cubemap_dset;
+  VkDescriptorSet imgui_font_atlas_dset;
+  VkDescriptorSet rig_skinning_matrices_dset;
+  VkDescriptorSet monster_skinning_matrices_dset;
 
+  // ubos
+  VkDeviceSize rig_skinning_matrices_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize fig_skinning_matrices_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize monster_skinning_matrices_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize pbr_dynamic_lights_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
+
+  // frame cache
+  LightSources pbr_light_sources_cache;
+
+  // models
   gltf::RenderableModel helmet;
   gltf::RenderableModel box;
   gltf::RenderableModel animatedBox;
@@ -38,19 +57,15 @@ struct Game
   gltf::RenderableModel monster;
   gltf::RenderableModel robot;
 
-  float robot_position[3];
-  float rigged_position[3];
-  float helmet_translation[3];
-  float monster_position[3];
-
+  // textures
   int environment_cubemap_idx;
   int irradiance_cubemap_idx;
   int prefiltered_cubemap_idx;
   int brdf_lookup_idx;
 
-  VkDeviceSize rig_skinning_matrices_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
-  VkDeviceSize fig_skinning_matrices_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
-  VkDeviceSize monster_skinning_matrices_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
+  float robot_position[3];
+  float rigged_position[3];
+  float helmet_translation[3];
 
   float update_times[50];
   float render_times[50];
@@ -66,10 +81,10 @@ struct Game
   vec2         vr_level_entry;
   vec2         vr_level_goal;
 
-  float player_position[3];
+  vec3  player_position;
   quat  player_orientation;
-  float player_velocity[3];
-  float player_acceleration[3];
+  vec3  player_velocity;
+  vec3  player_acceleration;
   float camera_angle;
   float camera_updown_angle;
 
@@ -81,12 +96,6 @@ struct Game
 
   // gameplay mechanics
   float booster_jet_fuel;
-
-  vec3 light_source_positions[10];
-  vec3 light_source_colors[10];
-  int  light_sources_count;
-
-  VkDeviceSize lights_ubo_offset;
 
   bool lmb_clicked;
   int  lmb_last_cursor_position[2];

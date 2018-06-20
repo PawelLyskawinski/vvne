@@ -1,6 +1,6 @@
 #version 450
 
-layout(binding = 0) uniform samplerCube cube_map;
+layout(set = 0, binding = 0) uniform samplerCube cube_map;
 layout(location = 0) in vec3 inLocalPos;
 layout(location = 0) out vec4 outColor;
 

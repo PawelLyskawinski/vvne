@@ -9,26 +9,27 @@ layout(push_constant) uniform Transformation
 }
 transformation;
 
-layout(set = 0, binding = 0) uniform sampler2D albedo_map;
-layout(set = 0, binding = 1) uniform sampler2D metal_roughness_map;
-layout(set = 0, binding = 2) uniform sampler2D emissive_map;
-layout(set = 0, binding = 3) uniform sampler2D ambient_occlusion_map;
-layout(set = 0, binding = 4) uniform sampler2D normal_map;
-layout(set = 0, binding = 5) uniform samplerCube irradiance_map;
-layout(set = 0, binding = 6) uniform samplerCube prefilter_map;
-layout(set = 0, binding = 7) uniform sampler2D brdf_lut;
+// texture ordering:
+// 0. albedo
+// 1. metallic roughness (r: UNUSED, b: metallness, g: roughness)
+// 2. emissive
+// 3. ambient occlusion
+// 4. normal
+layout(set = 0, binding = 0) uniform sampler2D pbr_material[5];
 
-struct LightSource
+// texture ordering:
+// 0.0 irradiance (cubemap)
+// 0.1 prefiltered (cubemap)
+// 1   BRDF lookup table (2D)
+layout(set = 1, binding = 0) uniform samplerCube pbr_ibl_material[2];
+layout(set = 1, binding = 1) uniform sampler2D brdf_lut;
+layout(set = 2, binding = 0) uniform LightSourcesUbo
 {
-  vec3 position;
-  vec3 color;
-};
-
-layout(set = 0, binding = 8) uniform UBO
-{
-  LightSource light_sources[10];
+  vec4 positions[64];
+  vec4 colors[64];
+  int  count;
 }
-ubo;
+light_sources_ubo;
 
 layout(location = 0) in vec4 inNormal;
 layout(location = 1) in vec2 inTexCoord;
@@ -39,7 +40,7 @@ const float PI = 3.14159265359;
 
 vec3 getNormalFromMap()
 {
-  vec3 tangentNormal = texture(normal_map, inTexCoord).xyz * 2.0 - 1.0;
+  vec3 tangentNormal = texture(pbr_material[4], inTexCoord).xyz * 2.0 - 1.0;
 
   vec3 Q1  = dFdx(inWorldPos);
   vec3 Q2  = dFdy(inWorldPos);
@@ -101,12 +102,12 @@ vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
 
 void main()
 {
-  vec3  albedo_color    = pow(texture(albedo_map, inTexCoord).rgb, vec3(2.2));
-  float metallic_color  = texture(metal_roughness_map, inTexCoord).b;
-  float roughness_color = texture(metal_roughness_map, inTexCoord).g;
-  vec3  emissive_color  = texture(emissive_map, inTexCoord).rgb;
-  float ao_color        = texture(ambient_occlusion_map, inTexCoord).r;
-  vec3  normal          = texture(normal_map, inTexCoord).rgb;
+  vec3  albedo_color    = pow(texture(pbr_material[0], inTexCoord).rgb, vec3(2.2));
+  float metallic_color  = texture(pbr_material[1], inTexCoord).b;
+  float roughness_color = texture(pbr_material[1], inTexCoord).g;
+  vec3  emissive_color  = texture(pbr_material[2], inTexCoord).rgb;
+  float ao_color        = texture(pbr_material[3], inTexCoord).r;
+  vec3  normal          = texture(pbr_material[4], inTexCoord).rgb;
 
   vec3 N = getNormalFromMap();
   vec3 V = normalize(transformation.camPos - inWorldPos);
@@ -118,13 +119,13 @@ void main()
 
   // reflectance equation
   vec3 Lo = vec3(0.0);
-  for (int i = 0; i < 4; ++i)
+  for (int i = 0; i < light_sources_ubo.count; ++i)
   {
     // vec3 lightPosition = vec3(4.5, 5.0, 22.0);
     // vec3 lightColor    = vec3(100.0, 0.0, 0.0);
 
-    vec3 lightPosition = ubo.light_sources[i].position;
-    vec3 lightColor    = ubo.light_sources[i].color;
+    vec3 lightPosition = light_sources_ubo.positions[i].xyz;
+    vec3 lightColor    = light_sources_ubo.colors[i].xyz;
 
     // calculate per-light radiance
     vec3  L           = normalize(lightPosition - inWorldPos);
@@ -165,33 +166,21 @@ void main()
   vec3 kS = F;
   vec3 kD = 1.0 - kS;
   kD *= 1.0 - metallic_color;
-  vec3        irradiance         = texture(irradiance_map, N).rgb;
+  vec3        irradiance         = texture(pbr_ibl_material[0], N).rgb;
   vec3        diffuse            = irradiance * albedo_color;
   vec3        R                  = reflect(-V, N);
   const float MAX_REFLECTION_LOD = 4.0;
-  vec3        prefilteredColor   = textureLod(prefilter_map, R, roughness_color * MAX_REFLECTION_LOD).rgb;
+  vec3        prefilteredColor   = textureLod(pbr_ibl_material[1], R, roughness_color * MAX_REFLECTION_LOD).rgb;
   vec2        envBRDF            = texture(brdf_lut, vec2(max(dot(N, V), 0.0), roughness_color)).rg;
   vec3        specular           = prefilteredColor * (F * envBRDF.x + envBRDF.y);
   vec3        ambient            = (kD * diffuse + specular) * ao_color;
-
-  // ---------------------- old working code
-  // vec3 kS = fresnelSchlickRoughness(max(dot(N, V), 0.0), F0, roughness_color);
-  // vec3 kD = 1.0 - kS;
-  // kD *= 1.0 - metallic_color;
-  // vec3 irradiance = texture(irradiance_map, N).rgb;
-  // vec3 diffuse    = irradiance * albedo_color;
-  // vec3 ambient    = (kD * diffuse) * ao_color;
-  vec3 color = ambient + Lo;
-  // ---------------------- old working code
+  vec3        color              = ambient + Lo;
 
   // HDR tonemapping
   color = color / (color + vec3(1.0));
-  // gamma correct
+  // gamma correction
   color = pow(color, vec3(1.0 / 2.2));
   color += emissive_color;
 
   outColor = vec4(color, 1.0);
-
-  // BACKUP
-  // outColor = vec4(vec3(ao_color) * texture(albedo, fragTexCoord).rgb, 1.0);
 }

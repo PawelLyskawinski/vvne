@@ -137,9 +137,15 @@ struct Engine
 
   struct SimpleRendering
   {
-    VkRenderPass          render_pass;
-    VkDescriptorSetLayout descriptor_set_layout;
-    VkFramebuffer         framebuffers[SWAPCHAIN_IMAGES_COUNT];
+    VkRenderPass render_pass;
+
+    VkDescriptorSetLayout pbr_metallic_workflow_material_descriptor_set_layout;
+    VkDescriptorSetLayout pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout;
+    VkDescriptorSetLayout pbr_dynamic_lights_descriptor_set_layout;
+    VkDescriptorSetLayout single_texture_in_frag_descriptor_set_layout;
+    VkDescriptorSetLayout skinning_matrices_descriptor_set_layout;
+
+    VkFramebuffer framebuffers[SWAPCHAIN_IMAGES_COUNT];
 
     struct Pass
     {

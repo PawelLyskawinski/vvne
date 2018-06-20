@@ -72,22 +72,32 @@ void Engine::startup()
         .apiVersion         = VK_API_VERSION_1_0,
     };
 
-    const char* instance_layers[]     = {"VK_LAYER_LUNARG_standard_validation"};
-    const char* instance_extensions[] = {VK_KHR_SURFACE_EXTENSION_NAME,
-#ifdef __linux__
-                                         "VK_KHR_xlib_surface",
-#else
-                                         VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+#ifdef ENABLE_VK_VALIDATION
+    const char* instance_layers[] = {"VK_LAYER_LUNARG_standard_validation"};
 #endif
-                                         VK_EXT_DEBUG_REPORT_EXTENSION_NAME};
+
+    const char* instance_extensions[] = {
+        VK_KHR_SURFACE_EXTENSION_NAME,
+#ifdef __linux__
+        "VK_KHR_xlib_surface",
+#else
+        VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+#endif
+
+#ifdef ENABLE_VK_VALIDATION
+        VK_EXT_DEBUG_REPORT_EXTENSION_NAME,
+#endif
+    };
 
     VkInstanceCreateInfo ci = {
-        .sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-        .pNext                   = nullptr,
-        .flags                   = 0,
-        .pApplicationInfo        = &ai,
-        .enabledLayerCount       = SDL_arraysize(instance_layers),
-        .ppEnabledLayerNames     = instance_layers,
+        .sType            = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+        .pNext            = nullptr,
+        .flags            = 0,
+        .pApplicationInfo = &ai,
+#ifdef ENABLE_VK_VALIDATION
+        .enabledLayerCount   = SDL_arraysize(instance_layers),
+        .ppEnabledLayerNames = instance_layers,
+#endif
         .enabledExtensionCount   = SDL_arraysize(instance_extensions),
         .ppEnabledExtensionNames = instance_extensions,
     };
@@ -95,6 +105,7 @@ void Engine::startup()
     vkCreateInstance(&ci, nullptr, &ctx.instance);
   }
 
+#ifdef ENABLE_VK_VALIDATION
   {
     VkDebugReportCallbackCreateInfoEXT ci = {
         .sType       = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT,
@@ -107,6 +118,7 @@ void Engine::startup()
         vkGetInstanceProcAddr(generic_handles.instance, "vkCreateDebugReportCallbackEXT"));
     fcn(generic_handles.instance, &ci, nullptr, &generic_handles.debug_callback);
   }
+#endif
 
   ctx.window = SDL_CreateWindow("minimalistic VK engine", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                 INITIAL_WINDOW_WIDTH, INITIAL_WINDOW_HEIGHT, SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
@@ -153,7 +165,10 @@ void Engine::startup()
   }
 
   {
-    const char* device_layers[]     = {"VK_LAYER_LUNARG_standard_validation"};
+#ifdef ENABLE_VK_VALIDATION
+    const char* device_layers[] = {"VK_LAYER_LUNARG_standard_validation"};
+#endif
+
     const char* device_extensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
     float       queue_priorities[]  = {1.0f};
 
@@ -168,11 +183,13 @@ void Engine::startup()
     device_features.sampleRateShading        = VK_TRUE;
 
     VkDeviceCreateInfo ci = {
-        .sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .queueCreateInfoCount    = 1,
-        .pQueueCreateInfos       = &graphics,
-        .enabledLayerCount       = SDL_arraysize(device_layers),
-        .ppEnabledLayerNames     = device_layers,
+        .sType                = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .queueCreateInfoCount = 1,
+        .pQueueCreateInfos    = &graphics,
+#ifdef ENABLE_VK_VALIDATION
+        .enabledLayerCount   = SDL_arraysize(device_layers),
+        .ppEnabledLayerNames = device_layers,
+#endif
         .enabledExtensionCount   = SDL_arraysize(device_extensions),
         .ppEnabledExtensionNames = device_extensions,
         .pEnabledFeatures        = &device_features,
@@ -287,8 +304,8 @@ void Engine::startup()
   // Pool sizes below are just an suggestions. They have to be adjusted for the final release builds
   {
     VkDescriptorPoolSize pool_sizes[] = {
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 60 * SWAPCHAIN_IMAGES_COUNT},
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 60 * SWAPCHAIN_IMAGES_COUNT},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10 * SWAPCHAIN_IMAGES_COUNT},
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 20 * SWAPCHAIN_IMAGES_COUNT},
     };
 
     VkDescriptorPoolCreateInfo ci = {
@@ -712,7 +729,19 @@ void Engine::teardown()
   vkDeviceWaitIdle(ctx.device);
 
   vkDestroyRenderPass(ctx.device, simple_rendering.render_pass, nullptr);
-  vkDestroyDescriptorSetLayout(ctx.device, simple_rendering.descriptor_set_layout, nullptr);
+
+  {
+    VkDescriptorSetLayout layouts[] = {
+        simple_rendering.pbr_metallic_workflow_material_descriptor_set_layout,
+        simple_rendering.pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout,
+        simple_rendering.pbr_dynamic_lights_descriptor_set_layout,
+        simple_rendering.single_texture_in_frag_descriptor_set_layout,
+        simple_rendering.skinning_matrices_descriptor_set_layout,
+    };
+
+    for (VkDescriptorSetLayout layout : layouts)
+      vkDestroyDescriptorSetLayout(ctx.device, layout, nullptr);
+  }
 
   for (VkFramebuffer& framebuffer : simple_rendering.framebuffers)
     vkDestroyFramebuffer(ctx.device, framebuffer, nullptr);
@@ -736,16 +765,21 @@ void Engine::teardown()
     vkDestroyImageView(ctx.device, images.image_views[i], nullptr);
   }
 
-  vkFreeMemory(ctx.device, ubo_host_visible.memory, nullptr);
-  vkFreeMemory(ctx.device, images.memory, nullptr);
-  vkFreeMemory(ctx.device, gpu_host_visible.memory, nullptr);
-  vkFreeMemory(ctx.device, gpu_static_transfer.memory, nullptr);
-  vkFreeMemory(ctx.device, gpu_static_geometry.memory, nullptr);
+  {
+    VkDeviceMemory memories[] = {ubo_host_visible.memory, images.memory, gpu_host_visible.memory,
+                                 gpu_static_transfer.memory, gpu_static_geometry.memory};
 
-  vkDestroyBuffer(ctx.device, ubo_host_visible.buffer, nullptr);
-  vkDestroyBuffer(ctx.device, gpu_host_visible.buffer, nullptr);
-  vkDestroyBuffer(ctx.device, gpu_static_transfer.buffer, nullptr);
-  vkDestroyBuffer(ctx.device, gpu_static_geometry.buffer, nullptr);
+    for (VkDeviceMemory memory : memories)
+      vkFreeMemory(ctx.device, memory, nullptr);
+  }
+
+  {
+    VkBuffer buffers[] = {ubo_host_visible.buffer, gpu_host_visible.buffer, gpu_static_transfer.buffer,
+                          gpu_static_geometry.buffer};
+
+    for (VkBuffer buffer : buffers)
+      vkDestroyBuffer(ctx.device, buffer, nullptr);
+  }
 
   vkDestroySampler(ctx.device, ctx.texture_sampler, nullptr);
   vkDestroySemaphore(ctx.device, ctx.image_available, nullptr);
@@ -763,9 +797,12 @@ void Engine::teardown()
   vkDestroySurfaceKHR(ctx.instance, ctx.surface, nullptr);
   SDL_DestroyWindow(ctx.window);
 
+#ifdef ENABLE_VK_VALIDATION
   using Fcn = PFN_vkDestroyDebugReportCallbackEXT;
   auto fcn  = (Fcn)(vkGetInstanceProcAddr(ctx.instance, "vkDestroyDebugReportCallbackEXT"));
   fcn(ctx.instance, ctx.debug_callback, nullptr);
+#endif
+
   vkDestroyInstance(ctx.instance, nullptr);
 }
 
@@ -1510,26 +1547,57 @@ void Engine::setup_simple_rendering()
     vkCreateRenderPass(ctx.device, &ci, nullptr, &renderer.render_pass);
   }
 
+  // --------------------------------------------------------------- //
+  // Metallic workflow PBR materials descriptor set layout
+  //
+  // texture ordering:
+  // 0. albedo
+  // 1. metallic roughness (r: UNUSED, b: metallness, g: roughness)
+  // 2. emissive
+  // 3. ambient occlusion
+  // 4. normal
+  // --------------------------------------------------------------- //
   {
-    VkDescriptorSetLayoutBinding bindings[10] = {};
+    VkDescriptorSetLayoutBinding binding = {
+        .binding         = 0,
+        .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = 5,
+        .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+    };
 
-    for (int i = 0; i < 8; ++i)
-    {
-      bindings[i].binding         = static_cast<uint32_t>(i);
-      bindings[i].descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-      bindings[i].descriptorCount = 1;
-      bindings[i].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
-    }
+    VkDescriptorSetLayoutCreateInfo ci = {
+        .sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 1,
+        .pBindings    = &binding,
+    };
 
-    bindings[8].binding         = 8;
-    bindings[8].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    bindings[8].descriptorCount = 1;
-    bindings[8].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
+    vkCreateDescriptorSetLayout(ctx.device, &ci, nullptr,
+                                &renderer.pbr_metallic_workflow_material_descriptor_set_layout);
+  }
 
-    bindings[9].binding         = 9;
-    bindings[9].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    bindings[9].descriptorCount = 1;
-    bindings[9].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
+  // --------------------------------------------------------------- //
+  // PBR IBL cubemaps and BRDF lookup table
+  //
+  // texture ordering:
+  // 0.0 irradiance (cubemap)
+  // 0.1 prefiltered (cubemap)
+  // 1   BRDF lookup table (2D)
+  // --------------------------------------------------------------- //
+  {
+    VkDescriptorSetLayoutBinding bindings[] = {
+        {
+            .binding         = 0,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = 2,
+            .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+        },
+        {
+            .binding         = 1,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = 1,
+            .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+        },
+    };
 
     VkDescriptorSetLayoutCreateInfo ci = {
         .sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
@@ -1537,7 +1605,68 @@ void Engine::setup_simple_rendering()
         .pBindings    = bindings,
     };
 
-    vkCreateDescriptorSetLayout(ctx.device, &ci, nullptr, &renderer.descriptor_set_layout);
+    vkCreateDescriptorSetLayout(ctx.device, &ci, nullptr,
+                                &renderer.pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout);
+  }
+
+  // --------------------------------------------------------------- //
+  // PBR dynamic light sources
+  // --------------------------------------------------------------- //
+  {
+    VkDescriptorSetLayoutBinding binding = {
+        .binding         = 0,
+        .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+        .descriptorCount = 1,
+        .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+    };
+
+    VkDescriptorSetLayoutCreateInfo ci = {
+        .sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 1,
+        .pBindings    = &binding,
+    };
+
+    vkCreateDescriptorSetLayout(ctx.device, &ci, nullptr, &renderer.pbr_dynamic_lights_descriptor_set_layout);
+  }
+
+  // --------------------------------------------------------------- //
+  // Single texture in fragment shader
+  // --------------------------------------------------------------- //
+  {
+    VkDescriptorSetLayoutBinding binding = {
+        .binding         = 0,
+        .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = 1,
+        .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+    };
+
+    VkDescriptorSetLayoutCreateInfo ci = {
+        .sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 1,
+        .pBindings    = &binding,
+    };
+
+    vkCreateDescriptorSetLayout(ctx.device, &ci, nullptr, &renderer.single_texture_in_frag_descriptor_set_layout);
+  }
+
+  // --------------------------------------------------------------- //
+  // Skinning matrices in vertex shader
+  // --------------------------------------------------------------- //
+  {
+    VkDescriptorSetLayoutBinding binding = {
+        .binding         = 0,
+        .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+        .descriptorCount = 1,
+        .stageFlags      = VK_SHADER_STAGE_VERTEX_BIT,
+    };
+
+    VkDescriptorSetLayoutCreateInfo ci = {
+        .sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 1,
+        .pBindings    = &binding,
+    };
+
+    vkCreateDescriptorSetLayout(ctx.device, &ci, nullptr, &renderer.skinning_matrices_descriptor_set_layout);
   }
 
   {
@@ -1549,10 +1678,12 @@ void Engine::setup_simple_rendering()
         },
     };
 
+    VkDescriptorSetLayout descriptor_sets[] = {renderer.single_texture_in_frag_descriptor_set_layout};
+
     VkPipelineLayoutCreateInfo ci = {
         .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount         = 1,
-        .pSetLayouts            = &renderer.descriptor_set_layout,
+        .setLayoutCount         = SDL_arraysize(descriptor_sets),
+        .pSetLayouts            = descriptor_sets,
         .pushConstantRangeCount = SDL_arraysize(ranges),
         .pPushConstantRanges    = ranges,
     };
@@ -1569,10 +1700,14 @@ void Engine::setup_simple_rendering()
         },
     };
 
+    VkDescriptorSetLayout descriptor_sets[] = {renderer.pbr_metallic_workflow_material_descriptor_set_layout,
+                                               renderer.pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout,
+                                               renderer.pbr_dynamic_lights_descriptor_set_layout};
+
     VkPipelineLayoutCreateInfo ci = {
         .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount         = 1,
-        .pSetLayouts            = &renderer.descriptor_set_layout,
+        .setLayoutCount         = SDL_arraysize(descriptor_sets),
+        .pSetLayouts            = descriptor_sets,
         .pushConstantRangeCount = SDL_arraysize(ranges),
         .pPushConstantRanges    = ranges,
     };
@@ -1597,8 +1732,6 @@ void Engine::setup_simple_rendering()
 
     VkPipelineLayoutCreateInfo ci = {
         .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount         = 1,
-        .pSetLayouts            = &renderer.descriptor_set_layout,
         .pushConstantRangeCount = SDL_arraysize(ranges),
         .pPushConstantRanges    = ranges,
     };
@@ -1621,10 +1754,14 @@ void Engine::setup_simple_rendering()
         },
     };
 
+    VkDescriptorSetLayout descriptor_sets[] = {
+        renderer.skinning_matrices_descriptor_set_layout,
+    };
+
     VkPipelineLayoutCreateInfo ci = {
         .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount         = 1,
-        .pSetLayouts            = &renderer.descriptor_set_layout,
+        .setLayoutCount         = SDL_arraysize(descriptor_sets),
+        .pSetLayouts            = descriptor_sets,
         .pushConstantRangeCount = SDL_arraysize(ranges),
         .pPushConstantRanges    = ranges,
     };
@@ -1642,10 +1779,12 @@ void Engine::setup_simple_rendering()
         },
     };
 
+    VkDescriptorSetLayout descriptor_sets[] = {renderer.single_texture_in_frag_descriptor_set_layout};
+
     VkPipelineLayoutCreateInfo ci = {
         .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount         = 1,
-        .pSetLayouts            = &renderer.descriptor_set_layout,
+        .setLayoutCount         = SDL_arraysize(descriptor_sets),
+        .pSetLayouts            = descriptor_sets,
         .pushConstantRangeCount = SDL_arraysize(ranges),
         .pPushConstantRanges    = ranges,
     };

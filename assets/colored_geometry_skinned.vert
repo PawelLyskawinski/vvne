@@ -6,7 +6,7 @@ layout(push_constant) uniform Transformation
 }
 transformation;
 
-layout(set = 0, binding = 9) uniform UBO
+layout(set = 0, binding = 0) uniform UBO
 {
   mat4 joint_matrix[64];
 }

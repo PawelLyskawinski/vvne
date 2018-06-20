@@ -275,7 +275,7 @@ private:
   quat orientation;
 };
 
-float avg(float* values, int n)
+float avg(const float* values, int n)
 {
   float sum = 0.0f;
   for (int i = 0; i < n; ++i)
@@ -292,7 +292,7 @@ public:
       , device(device)
       , memory(memory)
   {
-    vkMapMemory(device, memory, offset, size, 0, (void**)(&data));
+    vkMapMemory(device, memory, offset, size, 0, &data);
   }
 
   ~ScopedMemoryMap()
@@ -311,7 +311,7 @@ private:
   VkDeviceMemory memory;
 };
 
-bool is_any(bool* array, int n)
+bool is_any(const bool* array, int n)
 {
   for (int i = 0; i < n; ++i)
     if (array[i])
@@ -620,6 +620,12 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
   return result;
 }
 
+void update_ubo(VkDevice device, VkDeviceMemory memory, VkDeviceSize size, VkDeviceSize offset, void* src)
+{
+  ScopedMemoryMap memory_map(device, memory, offset, size);
+  SDL_memcpy(memory_map.get<void>(), src, size);
+}
+
 } // namespace
 
 void Game::startup(Engine& engine)
@@ -720,26 +726,23 @@ void Game::startup(Engine& engine)
     brdf_lookup_idx         = generate_brdf_lookup(&engine, cubemap_size[0]);
   }
 
-  struct LightSource
-  {
-    vec3 position;
-    vec3 color;
-  };
+  const VkDeviceSize light_sources_ubo_size     = sizeof(LightSources);
+  const VkDeviceSize skinning_matrices_ubo_size = 64 * sizeof(mat4x4);
 
-  const VkDeviceSize light_sources_ubo_size = SDL_arraysize(light_source_positions) * sizeof(LightSource);
-  lights_ubo_offset                         = engine.ubo_host_visible.allocate(light_sources_ubo_size);
+  for (VkDeviceSize& offset : pbr_dynamic_lights_ubo_offsets)
+    offset = engine.ubo_host_visible.allocate(light_sources_ubo_size);
 
   for (VkDeviceSize& offset : rig_skinning_matrices_ubo_offsets)
-    offset = engine.ubo_host_visible.allocate(64 * sizeof(mat4x4));
+    offset = engine.ubo_host_visible.allocate(skinning_matrices_ubo_size);
 
   for (VkDeviceSize& offset : fig_skinning_matrices_ubo_offsets)
-    offset = engine.ubo_host_visible.allocate(64 * sizeof(mat4x4));
+    offset = engine.ubo_host_visible.allocate(skinning_matrices_ubo_size);
 
   for (VkDeviceSize& offset : monster_skinning_matrices_ubo_offsets)
-    offset = engine.ubo_host_visible.allocate(64 * sizeof(mat4x4));
+    offset = engine.ubo_host_visible.allocate(skinning_matrices_ubo_size);
 
   // ----------------------------------------------------------------------------------------------
-  // Descriptor sets
+  // PBR Metallic workflow material descriptor sets
   // ----------------------------------------------------------------------------------------------
 
   {
@@ -747,259 +750,223 @@ void Game::startup(Engine& engine)
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool     = engine.generic_handles.descriptor_pool,
         .descriptorSetCount = 1,
-        .pSetLayouts        = &engine.simple_rendering.descriptor_set_layout,
+        .pSetLayouts        = &engine.simple_rendering.pbr_metallic_workflow_material_descriptor_set_layout,
     };
 
-    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &skybox_dset);
-    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &helmet_dset);
-    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &imgui_dset);
-    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &robot_dset);
+    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &helmet_pbr_material_dset);
+    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &robot_pbr_material_dset);
+  }
 
-    for (int i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
+  {
+    auto fill_infos = [](const Material& material, VkImageView* views, VkDescriptorImageInfo infos[5]) {
+      infos[0].imageView = views[material.albedo_texture_idx];
+      infos[1].imageView = views[material.metal_roughness_texture_idx];
+      infos[2].imageView = views[material.emissive_texture_idx];
+      infos[3].imageView = views[material.AO_texture_idx];
+      infos[4].imageView = views[material.normal_texture_idx];
+    };
+
+    VkDescriptorImageInfo images[5] = {};
+    for (VkDescriptorImageInfo& image : images)
     {
-      vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &rig_dsets[i]);
-      vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &fig_dsets[i]);
-      vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &monster_dsets[i]);
-    }
-  }
-
-  {
-    VkDescriptorImageInfo skybox_image = {
-        .sampler     = engine.generic_handles.texture_sampler,
-        .imageView   = engine.images.image_views[environment_cubemap_idx],
-        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-    };
-
-    VkWriteDescriptorSet skybox_write = {
-        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet          = skybox_dset,
-        .dstBinding      = 0,
-        .dstArrayElement = 0,
-        .descriptorCount = 1,
-        .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .pImageInfo      = &skybox_image,
-    };
-
-    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &skybox_write, 0, nullptr);
-  }
-
-  {
-    VkDescriptorImageInfo imgui_image = {
-        .sampler     = engine.generic_handles.texture_sampler,
-        .imageView   = engine.images.image_views[debug_gui.font_texture_idx],
-        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-    };
-
-    VkWriteDescriptorSet imgui_write = {
-        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet          = imgui_dset,
-        .dstBinding      = 0,
-        .dstArrayElement = 0,
-        .descriptorCount = 1,
-        .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .pImageInfo      = &imgui_image,
-    };
-
-    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &imgui_write, 0, nullptr);
-  }
-
-  {
-    const Material& material = helmet.scene_graph.materials.data[0];
-
-    int ts[8] = {};
-
-    ts[0] = material.albedo_texture_idx;
-    ts[1] = material.metal_roughness_texture_idx;
-    ts[2] = material.emissive_texture_idx;
-    ts[3] = material.AO_texture_idx;
-    ts[4] = material.normal_texture_idx;
-    ts[5] = irradiance_cubemap_idx;
-    ts[6] = prefiltered_cubemap_idx;
-    ts[7] = brdf_lookup_idx;
-
-    VkDescriptorImageInfo helmet_images[8] = {};
-
-    for (unsigned i = 0; i < SDL_arraysize(helmet_images); ++i)
-    {
-      helmet_images[i].sampler     = engine.generic_handles.texture_sampler;
-      helmet_images[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-      helmet_images[i].imageView   = engine.images.image_views[ts[i]];
+      image.sampler     = engine.generic_handles.texture_sampler;
+      image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     }
 
-    VkWriteDescriptorSet helmet_write = {
+    VkWriteDescriptorSet update = {
         .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet          = helmet_dset,
         .dstBinding      = 0,
         .dstArrayElement = 0,
-        .descriptorCount = SDL_arraysize(helmet_images),
+        .descriptorCount = SDL_arraysize(images),
         .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .pImageInfo      = helmet_images,
+        .pImageInfo      = images,
     };
 
-    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &helmet_write, 0, nullptr);
+    fill_infos(helmet.scene_graph.materials[0], engine.images.image_views, images);
+    update.dstSet = helmet_pbr_material_dset,
+    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &update, 0, nullptr);
 
-    VkDescriptorBufferInfo helmet_ubo = {
-        .buffer = engine.ubo_host_visible.buffer,
-        .offset = lights_ubo_offset,
-        .range  = light_sources_ubo_size,
+    fill_infos(robot.scene_graph.materials[0], engine.images.image_views, images);
+    update.dstSet = robot_pbr_material_dset,
+    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &update, 0, nullptr);
+  }
+
+  // ----------------------------------------------------------------------------------------------
+  // PBR IBL cubemaps and BRDF lookup table descriptor sets
+  // ----------------------------------------------------------------------------------------------
+
+  {
+    VkDescriptorSetAllocateInfo allocate = {
+        .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool     = engine.generic_handles.descriptor_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts        = &engine.simple_rendering.pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout,
     };
 
-    VkWriteDescriptorSet helmet_ubo_write = {
-        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet          = helmet_dset,
-        .dstBinding      = 8,
-        .dstArrayElement = 0,
-        .descriptorCount = 1,
-        .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .pBufferInfo     = &helmet_ubo,
-    };
-
-    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &helmet_ubo_write, 0, nullptr);
+    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &pbr_ibl_environment_dset);
   }
 
   {
-    const Material& material = robot.scene_graph.materials.data[0];
-
-    int ts[8] = {};
-
-    ts[0] = material.albedo_texture_idx;
-    ts[1] = material.metal_roughness_texture_idx;
-    ts[2] = material.emissive_texture_idx;
-    ts[3] = material.AO_texture_idx;
-    ts[4] = material.normal_texture_idx;
-    ts[5] = irradiance_cubemap_idx;
-    ts[6] = prefiltered_cubemap_idx;
-    ts[7] = brdf_lookup_idx;
-
-    VkDescriptorImageInfo robot_images[8] = {};
-
-    for (unsigned i = 0; i < SDL_arraysize(robot_images); ++i)
-    {
-      robot_images[i].sampler     = engine.generic_handles.texture_sampler;
-      robot_images[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-      robot_images[i].imageView   = engine.images.image_views[ts[i]];
-    }
-
-    VkWriteDescriptorSet robot_write = {
-        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet          = robot_dset,
-        .dstBinding      = 0,
-        .dstArrayElement = 0,
-        .descriptorCount = SDL_arraysize(robot_images),
-        .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .pImageInfo      = robot_images,
-    };
-
-    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &robot_write, 0, nullptr);
-
-    VkDescriptorBufferInfo robot_ubo = {
-        .buffer = engine.ubo_host_visible.buffer,
-        .offset = lights_ubo_offset,
-        .range  = light_sources_ubo_size,
-    };
-
-    VkWriteDescriptorSet robot_ubo_write = {
-        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet          = robot_dset,
-        .dstBinding      = 8,
-        .dstArrayElement = 0,
-        .descriptorCount = 1,
-        .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .pBufferInfo     = &robot_ubo,
-    };
-
-    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &robot_ubo_write, 0, nullptr);
-  }
-
-  {
-    VkDescriptorBufferInfo ubo_infos[SWAPCHAIN_IMAGES_COUNT] = {
+    VkDescriptorImageInfo cubemap_images[] = {
         {
-            .buffer = engine.ubo_host_visible.buffer,
-            .range  = 64 * sizeof(mat4x4),
+            .sampler     = engine.generic_handles.texture_sampler,
+            .imageView   = engine.images.image_views[irradiance_cubemap_idx],
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        },
+        {
+            .sampler     = engine.generic_handles.texture_sampler,
+            .imageView   = engine.images.image_views[prefiltered_cubemap_idx],
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         },
     };
 
-    for (unsigned i = 1; i < SDL_arraysize(ubo_infos); ++i)
-      ubo_infos[i] = ubo_infos[0];
+    VkDescriptorImageInfo brdf_lut_image = {
+        .sampler     = engine.generic_handles.texture_sampler,
+        .imageView   = engine.images.image_views[brdf_lookup_idx],
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    };
 
-    for (int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
-      ubo_infos[swapchain_image_idx].offset = rig_skinning_matrices_ubo_offsets[swapchain_image_idx];
-
-    VkWriteDescriptorSet writes[SWAPCHAIN_IMAGES_COUNT] = {
+    VkWriteDescriptorSet writes[] = {
         {
             .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstBinding      = 9,
+            .dstSet          = pbr_ibl_environment_dset,
+            .dstBinding      = 0,
+            .dstArrayElement = 0,
+            .descriptorCount = SDL_arraysize(cubemap_images),
+            .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .pImageInfo      = cubemap_images,
+        },
+        {
+            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet          = pbr_ibl_environment_dset,
+            .dstBinding      = 1,
             .dstArrayElement = 0,
             .descriptorCount = 1,
-            .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .pImageInfo      = &brdf_lut_image,
         },
     };
 
-    for (unsigned i = 1; i < SDL_arraysize(writes); ++i)
-      writes[i] = writes[0];
-
-    for (int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
-    {
-      writes[swapchain_image_idx].pBufferInfo = &ubo_infos[swapchain_image_idx];
-      writes[swapchain_image_idx].dstSet      = rig_dsets[swapchain_image_idx];
-    }
-
     vkUpdateDescriptorSets(engine.generic_handles.device, SDL_arraysize(writes), writes, 0, nullptr);
+  }
 
-    for (int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
-    {
-      ubo_infos[swapchain_image_idx].offset = fig_skinning_matrices_ubo_offsets[swapchain_image_idx];
-    }
+  // --------------------------------------------------------------- //
+  // PBR dynamic light sources descriptor sets
+  // --------------------------------------------------------------- //
 
-    for (int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
-    {
-      writes[swapchain_image_idx].dstSet = fig_dsets[swapchain_image_idx];
-    }
+  {
+    VkDescriptorSetAllocateInfo allocate = {
+        .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool     = engine.generic_handles.descriptor_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts        = &engine.simple_rendering.pbr_dynamic_lights_descriptor_set_layout,
+    };
 
-    vkUpdateDescriptorSets(engine.generic_handles.device, SDL_arraysize(writes), writes, 0, nullptr);
+    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &pbr_dynamic_lights_dset);
+  }
 
-    for (int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
-    {
-      ubo_infos[swapchain_image_idx].offset = monster_skinning_matrices_ubo_offsets[swapchain_image_idx];
-    }
+  {
+    VkDescriptorBufferInfo ubo = {
+        .buffer = engine.ubo_host_visible.buffer,
+        .offset = 0, // those will be provided at command buffer recording time
+        .range  = light_sources_ubo_size,
+    };
 
-    for (int swapchain_image_idx = 0; swapchain_image_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image_idx)
-    {
-      writes[swapchain_image_idx].dstSet = monster_dsets[swapchain_image_idx];
-    }
+    VkWriteDescriptorSet write = {
+        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet          = pbr_dynamic_lights_dset,
+        .dstBinding      = 0,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+        .pBufferInfo     = &ubo,
+    };
 
-    vkUpdateDescriptorSets(engine.generic_handles.device, SDL_arraysize(writes), writes, 0, nullptr);
+    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
+  }
+
+  // --------------------------------------------------------------- //
+  // Single texture in fragment shader descriptor sets
+  // --------------------------------------------------------------- //
+
+  {
+    VkDescriptorSetAllocateInfo allocate = {
+        .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool     = engine.generic_handles.descriptor_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts        = &engine.simple_rendering.single_texture_in_frag_descriptor_set_layout,
+    };
+
+    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &skybox_cubemap_dset);
+    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &imgui_font_atlas_dset);
+  }
+
+  {
+    VkDescriptorImageInfo image = {
+        .sampler     = engine.generic_handles.texture_sampler,
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    };
+
+    VkWriteDescriptorSet write = {
+        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstBinding      = 0,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .pImageInfo      = &image,
+    };
+
+    image.imageView = engine.images.image_views[debug_gui.font_texture_idx];
+    write.dstSet    = imgui_font_atlas_dset;
+    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
+
+    image.imageView = engine.images.image_views[environment_cubemap_idx];
+    write.dstSet    = skybox_cubemap_dset;
+    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
+  }
+
+  // --------------------------------------------------------------- //
+  // Skinning matrices in vertex shader descriptor sets
+  // --------------------------------------------------------------- //
+
+  {
+    VkDescriptorSetAllocateInfo allocate = {
+        .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool     = engine.generic_handles.descriptor_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts        = &engine.simple_rendering.skinning_matrices_descriptor_set_layout,
+    };
+
+    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &monster_skinning_matrices_dset);
+    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &rig_skinning_matrices_dset);
+  }
+
+  {
+    VkDescriptorBufferInfo ubo = {
+        .buffer = engine.ubo_host_visible.buffer,
+        .offset = 0, // those will be provided at command buffer recording time
+        .range  = skinning_matrices_ubo_size,
+    };
+
+    VkWriteDescriptorSet write = {
+        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstBinding      = 0,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+        .pBufferInfo     = &ubo,
+    };
+
+    write.dstSet = monster_skinning_matrices_dset;
+    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
+
+    write.dstSet = rig_skinning_matrices_dset;
+    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
   }
 
   vec3_set(helmet_translation, -1.0f, 1.0f, 3.0f);
   vec3_set(robot_position, 2.0f, -1.0f, 3.0f);
   vec3_set(rigged_position, 2.0f, 0.0f, 3.0f);
-
-  {
-    light_sources_count = 4;
-
-    vec3_set(light_source_positions[0], -2.0f, 0.0f, 1.0f);
-    vec3_set(light_source_positions[1], 0.0f, 0.0f, 1.0f);
-    vec3_set(light_source_positions[2], -2.0f, 2.0f, 1.0f);
-    vec3_set(light_source_positions[3], 0.0f, 2.0f, 1.0f);
-
-    vec3_set(light_source_colors[0], 2.0, 0.0, 0.0);
-    vec3_set(light_source_colors[1], 0.0, 0.0, 2.0);
-    vec3_set(light_source_colors[2], 0.0, 0.0, 2.0);
-    vec3_set(light_source_colors[3], 1.0, 0.0, 0.0);
-  }
-
-  {
-    ScopedMemoryMap memory_map(engine.generic_handles.device, engine.ubo_host_visible.memory, lights_ubo_offset,
-                               light_sources_ubo_size);
-
-    LightSource* dst = memory_map.get<LightSource>();
-    for (int i = 0; i < 10; ++i)
-    {
-      SDL_memcpy(dst[i].position, light_source_positions[i], sizeof(vec3));
-      SDL_memcpy(dst[i].color, light_source_colors[i], sizeof(vec3));
-    }
-  }
 
   float extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
   float extent_height       = static_cast<float>(engine.generic_handles.extent2D.height);
@@ -1181,8 +1148,6 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
     SDL_Window* window = engine.generic_handles.window;
     int         w, h;
     SDL_GetWindowSize(window, &w, &h);
-
-    ImGuiIO& io    = ImGui::GetIO();
     io.DisplaySize = ImVec2((float)w, (float)h);
 
     int    mx, my;
@@ -1345,6 +1310,78 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
   ImGui::Text("F1 - enable first person view");
   ImGui::Text("F2 - disable first person view");
   ImGui::Text("ESC - exit");
+
+  {
+    struct Light
+    {
+    public:
+      Light(vec4 position, vec4 color)
+          : p(position)
+          , c(color)
+      {
+      }
+
+      void x(float val)
+      {
+        p[0] = val;
+      }
+
+      void y(float val)
+      {
+        p[1] = val;
+      }
+
+      void z(float val)
+      {
+        p[2] = val;
+      }
+
+      void rgb(float r, float g, float b)
+      {
+        c[0] = r;
+        c[1] = g;
+        c[2] = b;
+      }
+
+    private:
+      float* p;
+      float* c;
+    };
+
+    pbr_light_sources_cache.count = 5;
+    vec4* p                       = pbr_light_sources_cache.positions;
+    vec4* c                       = pbr_light_sources_cache.colors;
+
+    Light l0(p[0], c[0]);
+    l0.x(SDL_sinf(current_time_sec));
+    l0.y(-0.5f);
+    l0.z(3.0f + SDL_cosf(current_time_sec));
+    l0.rgb(20.0, 0.0, 0.0);
+
+    Light l1(p[1], c[1]);
+    l1.x(0.8f * SDL_cosf(current_time_sec));
+    l1.y(-0.6f);
+    l1.z(3.0f + (0.8f * SDL_sinf(current_time_sec)));
+    l1.rgb(0.0, 20.0, 0.0);
+
+    Light l2(p[2], c[2]);
+    l2.x(0.8f * SDL_sinf(current_time_sec / 2.0f));
+    l2.y(-0.3f);
+    l2.z(3.0f + (0.8f * SDL_cosf(current_time_sec / 2.0f)));
+    l2.rgb(0.0, 0.0, 20.0);
+
+    Light l3(p[3], c[3]);
+    l3.x(SDL_sinf(current_time_sec / 1.2f));
+    l3.y(-0.1f);
+    l3.z(2.5f * SDL_cosf(current_time_sec / 1.2f));
+    l3.rgb(8.0, 8.0, 8.0);
+
+    Light l4(p[4], c[4]);
+    l4.x(0.0f);
+    l4.y(-1.0f);
+    l4.z(4.0f);
+    l4.rgb(10.0, 0.0, 10.0);
+  }
 }
 
 void Game::render(Engine& engine, float current_time_sec)
@@ -1358,6 +1395,9 @@ void Game::render(Engine& engine, float current_time_sec)
   vkWaitForFences(engine.generic_handles.device, 1, &renderer.submition_fences[image_index], VK_TRUE, UINT64_MAX);
   vkResetFences(engine.generic_handles.device, 1, &renderer.submition_fences[image_index]);
 
+  update_ubo(engine.generic_handles.device, engine.ubo_host_visible.memory, sizeof(LightSources),
+             pbr_dynamic_lights_ubo_offsets[image_index], &pbr_light_sources_cache);
+
   CommandBufferSelector command_selector(engine.simple_rendering, image_index);
   CommandBufferStarter  command_starter(renderer.render_pass, renderer.framebuffers[image_index]);
 
@@ -1365,22 +1405,25 @@ void Game::render(Engine& engine, float current_time_sec)
     VkCommandBuffer cmd       = command_selector.select(Engine::SimpleRendering::Pipeline::Skybox);
     ScopedCommand   cmd_scope = command_starter.begin(cmd, Engine::SimpleRendering::Pass::Skybox);
 
-    struct VertPush
+    struct
     {
       mat4x4 projection;
       mat4x4 view;
-    } vertpush{};
+    } push = {};
 
-    mat4x4_dup(vertpush.projection, projection);
-    mat4x4_dup(vertpush.view, view);
+    mat4x4_dup(push.projection, projection);
+    mat4x4_dup(push.view, view);
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       renderer.pipelines[Engine::SimpleRendering::Pipeline::Skybox]);
+
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::Skybox], 0, 1, &skybox_dset, 0,
-                            nullptr);
+                            renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::Skybox], 0, 1,
+                            &skybox_cubemap_dset, 0, nullptr);
+
     vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::Skybox],
-                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(VertPush), &vertpush);
+                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), &push);
+
     box.renderRaw(engine, cmd);
   }
 
@@ -1392,10 +1435,14 @@ void Game::render(Engine& engine, float current_time_sec)
                       renderer.pipelines[Engine::SimpleRendering::Pipeline::Scene3D]);
 
     {
+      VkDescriptorSet dsets[]           = {pbr_ibl_environment_dset, pbr_dynamic_lights_dset};
+      uint32_t        dynamic_offsets[] = {static_cast<uint32_t>(pbr_dynamic_lights_ubo_offsets[image_index])};
       vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 0, 1, &helmet_dset,
-                              0, nullptr);
+                              renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 1,
+                              SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
+    }
 
+    {
       Quaternion orientation;
       orientation.rotateX(to_rad(180.0));
 
@@ -1417,15 +1464,15 @@ void Game::render(Engine& engine, float current_time_sec)
 
       vec3 color = {0.0f, 0.0f, 0.0f};
 
+      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 0, 1,
+                              &helmet_pbr_material_dset, 0, nullptr);
+
       helmet.renderColored(engine, cmd, projection, view, world_transform, color,
                            Engine::SimpleRendering::Pipeline::Scene3D, 0, camera_position);
     }
 
     {
-      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 0, 1, &robot_dset, 0,
-                              nullptr);
-
       Quaternion orientation;
 
       {
@@ -1461,6 +1508,10 @@ void Game::render(Engine& engine, float current_time_sec)
       mat4x4 world_transform = {};
       mat4x4_mul(world_transform, tmp, scale_matrix);
 
+      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 0, 1,
+                              &robot_pbr_material_dset, 0, nullptr);
+
       robot.renderColored(engine, cmd, projection, view, world_transform, color,
                           Engine::SimpleRendering::Pipeline::Scene3D, 0, camera_position);
     }
@@ -1472,18 +1523,14 @@ void Game::render(Engine& engine, float current_time_sec)
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       renderer.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometry]);
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometry], 0, 1,
-                            &helmet_dset, 0, nullptr);
 
-    for (int i = 0; i < light_sources_count; ++i)
+    for (int i = 0; i < pbr_light_sources_cache.count; ++i)
     {
       Quaternion orientation = Quaternion().rotateZ(to_rad(100.0f * current_time_sec)) *
                                Quaternion().rotateY(to_rad(280.0f * current_time_sec)) *
                                Quaternion().rotateX(to_rad(60.0f * current_time_sec));
 
-      float* position = light_source_positions[i];
-
+      float* position           = pbr_light_sources_cache.positions[i];
       mat4x4 translation_matrix = {};
       mat4x4_translate(translation_matrix, position[0], position[1], position[2]);
 
@@ -1500,7 +1547,8 @@ void Game::render(Engine& engine, float current_time_sec)
       mat4x4 world_transform = {};
       mat4x4_mul(world_transform, tmp, scale_matrix);
 
-      box.renderColored(engine, cmd, projection, view, world_transform, light_source_colors[i],
+      float* color = pbr_light_sources_cache.colors[i];
+      box.renderColored(engine, cmd, projection, view, world_transform, color,
                         Engine::SimpleRendering::Pipeline::ColoredGeometry, 0, camera_position);
     }
 
@@ -1570,10 +1618,6 @@ void Game::render(Engine& engine, float current_time_sec)
                       renderer.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned]);
 
     {
-      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned], 0, 1,
-                              &rig_dsets[image_index], 0, nullptr);
-
       Quaternion orientation;
       orientation.rotateX(to_rad(45.0f));
 
@@ -1594,16 +1638,18 @@ void Game::render(Engine& engine, float current_time_sec)
       mat4x4_mul(world_transform, tmp, scale_matrix);
 
       vec3 color = {0.0, 0.0, 1.0};
+
+      uint32_t dynamic_offsets[] = {static_cast<uint32_t>(rig_skinning_matrices_ubo_offsets[image_index])};
+      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned], 0,
+                              1, &rig_skinning_matrices_dset, SDL_arraysize(dynamic_offsets), dynamic_offsets);
+
       riggedSimple.renderColored(engine, cmd, projection, view, world_transform, color,
                                  Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned,
                                  rig_skinning_matrices_ubo_offsets[image_index], camera_position);
     }
 
     {
-      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned], 0, 1,
-                              &monster_dsets[image_index], 0, nullptr);
-
       Quaternion orientation;
       orientation.rotateX(to_rad(45.0f));
 
@@ -1625,6 +1671,12 @@ void Game::render(Engine& engine, float current_time_sec)
       mat4x4_mul(world_transform, tmp, scale_matrix);
 
       vec3 color = {1.0, 1.0, 1.0};
+
+      uint32_t dynamic_offsets[] = {static_cast<uint32_t>(monster_skinning_matrices_ubo_offsets[image_index])};
+      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned], 0,
+                              1, &monster_skinning_matrices_dset, SDL_arraysize(dynamic_offsets), dynamic_offsets);
+
       monster.renderColored(engine, cmd, projection, view, world_transform, color,
                             Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned,
                             monster_skinning_matrices_ubo_offsets[image_index], camera_position);
@@ -1678,8 +1730,9 @@ void Game::render(Engine& engine, float current_time_sec)
       vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                         renderer.pipelines[Engine::SimpleRendering::Pipeline::ImGui]);
 
-      vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, renderer.pipeline_layouts[1], 0, 1,
-                              &imgui_dset, 0, nullptr);
+      vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::ImGui], 0, 1,
+                              &imgui_font_atlas_dset, 0, nullptr);
 
       vkCmdBindIndexBuffer(command_buffer, engine.gpu_host_visible.buffer, debug_gui.index_buffer_offsets[image_index],
                            VK_INDEX_TYPE_UINT16);
@@ -1706,8 +1759,6 @@ void Game::render(Engine& engine, float current_time_sec)
                          VK_SHADER_STAGE_VERTEX_BIT, sizeof(float) * 2, sizeof(float) * 2, translate);
 
       {
-        ImDrawData* draw_data = ImGui::GetDrawData();
-
         int vtx_offset = 0;
         int idx_offset = 0;
 
@@ -1738,7 +1789,7 @@ void Game::render(Engine& engine, float current_time_sec)
                 };
                 vkCmdSetScissor(command_buffer, 0, 1, &scissor);
               }
-              vkCmdDrawIndexed(command_buffer, pcmd->ElemCount, 1, idx_offset, vtx_offset, 0);
+              vkCmdDrawIndexed(command_buffer, pcmd->ElemCount, 1, static_cast<uint32_t>(idx_offset), vtx_offset, 0);
             }
             idx_offset += pcmd->ElemCount;
           }
