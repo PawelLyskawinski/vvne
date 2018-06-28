@@ -15,11 +15,10 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #include <SDL2/SDL_timer.h>
 #include <stb_image.h>
-
 #pragma GCC diagnostic pop
 
-#define INITIAL_WINDOW_WIDTH 1200
-#define INITIAL_WINDOW_HEIGHT 800
+#define INITIAL_WINDOW_WIDTH 800
+#define INITIAL_WINDOW_HEIGHT 600
 
 VkBool32
 #ifndef __linux__
@@ -120,8 +119,8 @@ void Engine::startup()
   }
 #endif
 
-  ctx.window = SDL_CreateWindow("minimalistic VK engine", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                                INITIAL_WINDOW_WIDTH, INITIAL_WINDOW_HEIGHT, SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
+  ctx.window = SDL_CreateWindow("vvne", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, INITIAL_WINDOW_WIDTH,
+                                INITIAL_WINDOW_HEIGHT, SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
 
   {
     uint32_t count = 0;

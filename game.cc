@@ -29,6 +29,43 @@ int find_first_higher(float* times, float current)
   return iter;
 }
 
+void lerp(float* a, float* b, float* result, int dim, float t)
+{
+  for (int i = 0; i < dim; ++i)
+  {
+    float difference = b[i] - a[i];
+    float progressed = difference * t;
+    result[i]        = a[i] + progressed;
+  }
+}
+
+//
+// https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#appendix-c-spline-interpolation
+//
+void hermite_cubic_spline_interpolation(float* a_in, float* b_in, float* result, int dim, float t, float total_duration)
+{
+  float* a_spline_vertex = &a_in[dim];
+  float* a_out_tangent   = &a_in[2 * dim];
+
+  float* b_in_tangent    = &b_in[0];
+  float* b_spline_vertex = &b_in[dim];
+
+  for (int i = 0; i < dim; ++i)
+  {
+    float P[2] = {a_spline_vertex[i], b_spline_vertex[i]};
+    float M[2] = {a_out_tangent[i], b_in_tangent[i]};
+
+    for (float& m : M)
+      m *= total_duration;
+
+    float a   = (2.0f * P[0]) + M[0] + (-2.0f * P[1]) + M[1];
+    float b   = (-3.0f * P[0]) - (2.0f * M[0]) + (3.0f * P[1]) - M[1];
+    float c   = M[0];
+    float d   = P[0];
+    result[i] = (a * t * t * t) + (b * t * t) + (c * t) + (d);
+  }
+}
+
 void animate_model(gltf::RenderableModel& model, float current_time_sec)
 {
   if (not model.animation_enabled)
@@ -66,32 +103,43 @@ void animate_model(gltf::RenderableModel& model, float current_time_sec)
 
       if (AnimationChannel::Path::Rotation == channel.target_path)
       {
-        float* a = &sampler.values[4 * keyframe_lower];
-        float* b = &sampler.values[4 * keyframe_upper];
-        float* c = model.animation_rotations[channel.target_node_idx];
-
-        // quaternion lerp
-        float reminder_time = 1.0f - keyframe_uniform_time;
-        for (int i = 0; i < 4; ++i)
+        if (AnimationSampler::Interpolation::Linear == sampler.interpolation)
         {
-          c[i] = reminder_time * a[i] + keyframe_uniform_time * b[i];
+          float* a = &sampler.values[4 * keyframe_lower];
+          float* b = &sampler.values[4 * keyframe_upper];
+          float* c = model.animation_rotations[channel.target_node_idx];
+          lerp(a, b, c, 4, keyframe_uniform_time);
+          vec4_norm(c, c);
         }
-        vec4_norm(c, c);
+        else if (AnimationSampler::Interpolation::CubicSpline == sampler.interpolation)
+        {
+          float* a = &sampler.values[3 * 4 * keyframe_lower];
+          float* b = &sampler.values[3 * 4 * keyframe_upper];
+          float* c = model.animation_rotations[channel.target_node_idx];
+          hermite_cubic_spline_interpolation(a, b, c, 4, keyframe_uniform_time,
+                                             sampler.time_frame[1] - sampler.time_frame[0]);
+          vec4_norm(c, c);
+        }
 
         model.animation_properties[channel.target_node_idx] |= Node::Property::Rotation;
       }
       else if (AnimationChannel::Path::Translation == channel.target_path)
       {
-        float* a = &sampler.values[3 * keyframe_lower];
-        float* b = &sampler.values[3 * keyframe_upper];
-        float* c = model.animation_translations[channel.target_node_idx];
-
-        // lerp
-        for (int i = 0; i < 3; ++i)
+        if (AnimationSampler::Interpolation::Linear == sampler.interpolation)
         {
-          float difference = b[i] - a[i];
-          float progressed = difference * keyframe_uniform_time;
-          c[i]             = a[i] + progressed;
+          float* a = &sampler.values[3 * keyframe_lower];
+          float* b = &sampler.values[3 * keyframe_upper];
+          float* c = model.animation_translations[channel.target_node_idx];
+          lerp(a, b, c, 3, keyframe_uniform_time);
+        }
+        else if (AnimationSampler::Interpolation::CubicSpline == sampler.interpolation)
+        {
+          float* a = &sampler.values[3 * 3 * keyframe_lower];
+          float* b = &sampler.values[3 * 3 * keyframe_upper];
+          float* c = model.animation_translations[channel.target_node_idx];
+          hermite_cubic_spline_interpolation(a, b, c, 3, keyframe_uniform_time,
+                                             sampler.time_frame[1] - sampler.time_frame[0]);
+          model.animation_properties[channel.target_node_idx] |= Node::Property::Translation;
         }
 
         model.animation_properties[channel.target_node_idx] |= Node::Property::Translation;
@@ -323,13 +371,6 @@ void restart_animation(gltf::RenderableModel& model, float current_time_sec)
 {
   model.animation_enabled    = true;
   model.animation_start_time = current_time_sec;
-
-  for (quat& rotation : model.animation_rotations)
-    quat_identity(rotation);
-
-  for (vec3& translation : model.animation_translations)
-    for (int i = 0; i < 4; ++i)
-      translation[i] = 0.0f;
 }
 
 struct VrLevelLoadResult
@@ -1218,6 +1259,10 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
     restart_animation(monster, current_time_sec);
   print_animation_stat(monster, current_time_sec);
 
+  if (ImGui::Button("robot animation"))
+    restart_animation(robot, current_time_sec);
+  print_animation_stat(robot, current_time_sec);
+
   ImGui::Text("Average update time: %f", avg(update_times, SDL_arraysize(update_times)));
   ImGui::Text("Average render time: %f", avg(render_times, SDL_arraysize(render_times)));
 
@@ -1231,6 +1276,7 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
   animate_model(animatedBox, current_time_sec);
   animate_model(riggedSimple, current_time_sec);
   animate_model(monster, current_time_sec);
+  animate_model(robot, current_time_sec);
 
   for (int i = 0; i < 3; ++i)
   {

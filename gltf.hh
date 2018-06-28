@@ -118,11 +118,19 @@ struct AnimationChannel
 
 struct AnimationSampler
 {
+  enum class Interpolation
+  {
+    Linear,
+    Step,
+    CubicSpline
+  };
+
   // todo: very naive (but fastest to implement) approach. This should be in form of buffer, buffer views and accessors
-  float  time_frame[2];
-  int    keyframes_count;
-  float* times;
-  float* values;
+  float         time_frame[2];
+  int           keyframes_count;
+  float*        times;
+  float*        values;
+  Interpolation interpolation;
 };
 
 struct Animation
@@ -156,10 +164,9 @@ struct RenderableModel
 
   bool    animation_enabled;
   float   animation_start_time;
-  vec3    animation_translations[32];
-  quat    animation_rotations[32];
-  vec3    animation_scales[32];
-  uint8_t animation_properties[32];
+  vec3    animation_translations[64];
+  quat    animation_rotations[64];
+  uint8_t animation_properties[64];
 
   void loadGLB(Engine& engine, const char* path) noexcept;
   void renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 projection, mat4x4 view, mat4x4 world_transform,

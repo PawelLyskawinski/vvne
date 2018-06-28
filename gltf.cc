@@ -789,7 +789,26 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
       int input_elements  = input_accessor.integer("count");
       int output_elements = output_accessor.integer("count");
 
-      SDL_assert(input_elements == output_elements);
+      const char* interpolation = &sampler_json.node("interpolation").data[17];
+      if (0 == SDL_memcmp("CUBICSPLINE", interpolation, 11))
+      {
+        // In cubic-spline interpolation keyframe each time point maps to 3 vec3 elements
+        SDL_assert(input_elements == output_elements / 3);
+        current_sampler.interpolation = AnimationSampler::Interpolation::CubicSpline;
+      }
+      else if (0 == SDL_memcmp("LINEAR", interpolation, 6))
+      {
+        // In linear interpolation time maps to values 1:1 in count, so this should be always true
+        SDL_assert(input_elements == output_elements);
+        current_sampler.interpolation = AnimationSampler::Interpolation::Linear;
+      }
+      else
+      {
+        // I have no clue if I support it or not!
+        // I'll leave a trap for potential future debugging.
+        SDL_assert(false);
+        current_sampler.interpolation = AnimationSampler::Interpolation::Step;
+      }
 
       current_sampler.keyframes_count = input_elements;
 
@@ -829,7 +848,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
 
       current_sampler.times = engine.double_ended_stack.allocate_front<float>(input_elements);
       current_sampler.values =
-          engine.double_ended_stack.allocate_front<float>(static_cast<unsigned>(output_type) * input_elements);
+          engine.double_ended_stack.allocate_front<float>(static_cast<unsigned>(output_type) * output_elements);
 
       {
         const int input_view_glb_offset     = input_buffer_view.integer("byteOffset");
@@ -845,6 +864,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
           const float* src = reinterpret_cast<const float*>(&binary_data[input_start_offset + (input_stride * i)]);
           *dst             = *src;
         }
+
       }
 
       current_sampler.time_frame[0] = current_sampler.times[0];
@@ -938,8 +958,8 @@ void depth_first_renderable_propagate(Node* nodes, uint8_t* hierarchy_flags, con
 } // namespace
 
 void RenderableModel::renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 projection, mat4x4 view,
-                                    mat4x4 world_transform, vec3 color, int pipeline,
-                                    VkDeviceSize joint_ubo_offset, vec3 camera_position) noexcept
+                                    mat4x4 world_transform, vec3 color, int pipeline, VkDeviceSize joint_ubo_offset,
+                                    vec3 camera_position) noexcept
 {
   uint8_t node_parent_hierarchy[32]  = {};
   uint8_t node_shall_be_rendered[32] = {};
