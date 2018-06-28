@@ -1005,9 +1005,9 @@ void Game::startup(Engine& engine)
     vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
   }
 
-  vec3_set(helmet_translation, -1.0f, 1.0f, 3.0f);
-  vec3_set(robot_position, 2.0f, -1.0f, 3.0f);
-  vec3_set(rigged_position, 2.0f, 0.0f, 3.0f);
+  vec3_set(helmet_translation, 1.0f, 1.0f, 3.0f);
+  vec3_set(robot_position, -2.0f, -1.0f, 3.0f);
+  vec3_set(rigged_position, -2.0f, 0.0f, 3.0f);
 
   float extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
   float extent_height       = static_cast<float>(engine.generic_handles.extent2D.height);
@@ -1016,6 +1016,7 @@ void Game::startup(Engine& engine)
   float near_clipping_plane = 0.1f;
   float far_clipping_plane  = 1000.0f;
   mat4x4_perspective(projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
+  projection[1][1] *= -1.0f;
 
   VrLevelLoadResult result = level_generator_vr(&engine);
 
@@ -1109,7 +1110,7 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
       {
         if (SDL_GetRelativeMouseMode())
         {
-          camera_angle -= (0.01f * event.motion.xrel);
+          camera_angle += (0.01f * event.motion.xrel);
           camera_updown_angle -= (0.005f * event.motion.yrel);
         }
 
@@ -1324,13 +1325,13 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
 
   if (player_strafe_left_pressed)
   {
-    player_acceleration[0] += SDL_sinf(camera_angle) * acceleration;
-    player_acceleration[2] += SDL_cosf(camera_angle) * acceleration;
+    player_acceleration[0] += SDL_sinf(camera_angle + (float)M_PI) * acceleration;
+    player_acceleration[2] += SDL_cosf(camera_angle + (float)M_PI) * acceleration;
   }
   else if (player_strafe_right_pressed)
   {
-    player_acceleration[0] += SDL_sinf(camera_angle + (float)M_PI) * acceleration;
-    player_acceleration[2] += SDL_cosf(camera_angle + (float)M_PI) * acceleration;
+    player_acceleration[0] += SDL_sinf(camera_angle) * acceleration;
+    player_acceleration[2] += SDL_cosf(camera_angle) * acceleration;
   }
 
   float camera_distance = 2.5f;
@@ -1343,7 +1344,7 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
   camera_position[2] = player_position[2] - z_camera_offset;
 
   vec3 center = {player_position[0], 0.0f, player_position[2]};
-  vec3 up     = {0.0f, 1.0f, 0.0f};
+  vec3 up     = {0.0f, -1.0f, 0.0f};
   mat4x4_look_at(view, camera_position, center, up);
 
   ImGui::Text("position:     %.2f %.2f %.2f", player_position[0], player_position[1], player_position[2]);
@@ -1537,9 +1538,9 @@ void Game::render(Engine& engine, float current_time_sec)
         standing_pose.rotateX(to_rad(180.0));
 
         Quaternion rotate_back;
-        rotate_back.rotateY(player_position[0] < camera_position[0] ? to_rad(90.0f) : -to_rad(90.0f));
+        //rotate_back.rotateY(player_position[0] < camera_position[0] ? to_rad(90.0f) : -to_rad(90.0f));
 
-        float      x_delta = player_position[0] - camera_position[0];
+        float      x_delta = player_position[0] - camera_position[0] + 2.0f;
         float      z_delta = player_position[2] - camera_position[2];
         Quaternion camera;
         camera.rotateY(static_cast<float>(SDL_atan(z_delta / x_delta)));
@@ -1711,7 +1712,7 @@ void Game::render(Engine& engine, float current_time_sec)
       orientation.rotateX(to_rad(45.0f));
 
       mat4x4 translation_matrix = {};
-      mat4x4_translate(translation_matrix, 2.0f, 0.5f, 0.5f);
+      mat4x4_translate(translation_matrix, -2.0f, 0.5f, 0.5f);
 
       mat4x4 rotation_matrix = {};
       mat4x4_from_quat(rotation_matrix, orientation.data());
