@@ -6,6 +6,12 @@
 #define SWAPCHAIN_IMAGES_COUNT 2
 #define MSAA_SAMPLE_COUNT VK_SAMPLE_COUNT_8_BIT
 
+struct ScheduledPipelineDestruction
+{
+  int        frame_countdown;
+  VkPipeline pipeline;
+};
+
 struct Engine
 {
   struct GenericHandles
@@ -104,7 +110,7 @@ struct Engine
     enum
     {
       MAX_COUNT             = 128,
-      MAX_MEMORY_SIZE_MB    = 300,
+      MAX_MEMORY_SIZE_MB    = 500,
       MAX_MEMORY_SIZE_KB    = MAX_MEMORY_SIZE_MB * 1024,
       MAX_MEMORY_SIZE_BYTES = MAX_MEMORY_SIZE_KB * 1024,
       MAX_MEMORY_SIZE       = MAX_MEMORY_SIZE_BYTES
@@ -232,6 +238,17 @@ struct Engine
   int load_texture(const char* filepath);
   int load_texture_hdr(const char* filename);
   int load_texture(SDL_Surface* surface);
+
+  //
+  // Live shader reloading helpers.
+  //
+  // Each time pipeline is recreated the previous one has to be destroyed to release memory / gpu resources.
+  // Unfortunately the pipeline can't be destroyed when in use, so the safest bet is to wait until any potential
+  // command buffer finishes executing and then safely calling vkDestroyPipeline on the obsolete pipeline.
+  // The list below stores both pipeline handles and the frame countdowns until the destruction can happen.
+  //
+  ScheduledPipelineDestruction scheduled_pipelines_destruction[16];
+  int                          scheduled_pipelines_destruction_count;
 
   // internals
 private:

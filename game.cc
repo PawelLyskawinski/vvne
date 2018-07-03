@@ -1,5 +1,6 @@
 #include "game.hh"
 #include "cubemap.hh"
+#include "pipelines.hh"
 #include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_clipboard.h>
 #include <SDL2/SDL_events.h>
@@ -757,7 +758,7 @@ void Game::startup(Engine& engine)
   animatedBox.loadGLB(engine, "../assets/BoxAnimated.glb");
   riggedSimple.loadGLB(engine, "../assets/RiggedSimple.glb");
   monster.loadGLB(engine, "../assets/Monster.glb");
-  robot.loadGLB(engine, "../assets/robot.glb");
+  robot.loadGLB(engine, "../assets/su-47.glb");
 
   {
     int cubemap_size[2]     = {512, 512};
@@ -1232,46 +1233,48 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
   }
 
   ImGui::NewFrame();
-  ImGui::PlotHistogram("update times", update_times, SDL_arraysize(update_times), 0, nullptr, 0.0, 0.001,
-                       ImVec2(300, 20));
-  ImGui::PlotHistogram("render times", render_times, SDL_arraysize(render_times), 0, nullptr, 0.0, 0.03,
-                       ImVec2(300, 20));
-  ImGui::Text("Booster jet fluel");
-  ImGui::ProgressBar(booster_jet_fuel);
-  ImGui::Text("%d %d | %d %d", lmb_last_cursor_position[0], lmb_last_cursor_position[1], lmb_current_cursor_position[0],
-              lmb_current_cursor_position[1]);
-  ImGui::Text("animation: %s, %.2f", animatedBox.animation_enabled ? "ongoing" : "stopped",
-              animatedBox.animation_enabled ? current_time_sec - animatedBox.animation_start_time : 0.0f);
 
-  auto print_animation_stat = [](gltf::RenderableModel& model, float current_time_sec) {
-    ImGui::Text("animation: %s, %.2f", model.animation_enabled ? "ongoing" : "stopped",
-                model.animation_enabled ? current_time_sec - model.animation_start_time : 0.0f);
-  };
-
-  if (ImGui::Button("restart cube animation"))
-    restart_animation(animatedBox, current_time_sec);
-  print_animation_stat(animatedBox, current_time_sec);
-
-  if (ImGui::Button("restart rigged animation"))
-    restart_animation(riggedSimple, current_time_sec);
-  print_animation_stat(riggedSimple, current_time_sec);
-
-  if (ImGui::Button("monster animation"))
-    restart_animation(monster, current_time_sec);
-  print_animation_stat(monster, current_time_sec);
-
-  if (ImGui::Button("robot animation"))
-    restart_animation(robot, current_time_sec);
-  print_animation_stat(robot, current_time_sec);
-
-  ImGui::Text("Average update time: %f", avg(update_times, SDL_arraysize(update_times)));
-  ImGui::Text("Average render time: %f", avg(render_times, SDL_arraysize(render_times)));
-
-  if (ImGui::Button("quit"))
+  if (ImGui::CollapsingHeader("Timings"))
   {
-    SDL_Event event;
-    event.type = SDL_QUIT;
-    SDL_PushEvent(&event);
+    ImGui::PlotHistogram("update times", update_times, SDL_arraysize(update_times), 0, nullptr, 0.0, 0.001,
+                         ImVec2(300, 20));
+    ImGui::PlotHistogram("render times", render_times, SDL_arraysize(render_times), 0, nullptr, 0.0, 0.03,
+                         ImVec2(300, 20));
+
+    ImGui::Text("Average update time: %f", avg(update_times, SDL_arraysize(update_times)));
+    ImGui::Text("Average render time: %f", avg(render_times, SDL_arraysize(render_times)));
+  }
+
+  if (ImGui::CollapsingHeader("Animations"))
+  {
+    auto print_animation_stat = [](gltf::RenderableModel& model, float current_time_sec) {
+      ImGui::Text("animation: %s, %.2f", model.animation_enabled ? "ongoing" : "stopped",
+                  model.animation_enabled ? current_time_sec - model.animation_start_time : 0.0f);
+    };
+
+    if (ImGui::Button("restart cube animation"))
+      restart_animation(animatedBox, current_time_sec);
+    print_animation_stat(animatedBox, current_time_sec);
+
+    if (ImGui::Button("restart rigged animation"))
+      restart_animation(riggedSimple, current_time_sec);
+    print_animation_stat(riggedSimple, current_time_sec);
+
+    if (ImGui::Button("monster animation"))
+      restart_animation(monster, current_time_sec);
+    print_animation_stat(monster, current_time_sec);
+
+    // if (ImGui::Button("robot animation"))
+    // restart_animation(robot, current_time_sec);
+    // print_animation_stat(robot, current_time_sec);
+  }
+
+  if (ImGui::CollapsingHeader("Gameplay features"))
+  {
+    ImGui::Text("Booster jet fluel");
+    ImGui::ProgressBar(booster_jet_fuel);
+    ImGui::Text("%d %d | %d %d", lmb_last_cursor_position[0], lmb_last_cursor_position[1],
+                lmb_current_cursor_position[0], lmb_current_cursor_position[1]);
   }
 
   animate_model(animatedBox, current_time_sec);
@@ -1347,16 +1350,74 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
   vec3 up     = {0.0f, -1.0f, 0.0f};
   mat4x4_look_at(view, camera_position, center, up);
 
-  ImGui::Text("position:     %.2f %.2f %.2f", player_position[0], player_position[1], player_position[2]);
-  ImGui::Text("camera:       %.2f %.2f %.2f", camera_position[0], camera_position[1], camera_position[2]);
-  ImGui::Text("acceleration: %.2f %.2f %.2f", player_acceleration[0], player_acceleration[1], player_acceleration[2]);
-  ImGui::Text("velocity:     %.2f %.2f %.2f", player_velocity[0], player_velocity[1], player_velocity[2]);
-  ImGui::Text("time:         %.4f", current_time_sec);
+  if (ImGui::CollapsingHeader("Debug and info"))
+  {
+    ImGui::Text("position:     %.2f %.2f %.2f", player_position[0], player_position[1], player_position[2]);
+    ImGui::Text("camera:       %.2f %.2f %.2f", camera_position[0], camera_position[1], camera_position[2]);
+    ImGui::Text("acceleration: %.2f %.2f %.2f", player_acceleration[0], player_acceleration[1], player_acceleration[2]);
+    ImGui::Text("velocity:     %.2f %.2f %.2f", player_velocity[0], player_velocity[1], player_velocity[2]);
+    ImGui::Text("time:         %.4f", current_time_sec);
 
-  ImGui::Text("WASD - movement");
-  ImGui::Text("F1 - enable first person view");
-  ImGui::Text("F2 - disable first person view");
-  ImGui::Text("ESC - exit");
+    ImGui::Text("WASD - movement");
+    ImGui::Text("F1 - enable first person view");
+    ImGui::Text("F2 - disable first person view");
+    ImGui::Text("ESC - exit");
+  }
+
+  if (ImGui::Button("quit"))
+  {
+    SDL_Event event;
+    event.type = SDL_QUIT;
+    SDL_PushEvent(&event);
+  }
+
+  //
+  // Aging and final destruction of scheduled pipelines
+  //
+  for (int i = 0; i < engine.scheduled_pipelines_destruction_count; ++i)
+  {
+    ScheduledPipelineDestruction& schedule = engine.scheduled_pipelines_destruction[i];
+    schedule.frame_countdown -= 1;
+    if (0 == schedule.frame_countdown)
+    {
+      vkDestroyPipeline(engine.generic_handles.device, schedule.pipeline, nullptr);
+      engine.scheduled_pipelines_destruction_count -= 1;
+
+      if (i != engine.scheduled_pipelines_destruction_count)
+      {
+        schedule = engine.scheduled_pipelines_destruction[engine.scheduled_pipelines_destruction_count + 1];
+        i -= 1;
+      }
+    }
+  }
+
+  if (ImGui::CollapsingHeader("Pipeline reload"))
+  {
+    if (ImGui::Button("skybox"))
+    {
+      pipeline_reload_simple_rendering_skybox_reload(engine);
+    }
+
+    if (ImGui::Button("scene3d"))
+    {
+      pipeline_reload_simple_rendering_scene3d_reload(engine);
+    }
+
+    if (ImGui::Button("colored geometry"))
+    {
+      pipeline_reload_simple_rendering_coloredgeometry_reload(engine);
+    }
+
+    if (ImGui::Button("colored geometry skinned"))
+    {
+      pipeline_reload_simple_rendering_coloredgeometryskinned_reload(engine);
+    }
+
+    if (ImGui::Button("imgui"))
+    {
+      pipeline_reload_simple_rendering_imgui_reload(engine);
+    }
+  }
 
   struct Light
   {
@@ -1538,9 +1599,9 @@ void Game::render(Engine& engine, float current_time_sec)
         standing_pose.rotateX(to_rad(180.0));
 
         Quaternion rotate_back;
-        //rotate_back.rotateY(player_position[0] < camera_position[0] ? to_rad(90.0f) : -to_rad(90.0f));
+        rotate_back.rotateY(player_position[0] < camera_position[0] ? to_rad(180.0f) : to_rad(0.0f));
 
-        float      x_delta = player_position[0] - camera_position[0] + 2.0f;
+        float      x_delta = player_position[0] - camera_position[0];
         float      z_delta = player_position[2] - camera_position[2];
         Quaternion camera;
         camera.rotateY(static_cast<float>(SDL_atan(z_delta / x_delta)));
