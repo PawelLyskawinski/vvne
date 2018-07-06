@@ -22,7 +22,7 @@ float clamp(float val, float min, float max)
   return (val < min) ? min : (val > max) ? max : val;
 }
 
-int find_first_higher(float* times, float current)
+int find_first_higher(const float times[], float current)
 {
   int iter = 0;
   while (current > times[iter])
@@ -30,7 +30,7 @@ int find_first_higher(float* times, float current)
   return iter;
 }
 
-void lerp(float* a, float* b, float* result, int dim, float t)
+void lerp(const float a[], const float b[], float result[], int dim, float t)
 {
   for (int i = 0; i < dim; ++i)
   {
@@ -43,13 +43,14 @@ void lerp(float* a, float* b, float* result, int dim, float t)
 //
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#appendix-c-spline-interpolation
 //
-void hermite_cubic_spline_interpolation(float* a_in, float* b_in, float* result, int dim, float t, float total_duration)
+void hermite_cubic_spline_interpolation(const float a_in[], const float b_in[], float result[], int dim, float t,
+                                        float total_duration)
 {
-  float* a_spline_vertex = &a_in[dim];
-  float* a_out_tangent   = &a_in[2 * dim];
+  const float* a_spline_vertex = &a_in[dim];
+  const float* a_out_tangent   = &a_in[2 * dim];
 
-  float* b_in_tangent    = &b_in[0];
-  float* b_spline_vertex = &b_in[dim];
+  const float* b_in_tangent    = &b_in[0];
+  const float* b_spline_vertex = &b_in[dim];
 
   for (int i = 0; i < dim; ++i)
   {
@@ -668,6 +669,13 @@ void update_ubo(VkDevice device, VkDeviceMemory memory, VkDeviceSize size, VkDev
   SDL_memcpy(memory_map.get<void>(), src, size);
 }
 
+char* forward_right_after(char* cursor, char target)
+{
+  while (target != *cursor)
+    ++cursor;
+  return ++cursor;
+}
+
 } // namespace
 
 void Game::startup(Engine& engine)
@@ -767,6 +775,9 @@ void Game::startup(Engine& engine)
     prefiltered_cubemap_idx = generate_prefiltered_cubemap(&engine, this, environment_cubemap_idx, cubemap_size);
     brdf_lookup_idx         = generate_brdf_lookup(&engine, cubemap_size[0]);
   }
+
+  green_gui_radar_idx       = engine.load_texture("../assets/radar_small.png");
+  lucida_sans_sdf_image_idx = engine.load_texture("../assets/lucida_sans_sdf.png");
 
   const VkDeviceSize light_sources_ubo_size     = sizeof(LightSources);
   const VkDeviceSize skinning_matrices_ubo_size = 64 * sizeof(mat4x4);
@@ -941,6 +952,8 @@ void Game::startup(Engine& engine)
 
     vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &skybox_cubemap_dset);
     vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &imgui_font_atlas_dset);
+    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &radar_texture_dset);
+    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &lucida_sans_sdf_dset);
   }
 
   {
@@ -964,6 +977,14 @@ void Game::startup(Engine& engine)
 
     image.imageView = engine.images.image_views[environment_cubemap_idx];
     write.dstSet    = skybox_cubemap_dset;
+    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
+
+    image.imageView = engine.images.image_views[green_gui_radar_idx];
+    write.dstSet    = radar_texture_dset;
+    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
+
+    image.imageView = engine.images.image_views[lucida_sans_sdf_image_idx];
+    write.dstSet    = lucida_sans_sdf_dset;
     vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
   }
 
@@ -1045,6 +1066,163 @@ void Game::startup(Engine& engine)
   camera_updown_angle = -1.2f;
 
   booster_jet_fuel = 1.0f;
+
+  green_gui_radar_position[0] = -12.2f;
+  green_gui_radar_position[1] = -7.3f;
+  green_gui_radar_rotation    = -6.0f;
+
+  //
+  // billboard vertex data for green gui triangle strip
+  //
+  {
+    struct GreenGuiVertex
+    {
+      vec2 position;
+      vec2 uv;
+    };
+
+    GreenGuiVertex vertices[] = {
+        {
+            .position = {-1.0f, -1.0f},
+            .uv       = {0.0f, 0.0f},
+        },
+        {
+            .position = {1.0f, -1.0f},
+            .uv       = {1.0f, 0.0f},
+        },
+        {
+            .position = {-1.0f, 1.0f},
+            .uv       = {0.0f, 1.0f},
+        },
+        {
+
+            .position = {1.0f, 1.0f},
+            .uv       = {1.0f, 1.0f},
+        },
+    };
+
+    engine.gpu_static_transfer.used_memory   = 0;
+    VkDeviceSize vertices_host_offset        = engine.gpu_static_transfer.allocate(sizeof(vertices));
+    green_gui_billboard_vertex_buffer_offset = engine.gpu_static_geometry.allocate(sizeof(vertices));
+
+    {
+      ScopedMemoryMap vertices_map(engine.generic_handles.device, engine.gpu_static_transfer.memory,
+                                   vertices_host_offset, sizeof(vertices));
+      SDL_memcpy(vertices_map.get<void>(), vertices, sizeof(vertices));
+    }
+
+    VkCommandBuffer cmd = VK_NULL_HANDLE;
+
+    {
+      VkCommandBufferAllocateInfo allocate = {
+          .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+          .commandPool        = engine.generic_handles.graphics_command_pool,
+          .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+          .commandBufferCount = 1,
+      };
+
+      vkAllocateCommandBuffers(engine.generic_handles.device, &allocate, &cmd);
+    }
+
+    {
+      VkCommandBufferBeginInfo begin = {
+          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+          .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+      };
+
+      vkBeginCommandBuffer(cmd, &begin);
+    }
+
+    {
+      VkBufferCopy copy = {
+          .srcOffset = vertices_host_offset,
+          .dstOffset = green_gui_billboard_vertex_buffer_offset,
+          .size      = sizeof(vertices),
+      };
+
+      vkCmdCopyBuffer(cmd, engine.gpu_static_transfer.buffer, engine.gpu_static_geometry.buffer, 1, &copy);
+    }
+
+    {
+      VkBufferMemoryBarrier barrier = {
+          .sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+          .srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT,
+          .dstAccessMask       = VK_ACCESS_SHADER_READ_BIT,
+          .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+          .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+          .buffer              = engine.gpu_static_geometry.buffer,
+          .offset              = green_gui_billboard_vertex_buffer_offset,
+          .size                = static_cast<VkDeviceSize>(sizeof(vertices)),
+      };
+
+      vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, 0, 0, nullptr, 1,
+                           &barrier, 0, nullptr);
+    }
+
+    vkEndCommandBuffer(cmd);
+
+    VkFence data_upload_fence = VK_NULL_HANDLE;
+    {
+      VkFenceCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+      vkCreateFence(engine.generic_handles.device, &ci, nullptr, &data_upload_fence);
+    }
+
+    {
+      VkSubmitInfo submit = {
+          .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+          .commandBufferCount = 1,
+          .pCommandBuffers    = &cmd,
+      };
+
+      vkQueueSubmit(engine.generic_handles.graphics_queue, 1, &submit, data_upload_fence);
+    }
+
+    vkWaitForFences(engine.generic_handles.device, 1, &data_upload_fence, VK_TRUE, UINT64_MAX);
+    vkDestroyFence(engine.generic_handles.device, data_upload_fence, nullptr);
+    vkFreeCommandBuffers(engine.generic_handles.device, engine.generic_handles.graphics_command_pool, 1, &cmd);
+    engine.gpu_static_transfer.used_memory = 0;
+  }
+
+  {
+    SDL_RWops* ctx              = SDL_RWFromFile("../assets/lucida_sans_sdf.fnt", "r");
+    int        fnt_file_size    = static_cast<int>(SDL_RWsize(ctx));
+    char*      fnt_file_content = engine.double_ended_stack.allocate_back<char>(fnt_file_size);
+    SDL_RWread(ctx, fnt_file_content, sizeof(char), static_cast<size_t>(fnt_file_size));
+    SDL_RWclose(ctx);
+
+    char* cursor = fnt_file_content;
+    for (int i = 0; i < 4; ++i)
+      cursor = forward_right_after(cursor, '\n');
+
+    for (unsigned i = 0; i < SDL_arraysize(lucida_sans_sdf_chars); ++i)
+    {
+      uint8_t& id   = lucida_sans_sdf_char_ids[i];
+      SdfChar& data = lucida_sans_sdf_chars[i];
+
+      auto read_unsigned = [](char* c) { return SDL_strtoul(c, nullptr, 10); };
+      auto read_signed   = [](char* c) { return SDL_strtol(c, nullptr, 10); };
+
+      cursor        = forward_right_after(cursor, '=');
+      id            = static_cast<uint8_t>(read_unsigned(cursor));
+      cursor        = forward_right_after(cursor, '=');
+      data.x        = static_cast<uint16_t>(read_unsigned(cursor));
+      cursor        = forward_right_after(cursor, '=');
+      data.y        = static_cast<uint16_t>(read_unsigned(cursor));
+      cursor        = forward_right_after(cursor, '=');
+      data.width    = static_cast<uint8_t>(read_unsigned(cursor));
+      cursor        = forward_right_after(cursor, '=');
+      data.height   = static_cast<uint8_t>(read_unsigned(cursor));
+      cursor        = forward_right_after(cursor, '=');
+      data.xoffset  = static_cast<int8_t>(read_signed(cursor));
+      cursor        = forward_right_after(cursor, '=');
+      data.yoffset  = static_cast<int8_t>(read_signed(cursor));
+      cursor        = forward_right_after(cursor, '=');
+      data.xadvance = static_cast<uint8_t>(read_unsigned(cursor));
+      cursor        = forward_right_after(cursor, '\n');
+    }
+
+    engine.double_ended_stack.reset_back();
+  }
 }
 
 void Game::teardown(Engine&)
@@ -1264,9 +1442,9 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
       restart_animation(monster, current_time_sec);
     print_animation_stat(monster, current_time_sec);
 
-    // if (ImGui::Button("robot animation"))
-    // restart_animation(robot, current_time_sec);
-    // print_animation_stat(robot, current_time_sec);
+    if (ImGui::Button("robot animation"))
+      restart_animation(robot, current_time_sec);
+    print_animation_stat(robot, current_time_sec);
   }
 
   if (ImGui::CollapsingHeader("Gameplay features"))
@@ -1362,6 +1540,9 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
     ImGui::Text("F1 - enable first person view");
     ImGui::Text("F2 - disable first person view");
     ImGui::Text("ESC - exit");
+
+    ImGui::InputFloat2("green_gui_radar_position", green_gui_radar_position);
+    ImGui::InputFloat("green_gui_radar_rotation", &green_gui_radar_rotation);
   }
 
   if (ImGui::Button("quit"))
@@ -1393,6 +1574,7 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
 
   if (ImGui::CollapsingHeader("Pipeline reload"))
   {
+#if 0
     if (ImGui::Button("skybox"))
     {
       pipeline_reload_simple_rendering_skybox_reload(engine);
@@ -1417,89 +1599,60 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
     {
       pipeline_reload_simple_rendering_imgui_reload(engine);
     }
+#endif
+
+    if (ImGui::Button("green gui sdf"))
+    {
+      pipeline_reload_simple_rendering_green_gui_sdf_reload(engine);
+    }
   }
 
-  struct Light
+  if (ImGui::RadioButton("debug flag 1", DEBUG_FLAG_1))
   {
-  public:
-    Light(vec4 position, vec4 color)
-        : p(position)
-        , c(color)
-    {
-    }
+    DEBUG_FLAG_1 = !DEBUG_FLAG_1;
+  }
 
-    Light(LightSources& ls, int idx)
-        : Light(ls.positions[idx], ls.colors[idx])
-    {
-    }
-
-    void x(float val)
-    {
-      p[0] = val;
-    }
-
-    void y(float val)
-    {
-      p[1] = val;
-    }
-
-    void z(float val)
-    {
-      p[2] = val;
-    }
-
-    void rgb(float r, float g, float b)
-    {
-      c[0] = r;
-      c[1] = g;
-      c[2] = b;
-    }
-
-  private:
-    float* p;
-    float* c;
-  };
+  if (ImGui::RadioButton("debug flag 2", DEBUG_FLAG_2))
+  {
+    DEBUG_FLAG_2 = !DEBUG_FLAG_2;
+  }
 
   pbr_light_sources_cache.count = 5;
 
+  auto update_light = [](LightSources& sources, int idx, vec3 position, vec3 color) {
+    SDL_memcpy(sources.positions[idx], position, sizeof(vec3));
+    SDL_memcpy(sources.colors[idx], color, sizeof(vec3));
+  };
+
   {
-    Light l(pbr_light_sources_cache, 0);
-    l.x(SDL_sinf(current_time_sec));
-    l.y(-0.5f);
-    l.z(3.0f + SDL_cosf(current_time_sec));
-    l.rgb(20.0f + (5.0f * SDL_sinf(current_time_sec + 0.4f)), 0.0, 0.0);
+    vec3 position = {SDL_sinf(current_time_sec), -0.5f, 3.0f + SDL_cosf(current_time_sec)};
+    vec3 color    = {20.0f + (5.0f * SDL_sinf(current_time_sec + 0.4f)), 0.0, 0.0};
+    update_light(pbr_light_sources_cache, 0, position, color);
   }
 
   {
-    Light l(pbr_light_sources_cache, 1);
-    l.x(0.8f * SDL_cosf(current_time_sec));
-    l.y(-0.6f);
-    l.z(3.0f + (0.8f * SDL_sinf(current_time_sec)));
-    l.rgb(0.0, 20.0, 0.0);
+    vec3 position = {0.8f * SDL_cosf(current_time_sec), -0.6f, 3.0f + (0.8f * SDL_sinf(current_time_sec))};
+    vec3 color    = {0.0, 20.0, 0.0};
+    update_light(pbr_light_sources_cache, 1, position, color);
   }
 
   {
-    Light l(pbr_light_sources_cache, 2);
-    l.x(0.8f * SDL_sinf(current_time_sec / 2.0f));
-    l.y(-0.3f);
-    l.z(3.0f + (0.8f * SDL_cosf(current_time_sec / 2.0f)));
-    l.rgb(0.0, 0.0, 20.0);
+    vec3 position = {0.8f * SDL_sinf(current_time_sec / 2.0f), -0.3f,
+                     3.0f + (0.8f * SDL_cosf(current_time_sec / 2.0f))};
+    vec3 color    = {0.0, 0.0, 20.0};
+    update_light(pbr_light_sources_cache, 2, position, color);
   }
 
   {
-    Light l(pbr_light_sources_cache, 3);
-    l.x(SDL_sinf(current_time_sec / 1.2f));
-    l.y(-0.1f);
-    l.z(2.5f * SDL_cosf(current_time_sec / 1.2f));
-    l.rgb(8.0, 8.0, 8.0);
+    vec3 position = {SDL_sinf(current_time_sec / 1.2f), -0.1f, 2.5f * SDL_cosf(current_time_sec / 1.2f)};
+    vec3 color    = {8.0, 8.0, 8.0};
+    update_light(pbr_light_sources_cache, 3, position, color);
   }
 
   {
-    Light l(pbr_light_sources_cache, 4);
-    l.x(0.0f);
-    l.y(-1.0f);
-    l.z(4.0f);
-    l.rgb(10.0, 0.0, 10.0);
+    vec3 position = {0.0f, -1.0f, 4.0f};
+    vec3 color    = {10.0, 0.0, 10.0};
+    update_light(pbr_light_sources_cache, 4, position, color);
   }
 }
 
@@ -1803,6 +1956,197 @@ void Game::render(Engine& engine, float current_time_sec)
   }
 
   {
+    VkCommandBuffer command_buffer = command_selector.select(Engine::SimpleRendering::Pipeline::GreenGui);
+    ScopedCommand   cmd_scope      = command_starter.begin(command_buffer, Engine::SimpleRendering::Pass::ImGui);
+
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      renderer.pipelines[Engine::SimpleRendering::Pipeline::GreenGui]);
+
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGui], 0, 1,
+                            &radar_texture_dset, 0, nullptr);
+
+    vkCmdBindVertexBuffers(command_buffer, 0, 1, &engine.gpu_static_geometry.buffer,
+                           &green_gui_billboard_vertex_buffer_offset);
+
+    mat4x4 gui_projection = {};
+
+    {
+      float extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
+      float extent_height       = static_cast<float>(engine.generic_handles.extent2D.height);
+      float aspect_ratio        = extent_width / extent_height;
+      float fov                 = to_rad(90.0f);
+      float near_clipping_plane = 0.001f;
+      float far_clipping_plane  = 100.0f;
+      mat4x4_perspective(gui_projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
+      gui_projection[1][1] *= -1.0f;
+    }
+
+    mat4x4 gui_view = {};
+
+    {
+      vec3 center   = {0.0f, 0.0f, 0.0f};
+      vec3 up       = {0.0f, -1.0f, 0.0f};
+      vec3 position = {0.0f, 0.0f, -10.0f};
+      mat4x4_look_at(gui_view, position, center, up);
+    }
+
+    Quaternion orientation;
+    orientation.rotateY(to_rad(green_gui_radar_rotation));
+
+    mat4x4 translation_matrix = {};
+    mat4x4_translate(translation_matrix, green_gui_radar_position[0], green_gui_radar_position[1], 0.0f);
+
+    mat4x4 rotation_matrix = {};
+    mat4x4_from_quat(rotation_matrix, orientation.data());
+
+    mat4x4 scale_matrix = {};
+    mat4x4_identity(scale_matrix);
+    mat4x4_scale_aniso(scale_matrix, scale_matrix, 2.0f, 2.0f, 1.0f);
+
+    mat4x4 tmp = {};
+    mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+
+    mat4x4 world_transform = {};
+    mat4x4_mul(world_transform, tmp, scale_matrix);
+
+    mat4x4 projection_view = {};
+    mat4x4_mul(projection_view, gui_projection, gui_view);
+
+    mat4x4 mvp = {};
+    mat4x4_mul(mvp, projection_view, world_transform);
+
+    vkCmdPushConstants(command_buffer,
+                       engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGui],
+                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
+
+    vkCmdPushConstants(command_buffer,
+                       engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGui],
+                       VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(float), &current_time_sec);
+
+    vkCmdDraw(command_buffer, 4, 1, 0, 0);
+  }
+
+  {
+    VkCommandBuffer command_buffer = command_selector.select(Engine::SimpleRendering::Pipeline::GreenGuiSdfFont);
+    ScopedCommand   cmd_scope      = command_starter.begin(command_buffer, Engine::SimpleRendering::Pass::ImGui);
+
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      renderer.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont]);
+
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont], 0, 1,
+                            &lucida_sans_sdf_dset, 0, nullptr);
+
+    vkCmdBindVertexBuffers(command_buffer, 0, 1, &engine.gpu_static_geometry.buffer,
+                           &green_gui_billboard_vertex_buffer_offset);
+
+    struct VertexPushConstant
+    {
+      mat4x4 mvp;
+      vec2   character_coordinate;
+      vec2   character_size;
+    } vpc = {};
+
+    mat4x4 gui_projection = {};
+
+    {
+      float extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
+      float extent_height       = static_cast<float>(engine.generic_handles.extent2D.height);
+      float aspect_ratio        = extent_width / extent_height;
+      float fov                 = to_rad(90.0f);
+      float near_clipping_plane = 0.001f;
+      float far_clipping_plane  = 100.0f;
+      mat4x4_perspective(gui_projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
+      gui_projection[1][1] *= -1.0f;
+    }
+
+    mat4x4 gui_view = {};
+
+    {
+      vec3 center   = {0.0f, 0.0f, 0.0f};
+      vec3 up       = {0.0f, -1.0f, 0.0f};
+      vec3 position = {0.0f, 0.0f, -10.0f};
+      mat4x4_look_at(gui_view, position, center, up);
+    }
+
+    mat4x4 projection_view = {};
+    mat4x4_mul(projection_view, gui_projection, gui_view);
+
+    float cursor = 0.0f;
+
+    const char word[] = "Hello World!";
+
+    for (const char c : word)
+    {
+      if ('\0' == c)
+        continue;
+
+      for (unsigned i = 0; i < SDL_arraysize(lucida_sans_sdf_char_ids); ++i)
+      {
+        if (c == lucida_sans_sdf_char_ids[i])
+        {
+          const SdfChar& char_data = lucida_sans_sdf_chars[i];
+
+          vpc.character_coordinate[0] = static_cast<float>(char_data.x) / 512.0f;
+          vpc.character_coordinate[1] = static_cast<float>(char_data.y) / 256.0f;
+          vpc.character_size[0]       = static_cast<float>(char_data.width) / 512.0f;
+          vpc.character_size[1]       = static_cast<float>(char_data.height) / 256.0f;
+
+          Quaternion orientation;
+          orientation.rotateY(to_rad(30.0f * SDL_sinf(current_time_sec)));
+
+          const float scaling       = 30.0f;
+          vec2        text_position = {2.0f, 6.0f};
+
+          float width_uv_adjusted                = char_data.width / (512.0f * 2.0f);
+          float height_uv_adjusted               = char_data.height / (256.0f * 2.0f);
+          float x_scaling                        = scaling * width_uv_adjusted;
+          float y_scaling                        = scaling * height_uv_adjusted;
+          float y_model_adjustment_offset_factor = scaling * char_data.yoffset / (256.0f * 2.0f);
+          float y_model_adjustment               = y_model_adjustment_offset_factor;
+          float x_model_adjustment_size_factor   = x_scaling - 2.0f;
+          float x_model_adjustment_offset_factor = scaling * char_data.xoffset / (512.0f * 2.0f);
+          float x_model_adjustment = cursor + x_model_adjustment_size_factor + x_model_adjustment_offset_factor;
+
+          mat4x4 translation_matrix = {};
+          mat4x4_translate(translation_matrix, x_model_adjustment + text_position[0],
+                           y_model_adjustment + text_position[1], 0.0f);
+
+          mat4x4 rotation_matrix = {};
+          mat4x4_from_quat(rotation_matrix, orientation.data());
+
+          mat4x4 scale_matrix = {};
+          mat4x4_identity(scale_matrix);
+          mat4x4_scale_aniso(scale_matrix, scale_matrix, x_scaling, y_scaling, 1.0f);
+
+          mat4x4 tmp = {};
+          mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+
+          mat4x4 world_transform = {};
+          mat4x4_mul(world_transform, tmp, scale_matrix);
+
+          mat4x4_mul(vpc.mvp, projection_view, world_transform);
+
+          cursor += scaling * ((float)(char_data.xadvance) / 512.0f);
+
+          break;
+        }
+      }
+
+      vkCmdPushConstants(command_buffer,
+                         engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
+                         VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
+
+      vkCmdPushConstants(command_buffer,
+                         engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
+                         VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(float), &current_time_sec);
+
+      vkCmdDraw(command_buffer, 4, 1, 0, 0);
+    }
+  }
+
+  {
     ImGui::Render();
     ImDrawData* draw_data = ImGui::GetDrawData();
     ImGuiIO&    io        = ImGui::GetIO();
@@ -1918,5 +2262,82 @@ void Game::render(Engine& engine, float current_time_sec)
     }
   }
 
-  engine.submit_simple_rendering(image_index);
+  //
+  // Compiling main primary command buffer out of previous secondary ones recorded
+  //
+
+  {
+    VkCommandBuffer cmd = engine.simple_rendering.primary_command_buffers[image_index];
+
+    {
+      VkCommandBufferBeginInfo begin = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+      vkBeginCommandBuffer(cmd, &begin);
+    }
+
+    VkClearValue clear_values[] = {
+        {.color = {{0.0f, 0.0f, 0.2f, 1.0f}}},
+        {.depthStencil = {1.0, 0}},
+        {.color = {{0.0f, 0.0f, 0.2f, 1.0f}}},
+        {.depthStencil = {1.0, 0}},
+    };
+
+    {
+      VkRenderPassBeginInfo begin = {
+          .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+          .renderPass      = engine.simple_rendering.render_pass,
+          .framebuffer     = engine.simple_rendering.framebuffers[image_index],
+          .renderArea      = {.extent = engine.generic_handles.extent2D},
+          .clearValueCount = SDL_arraysize(clear_values),
+          .pClearValues    = clear_values,
+      };
+
+      vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+    }
+
+    int              secondary_stride_offset = Engine::SimpleRendering::Pipeline::Count * image_index;
+    VkCommandBuffer* secondary_cbs = &engine.simple_rendering.secondary_command_buffers[secondary_stride_offset];
+
+    vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::Skybox]);
+    vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+    vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::Scene3D]);
+    vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::ColoredGeometry]);
+    vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned]);
+    vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+    vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::GreenGui]);
+    vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont]);
+    vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::ImGui]);
+    vkCmdEndRenderPass(cmd);
+    vkEndCommandBuffer(cmd);
+
+    {
+      VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+      VkSubmitInfo submit = {
+          .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+          .waitSemaphoreCount   = 1,
+          .pWaitSemaphores      = &engine.generic_handles.image_available,
+          .pWaitDstStageMask    = &wait_stage,
+          .commandBufferCount   = 1,
+          .pCommandBuffers      = &cmd,
+          .signalSemaphoreCount = 1,
+          .pSignalSemaphores    = &engine.generic_handles.render_finished,
+      };
+
+      vkQueueSubmit(engine.generic_handles.graphics_queue, 1, &submit,
+                    engine.simple_rendering.submition_fences[image_index]);
+    }
+
+    {
+      VkPresentInfoKHR present = {
+          .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+          .waitSemaphoreCount = 1,
+          .pWaitSemaphores    = &engine.generic_handles.render_finished,
+          .swapchainCount     = 1,
+          .pSwapchains        = &engine.generic_handles.swapchain,
+          .pImageIndices      = &image_index,
+      };
+
+      vkQueuePresentKHR(engine.generic_handles.graphics_queue, &present);
+    }
+  }
 }

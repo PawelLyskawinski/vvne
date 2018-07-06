@@ -1780,6 +1780,68 @@ void Engine::setup_simple_rendering()
         {
             .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
             .offset     = 0,
+            .size       = sizeof(mat4x4),
+        },
+        {
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .offset     = sizeof(mat4x4),
+            .size       = sizeof(float),
+        },
+    };
+
+    VkDescriptorSetLayout descriptor_sets[] = {renderer.single_texture_in_frag_descriptor_set_layout};
+
+    VkPipelineLayoutCreateInfo ci = {
+        .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount         = SDL_arraysize(descriptor_sets),
+        .pSetLayouts            = descriptor_sets,
+        .pushConstantRangeCount = SDL_arraysize(ranges),
+        .pPushConstantRanges    = ranges,
+    };
+
+    vkCreatePipelineLayout(ctx.device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Pipeline::GreenGui]);
+  }
+
+  {
+    struct VertexPushConstant
+    {
+      mat4x4 mvp;
+      vec2   character_coordinate;
+      vec2   character_size;
+    };
+
+    VkPushConstantRange ranges[] = {
+        {
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .offset     = 0,
+            .size       = sizeof(VertexPushConstant),
+        },
+        {
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .offset     = sizeof(VertexPushConstant),
+            .size       = sizeof(float),
+        },
+    };
+
+    VkDescriptorSetLayout descriptor_sets[] = {renderer.single_texture_in_frag_descriptor_set_layout};
+
+    VkPipelineLayoutCreateInfo ci = {
+        .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount         = SDL_arraysize(descriptor_sets),
+        .pSetLayouts            = descriptor_sets,
+        .pushConstantRangeCount = SDL_arraysize(ranges),
+        .pPushConstantRanges    = ranges,
+    };
+
+    vkCreatePipelineLayout(ctx.device, &ci, nullptr,
+                           &renderer.pipeline_layouts[SimpleRendering::Pipeline::GreenGuiSdfFont]);
+  }
+
+  {
+    VkPushConstantRange ranges[] = {
+        {
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .offset     = 0,
             .size       = 16 * sizeof(float),
         },
     };
@@ -1801,6 +1863,8 @@ void Engine::setup_simple_rendering()
   pipeline_reload_simple_rendering_scene3d_reload(*this);
   pipeline_reload_simple_rendering_coloredgeometry_reload(*this);
   pipeline_reload_simple_rendering_coloredgeometryskinned_reload(*this);
+  pipeline_reload_simple_rendering_green_gui_reload(*this);
+  pipeline_reload_simple_rendering_green_gui_sdf_reload(*this);
   pipeline_reload_simple_rendering_imgui_reload(*this);
 
   for (uint32_t i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
@@ -1848,78 +1912,5 @@ void Engine::setup_simple_rendering()
     };
 
     vkAllocateCommandBuffers(ctx.device, &alloc, renderer.secondary_command_buffers);
-  }
-}
-
-void Engine::submit_simple_rendering(uint32_t image_index)
-{
-  VkCommandBuffer cmd = simple_rendering.primary_command_buffers[image_index];
-
-  {
-    VkCommandBufferBeginInfo begin = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-    vkBeginCommandBuffer(cmd, &begin);
-  }
-
-  VkClearValue clear_values[] = {
-      {.color = {{0.0f, 0.0f, 0.2f, 1.0f}}},
-      {.depthStencil = {1.0, 0}},
-      {.color = {{0.0f, 0.0f, 0.2f, 1.0f}}},
-      {.depthStencil = {1.0, 0}},
-  };
-
-  {
-    VkRenderPassBeginInfo begin = {
-        .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-        .renderPass      = simple_rendering.render_pass,
-        .framebuffer     = simple_rendering.framebuffers[image_index],
-        .renderArea      = {.extent = generic_handles.extent2D},
-        .clearValueCount = SDL_arraysize(clear_values),
-        .pClearValues    = clear_values,
-    };
-
-    vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-  }
-
-  int              secondary_stride_offset = Engine::SimpleRendering::Pipeline::Count * image_index;
-  VkCommandBuffer* secondary_cbs           = &simple_rendering.secondary_command_buffers[secondary_stride_offset];
-
-  vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::Skybox]);
-  vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-  vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::Scene3D]);
-  vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::ColoredGeometry]);
-  vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned]);
-  vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-  vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::ImGui]);
-  vkCmdEndRenderPass(cmd);
-  vkEndCommandBuffer(cmd);
-
-  {
-    VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-
-    VkSubmitInfo submit = {
-        .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .waitSemaphoreCount   = 1,
-        .pWaitSemaphores      = &generic_handles.image_available,
-        .pWaitDstStageMask    = &wait_stage,
-        .commandBufferCount   = 1,
-        .pCommandBuffers      = &cmd,
-        .signalSemaphoreCount = 1,
-        .pSignalSemaphores    = &generic_handles.render_finished,
-    };
-
-    vkQueueSubmit(generic_handles.graphics_queue, 1, &submit, simple_rendering.submition_fences[image_index]);
-  }
-
-  {
-    VkPresentInfoKHR present = {
-        .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-        .waitSemaphoreCount = 1,
-        .pWaitSemaphores    = &generic_handles.render_finished,
-        .swapchainCount     = 1,
-        .pSwapchains        = &generic_handles.swapchain,
-        .pImageIndices      = &image_index,
-    };
-
-    vkQueuePresentKHR(generic_handles.graphics_queue, &present);
   }
 }

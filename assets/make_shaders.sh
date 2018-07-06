@@ -22,3 +22,7 @@ compile cubemap_prefiltering.frag
 compile cubemap_prefiltering.vert
 compile brdf_compute.frag
 compile brdf_compute.vert
+compile green_gui.frag
+compile green_gui.vert
+compile green_gui_sdf.frag
+compile green_gui_sdf.vert

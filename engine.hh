@@ -172,6 +172,8 @@ struct Engine
         Scene3D,
         ColoredGeometry,
         ColoredGeometrySkinned,
+        GreenGui,
+        GreenGuiSdfFont,
         ImGui,
         Count
       };
@@ -231,7 +233,6 @@ struct Engine
   void startup();
   void teardown();
   void print_memory_statistics();
-  void submit_simple_rendering(uint32_t image_index);
 
   VkShaderModule load_shader(const char* file_path);
 

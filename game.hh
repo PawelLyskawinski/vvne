@@ -12,8 +12,23 @@ struct LightSources
   int  count;
 };
 
+struct SdfChar
+{
+  uint8_t  width;
+  uint8_t  height;
+  uint16_t x;
+  uint16_t y;
+  int8_t   xoffset;
+  int8_t   yoffset;
+  uint8_t  xadvance;
+};
+
 struct Game
 {
+  uint8_t lucida_sans_sdf_char_ids[97];
+  SdfChar lucida_sans_sdf_chars[97];
+  int     lucida_sans_sdf_image_idx;
+
   struct DebugGui
   {
     bool        mousepressed[3];
@@ -30,6 +45,9 @@ struct Game
     VkDeviceSize index_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
   } debug_gui;
 
+  bool DEBUG_FLAG_1;
+  bool DEBUG_FLAG_2;
+
   // materials
   VkDescriptorSet pbr_ibl_environment_dset;
   VkDescriptorSet helmet_pbr_material_dset;
@@ -39,6 +57,8 @@ struct Game
   VkDescriptorSet imgui_font_atlas_dset;
   VkDescriptorSet rig_skinning_matrices_dset;
   VkDescriptorSet monster_skinning_matrices_dset;
+  VkDescriptorSet radar_texture_dset;
+  VkDescriptorSet lucida_sans_sdf_dset;
 
   // ubos
   VkDeviceSize rig_skinning_matrices_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
@@ -62,6 +82,13 @@ struct Game
   int irradiance_cubemap_idx;
   int prefiltered_cubemap_idx;
   int brdf_lookup_idx;
+
+  // textures - game
+  int          green_gui_radar_idx;
+  VkDeviceSize green_gui_billboard_vertex_buffer_offset;
+
+  vec2  green_gui_radar_position;
+  float green_gui_radar_rotation;
 
   float robot_position[3];
   float rigged_position[3];

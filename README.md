@@ -5,7 +5,7 @@ There are a lot of publicly available engines / demos on github which use vulkan
 Project aims to recreate a [very inspiring muv luv gif](https://thumbs.gfycat.com/HelplessRealAlbacoretuna-size_restricted.gif) as best as possible.
 
 Current preview (still a veeeery long road ahead)
-![Image of Yaktocat](assets/current_status.jpg)
+![status preview image](assets/current_status.jpg)
 
 ### Features
 - handmade gltf2.0 glb model importer (nodes, animations, skinning)
@@ -15,6 +15,7 @@ Current preview (still a veeeery long road ahead)
 - hdr skybox (although not used yet)
 - PBR with IBL (huge thanks to Sascha Willems vulkan examples and https://learnopengl.com/PBR/Theory)
 - MSAA
+- Signed Distance Field font rendering
 
 ### Used C++ subset
 - no stl
