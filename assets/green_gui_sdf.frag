@@ -32,5 +32,6 @@ void main()
   col *= 0.9 + 0.1 * sin(15.0 * -time + uv.x * 1000.0f);
   col *= 1.0 + 0.03 * sin(120.0 * time);
 
-  outColor = vec4(col, alpha * 0.75);
+  // outColor = vec4(col, alpha * 0.75);
+  outColor = vec4(rgb, alpha);
 }
