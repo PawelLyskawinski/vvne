@@ -17,6 +17,16 @@ Current preview (still a veeeery long road ahead)
 - MSAA
 - Signed Distance Field font rendering
 
+### Wishlist
+- DXT texture compression
+- movable tilt lines under strafe movement (gui)
+- speed measurement (gui)
+- compass (gui)
+- working radar (gui)
+- weapon selection (gui)
+- health bar / resource indicator (gui)
+- corrected camera movement
+
 ### Used C++ subset
 - no stl
 - no rtti
