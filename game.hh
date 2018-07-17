@@ -4,6 +4,7 @@
 #include "gltf.hh"
 #include "imgui.h"
 #include <SDL2/SDL_mouse.h>
+#include <SDL2/SDL_scancode.h>
 
 struct LightSources
 {
@@ -21,6 +22,86 @@ struct SdfChar
   int8_t   xoffset;
   int8_t   yoffset;
   uint8_t  xadvance;
+};
+
+struct GuiLine
+{
+  enum class Size
+  {
+    Big,
+    Normal,
+    Small,
+    Tiny
+  };
+
+  enum class Color
+  {
+    Green,
+    Red,
+    Yellow
+  };
+
+  vec2  a;
+  vec2  b;
+  Size  size;
+  Color color;
+};
+
+struct GuiLineSizeCount
+{
+  int big;
+  int normal;
+  int small;
+  int tiny;
+};
+
+struct KeyMapping
+{
+  ImGuiKey_    imgui;
+  SDL_Scancode sdl;
+};
+
+struct CursorMapping
+{
+  ImGuiMouseCursor_ imgui;
+  SDL_SystemCursor  sdl;
+};
+
+struct GuiHeightRulerText
+{
+  vec2 offset;
+  int  size;
+  int  value;
+};
+
+struct GenerateSdfFontCommand
+{
+  char     character;
+  uint8_t* lookup_table;
+  SdfChar* character_data;
+  int      characters_pool_count;
+  int      texture_size[2];
+  float    scaling;
+  vec3     position;
+  float    cursor;
+};
+
+struct GenerateSdfFontCommandResult
+{
+  vec2   character_coordinate;
+  vec2   character_size;
+  mat4x4 transform;
+  float  cursor_movement;
+};
+
+struct GenerateGuiLinesCommand
+{
+  Engine::DoubleEndedStack* allocator;
+
+  float      player_y_location_meters;
+  float      camera_x_pitch_radians;
+  float      camera_y_pitch_radians;
+  VkExtent2D screen_extent2D;
 };
 
 struct Game
@@ -47,6 +128,7 @@ struct Game
 
   bool DEBUG_FLAG_1;
   bool DEBUG_FLAG_2;
+  vec2 DEBUG_VEC2;
 
   // materials
   VkDescriptorSet pbr_ibl_environment_dset;
@@ -108,15 +190,23 @@ struct Game
   vec2         vr_level_entry;
   vec2         vr_level_goal;
 
+  VkDeviceSize     green_gui_rulers_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
+  GuiLineSizeCount gui_green_lines_count;
+  GuiLineSizeCount gui_red_lines_count;
+  GuiLineSizeCount gui_yellow_lines_count;
+
   vec3  player_position;
   quat  player_orientation;
   vec3  player_velocity;
   vec3  player_acceleration;
   float camera_angle;
   float camera_updown_angle;
+  bool  player_jumping;
+  float player_jump_start_timestamp_sec;
 
   bool player_forward_pressed;
   bool player_back_pressed;
+  bool player_jump_pressed;
   bool player_strafe_left_pressed;
   bool player_strafe_right_pressed;
   bool player_booster_activated;

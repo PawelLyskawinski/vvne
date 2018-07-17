@@ -18,7 +18,6 @@ int main(int argc, char* argv[])
 
   engine->startup();
   game->startup(*engine);
-  engine->print_memory_statistics();
 
   uint64_t performance_frequency = SDL_GetPerformanceFrequency();
   uint64_t start_of_game_ticks   = SDL_GetPerformanceCounter();
@@ -29,7 +28,7 @@ int main(int argc, char* argv[])
     uint64_t    start_of_frame_ticks       = SDL_GetPerformanceCounter();
     uint64_t    ticks_from_game_start      = start_of_frame_ticks - start_of_game_ticks;
     float       current_time_sec           = (float)ticks_from_game_start / (float)performance_frequency;
-    const int   desired_frames_per_sec     = 80;
+    const int   desired_frames_per_sec     = 60;
     const float desired_frame_duration_sec = (1000.0f / (float)desired_frames_per_sec);
 
     game->update(*engine, current_time_sec, desired_frame_duration_sec);

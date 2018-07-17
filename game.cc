@@ -8,7 +8,7 @@
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_timer.h>
 
-#define VR_LEVEL_SCALE 25.0f
+#define VR_LEVEL_SCALE 100.0f
 
 namespace {
 
@@ -669,17 +669,59 @@ void update_ubo(VkDevice device, VkDeviceMemory memory, VkDeviceSize size, VkDev
   SDL_memcpy(memory_map.get<void>(), src, size);
 }
 
-char* forward_right_after(char* cursor, char target)
+GuiLineSizeCount count_lines(const ArrayView<GuiLine>& lines, const GuiLine::Color color)
 {
-  while (target != *cursor)
-    ++cursor;
-  return ++cursor;
+  GuiLineSizeCount r = {};
+
+  for (const GuiLine& line : lines)
+  {
+    if (color == line.color)
+    {
+      switch (line.size)
+      {
+      case GuiLine::Size::Big:
+        r.big++;
+        break;
+      case GuiLine::Size::Normal:
+        r.normal++;
+        break;
+      case GuiLine::Size::Small:
+        r.small++;
+        break;
+      case GuiLine::Size::Tiny:
+        r.tiny++;
+        break;
+      }
+    }
+  }
+
+  return r;
+}
+
+uint32_t line_to_pixel_length(float coord, int pixel_max_size)
+{
+  return static_cast<uint32_t>((coord * pixel_max_size * 0.5f));
 }
 
 } // namespace
 
+// game_generate_gui_lines.cc
+ArrayView<GuiLine>            generate_gui_lines(const GenerateGuiLinesCommand& cmd);
+ArrayView<GuiHeightRulerText> generate_gui_height_ruler_text(struct GenerateGuiLinesCommand& cmd);
+ArrayView<GuiHeightRulerText> generate_gui_tilt_ruler_text(struct GenerateGuiLinesCommand& cmd);
+
+// game_generate_sdf_font.cc
+GenerateSdfFontCommandResult generate_sdf_font(const GenerateSdfFontCommand& cmd);
+
+// game_generate_sdl_imgui_mappings.cc
+ArrayView<KeyMapping>    generate_sdl_imgui_keymap(Engine::DoubleEndedStack& allocator);
+ArrayView<CursorMapping> generate_sdl_imgui_cursormap(Engine::DoubleEndedStack& allocator);
+
 void Game::startup(Engine& engine)
 {
+  //
+  // IMGUI preliminary setup
+  //
   {
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
@@ -694,65 +736,25 @@ void Game::startup(Engine& engine)
     debug_gui.font_texture_idx = engine.load_texture(surface);
     SDL_FreeSurface(surface);
 
-    struct Mapping
     {
-      ImGuiKey_    imgui;
-      SDL_Scancode sdl;
-    } mappings[] = {
-        // --------------------------------------------------------------------
-        {ImGuiKey_Tab, SDL_SCANCODE_TAB},
-        {ImGuiKey_LeftArrow, SDL_SCANCODE_LEFT},
-        {ImGuiKey_RightArrow, SDL_SCANCODE_RIGHT},
-        {ImGuiKey_UpArrow, SDL_SCANCODE_UP},
-        {ImGuiKey_DownArrow, SDL_SCANCODE_DOWN},
-        {ImGuiKey_PageUp, SDL_SCANCODE_PAGEUP},
-        {ImGuiKey_PageDown, SDL_SCANCODE_PAGEDOWN},
-        {ImGuiKey_Home, SDL_SCANCODE_HOME},
-        {ImGuiKey_End, SDL_SCANCODE_END},
-        {ImGuiKey_Insert, SDL_SCANCODE_INSERT},
-        {ImGuiKey_Delete, SDL_SCANCODE_DELETE},
-        {ImGuiKey_Backspace, SDL_SCANCODE_BACKSPACE},
-        {ImGuiKey_Space, SDL_SCANCODE_SPACE},
-        {ImGuiKey_Enter, SDL_SCANCODE_RETURN},
-        {ImGuiKey_Escape, SDL_SCANCODE_ESCAPE},
-        {ImGuiKey_A, SDL_SCANCODE_A},
-        {ImGuiKey_C, SDL_SCANCODE_C},
-        {ImGuiKey_V, SDL_SCANCODE_V},
-        {ImGuiKey_X, SDL_SCANCODE_X},
-        {ImGuiKey_Y, SDL_SCANCODE_Y},
-        {ImGuiKey_Z, SDL_SCANCODE_Z}
-        // --------------------------------------------------------------------
-    };
-
-    for (Mapping mapping : mappings)
-      io.KeyMap[mapping.imgui] = mapping.sdl;
+      ArrayView<KeyMapping> mappings = generate_sdl_imgui_keymap(engine.double_ended_stack);
+      for (KeyMapping mapping : mappings)
+        io.KeyMap[mapping.imgui] = mapping.sdl;
+      engine.double_ended_stack.reset_back();
+    }
 
     io.RenderDrawListsFn  = nullptr;
     io.GetClipboardTextFn = [](void*) -> const char* { return SDL_GetClipboardText(); };
     io.SetClipboardTextFn = [](void*, const char* text) { SDL_SetClipboardText(text); };
     io.ClipboardUserData  = nullptr;
 
-    struct CursorMapping
     {
-      ImGuiMouseCursor_ imgui;
-      SDL_SystemCursor  sdl;
-    } cursor_mappings[] = {
-        // --------------------------------------------------------------------
-        {ImGuiMouseCursor_Arrow, SDL_SYSTEM_CURSOR_ARROW},
-        {ImGuiMouseCursor_TextInput, SDL_SYSTEM_CURSOR_IBEAM},
-        {ImGuiMouseCursor_ResizeAll, SDL_SYSTEM_CURSOR_SIZEALL},
-        {ImGuiMouseCursor_ResizeNS, SDL_SYSTEM_CURSOR_SIZENS},
-        {ImGuiMouseCursor_ResizeEW, SDL_SYSTEM_CURSOR_SIZEWE},
-        {ImGuiMouseCursor_ResizeNESW, SDL_SYSTEM_CURSOR_SIZENESW},
-        {ImGuiMouseCursor_ResizeNWSE, SDL_SYSTEM_CURSOR_SIZENWSE}
-        // --------------------------------------------------------------------
-    };
+      ArrayView<CursorMapping> mappings = generate_sdl_imgui_cursormap(engine.double_ended_stack);
+      for (CursorMapping mapping : mappings)
+        debug_gui.mousecursors[mapping.imgui] = SDL_CreateSystemCursor(mapping.sdl);
+      engine.double_ended_stack.reset_back();
+    }
 
-    for (CursorMapping mapping : cursor_mappings)
-      debug_gui.mousecursors[mapping.imgui] = SDL_CreateSystemCursor(mapping.sdl);
-  }
-
-  {
     for (int i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
     {
       debug_gui.vertex_buffer_offsets[i] = engine.gpu_host_visible.allocate(DebugGui::VERTEX_BUFFER_CAPACITY_BYTES);
@@ -760,7 +762,9 @@ void Game::startup(Engine& engine)
     }
   }
 
+  //
   // Proof of concept GLB loader
+  //
   helmet.loadGLB(engine, "../assets/DamagedHelmet.glb");
   box.loadGLB(engine, "../assets/Box.glb");
   animatedBox.loadGLB(engine, "../assets/BoxAnimated.glb");
@@ -793,6 +797,9 @@ void Game::startup(Engine& engine)
 
   for (VkDeviceSize& offset : monster_skinning_matrices_ubo_offsets)
     offset = engine.ubo_host_visible.allocate(skinning_matrices_ubo_size);
+
+  for (VkDeviceSize& offset : green_gui_rulers_buffer_offsets)
+    offset = engine.gpu_host_visible.allocate(200 * sizeof(vec2));
 
   // ----------------------------------------------------------------------------------------------
   // PBR Metallic workflow material descriptor sets
@@ -1053,8 +1060,8 @@ void Game::startup(Engine& engine)
   vr_level_entry[0] *= VR_LEVEL_SCALE;
   vr_level_entry[1] *= VR_LEVEL_SCALE;
 
-  vr_level_goal[0] *= VR_LEVEL_SCALE;
-  vr_level_goal[1] *= VR_LEVEL_SCALE;
+  vr_level_goal[0] *= 25.0f;
+  vr_level_goal[1] *= 25.0f;
 
   vec3_set(player_position, vr_level_entry[0], 2.0f, vr_level_entry[1]);
   quat_identity(player_orientation);
@@ -1095,7 +1102,6 @@ void Game::startup(Engine& engine)
             .uv       = {0.0f, 1.0f},
         },
         {
-
             .position = {1.0f, 1.0f},
             .uv       = {1.0f, 1.0f},
         },
@@ -1190,6 +1196,12 @@ void Game::startup(Engine& engine)
     SDL_RWread(ctx, fnt_file_content, sizeof(char), static_cast<size_t>(fnt_file_size));
     SDL_RWclose(ctx);
 
+    auto forward_right_after = [](char* cursor, char target) -> char* {
+      while (target != *cursor)
+        ++cursor;
+      return ++cursor;
+    };
+
     char* cursor = fnt_file_content;
     for (int i = 0; i < 4; ++i)
       cursor = forward_right_after(cursor, '\n');
@@ -1223,6 +1235,9 @@ void Game::startup(Engine& engine)
 
     engine.double_ended_stack.reset_back();
   }
+
+  DEBUG_VEC2[0] = 430.0f;
+  DEBUG_VEC2[1] = 350.0f;
 }
 
 void Game::teardown(Engine&)
@@ -1336,6 +1351,9 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
         case SDL_SCANCODE_LSHIFT:
           player_booster_activated = (SDL_KEYDOWN == event.type);
           break;
+        case SDL_SCANCODE_SPACE:
+          player_jump_pressed = (SDL_KEYDOWN == event.type);
+          break;
         case SDL_SCANCODE_ESCAPE:
           quit_requested = true;
           break;
@@ -1411,6 +1429,7 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
   }
 
   ImGui::NewFrame();
+  ImGui::Begin("Main Panel");
 
   if (ImGui::CollapsingHeader("Timings"))
   {
@@ -1515,6 +1534,28 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
     player_acceleration[2] += SDL_cosf(camera_angle) * acceleration;
   }
 
+  // dirty hack, to be replaced with better code in the future
+  const float jump_duration_sec = 0.5f;
+  const float jump_height       = 1.0f;
+  if (player_jumping)
+  {
+    if (current_time_sec < (player_jump_start_timestamp_sec + jump_duration_sec))
+    {
+      const float current_jump_time = (current_time_sec - player_jump_start_timestamp_sec) / jump_duration_sec;
+      player_position[1]            = 2.0f - (jump_height * SDL_sinf(current_jump_time * (float)M_PI));
+    }
+    else
+    {
+      player_jumping     = false;
+      player_position[1] = 2.0f;
+    }
+  }
+  else if (player_jump_pressed)
+  {
+    player_jumping                  = true;
+    player_jump_start_timestamp_sec = current_time_sec;
+  }
+
   float camera_distance = 2.5f;
   float x_camera_offset = SDL_cosf(camera_angle) * camera_distance;
   float y_camera_offset = SDL_sinf(camera_updown_angle) * camera_distance;
@@ -1607,6 +1648,22 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
     }
   }
 
+  if (ImGui::CollapsingHeader("Memory"))
+  {
+    auto calc_frac = [](VkDeviceSize part, VkDeviceSize max) { return ((float)part / (float)max); };
+    ImGui::Text("image memory (%uMB pool)", Engine::Images::MAX_MEMORY_SIZE_MB);
+    ImGui::ProgressBar(calc_frac(engine.images.used_memory, Engine::Images::MAX_MEMORY_SIZE));
+    ImGui::Text("device-visible memory (%uMB pool)", Engine::GpuStaticGeometry::MAX_MEMORY_SIZE_MB);
+    ImGui::ProgressBar(calc_frac(engine.gpu_static_geometry.used_memory, Engine::GpuStaticGeometry::MAX_MEMORY_SIZE));
+    ImGui::Text("host-visible memory (%uMB pool)", Engine::GpuHostVisible::MAX_MEMORY_SIZE_MB);
+    ImGui::ProgressBar(calc_frac(engine.gpu_static_geometry.used_memory, Engine::GpuStaticGeometry::MAX_MEMORY_SIZE));
+    ImGui::Text("UBO memory (%uMB pool)", Engine::UboHostVisible::MAX_MEMORY_SIZE_MB);
+    ImGui::ProgressBar(calc_frac(engine.ubo_host_visible.used_memory, Engine::UboHostVisible::MAX_MEMORY_SIZE));
+    ImGui::Text("double ended stack memory (%uMB pool)", Engine::DoubleEndedStack::MAX_MEMORY_SIZE_MB);
+    ImGui::ProgressBar(calc_frac(static_cast<VkDeviceSize>(engine.double_ended_stack.front),
+                                 Engine::DoubleEndedStack::MAX_MEMORY_SIZE));
+  }
+
   if (ImGui::RadioButton("debug flag 1", DEBUG_FLAG_1))
   {
     DEBUG_FLAG_1 = !DEBUG_FLAG_1;
@@ -1616,6 +1673,8 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
   {
     DEBUG_FLAG_2 = !DEBUG_FLAG_2;
   }
+
+  ImGui::InputFloat2("debug vec2", DEBUG_VEC2);
 
   pbr_light_sources_cache.count = 5;
 
@@ -1654,6 +1713,8 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
     vec3 color    = {10.0, 0.0, 10.0};
     update_light(pbr_light_sources_cache, 4, position, color);
   }
+
+  ImGui::End();
 }
 
 void Game::render(Engine& engine, float current_time_sec)
@@ -1669,6 +1730,58 @@ void Game::render(Engine& engine, float current_time_sec)
 
   update_ubo(engine.generic_handles.device, engine.ubo_host_visible.memory, sizeof(LightSources),
              pbr_dynamic_lights_ubo_offsets[image_index], &pbr_light_sources_cache);
+
+  {
+    GenerateGuiLinesCommand cmd = {
+        .allocator                = &engine.double_ended_stack,
+        .player_y_location_meters = -(2.0f - player_position[1]),
+        .camera_x_pitch_radians   = 0.0f, // to_rad(10) * SDL_sinf(current_time_sec), // simulating future strafe tilts,
+        .camera_y_pitch_radians   = camera_updown_angle,
+    };
+
+    ArrayView<GuiLine> r                    = generate_gui_lines(cmd);
+    float*             pushed_lines_data    = engine.double_ended_stack.allocate_back<float>(4 * r.count);
+    int                pushed_lines_counter = 0;
+
+    gui_green_lines_count  = count_lines(r, GuiLine::Color::Green);
+    gui_red_lines_count    = count_lines(r, GuiLine::Color::Red);
+    gui_yellow_lines_count = count_lines(r, GuiLine::Color::Yellow);
+
+    GuiLine::Color colors_order[] = {
+        GuiLine::Color::Green,
+        GuiLine::Color::Red,
+        GuiLine::Color::Yellow,
+    };
+
+    GuiLine::Size sizes_order[] = {
+        GuiLine::Size::Big,
+        GuiLine::Size::Normal,
+        GuiLine::Size::Small,
+        GuiLine::Size::Tiny,
+    };
+
+    for (GuiLine::Color color : colors_order)
+    {
+      for (GuiLine::Size size : sizes_order)
+      {
+        for (const GuiLine& line : r)
+        {
+          if ((color == line.color) and (size == line.size))
+          {
+            pushed_lines_data[4 * pushed_lines_counter + 0] = line.a[0];
+            pushed_lines_data[4 * pushed_lines_counter + 1] = line.a[1];
+            pushed_lines_data[4 * pushed_lines_counter + 2] = line.b[0];
+            pushed_lines_data[4 * pushed_lines_counter + 3] = line.b[1];
+            pushed_lines_counter++;
+          }
+        }
+      }
+    }
+
+    update_ubo(engine.generic_handles.device, engine.gpu_host_visible.memory, r.count * 2 * sizeof(vec2),
+               green_gui_rulers_buffer_offsets[image_index], pushed_lines_data);
+    engine.double_ended_stack.reset_back();
+  }
 
   CommandBufferSelector command_selector(engine.simple_rendering, image_index);
   CommandBufferStarter  command_starter(renderer.render_pass, renderer.framebuffers[image_index]);
@@ -2028,6 +2141,109 @@ void Game::render(Engine& engine, float current_time_sec)
   }
 
   {
+    VkCommandBuffer command_buffer = command_selector.select(Engine::SimpleRendering::Pipeline::GreenGuiLines);
+    ScopedCommand   cmd_scope      = command_starter.begin(command_buffer, Engine::SimpleRendering::Pass::ImGui);
+
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      renderer.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiLines]);
+
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiLines], 0, 1,
+                            &radar_texture_dset, 0, nullptr);
+
+    vkCmdBindVertexBuffers(command_buffer, 0, 1, &engine.gpu_host_visible.buffer,
+                           &green_gui_rulers_buffer_offsets[image_index]);
+
+    // this will only work for fixed resolutions!
+    // @todo: adjust to be resolution independent
+    {
+
+      VkRect2D scissor{};
+      scissor.extent.width  = line_to_pixel_length(0.75f, engine.generic_handles.extent2D.width);
+      scissor.extent.height = line_to_pixel_length(1.02f, engine.generic_handles.extent2D.height);
+      scissor.offset.x      = (engine.generic_handles.extent2D.width / 2) - (scissor.extent.width / 2);
+      scissor.offset.y      = line_to_pixel_length(0.29f, engine.generic_handles.extent2D.height); // 118
+
+      vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+    }
+
+    uint32_t offset = 0;
+
+    // ------ GREEN ------
+    {
+      const float             line_widths[] = {7.0f, 5.0f, 3.0f, 1.0f};
+      const GuiLineSizeCount& counts        = gui_green_lines_count;
+      const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
+
+      vec4 color = {125.0f / 255.0f, 204.0f / 255.0f, 174.0f / 255.0f, 0.9f};
+      vkCmdPushConstants(command_buffer,
+                         engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiLines],
+                         VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(vec4), color);
+
+      for (int i = 0; i < 4; ++i)
+      {
+        if (0 == line_counts[i])
+          continue;
+
+        vkCmdSetLineWidth(command_buffer, line_widths[i]);
+        vkCmdDraw(command_buffer, 2 * static_cast<uint32_t>(line_counts[i]), 1, 2 * offset, 0);
+        offset += line_counts[i];
+      }
+    }
+
+    // ------ RED ------
+    {
+      const float             line_widths[] = {7.0f, 5.0f, 3.0f, 1.0f};
+      const GuiLineSizeCount& counts        = gui_red_lines_count;
+      const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
+
+      vec4 color = {1.0f, 0.0f, 0.0f, 0.9f};
+      vkCmdPushConstants(command_buffer,
+                         engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiLines],
+                         VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(vec4), color);
+
+      for (int i = 0; i < 4; ++i)
+      {
+        if (0 == line_counts[i])
+          continue;
+
+        vkCmdSetLineWidth(command_buffer, line_widths[i]);
+        vkCmdDraw(command_buffer, 2 * static_cast<uint32_t>(line_counts[i]), 1, 2 * offset, 0);
+        offset += line_counts[i];
+      }
+    }
+
+    // ------ YELLOW ------
+    {
+      VkRect2D scissor      = {};
+      scissor.extent.width  = line_to_pixel_length(0.5f, engine.generic_handles.extent2D.width);
+      scissor.extent.height = line_to_pixel_length(1.3f, engine.generic_handles.extent2D.height);
+      scissor.offset.x      = (engine.generic_handles.extent2D.width / 2) - (scissor.extent.width / 2);
+      scissor.offset.y      = line_to_pixel_length(0.2f, engine.generic_handles.extent2D.height);
+      vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+
+      const float             line_widths[] = {7.0f, 5.0f, 3.0f, 1.0f};
+      const GuiLineSizeCount& counts        = gui_yellow_lines_count;
+      const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
+
+      vec4 color = {1.0f, 1.0f, 0.0f, 0.7f};
+      vkCmdPushConstants(command_buffer,
+                         engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiLines],
+                         VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(vec4), color);
+
+      for (int i = 0; i < 4; ++i)
+      {
+        if (0 == line_counts[i])
+          continue;
+
+        vkCmdSetLineWidth(command_buffer, line_widths[i]);
+        vkCmdDraw(command_buffer, 2 * static_cast<uint32_t>(line_counts[i]), 1, 2 * offset, 0);
+        offset += line_counts[i];
+      }
+    }
+  }
+
+  {
     VkCommandBuffer command_buffer = command_selector.select(Engine::SimpleRendering::Pipeline::GreenGuiSdfFont);
     ScopedCommand   cmd_scope      = command_starter.begin(command_buffer, Engine::SimpleRendering::Pass::ImGui);
 
@@ -2048,101 +2264,293 @@ void Game::render(Engine& engine, float current_time_sec)
       vec2   character_size;
     } vpc = {};
 
-    mat4x4 gui_projection = {};
-
+    struct FragmentPushConstant
     {
-      float extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
-      float extent_height       = static_cast<float>(engine.generic_handles.extent2D.height);
-      float aspect_ratio        = extent_width / extent_height;
-      float fov                 = to_rad(90.0f);
-      float near_clipping_plane = 0.001f;
-      float far_clipping_plane  = 100.0f;
-      mat4x4_perspective(gui_projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
-      gui_projection[1][1] *= -1.0f;
-    }
+      vec3  color;
+      float time;
+    } fpc = {};
 
-    mat4x4 gui_view = {};
+    fpc.time = current_time_sec;
 
+    //--------------------------------------------------------------------------
+    // height rulers values
+    //--------------------------------------------------------------------------
     {
-      vec3 center   = {0.0f, 0.0f, 0.0f};
-      vec3 up       = {0.0f, -1.0f, 0.0f};
-      vec3 position = {0.0f, 0.0f, -10.0f};
-      mat4x4_look_at(gui_view, position, center, up);
-    }
+      ArrayView<GuiHeightRulerText> scheduled_text_data = {};
 
-    mat4x4 projection_view = {};
-    mat4x4_mul(projection_view, gui_projection, gui_view);
-
-    float cursor = 0.0f;
-
-    const char word[] = "Hello World!";
-
-    for (const char c : word)
-    {
-      if ('\0' == c)
-        continue;
-
-      for (unsigned i = 0; i < SDL_arraysize(lucida_sans_sdf_char_ids); ++i)
       {
-        if (c == lucida_sans_sdf_char_ids[i])
+        GenerateGuiLinesCommand cmd = {
+            .allocator                = &engine.double_ended_stack,
+            .player_y_location_meters = -(2.0f - player_position[1]),
+            .camera_x_pitch_radians   = camera_angle,
+            .camera_y_pitch_radians   = camera_updown_angle,
+            .screen_extent2D          = engine.generic_handles.extent2D,
+        };
+
+        scheduled_text_data = generate_gui_height_ruler_text(cmd);
+      }
+
+      char buffer[256];
+      for (GuiHeightRulerText& text : scheduled_text_data)
+      {
+        mat4x4 gui_projection = {};
+        mat4x4_ortho(gui_projection, 0, engine.generic_handles.extent2D.width, 0,
+                     engine.generic_handles.extent2D.height, 0.0f, 1.0f);
+
+        float cursor = 0.0f;
+
+        const int length = SDL_snprintf(buffer, 256, "%d", text.value);
+        for (int i = 0; i < length; ++i)
         {
-          const SdfChar& char_data = lucida_sans_sdf_chars[i];
+          GenerateSdfFontCommand cmd = {
+              .character             = buffer[i],
+              .lookup_table          = lucida_sans_sdf_char_ids,
+              .character_data        = lucida_sans_sdf_chars,
+              .characters_pool_count = SDL_arraysize(lucida_sans_sdf_char_ids),
+              .texture_size          = {512, 256},
+              .scaling               = static_cast<float>(text.size),
+              .position              = {text.offset[0], text.offset[1], -1.0f},
+              .cursor                = cursor,
+          };
 
-          vpc.character_coordinate[0] = static_cast<float>(char_data.x) / 512.0f;
-          vpc.character_coordinate[1] = static_cast<float>(char_data.y) / 256.0f;
-          vpc.character_size[0]       = static_cast<float>(char_data.width) / 512.0f;
-          vpc.character_size[1]       = static_cast<float>(char_data.height) / 256.0f;
+          GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
 
-          Quaternion orientation;
-          orientation.rotateY(to_rad(30.0f * SDL_sinf(current_time_sec)));
+          SDL_memcpy(vpc.character_coordinate, r.character_coordinate, sizeof(vec2));
+          SDL_memcpy(vpc.character_size, r.character_size, sizeof(vec2));
+          mat4x4_mul(vpc.mvp, gui_projection, r.transform);
+          cursor += r.cursor_movement;
 
-          const float scaling       = 30.0f;
-          vec2        text_position = {2.0f, 6.0f};
+          VkRect2D scissor{};
+          scissor.extent.width  = line_to_pixel_length(0.75f, engine.generic_handles.extent2D.width);
+          scissor.extent.height = line_to_pixel_length(1.02f, engine.generic_handles.extent2D.height);
+          scissor.offset.x      = (engine.generic_handles.extent2D.width / 2) - (scissor.extent.width / 2);
+          scissor.offset.y      = line_to_pixel_length(0.29f, engine.generic_handles.extent2D.height); // 118
+          vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
-          float width_uv_adjusted                = char_data.width / (512.0f * 2.0f);
-          float height_uv_adjusted               = char_data.height / (256.0f * 2.0f);
-          float x_scaling                        = scaling * width_uv_adjusted;
-          float y_scaling                        = scaling * height_uv_adjusted;
-          float y_model_adjustment_offset_factor = scaling * char_data.yoffset / (256.0f * 2.0f);
-          float y_model_adjustment               = y_model_adjustment_offset_factor;
-          float x_model_adjustment_size_factor   = x_scaling - 2.0f;
-          float x_model_adjustment_offset_factor = scaling * char_data.xoffset / (512.0f * 2.0f);
-          float x_model_adjustment = cursor + x_model_adjustment_size_factor + x_model_adjustment_offset_factor;
+          fpc.color[0] = 1.0f;
+          fpc.color[1] = 0.0f;
+          fpc.color[2] = 0.0f;
 
-          mat4x4 translation_matrix = {};
-          mat4x4_translate(translation_matrix, x_model_adjustment + text_position[0],
-                           y_model_adjustment + text_position[1], 0.0f);
+          vkCmdPushConstants(
+              command_buffer,
+              engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
+              VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
 
-          mat4x4 rotation_matrix = {};
-          mat4x4_from_quat(rotation_matrix, orientation.data());
+          vkCmdPushConstants(
+              command_buffer,
+              engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
+              VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(fpc), &fpc);
 
-          mat4x4 scale_matrix = {};
-          mat4x4_identity(scale_matrix);
-          mat4x4_scale_aniso(scale_matrix, scale_matrix, x_scaling, y_scaling, 1.0f);
-
-          mat4x4 tmp = {};
-          mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-
-          mat4x4 world_transform = {};
-          mat4x4_mul(world_transform, tmp, scale_matrix);
-
-          mat4x4_mul(vpc.mvp, projection_view, world_transform);
-
-          cursor += scaling * ((float)(char_data.xadvance) / 512.0f);
-
-          break;
+          vkCmdDraw(command_buffer, 4, 1, 0, 0);
         }
       }
 
-      vkCmdPushConstants(command_buffer,
-                         engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-                         VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
+      engine.double_ended_stack.reset_back();
+    }
 
-      vkCmdPushConstants(command_buffer,
-                         engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-                         VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(float), &current_time_sec);
+    //--------------------------------------------------------------------------
+    // tilt rulers values
+    //--------------------------------------------------------------------------
+    {
+      ArrayView<GuiHeightRulerText> scheduled_text_data = {};
 
-      vkCmdDraw(command_buffer, 4, 1, 0, 0);
+      {
+        GenerateGuiLinesCommand cmd = {
+            .allocator                = &engine.double_ended_stack,
+            .player_y_location_meters = -(2.0f - player_position[1]),
+            .camera_x_pitch_radians   = camera_angle,
+            .camera_y_pitch_radians   = camera_updown_angle,
+            .screen_extent2D          = engine.generic_handles.extent2D,
+        };
+
+        scheduled_text_data = generate_gui_tilt_ruler_text(cmd);
+      }
+
+      char buffer[256];
+      for (GuiHeightRulerText& text : scheduled_text_data)
+      {
+        mat4x4 gui_projection = {};
+        mat4x4_ortho(gui_projection, 0, engine.generic_handles.extent2D.width, 0,
+                     engine.generic_handles.extent2D.height, 0.0f, 1.0f);
+
+        float cursor = 0.0f;
+
+        const int length = SDL_snprintf(buffer, 256, "%d", text.value);
+        for (int i = 0; i < length; ++i)
+        {
+          GenerateSdfFontCommand cmd = {
+              .character             = buffer[i],
+              .lookup_table          = lucida_sans_sdf_char_ids,
+              .character_data        = lucida_sans_sdf_chars,
+              .characters_pool_count = SDL_arraysize(lucida_sans_sdf_char_ids),
+              .texture_size          = {512, 256},
+              .scaling               = static_cast<float>(text.size),
+              .position              = {text.offset[0], text.offset[1], -1.0f},
+              .cursor                = cursor,
+          };
+
+          GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
+
+          SDL_memcpy(vpc.character_coordinate, r.character_coordinate, sizeof(vec2));
+          SDL_memcpy(vpc.character_size, r.character_size, sizeof(vec2));
+          mat4x4_mul(vpc.mvp, gui_projection, r.transform);
+          cursor += r.cursor_movement;
+
+          VkRect2D scissor{};
+          scissor.extent.width  = line_to_pixel_length(0.5f, engine.generic_handles.extent2D.width);
+          scissor.extent.height = line_to_pixel_length(1.3f, engine.generic_handles.extent2D.height);
+          scissor.offset.x      = (engine.generic_handles.extent2D.width / 2) - (scissor.extent.width / 2);
+          scissor.offset.y      = line_to_pixel_length(0.2f, engine.generic_handles.extent2D.height);
+          vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+
+          vkCmdPushConstants(
+              command_buffer,
+              engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
+              VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
+
+          fpc.color[0] = 1.0f;
+          fpc.color[1] = 1.0f;
+          fpc.color[2] = 0.0f;
+
+          vkCmdPushConstants(
+              command_buffer,
+              engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
+              VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(fpc), &fpc);
+
+          vkCmdDraw(command_buffer, 4, 1, 0, 0);
+        }
+      }
+    }
+
+    //--------------------------------------------------------------------------
+    // 3D rotating text demo
+    //--------------------------------------------------------------------------
+    {
+      mat4x4 gui_projection = {};
+
+      {
+        float extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
+        float extent_height       = static_cast<float>(engine.generic_handles.extent2D.height);
+        float aspect_ratio        = extent_width / extent_height;
+        float fov                 = to_rad(90.0f);
+        float near_clipping_plane = 0.001f;
+        float far_clipping_plane  = 100.0f;
+        mat4x4_perspective(gui_projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
+        gui_projection[1][1] *= -1.0f;
+      }
+
+      mat4x4 gui_view = {};
+
+      {
+        vec3 center   = {0.0f, 0.0f, 0.0f};
+        vec3 up       = {0.0f, -1.0f, 0.0f};
+        vec3 position = {0.0f, 0.0f, -10.0f};
+        mat4x4_look_at(gui_view, position, center, up);
+      }
+
+      mat4x4 projection_view = {};
+      mat4x4_mul(projection_view, gui_projection, gui_view);
+
+      float      cursor = 0.0f;
+      const char word[] = "Hello World!";
+
+      for (const char c : word)
+      {
+        if ('\0' == c)
+          continue;
+
+        GenerateSdfFontCommand cmd = {
+            .character             = c,
+            .lookup_table          = lucida_sans_sdf_char_ids,
+            .character_data        = lucida_sans_sdf_chars,
+            .characters_pool_count = SDL_arraysize(lucida_sans_sdf_char_ids),
+            .texture_size          = {512, 256},
+            .scaling               = 30.0f,
+            .position              = {2.0f, 6.0f, 0.0f},
+            .cursor                = cursor,
+        };
+
+        GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
+
+        SDL_memcpy(vpc.character_coordinate, r.character_coordinate, sizeof(vec2));
+        SDL_memcpy(vpc.character_size, r.character_size, sizeof(vec2));
+        mat4x4_mul(vpc.mvp, projection_view, r.transform);
+        cursor += r.cursor_movement;
+
+#if 0
+        for (unsigned i = 0; i < SDL_arraysize(lucida_sans_sdf_char_ids); ++i)
+        {
+          if (c == lucida_sans_sdf_char_ids[i])
+          {
+            const SdfChar& char_data = lucida_sans_sdf_chars[i];
+
+            vpc.character_coordinate[0] = static_cast<float>(char_data.x) / 512.0f;
+            vpc.character_coordinate[1] = static_cast<float>(char_data.y) / 256.0f;
+            vpc.character_size[0]       = static_cast<float>(char_data.width) / 512.0f;
+            vpc.character_size[1]       = static_cast<float>(char_data.height) / 256.0f;
+
+            Quaternion orientation;
+            orientation.rotateY(to_rad(30.0f * SDL_sinf(current_time_sec)));
+
+            const float scaling       = 30.0f;
+            vec2        text_position = {2.0f, 6.0f};
+
+            float width_uv_adjusted  = char_data.width / (512.0f * 2.0f);
+            float height_uv_adjusted = char_data.height / (256.0f * 4.0f);
+            float x_scaling          = scaling * width_uv_adjusted;
+            float y_scaling          = scaling * height_uv_adjusted;
+
+            float y_model_adjustment_size_factor   = y_scaling - 2.0f;
+            float y_model_adjustment_offset_factor = scaling * char_data.yoffset / (256.0f * 2.0f);
+            float y_model_adjustment               = y_model_adjustment_offset_factor + y_model_adjustment_size_factor;
+
+            float x_model_adjustment_size_factor   = x_scaling - 2.0f;
+            float x_model_adjustment_offset_factor = scaling * char_data.xoffset / (512.0f * 2.0f);
+            float x_model_adjustment = cursor + x_model_adjustment_size_factor + x_model_adjustment_offset_factor;
+
+            mat4x4 translation_matrix = {};
+            mat4x4_translate(translation_matrix, x_model_adjustment + text_position[0],
+                             y_model_adjustment + text_position[1], 0.0f);
+
+            mat4x4 rotation_matrix = {};
+            mat4x4_from_quat(rotation_matrix, orientation.data());
+
+            mat4x4 scale_matrix = {};
+            mat4x4_identity(scale_matrix);
+            mat4x4_scale_aniso(scale_matrix, scale_matrix, x_scaling, y_scaling, 1.0f);
+
+            mat4x4 tmp = {};
+            mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+
+            mat4x4 world_transform = {};
+            mat4x4_mul(world_transform, tmp, scale_matrix);
+
+            mat4x4_mul(vpc.mvp, projection_view, world_transform);
+
+            cursor += scaling * ((float)(char_data.xadvance) / 512.0f);
+
+            break;
+          }
+        }
+#endif
+
+        VkRect2D scissor = {.extent = engine.generic_handles.extent2D};
+        vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+
+        vkCmdPushConstants(command_buffer,
+                           engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
+                           VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
+
+        fpc.color[0] = 1.0f;
+        fpc.color[1] = 1.0f;
+        fpc.color[2] = 1.0f;
+
+        vkCmdPushConstants(command_buffer,
+                           engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
+                           VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(fpc), &fpc);
+
+        vkCmdDraw(command_buffer, 4, 1, 0, 0);
+      }
     }
   }
 
@@ -2304,6 +2712,7 @@ void Game::render(Engine& engine, float current_time_sec)
     vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned]);
     vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
     vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::GreenGui]);
+    vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::GreenGuiLines]);
     vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont]);
     vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::ImGui]);
     vkCmdEndRenderPass(cmd);

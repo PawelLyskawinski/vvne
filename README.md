@@ -27,7 +27,7 @@ Current preview (still a veeeery long road ahead)
 ### Dependencies
 - imgui (included with project)
 - SDL2 (any version with SDL_vulkan header)
-- vulkan-1.dll / libvulkan.so
+- lunarg vulkan sdk
 
 ### How to build?
 Modification inside CMakeLists.txt are needed. Depending on which platform is used different paths for vulkan and SDL dynamic libraries may be required.

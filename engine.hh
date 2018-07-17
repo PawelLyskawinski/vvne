@@ -173,6 +173,7 @@ struct Engine
         ColoredGeometry,
         ColoredGeometrySkinned,
         GreenGui,
+        GreenGuiLines,
         GreenGuiSdfFont,
         ImGui,
         Count
@@ -232,7 +233,6 @@ struct Engine
 
   void startup();
   void teardown();
-  void print_memory_statistics();
 
   VkShaderModule load_shader(const char* file_path);
 

@@ -18,8 +18,8 @@
 #include <stb_image.h>
 #pragma GCC diagnostic pop
 
-#define INITIAL_WINDOW_WIDTH 1200
-#define INITIAL_WINDOW_HEIGHT 800
+#define INITIAL_WINDOW_WIDTH 800
+#define INITIAL_WINDOW_HEIGHT 600
 
 VkBool32
 #ifndef __linux__
@@ -180,7 +180,9 @@ void Engine::startup()
     };
 
     VkPhysicalDeviceFeatures device_features = {};
-    device_features.sampleRateShading        = VK_TRUE;
+
+    device_features.sampleRateShading = VK_TRUE;
+    device_features.wideLines         = VK_TRUE;
 
     VkDeviceCreateInfo ci = {
         .sType                = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
@@ -701,25 +703,6 @@ void Engine::startup()
 
   double_ended_stack.reset_back();
   setup_simple_rendering();
-}
-
-void Engine::print_memory_statistics()
-{
-  auto  calc_procent  = [](VkDeviceSize part, VkDeviceSize max) { return 100.0f * ((float)part / (float)max); };
-  float image_percent = calc_procent(images.used_memory, Images::MAX_MEMORY_SIZE);
-  float dv_percent    = calc_procent(gpu_static_geometry.used_memory, GpuStaticGeometry::MAX_MEMORY_SIZE);
-  float hv_percent    = calc_procent(gpu_host_visible.used_memory, GpuHostVisible::MAX_MEMORY_SIZE);
-  float ubo_percent   = calc_procent(ubo_host_visible.used_memory, UboHostVisible::MAX_MEMORY_SIZE);
-  float stack_percent = 100.0f * (double_ended_stack.front / (float)DoubleEndedStack::MAX_MEMORY_SIZE);
-
-  SDL_Log("### Memory statistics ###");
-  SDL_Log("Image memory:                    %.2f proc. out of %u MB", image_percent, Images::MAX_MEMORY_SIZE_MB);
-  SDL_Log("device-visible memory:           %.2f proc. out of %u MB", dv_percent,
-          GpuStaticGeometry::MAX_MEMORY_SIZE_MB);
-  SDL_Log("host-visible memory:             %.2f proc. out of %u MB", hv_percent, GpuHostVisible::MAX_MEMORY_SIZE_MB);
-  SDL_Log("universal buffer objects memory: %.2f proc. out of %u MB", ubo_percent, UboHostVisible::MAX_MEMORY_SIZE_MB);
-  SDL_Log("double ended stack memory:       %.2f proc. out of %u MB", stack_percent,
-          DoubleEndedStack::MAX_MEMORY_SIZE_MB);
 }
 
 void Engine::teardown()
@@ -1803,11 +1786,40 @@ void Engine::setup_simple_rendering()
   }
 
   {
+    VkPushConstantRange ranges[] = {
+        {
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .offset     = 0,
+            .size       = sizeof(vec4),
+        },
+    };
+
+    VkDescriptorSetLayout descriptor_sets[] = {renderer.single_texture_in_frag_descriptor_set_layout};
+
+    VkPipelineLayoutCreateInfo ci = {
+        .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount         = SDL_arraysize(descriptor_sets),
+        .pSetLayouts            = descriptor_sets,
+        .pushConstantRangeCount = SDL_arraysize(ranges),
+        .pPushConstantRanges    = ranges,
+    };
+
+    vkCreatePipelineLayout(ctx.device, &ci, nullptr,
+                           &renderer.pipeline_layouts[SimpleRendering::Pipeline::GreenGuiLines]);
+  }
+
+  {
     struct VertexPushConstant
     {
       mat4x4 mvp;
       vec2   character_coordinate;
       vec2   character_size;
+    };
+
+    struct FragmentPushConstant
+    {
+      vec3  color;
+      float time;
     };
 
     VkPushConstantRange ranges[] = {
@@ -1819,7 +1831,7 @@ void Engine::setup_simple_rendering()
         {
             .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
             .offset     = sizeof(VertexPushConstant),
-            .size       = sizeof(float),
+            .size       = sizeof(FragmentPushConstant),
         },
     };
 
@@ -1864,6 +1876,7 @@ void Engine::setup_simple_rendering()
   pipeline_reload_simple_rendering_coloredgeometry_reload(*this);
   pipeline_reload_simple_rendering_coloredgeometryskinned_reload(*this);
   pipeline_reload_simple_rendering_green_gui_reload(*this);
+  pipeline_reload_simple_rendering_green_gui_lines_reload(*this);
   pipeline_reload_simple_rendering_green_gui_sdf_reload(*this);
   pipeline_reload_simple_rendering_imgui_reload(*this);
 

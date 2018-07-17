@@ -2,7 +2,8 @@
 
 layout(push_constant) uniform Transformation
 {
-  layout(offset = 80) float time;
+  layout(offset = 80) vec3 color;
+  float                    time;
 }
 transformation;
 
@@ -17,14 +18,13 @@ void main()
   float distance    = texture(image, inUV).a;
   float smoothWidth = fwidth(distance);
   float alpha       = smoothstep(0.5 - smoothWidth, 0.5 + smoothWidth, distance);
-  vec3  rgb         = vec3(alpha);
+  vec3  rgb         = transformation.color;
 
   float time       = transformation.time;
   vec2  resolution = vec2(200, 100);
   vec2  q          = gl_FragCoord.xy / resolution.xy;
   vec2  uv         = inUV;
-
-  vec3 col = rgb;
+  vec3  col        = rgb;
 
   col = clamp(col * 0.5 + 0.5 * col * col * 1.2, 0.0, 1.0);
   col *= 0.5 + 0.5 * 16.0 * uv.x * uv.y * (1.0 - uv.x) * (1.0 - uv.y);
@@ -32,6 +32,5 @@ void main()
   col *= 0.9 + 0.1 * sin(15.0 * -time + uv.x * 1000.0f);
   col *= 1.0 + 0.03 * sin(120.0 * time);
 
-  // outColor = vec4(col, alpha * 0.75);
   outColor = vec4(rgb, alpha);
 }
