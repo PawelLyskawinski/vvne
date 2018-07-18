@@ -8,7 +8,7 @@ namespace {
 
 constexpr float to_rad(float deg) noexcept
 {
-  return (float(M_PI) * deg) / 180.0f;
+  return (static_cast<float>(M_PI) * deg) / 180.0f;
 }
 
 constexpr float calculate_mip_divisor(int mip_level)
@@ -18,64 +18,35 @@ constexpr float calculate_mip_divisor(int mip_level)
 
 void generate_cubemap_views(mat4x4 views[6])
 {
-  vec3 eye = {0.0f, 0.0f, 0.0f};
-
-  struct Input
+  struct V3
   {
-    vec3 center;
-    vec3 up;
-  } inputs[] = {
-      {
-          {1.0f, 0.0f, 0.0f},
-          {0.0f, -1.0f, 0.0f},
-      },
-      {
-          {-1.0f, 0.0f, 0.0f},
-          {0.0f, -1.0f, 0.0f},
-      },
-      {
-          {0.0f, 1.0f, 0.0f},
-          {0.0f, 0.0f, 1.0f},
-      },
-      {
-          {0.0f, -1.0f, 0.0f},
-          {0.0f, 0.0f, -1.0f},
-      },
-      {
-          {0.0f, 0.0f, 1.0f},
-          {0.0f, -1.0f, 0.0f},
-      },
-      {
-          {0.0f, 0.0f, -1.0f},
-          {0.0f, -1.0f, 0.0f},
-      },
+    vec3 data;
   };
 
-  for (unsigned i = 0; i < SDL_arraysize(inputs); ++i)
-    mat4x4_look_at(views[i], eye, inputs[i].center, inputs[i].up);
+  auto look_at = [](mat4x4 result, V3 center, V3 up) {
+    vec3 eye = {0.0f, 0.0f, 0.0f};
+    mat4x4_look_at(result, eye, center.data, up.data);
+  };
+
+  look_at(views[0], {1.0f, 0.0f, 0.0f}, {0.0f, -1.0f, 0.0f});
+  look_at(views[1], {-1.0f, 0.0f, 0.0f}, {0.0f, -1.0f, 0.0f});
+  look_at(views[2], {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f});
+  look_at(views[3], {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f, -1.0f});
+  look_at(views[4], {0.0f, 0.0f, 1.0f}, {0.0f, -1.0f, 0.0f});
+  look_at(views[5], {0.0f, 0.0f, -1.0f}, {0.0f, -1.0f, 0.0f});
 }
 
 } // namespace
 
 int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_filepath, int desired_size[2])
 {
-  struct OperationContext
-  {
-    VkImage     cubemap_image;
-    VkImageView cubemap_image_view;
-    VkImageView cubemap_image_side_views[6];
-
-    VkRenderPass          render_pass;
-    VkDescriptorSetLayout descriptor_set_layout;
-    VkPipelineLayout      pipeline_layout;
-    VkPipeline            pipelines[6];
-    VkFramebuffer         framebuffer;
-    VkDescriptorSet       descriptor_set;
-  };
-
-  OperationContext        operation{};
   Engine::GenericHandles& egh            = engine->generic_handles;
   const VkFormat          surface_format = engine->generic_handles.surface_format.format;
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Result cubemap image handle creation
+  //////////////////////////////////////////////////////////////////////////////
+  VkImage cubemap_image = VK_NULL_HANDLE;
 
   {
     VkImageCreateInfo ci = {
@@ -98,14 +69,19 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
         .initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED,
     };
 
-    vkCreateImage(egh.device, &ci, nullptr, &operation.cubemap_image);
+    vkCreateImage(egh.device, &ci, nullptr, &cubemap_image);
   }
 
   {
     VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(egh.device, operation.cubemap_image, &reqs);
-    vkBindImageMemory(egh.device, operation.cubemap_image, engine->images.memory, engine->images.allocate(reqs.size));
+    vkGetImageMemoryRequirements(egh.device, cubemap_image, &reqs);
+    vkBindImageMemory(egh.device, cubemap_image, engine->images.memory, engine->images.allocate(reqs.size));
   }
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Image view containing all 6 cubemap layers
+  //////////////////////////////////////////////////////////////////////////////
+  VkImageView cubemap_image_view = VK_NULL_HANDLE;
 
   {
     VkImageSubresourceRange sr = {
@@ -118,16 +94,21 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
 
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = operation.cubemap_image,
+        .image            = cubemap_image,
         .viewType         = VK_IMAGE_VIEW_TYPE_CUBE,
         .format           = surface_format,
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(egh.device, &ci, nullptr, &operation.cubemap_image_view);
+    vkCreateImageView(egh.device, &ci, nullptr, &cubemap_image_view);
   }
 
-  for (unsigned i = 0; i < SDL_arraysize(operation.cubemap_image_side_views); ++i)
+  //////////////////////////////////////////////////////////////////////////////
+  // 6 Image views for each of the cubemaps layer
+  //////////////////////////////////////////////////////////////////////////////
+  VkImageView cubemap_image_side_views[6];
+
+  for (unsigned i = 0; i < SDL_arraysize(cubemap_image_side_views); ++i)
   {
     VkImageSubresourceRange sr = {
         .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -139,36 +120,50 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
 
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = operation.cubemap_image,
+        .image            = cubemap_image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D,
         .format           = surface_format,
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(egh.device, &ci, nullptr, &operation.cubemap_image_side_views[i]);
+    vkCreateImageView(egh.device, &ci, nullptr, &cubemap_image_side_views[i]);
   }
 
+  //////////////////////////////////////////////////////////////////////////////
+  // Push image and image view handles to engine list
+  //////////////////////////////////////////////////////////////////////////////
   int result_idx = engine->images.loaded_count;
-  engine->images.add(operation.cubemap_image, operation.cubemap_image_view);
+  engine->images.add(cubemap_image, cubemap_image_view);
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Load 2D equirectangular image from file
+  //////////////////////////////////////////////////////////////////////////////
   int plain_texture_idx = engine->load_texture(equirectangular_filepath);
 
-  {
-    VkAttachmentDescription attachments[6] = {
-        {
-            .format         = surface_format,
-            .samples        = VK_SAMPLE_COUNT_1_BIT,
-            .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp        = VK_ATTACHMENT_STORE_OP_STORE,
-            .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-            .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-            .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
-            .finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-        },
-    };
+  //////////////////////////////////////////////////////////////////////////////
+  // cubemap creation plan:
+  //
+  // - equirectangular image will be mapped as a skybox.
+  // - 6 camera angles will be used to render all possible view directions.
+  // - each render result will be stored in separate cubemap layer
+  // - each cubemap layer will be a separate render pass attachment
+  // - 6 passes will iterate through all attachments and camera views
+  //////////////////////////////////////////////////////////////////////////////
+  VkRenderPass render_pass = VK_NULL_HANDLE;
 
-    for (unsigned i = 1; i < SDL_arraysize(attachments); ++i)
+  {
+    VkAttachmentDescription attachments[6] = {};
+
+    for (VkAttachmentDescription& a : attachments)
     {
-      attachments[i] = attachments[0];
+      a.format         = surface_format;
+      a.samples        = VK_SAMPLE_COUNT_1_BIT;
+      a.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
+      a.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
+      a.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+      a.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+      a.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
+      a.finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
     }
 
     VkAttachmentReference color_references[6] = {};
@@ -186,41 +181,21 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
       subpasses[i].pColorAttachments    = &color_references[i];
     }
 
-    VkSubpassDependency dependencies[6] = {
-        {
-            .srcStageMask  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-            .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
-            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-        },
-    };
-
-    for (unsigned i = 1; i < SDL_arraysize(dependencies); ++i)
-    {
-      dependencies[i] = dependencies[0];
-    }
-
-    dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependencies[0].dstSubpass = 0;
-
-    for (int i = 1; i < 6; ++i)
-    {
-      dependencies[i].srcSubpass = static_cast<uint32_t>(i - 1);
-      dependencies[i].dstSubpass = static_cast<uint32_t>(i);
-    }
-
     VkRenderPassCreateInfo ci = {
         .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
         .attachmentCount = SDL_arraysize(attachments),
         .pAttachments    = attachments,
         .subpassCount    = SDL_arraysize(subpasses),
         .pSubpasses      = subpasses,
-        .dependencyCount = SDL_arraysize(dependencies),
-        .pDependencies   = dependencies,
     };
 
-    vkCreateRenderPass(egh.device, &ci, nullptr, &operation.render_pass);
+    vkCreateRenderPass(egh.device, &ci, nullptr, &render_pass);
   }
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Only single descriptor set will be used - for equirectangular image sampler
+  //////////////////////////////////////////////////////////////////////////////
+  VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
 
   {
     VkDescriptorSetLayoutBinding binding = {
@@ -236,18 +211,20 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
         .pBindings    = &binding,
     };
 
-    vkCreateDescriptorSetLayout(egh.device, &ci, nullptr, &operation.descriptor_set_layout);
+    vkCreateDescriptorSetLayout(egh.device, &ci, nullptr, &descriptor_set_layout);
   }
+
+  VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
 
   {
     VkDescriptorSetAllocateInfo info = {
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool     = egh.descriptor_pool,
         .descriptorSetCount = 1,
-        .pSetLayouts        = &operation.descriptor_set_layout,
+        .pSetLayouts        = &descriptor_set_layout,
     };
 
-    vkAllocateDescriptorSets(egh.device, &info, &operation.descriptor_set);
+    vkAllocateDescriptorSets(egh.device, &info, &descriptor_set);
   }
 
   {
@@ -259,7 +236,7 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
 
     VkWriteDescriptorSet write = {
         .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet          = operation.descriptor_set,
+        .dstSet          = descriptor_set,
         .dstBinding      = 0,
         .dstArrayElement = 0,
         .descriptorCount = 1,
@@ -269,6 +246,11 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
 
     vkUpdateDescriptorSets(egh.device, 1, &write, 0, nullptr);
   }
+
+  //////////////////////////////////////////////////////////////////////////////
+  // mvp matrix will be pushed at vertex shader stage
+  //////////////////////////////////////////////////////////////////////////////
+  VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
 
   {
     VkPushConstantRange range = {
@@ -280,13 +262,15 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
     VkPipelineLayoutCreateInfo ci = {
         .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount         = 1,
-        .pSetLayouts            = &operation.descriptor_set_layout,
+        .pSetLayouts            = &descriptor_set_layout,
         .pushConstantRangeCount = 1,
         .pPushConstantRanges    = &range,
     };
 
-    vkCreatePipelineLayout(egh.device, &ci, nullptr, &operation.pipeline_layout);
+    vkCreatePipelineLayout(egh.device, &ci, nullptr, &pipeline_layout);
   }
+
+  VkPipeline pipelines[6];
 
   {
     VkPipelineShaderStageCreateInfo shader_stages[] = {
@@ -393,6 +377,9 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
         .maxDepthBounds        = 1.0f,
     };
 
+    const VkColorComponentFlags rgba_components =
+        VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
     VkPipelineColorBlendAttachmentState color_blend_attachment = {
         .blendEnable         = VK_FALSE,
         .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
@@ -401,8 +388,7 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
         .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
         .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
         .alphaBlendOp        = VK_BLEND_OP_ADD,
-        .colorWriteMask =
-            VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+        .colorWriteMask      = rgba_components,
     };
 
     VkPipelineColorBlendStateCreateInfo color_blend_state = {
@@ -413,7 +399,7 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
         .pAttachments    = &color_blend_attachment,
     };
 
-    for (unsigned i = 0; i < SDL_arraysize(operation.pipelines); ++i)
+    for (unsigned i = 0; i < SDL_arraysize(pipelines); ++i)
     {
       VkGraphicsPipelineCreateInfo ci = {
           .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
@@ -426,35 +412,39 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
           .pMultisampleState   = &multisample_state,
           .pDepthStencilState  = &depth_stencil_state,
           .pColorBlendState    = &color_blend_state,
-          .layout              = operation.pipeline_layout,
-          .renderPass          = operation.render_pass,
+          .layout              = pipeline_layout,
+          .renderPass          = render_pass,
           .subpass             = static_cast<uint32_t>(i),
           .basePipelineHandle  = VK_NULL_HANDLE,
           .basePipelineIndex   = -1,
       };
 
-      vkCreateGraphicsPipelines(egh.device, VK_NULL_HANDLE, 1, &ci, nullptr, &operation.pipelines[i]);
+      vkCreateGraphicsPipelines(egh.device, VK_NULL_HANDLE, 1, &ci, nullptr, &pipelines[i]);
     }
 
     for (auto& shader_stage : shader_stages)
       vkDestroyShaderModule(egh.device, shader_stage.module, nullptr);
   }
 
+  VkFramebuffer framebuffer = VK_NULL_HANDLE;
+
   {
     VkFramebufferCreateInfo ci = {
         .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-        .renderPass      = operation.render_pass,
-        .attachmentCount = SDL_arraysize(operation.cubemap_image_side_views),
-        .pAttachments    = operation.cubemap_image_side_views,
+        .renderPass      = render_pass,
+        .attachmentCount = SDL_arraysize(cubemap_image_side_views),
+        .pAttachments    = cubemap_image_side_views,
         .width           = static_cast<uint32_t>(desired_size[0]),
         .height          = static_cast<uint32_t>(desired_size[1]),
         .layers          = 1,
     };
 
-    vkCreateFramebuffer(egh.device, &ci, nullptr, &operation.framebuffer);
+    vkCreateFramebuffer(egh.device, &ci, nullptr, &framebuffer);
   }
 
-  // -------------------------------------------------------------------------------------
+  //////////////////////////////////////////////////////////////////////////////
+  // render
+  //////////////////////////////////////////////////////////////////////////////
 
   {
     VkCommandBuffer cmd = VK_NULL_HANDLE;
@@ -491,8 +481,8 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
 
       VkRenderPassBeginInfo begin = {
           .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-          .renderPass      = operation.render_pass,
-          .framebuffer     = operation.framebuffer,
+          .renderPass      = render_pass,
+          .framebuffer     = framebuffer,
           .renderArea      = {.extent = extent},
           .clearValueCount = SDL_arraysize(clear_values),
           .pClearValues    = clear_values,
@@ -500,6 +490,8 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
 
       vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
     }
+
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set, 0, nullptr);
 
     mat4x4 projection{};
     mat4x4_perspective(projection, to_rad(90.0f), 1.0f, 0.1f, 100.0f);
@@ -518,11 +510,9 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
       mat4x4 mvp = {};
       mat4x4_mul(mvp, projectionview, model);
 
-      vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, operation.pipelines[i]);
-      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, operation.pipeline_layout, 0, 1,
-                              &operation.descriptor_set, 0, nullptr);
+      vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[i]);
+      vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
 
-      vkCmdPushConstants(cmd, operation.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
       game->box.renderRaw(*engine, cmd);
       if (5 != i)
         vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
@@ -551,20 +541,20 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
     vkDestroyFence(egh.device, image_generation_fence, nullptr);
   }
 
-  // todo: this is a leaked resource. We should destroy this at this point, but the pool must be correctly configured
+  // @todo: this is a leaked resource. We should destroy this at this point, but the pool must be correctly configured
   // vkFreeDescriptorSets(egh.device, egh.descriptor_pool, 1, &operation.descriptor_set);
 
-  vkDestroyFramebuffer(egh.device, operation.framebuffer, nullptr);
+  vkDestroyFramebuffer(egh.device, framebuffer, nullptr);
 
-  for (VkImageView& image_view : operation.cubemap_image_side_views)
+  for (VkImageView& image_view : cubemap_image_side_views)
     vkDestroyImageView(egh.device, image_view, nullptr);
 
-  for (VkPipeline& pipeline : operation.pipelines)
+  for (VkPipeline& pipeline : pipelines)
     vkDestroyPipeline(egh.device, pipeline, nullptr);
 
-  vkDestroyPipelineLayout(egh.device, operation.pipeline_layout, nullptr);
-  vkDestroyDescriptorSetLayout(egh.device, operation.descriptor_set_layout, nullptr);
-  vkDestroyRenderPass(egh.device, operation.render_pass, nullptr);
+  vkDestroyPipelineLayout(egh.device, pipeline_layout, nullptr);
+  vkDestroyDescriptorSetLayout(egh.device, descriptor_set_layout, nullptr);
+  vkDestroyRenderPass(egh.device, render_pass, nullptr);
 
   // original equirectangular image is no longer needed
   vkDestroyImage(egh.device, engine->images.images[plain_texture_idx], nullptr);
@@ -577,23 +567,13 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
 
 int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cubemap_idx, int desired_size[2])
 {
-  struct OperationContext
-  {
-    VkImage     cubemap_image;
-    VkImageView cubemap_image_view;
-    VkImageView cubemap_image_side_views[6];
-
-    VkRenderPass          render_pass;
-    VkDescriptorSetLayout descriptor_set_layout;
-    VkPipelineLayout      pipeline_layout;
-    VkPipeline            pipelines[6];
-    VkFramebuffer         framebuffer;
-    VkDescriptorSet       descriptor_set;
-  };
-
-  OperationContext        operation{};
   Engine::GenericHandles& egh            = engine->generic_handles;
   const VkFormat          surface_format = engine->generic_handles.surface_format.format;
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Result cubemap image handle creation
+  //////////////////////////////////////////////////////////////////////////////
+  VkImage cubemap_image = VK_NULL_HANDLE;
 
   {
     VkImageCreateInfo ci = {
@@ -616,14 +596,19 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
         .initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED,
     };
 
-    vkCreateImage(egh.device, &ci, nullptr, &operation.cubemap_image);
+    vkCreateImage(egh.device, &ci, nullptr, &cubemap_image);
   }
 
   {
     VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(egh.device, operation.cubemap_image, &reqs);
-    vkBindImageMemory(egh.device, operation.cubemap_image, engine->images.memory, engine->images.allocate(reqs.size));
+    vkGetImageMemoryRequirements(egh.device, cubemap_image, &reqs);
+    vkBindImageMemory(egh.device, cubemap_image, engine->images.memory, engine->images.allocate(reqs.size));
   }
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Image views creation
+  //////////////////////////////////////////////////////////////////////////////
+  VkImageView cubemap_image_view = VK_NULL_HANDLE;
 
   {
     VkImageSubresourceRange sr = {
@@ -636,16 +621,18 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
 
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = operation.cubemap_image,
+        .image            = cubemap_image,
         .viewType         = VK_IMAGE_VIEW_TYPE_CUBE,
         .format           = surface_format,
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(egh.device, &ci, nullptr, &operation.cubemap_image_view);
+    vkCreateImageView(egh.device, &ci, nullptr, &cubemap_image_view);
   }
 
-  for (unsigned i = 0; i < SDL_arraysize(operation.cubemap_image_side_views); ++i)
+  VkImageView cubemap_image_side_views[6];
+
+  for (unsigned i = 0; i < SDL_arraysize(cubemap_image_side_views); ++i)
   {
     VkImageSubresourceRange sr = {
         .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -657,36 +644,35 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
 
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = operation.cubemap_image,
+        .image            = cubemap_image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D,
         .format           = surface_format,
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(egh.device, &ci, nullptr, &operation.cubemap_image_side_views[i]);
+    vkCreateImageView(egh.device, &ci, nullptr, &cubemap_image_side_views[i]);
   }
 
   int result_idx = engine->images.loaded_count;
-  engine->images.add(operation.cubemap_image, operation.cubemap_image_view);
+  engine->images.add(cubemap_image, cubemap_image_view);
+
+  VkRenderPass render_pass = VK_NULL_HANDLE;
 
   {
-    VkAttachmentDescription attachments[6] = {
-        {
-            .format         = surface_format,
-            .samples        = VK_SAMPLE_COUNT_1_BIT,
-            .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp        = VK_ATTACHMENT_STORE_OP_STORE,
-            .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-            .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-            .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
-            .finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-        },
-    };
+    VkAttachmentDescription attachments[6] = {};
+    for (VkAttachmentDescription& a : attachments)
+    {
+      a.format         = surface_format;
+      a.samples        = VK_SAMPLE_COUNT_1_BIT;
+      a.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
+      a.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
+      a.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+      a.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+      a.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
+      a.finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    }
 
-    for (unsigned i = 1; i < SDL_arraysize(attachments); ++i)
-      attachments[i] = attachments[0];
-
-    VkAttachmentReference color_references[6]{};
+    VkAttachmentReference color_references[6] = {};
     for (unsigned i = 0; i < SDL_arraysize(color_references); ++i)
     {
       color_references[i].attachment = static_cast<uint32_t>(i);
@@ -701,39 +687,18 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
       subpasses[i].pColorAttachments    = &color_references[i];
     }
 
-    VkSubpassDependency dependencies[6] = {
-        {
-            .srcStageMask  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-            .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
-            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-        },
-    };
-
-    for (unsigned i = 1; i < SDL_arraysize(dependencies); ++i)
-      dependencies[i] = dependencies[0];
-
-    dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependencies[0].dstSubpass = 0;
-
-    for (int i = 1; i < 6; ++i)
-    {
-      dependencies[i].srcSubpass = static_cast<uint32_t>(i - 1);
-      dependencies[i].dstSubpass = static_cast<uint32_t>(i);
-    }
-
     VkRenderPassCreateInfo ci = {
         .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
         .attachmentCount = SDL_arraysize(attachments),
         .pAttachments    = attachments,
         .subpassCount    = SDL_arraysize(subpasses),
         .pSubpasses      = subpasses,
-        .dependencyCount = SDL_arraysize(dependencies),
-        .pDependencies   = dependencies,
     };
 
-    vkCreateRenderPass(egh.device, &ci, nullptr, &operation.render_pass);
+    vkCreateRenderPass(egh.device, &ci, nullptr, &render_pass);
   }
+
+  VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
 
   {
     VkDescriptorSetLayoutBinding binding = {
@@ -749,18 +714,20 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
         .pBindings    = &binding,
     };
 
-    vkCreateDescriptorSetLayout(egh.device, &ci, nullptr, &operation.descriptor_set_layout);
+    vkCreateDescriptorSetLayout(egh.device, &ci, nullptr, &descriptor_set_layout);
   }
+
+  VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
 
   {
     VkDescriptorSetAllocateInfo info = {
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool     = egh.descriptor_pool,
         .descriptorSetCount = 1,
-        .pSetLayouts        = &operation.descriptor_set_layout,
+        .pSetLayouts        = &descriptor_set_layout,
     };
 
-    vkAllocateDescriptorSets(egh.device, &info, &operation.descriptor_set);
+    vkAllocateDescriptorSets(egh.device, &info, &descriptor_set);
   }
 
   {
@@ -772,7 +739,7 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
 
     VkWriteDescriptorSet write = {
         .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet          = operation.descriptor_set,
+        .dstSet          = descriptor_set,
         .dstBinding      = 0,
         .dstArrayElement = 0,
         .descriptorCount = 1,
@@ -782,6 +749,8 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
 
     vkUpdateDescriptorSets(egh.device, 1, &write, 0, nullptr);
   }
+
+  VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
 
   {
     VkPushConstantRange range = {
@@ -793,13 +762,15 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
     VkPipelineLayoutCreateInfo ci = {
         .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount         = 1,
-        .pSetLayouts            = &operation.descriptor_set_layout,
+        .pSetLayouts            = &descriptor_set_layout,
         .pushConstantRangeCount = 1,
         .pPushConstantRanges    = &range,
     };
 
-    vkCreatePipelineLayout(egh.device, &ci, nullptr, &operation.pipeline_layout);
+    vkCreatePipelineLayout(egh.device, &ci, nullptr, &pipeline_layout);
   }
+
+  VkPipeline pipelines[6];
 
   {
     VkPipelineShaderStageCreateInfo shader_stages[] = {
@@ -931,7 +902,7 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
         .pAttachments    = &color_blend_attachment,
     };
 
-    for (unsigned i = 0; i < SDL_arraysize(operation.pipelines); ++i)
+    for (unsigned i = 0; i < SDL_arraysize(pipelines); ++i)
     {
       VkGraphicsPipelineCreateInfo ci = {
           .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
@@ -944,35 +915,39 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
           .pMultisampleState   = &multisample_state,
           .pDepthStencilState  = &depth_stencil_state,
           .pColorBlendState    = &color_blend_state,
-          .layout              = operation.pipeline_layout,
-          .renderPass          = operation.render_pass,
+          .layout              = pipeline_layout,
+          .renderPass          = render_pass,
           .subpass             = static_cast<uint32_t>(i),
           .basePipelineHandle  = VK_NULL_HANDLE,
           .basePipelineIndex   = -1,
       };
 
-      vkCreateGraphicsPipelines(egh.device, VK_NULL_HANDLE, 1, &ci, nullptr, &operation.pipelines[i]);
+      vkCreateGraphicsPipelines(egh.device, VK_NULL_HANDLE, 1, &ci, nullptr, &pipelines[i]);
     }
 
     for (auto& shader_stage : shader_stages)
       vkDestroyShaderModule(egh.device, shader_stage.module, nullptr);
   }
 
+  VkFramebuffer framebuffer = VK_NULL_HANDLE;
+
   {
     VkFramebufferCreateInfo ci = {
         .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-        .renderPass      = operation.render_pass,
-        .attachmentCount = SDL_arraysize(operation.cubemap_image_side_views),
-        .pAttachments    = operation.cubemap_image_side_views,
+        .renderPass      = render_pass,
+        .attachmentCount = SDL_arraysize(cubemap_image_side_views),
+        .pAttachments    = cubemap_image_side_views,
         .width           = static_cast<uint32_t>(desired_size[0]),
         .height          = static_cast<uint32_t>(desired_size[1]),
         .layers          = 1,
     };
 
-    vkCreateFramebuffer(egh.device, &ci, nullptr, &operation.framebuffer);
+    vkCreateFramebuffer(egh.device, &ci, nullptr, &framebuffer);
   }
 
-  // -------------------------------------------------------------------------------------
+  //////////////////////////////////////////////////////////////////////////////
+  // render
+  //////////////////////////////////////////////////////////////////////////////
   {
     VkCommandBuffer cmd = VK_NULL_HANDLE;
 
@@ -1008,8 +983,8 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
 
       VkRenderPassBeginInfo begin = {
           .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-          .renderPass      = operation.render_pass,
-          .framebuffer     = operation.framebuffer,
+          .renderPass      = render_pass,
+          .framebuffer     = framebuffer,
           .renderArea      = {.extent = extent},
           .clearValueCount = SDL_arraysize(clear_values),
           .pClearValues    = clear_values,
@@ -1035,10 +1010,9 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
       mat4x4 mvp = {};
       mat4x4_mul(mvp, projectionview, model);
 
-      vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, operation.pipelines[i]);
-      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, operation.pipeline_layout, 0, 1,
-                              &operation.descriptor_set, 0, nullptr);
-      vkCmdPushConstants(cmd, operation.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
+      vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[i]);
+      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set, 0, nullptr);
+      vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
       game->box.renderRaw(*engine, cmd);
 
       if (5 != i)
@@ -1071,46 +1045,33 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
   // todo: this is a leaked resource. We should destroy this at this point, but the pool must be correctly configured
   // vkFreeDescriptorSets(egh.device, egh.descriptor_pool, 1, &operation.descriptor_set);
 
-  vkDestroyFramebuffer(egh.device, operation.framebuffer, nullptr);
+  vkDestroyFramebuffer(egh.device, framebuffer, nullptr);
 
-  for (VkImageView& image_view : operation.cubemap_image_side_views)
+  for (VkImageView& image_view : cubemap_image_side_views)
     vkDestroyImageView(egh.device, image_view, nullptr);
 
-  for (VkPipeline& pipeline : operation.pipelines)
+  for (VkPipeline& pipeline : pipelines)
     vkDestroyPipeline(egh.device, pipeline, nullptr);
 
-  vkDestroyPipelineLayout(egh.device, operation.pipeline_layout, nullptr);
-  vkDestroyDescriptorSetLayout(egh.device, operation.descriptor_set_layout, nullptr);
-  vkDestroyRenderPass(egh.device, operation.render_pass, nullptr);
+  vkDestroyPipelineLayout(egh.device, pipeline_layout, nullptr);
+  vkDestroyDescriptorSetLayout(egh.device, descriptor_set_layout, nullptr);
+  vkDestroyRenderPass(egh.device, render_pass, nullptr);
 
   return result_idx;
 }
 
 int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cubemap_idx, int desired_size[2])
 {
-  enum
-  {
-    CUBE_SIDES         = 6,
-    DESIRED_MIP_LEVELS = 5
-  };
-
-  struct OperationContext
-  {
-    VkImage     cubemap_image;
-    VkImageView cubemap_image_view;
-    VkImageView cubemap_image_side_views[CUBE_SIDES * DESIRED_MIP_LEVELS];
-
-    VkRenderPass          render_pass;
-    VkDescriptorSetLayout descriptor_set_layout;
-    VkPipelineLayout      pipeline_layout;
-    VkPipeline            pipelines[CUBE_SIDES * DESIRED_MIP_LEVELS];
-    VkFramebuffer         framebuffers[DESIRED_MIP_LEVELS];
-    VkDescriptorSet       descriptor_set;
-  };
-
-  OperationContext        operation{};
   Engine::GenericHandles& egh            = engine->generic_handles;
   const VkFormat          surface_format = engine->generic_handles.surface_format.format;
+
+  constexpr int CUBE_SIDES         = 6;
+  constexpr int DESIRED_MIP_LEVELS = 5;
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Result cubemap image handle creation
+  //////////////////////////////////////////////////////////////////////////////
+  VkImage cubemap_image = VK_NULL_HANDLE;
 
   {
     VkImageCreateInfo ci = {
@@ -1133,14 +1094,19 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
         .initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED,
     };
 
-    vkCreateImage(egh.device, &ci, nullptr, &operation.cubemap_image);
+    vkCreateImage(egh.device, &ci, nullptr, &cubemap_image);
   }
 
   {
     VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(egh.device, operation.cubemap_image, &reqs);
-    vkBindImageMemory(egh.device, operation.cubemap_image, engine->images.memory, engine->images.allocate(reqs.size));
+    vkGetImageMemoryRequirements(egh.device, cubemap_image, &reqs);
+    vkBindImageMemory(egh.device, cubemap_image, engine->images.memory, engine->images.allocate(reqs.size));
   }
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Image view creation
+  //////////////////////////////////////////////////////////////////////////////
+  VkImageView cubemap_image_view = VK_NULL_HANDLE;
 
   {
     VkImageSubresourceRange sr = {
@@ -1153,14 +1119,16 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
 
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = operation.cubemap_image,
+        .image            = cubemap_image,
         .viewType         = VK_IMAGE_VIEW_TYPE_CUBE,
         .format           = surface_format,
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(egh.device, &ci, nullptr, &operation.cubemap_image_view);
+    vkCreateImageView(egh.device, &ci, nullptr, &cubemap_image_view);
   }
+
+  VkImageView cubemap_image_side_views[CUBE_SIDES * DESIRED_MIP_LEVELS];
 
   for (int mip_level = 0; mip_level < DESIRED_MIP_LEVELS; ++mip_level)
   {
@@ -1176,71 +1144,48 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
 
       VkImageViewCreateInfo ci = {
           .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-          .image            = operation.cubemap_image,
+          .image            = cubemap_image,
           .viewType         = VK_IMAGE_VIEW_TYPE_2D,
           .format           = surface_format,
           .subresourceRange = sr,
       };
 
-      vkCreateImageView(egh.device, &ci, nullptr,
-                        &operation.cubemap_image_side_views[CUBE_SIDES * mip_level + cube_side]);
+      vkCreateImageView(egh.device, &ci, nullptr, &cubemap_image_side_views[CUBE_SIDES * mip_level + cube_side]);
     }
   }
 
   int result_idx = engine->images.loaded_count;
-  engine->images.add(operation.cubemap_image, operation.cubemap_image_view);
+  engine->images.add(cubemap_image, cubemap_image_view);
+
+  VkRenderPass render_pass = VK_NULL_HANDLE;
 
   {
-    VkAttachmentDescription attachments[CUBE_SIDES] = {
-        {
-            .format         = surface_format,
-            .samples        = VK_SAMPLE_COUNT_1_BIT,
-            .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp        = VK_ATTACHMENT_STORE_OP_STORE,
-            .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-            .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-            .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
-            .finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-        },
-    };
+    VkAttachmentDescription attachments[CUBE_SIDES] = {};
+    for (VkAttachmentDescription& a : attachments)
+    {
+      a.format         = surface_format;
+      a.samples        = VK_SAMPLE_COUNT_1_BIT;
+      a.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
+      a.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
+      a.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+      a.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+      a.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
+      a.finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    }
 
-    for (unsigned i = 0; i < SDL_arraysize(attachments); ++i)
-      attachments[i] = attachments[0];
-
-    VkAttachmentReference color_references[CUBE_SIDES]{};
+    VkAttachmentReference color_references[CUBE_SIDES] = {};
     for (unsigned i = 0; i < SDL_arraysize(color_references); ++i)
     {
       color_references[i].attachment = static_cast<uint32_t>(i);
       color_references[i].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
 
-    VkSubpassDescription subpasses[CUBE_SIDES]{};
+    VkSubpassDescription subpasses[CUBE_SIDES] = {};
     for (unsigned i = 0; i < SDL_arraysize(subpasses); ++i)
     {
       subpasses[i].pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS;
       subpasses[i].colorAttachmentCount = 1;
       subpasses[i].pColorAttachments    = &color_references[i];
-    }
-
-    VkSubpassDependency dependencies[CUBE_SIDES] = {
-        {
-            .srcStageMask  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-            .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
-            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-        },
-    };
-
-    for (unsigned i = 0; i < SDL_arraysize(dependencies); ++i)
-      dependencies[i] = dependencies[0];
-
-    dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependencies[0].dstSubpass = 0;
-
-    for (int i = 1; i < CUBE_SIDES; ++i)
-    {
-      dependencies[i].srcSubpass = static_cast<uint32_t>(i - 1);
-      dependencies[i].dstSubpass = static_cast<uint32_t>(i);
     }
 
     VkRenderPassCreateInfo ci = {
@@ -1249,12 +1194,12 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
         .pAttachments    = attachments,
         .subpassCount    = SDL_arraysize(subpasses),
         .pSubpasses      = subpasses,
-        .dependencyCount = SDL_arraysize(dependencies),
-        .pDependencies   = dependencies,
     };
 
-    vkCreateRenderPass(egh.device, &ci, nullptr, &operation.render_pass);
+    vkCreateRenderPass(egh.device, &ci, nullptr, &render_pass);
   }
+
+  VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
 
   {
     VkDescriptorSetLayoutBinding binding = {
@@ -1270,18 +1215,20 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
         .pBindings    = &binding,
     };
 
-    vkCreateDescriptorSetLayout(egh.device, &ci, nullptr, &operation.descriptor_set_layout);
+    vkCreateDescriptorSetLayout(egh.device, &ci, nullptr, &descriptor_set_layout);
   }
+
+  VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
 
   {
     VkDescriptorSetAllocateInfo info = {
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool     = egh.descriptor_pool,
         .descriptorSetCount = 1,
-        .pSetLayouts        = &operation.descriptor_set_layout,
+        .pSetLayouts        = &descriptor_set_layout,
     };
 
-    vkAllocateDescriptorSets(egh.device, &info, &operation.descriptor_set);
+    vkAllocateDescriptorSets(egh.device, &info, &descriptor_set);
   }
 
   {
@@ -1293,7 +1240,7 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
 
     VkWriteDescriptorSet write = {
         .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet          = operation.descriptor_set,
+        .dstSet          = descriptor_set,
         .dstBinding      = 0,
         .dstArrayElement = 0,
         .descriptorCount = 1,
@@ -1303,6 +1250,8 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
 
     vkUpdateDescriptorSets(egh.device, 1, &write, 0, nullptr);
   }
+
+  VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
 
   {
     VkPushConstantRange ranges[] = {
@@ -1321,13 +1270,15 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
     VkPipelineLayoutCreateInfo ci = {
         .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount         = 1,
-        .pSetLayouts            = &operation.descriptor_set_layout,
+        .pSetLayouts            = &descriptor_set_layout,
         .pushConstantRangeCount = 2,
         .pPushConstantRanges    = ranges,
     };
 
-    vkCreatePipelineLayout(egh.device, &ci, nullptr, &operation.pipeline_layout);
+    vkCreatePipelineLayout(egh.device, &ci, nullptr, &pipeline_layout);
   }
+
+  VkPipeline pipelines[CUBE_SIDES * DESIRED_MIP_LEVELS];
 
   {
     VkPipelineShaderStageCreateInfo shader_stages[] = {
@@ -1478,15 +1429,15 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
             .pMultisampleState   = &multisample_state,
             .pDepthStencilState  = &depth_stencil_state,
             .pColorBlendState    = &color_blend_state,
-            .layout              = operation.pipeline_layout,
-            .renderPass          = operation.render_pass,
+            .layout              = pipeline_layout,
+            .renderPass          = render_pass,
             .subpass             = static_cast<uint32_t>(cube_side),
             .basePipelineHandle  = VK_NULL_HANDLE,
             .basePipelineIndex   = -1,
         };
 
         vkCreateGraphicsPipelines(egh.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-                                  &operation.pipelines[CUBE_SIDES * mip_level + cube_side]);
+                                  &pipelines[CUBE_SIDES * mip_level + cube_side]);
       }
     }
 
@@ -1494,19 +1445,21 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
       vkDestroyShaderModule(egh.device, shader_stage.module, nullptr);
   }
 
+  VkFramebuffer framebuffers[DESIRED_MIP_LEVELS];
+
   for (int mip_level = 0; mip_level < DESIRED_MIP_LEVELS; ++mip_level)
   {
     VkFramebufferCreateInfo ci = {
         .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-        .renderPass      = operation.render_pass,
+        .renderPass      = render_pass,
         .attachmentCount = CUBE_SIDES,
-        .pAttachments    = &operation.cubemap_image_side_views[CUBE_SIDES * mip_level],
+        .pAttachments    = &cubemap_image_side_views[CUBE_SIDES * mip_level],
         .width           = static_cast<uint32_t>(desired_size[0]) / (uint32_t)calculate_mip_divisor(mip_level),
         .height          = static_cast<uint32_t>(desired_size[1]) / (uint32_t)calculate_mip_divisor(mip_level),
         .layers          = 1,
     };
 
-    vkCreateFramebuffer(egh.device, &ci, nullptr, &operation.framebuffers[mip_level]);
+    vkCreateFramebuffer(egh.device, &ci, nullptr, &framebuffers[mip_level]);
   }
 
   // -------------------------------------------------------------------------------------
@@ -1547,8 +1500,8 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
 
         VkRenderPassBeginInfo begin = {
             .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-            .renderPass      = operation.render_pass,
-            .framebuffer     = operation.framebuffers[mip_level],
+            .renderPass      = render_pass,
+            .framebuffer     = framebuffers[mip_level],
             .renderArea      = {.extent = extent},
             .clearValueCount = SDL_arraysize(clear_values),
             .pClearValues    = clear_values,
@@ -1575,12 +1528,11 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
         mat4x4 mvp = {};
         mat4x4_mul(mvp, projectionview, model);
 
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          operation.pipelines[CUBE_SIDES * mip_level + cube_side]);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, operation.pipeline_layout, 0, 1,
-                                &operation.descriptor_set, 0, nullptr);
-        vkCmdPushConstants(cmd, operation.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
-        vkCmdPushConstants(cmd, operation.pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(float),
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[CUBE_SIDES * mip_level + cube_side]);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set, 0,
+                                nullptr);
+        vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
+        vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(float),
                            &roughness);
         game->box.renderRaw(*engine, cmd);
 
@@ -1615,35 +1567,25 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
   // todo: this is a leaked resource. We should destroy this at this point, but the pool must be correctly configured
   // vkFreeDescriptorSets(egh.device, egh.descriptor_pool, 1, &operation.descriptor_set);
 
-  for (VkFramebuffer& framebuffer : operation.framebuffers)
+  for (VkFramebuffer& framebuffer : framebuffers)
     vkDestroyFramebuffer(egh.device, framebuffer, nullptr);
 
-  for (VkImageView& image_view : operation.cubemap_image_side_views)
+  for (VkImageView& image_view : cubemap_image_side_views)
     vkDestroyImageView(egh.device, image_view, nullptr);
 
-  for (VkPipeline& pipeline : operation.pipelines)
+  for (VkPipeline& pipeline : pipelines)
     vkDestroyPipeline(egh.device, pipeline, nullptr);
 
-  vkDestroyPipelineLayout(egh.device, operation.pipeline_layout, nullptr);
-  vkDestroyDescriptorSetLayout(egh.device, operation.descriptor_set_layout, nullptr);
-  vkDestroyRenderPass(egh.device, operation.render_pass, nullptr);
+  vkDestroyPipelineLayout(egh.device, pipeline_layout, nullptr);
+  vkDestroyDescriptorSetLayout(egh.device, descriptor_set_layout, nullptr);
+  vkDestroyRenderPass(egh.device, render_pass, nullptr);
 
   return result_idx;
 }
 
 int generate_brdf_lookup(Engine* engine, int size)
 {
-  struct OperationContext
-  {
-    VkImage     brdf_image;
-    VkImageView brdf_image_view;
-
-    VkRenderPass          render_pass;
-    VkFramebuffer         framebuffer;
-    VkDescriptorSetLayout descriptor_set_layout;
-    VkPipelineLayout      pipeline_layout;
-    VkPipeline            pipeline;
-  } operation{};
+  VkImage brdf_image = VK_NULL_HANDLE;
 
   {
     VkImageCreateInfo info = {
@@ -1662,15 +1604,17 @@ int generate_brdf_lookup(Engine* engine, int size)
         .tiling      = VK_IMAGE_TILING_OPTIMAL,
         .usage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
     };
-    vkCreateImage(engine->generic_handles.device, &info, nullptr, &operation.brdf_image);
+    vkCreateImage(engine->generic_handles.device, &info, nullptr, &brdf_image);
   }
 
   {
     VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(engine->generic_handles.device, operation.brdf_image, &reqs);
-    vkBindImageMemory(engine->generic_handles.device, operation.brdf_image, engine->images.memory,
+    vkGetImageMemoryRequirements(engine->generic_handles.device, brdf_image, &reqs);
+    vkBindImageMemory(engine->generic_handles.device, brdf_image, engine->images.memory,
                       engine->images.allocate(reqs.size));
   }
+
+  VkImageView brdf_image_view = VK_NULL_HANDLE;
 
   {
     VkImageSubresourceRange range = {
@@ -1683,17 +1627,19 @@ int generate_brdf_lookup(Engine* engine, int size)
 
     VkImageViewCreateInfo info = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = operation.brdf_image,
+        .image            = brdf_image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D,
         .format           = VK_FORMAT_R16G16_SFLOAT,
         .subresourceRange = range,
     };
 
-    vkCreateImageView(engine->generic_handles.device, &info, nullptr, &operation.brdf_image_view);
+    vkCreateImageView(engine->generic_handles.device, &info, nullptr, &brdf_image_view);
   }
 
   int result_idx = engine->images.loaded_count;
-  engine->images.add(operation.brdf_image, operation.brdf_image_view);
+  engine->images.add(brdf_image, brdf_image_view);
+
+  VkRenderPass render_pass = VK_NULL_HANDLE;
 
   {
     VkAttachmentDescription attachment = {
@@ -1749,37 +1695,33 @@ int generate_brdf_lookup(Engine* engine, int size)
         .pDependencies   = dependencies,
     };
 
-    vkCreateRenderPass(engine->generic_handles.device, &create, nullptr, &operation.render_pass);
+    vkCreateRenderPass(engine->generic_handles.device, &create, nullptr, &render_pass);
   }
+
+  VkFramebuffer framebuffer = VK_NULL_HANDLE;
 
   {
     VkFramebufferCreateInfo create = {
         .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-        .renderPass      = operation.render_pass,
+        .renderPass      = render_pass,
         .attachmentCount = 1,
-        .pAttachments    = &operation.brdf_image_view,
+        .pAttachments    = &brdf_image_view,
         .width           = static_cast<uint32_t>(size),
         .height          = static_cast<uint32_t>(size),
         .layers          = 1,
     };
 
-    vkCreateFramebuffer(engine->generic_handles.device, &create, nullptr, &operation.framebuffer);
+    vkCreateFramebuffer(engine->generic_handles.device, &create, nullptr, &framebuffer);
   }
+
+  VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
 
   {
-    VkDescriptorSetLayoutCreateInfo create = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-    vkCreateDescriptorSetLayout(engine->generic_handles.device, &create, nullptr, &operation.descriptor_set_layout);
+    VkPipelineLayoutCreateInfo create = {.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+    vkCreatePipelineLayout(engine->generic_handles.device, &create, nullptr, &pipeline_layout);
   }
 
-  {
-    VkPipelineLayoutCreateInfo create = {
-        .sType          = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount = 1,
-        .pSetLayouts    = &operation.descriptor_set_layout,
-    };
-
-    vkCreatePipelineLayout(engine->generic_handles.device, &create, nullptr, &operation.pipeline_layout);
-  }
+  VkPipeline pipeline = VK_NULL_HANDLE;
 
   {
     VkPipelineInputAssemblyStateCreateInfo input_assembly = {
@@ -1871,11 +1813,11 @@ int generate_brdf_lookup(Engine* engine, int size)
         .pDepthStencilState  = &depth_stencil,
         .pColorBlendState    = &color_blend,
         .pDynamicState       = &dynamicStateCI,
-        .layout              = operation.pipeline_layout,
-        .renderPass          = operation.render_pass,
+        .layout              = pipeline_layout,
+        .renderPass          = render_pass,
     };
 
-    vkCreateGraphicsPipelines(engine->generic_handles.device, VK_NULL_HANDLE, 1, &create, nullptr, &operation.pipeline);
+    vkCreateGraphicsPipelines(engine->generic_handles.device, VK_NULL_HANDLE, 1, &create, nullptr, &pipeline);
     for (auto& shader_stage : shader_stages)
       vkDestroyShaderModule(engine->generic_handles.device, shader_stage.module, nullptr);
   }
@@ -1914,8 +1856,8 @@ int generate_brdf_lookup(Engine* engine, int size)
 
       VkRenderPassBeginInfo info = {
           .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-          .renderPass      = operation.render_pass,
-          .framebuffer     = operation.framebuffer,
+          .renderPass      = render_pass,
+          .framebuffer     = framebuffer,
           .renderArea      = {.extent = extent},
           .clearValueCount = 1,
           .pClearValues    = &clear_value,
@@ -1941,7 +1883,7 @@ int generate_brdf_lookup(Engine* engine, int size)
 
     vkCmdSetViewport(cmd, 0, 1, &viewport);
     vkCmdSetScissor(cmd, 0, 1, &scissor);
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, operation.pipeline);
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     vkCmdDraw(cmd, 3, 1, 0, 0);
     vkCmdEndRenderPass(cmd);
     vkEndCommandBuffer(cmd);
@@ -1966,11 +1908,10 @@ int generate_brdf_lookup(Engine* engine, int size)
     vkDestroyFence(engine->generic_handles.device, image_generation_fence, nullptr);
   }
 
-  vkDestroyPipeline(engine->generic_handles.device, operation.pipeline, nullptr);
-  vkDestroyPipelineLayout(engine->generic_handles.device, operation.pipeline_layout, nullptr);
-  vkDestroyDescriptorSetLayout(engine->generic_handles.device, operation.descriptor_set_layout, nullptr);
-  vkDestroyFramebuffer(engine->generic_handles.device, operation.framebuffer, nullptr);
-  vkDestroyRenderPass(engine->generic_handles.device, operation.render_pass, nullptr);
+  vkDestroyPipeline(engine->generic_handles.device, pipeline, nullptr);
+  vkDestroyPipelineLayout(engine->generic_handles.device, pipeline_layout, nullptr);
+  vkDestroyFramebuffer(engine->generic_handles.device, framebuffer, nullptr);
+  vkDestroyRenderPass(engine->generic_handles.device, render_pass, nullptr);
 
   return result_idx;
 }

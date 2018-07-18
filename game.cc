@@ -1074,7 +1074,7 @@ void Game::startup(Engine& engine)
 
   booster_jet_fuel = 1.0f;
 
-  green_gui_radar_position[0] = -12.2f;
+  green_gui_radar_position[0] = -10.2f;
   green_gui_radar_position[1] = -7.3f;
   green_gui_radar_rotation    = -6.0f;
 
