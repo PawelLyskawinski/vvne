@@ -31,8 +31,9 @@ int main(int argc, char* argv[])
     const int   desired_frames_per_sec     = 60;
     const float desired_frame_duration_sec = (1000.0f / (float)desired_frames_per_sec);
 
-    game->update(*engine, current_time_sec, desired_frame_duration_sec);
-    game->render(*engine, current_time_sec);
+    game->current_time_sec = current_time_sec;
+    game->update(*engine, desired_frame_duration_sec);
+    game->render(*engine);
 
     uint64_t frame_time_counter = SDL_GetPerformanceCounter() - start_of_frame_ticks;
     float    elapsed_ms         = 1000.0f * ((float)frame_time_counter / (float)performance_frequency);

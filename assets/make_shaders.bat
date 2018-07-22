@@ -28,5 +28,6 @@ pause
 goto:eof
 
 :compile
-C:/VulkanSDK/1.0.65.0/Bin/glslangValidator.exe -V %~1 -o ../bin/%~1.spv
+C:/VulkanSDK/1.1.77.0/Bin/glslangValidator.exe -V %~1 -o ../bin/%~1.spv
+
 goto:eof

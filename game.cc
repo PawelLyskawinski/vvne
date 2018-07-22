@@ -6,6 +6,7 @@
 #include <SDL2/SDL_events.h>
 #include <SDL2/SDL_log.h>
 #include <SDL2/SDL_scancode.h>
+#include <SDL2/SDL_stdinc.h>
 #include <SDL2/SDL_timer.h>
 
 #define VR_LEVEL_SCALE 100.0f
@@ -205,6 +206,7 @@ private:
   PushBuffer     storage;
 };
 
+#if 0
 class CommandBufferSelector
 {
 public:
@@ -223,6 +225,7 @@ private:
   VkCommandBuffer* collection;
   const int        image_index;
 };
+#endif
 
 class ScopedCommand
 {
@@ -706,9 +709,9 @@ uint32_t line_to_pixel_length(float coord, int pixel_max_size)
 } // namespace
 
 // game_generate_gui_lines.cc
-ArrayView<GuiLine>            generate_gui_lines(const GenerateGuiLinesCommand& cmd);
-ArrayView<GuiHeightRulerText> generate_gui_height_ruler_text(struct GenerateGuiLinesCommand& cmd);
-ArrayView<GuiHeightRulerText> generate_gui_tilt_ruler_text(struct GenerateGuiLinesCommand& cmd);
+void generate_gui_lines(const GenerateGuiLinesCommand& cmd, GuiLine* dst, int* count);
+void generate_gui_height_ruler_text(struct GenerateGuiLinesCommand& cmd, GuiHeightRulerText* dst, int* count);
+void generate_gui_tilt_ruler_text(struct GenerateGuiLinesCommand& cmd, GuiHeightRulerText* dst, int* count);
 
 // game_generate_sdf_font.cc
 GenerateSdfFontCommandResult generate_sdf_font(const GenerateSdfFontCommand& cmd);
@@ -716,6 +719,1292 @@ GenerateSdfFontCommandResult generate_sdf_font(const GenerateSdfFontCommand& cmd
 // game_generate_sdl_imgui_mappings.cc
 ArrayView<KeyMapping>    generate_sdl_imgui_keymap(Engine::DoubleEndedStack& allocator);
 ArrayView<CursorMapping> generate_sdl_imgui_cursormap(Engine::DoubleEndedStack& allocator);
+
+struct WorkerThreadData
+{
+  Engine& engine;
+  Game&   game;
+};
+
+int render_skybox_job(ThreadJobData tjd)
+{
+  RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
+  result.command                = tjd.command;
+  result.subpass                = Engine::SimpleRendering::Pass::Skybox;
+
+  {
+    VkCommandBufferInheritanceInfo inheritance = {
+        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .renderPass  = tjd.engine.simple_rendering.render_pass,
+        .subpass     = Engine::SimpleRendering::Pass::Skybox,
+        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+    };
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+        .pInheritanceInfo = &inheritance,
+    };
+
+    vkBeginCommandBuffer(tjd.command, &begin_info);
+  }
+
+  struct
+  {
+    mat4x4 projection;
+    mat4x4 view;
+  } push = {};
+
+  mat4x4_dup(push.projection, tjd.game.projection);
+  mat4x4_dup(push.view, tjd.game.view);
+
+  vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::Skybox]);
+
+  vkCmdBindDescriptorSets(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Skybox], 0, 1,
+                          &tjd.game.skybox_cubemap_dset, 0, nullptr);
+
+  vkCmdPushConstants(tjd.command,
+                     tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Skybox],
+                     VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), &push);
+
+  tjd.game.box.renderRaw(tjd.engine, tjd.command);
+
+  vkEndCommandBuffer(tjd.command);
+  return 0;
+}
+
+int render_robot_job(ThreadJobData tjd)
+{
+  RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
+  result.command                = tjd.command;
+  result.subpass                = Engine::SimpleRendering::Pass::Objects3D;
+
+  {
+    VkCommandBufferInheritanceInfo inheritance = {
+        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .renderPass  = tjd.engine.simple_rendering.render_pass,
+        .subpass     = Engine::SimpleRendering::Pass::Objects3D,
+        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+    };
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+        .pInheritanceInfo = &inheritance,
+    };
+
+    vkBeginCommandBuffer(tjd.command, &begin_info);
+  }
+
+  vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::Scene3D]);
+
+  {
+    VkDescriptorSet dsets[]    = {tjd.game.pbr_ibl_environment_dset, tjd.game.pbr_dynamic_lights_dset};
+    uint32_t dynamic_offsets[] = {static_cast<uint32_t>(tjd.game.pbr_dynamic_lights_ubo_offsets[tjd.game.image_index])};
+
+    vkCmdBindDescriptorSets(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 1,
+                            SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
+  }
+
+  {
+    Quaternion orientation;
+
+    {
+      Quaternion standing_pose;
+      standing_pose.rotateX(to_rad(180.0));
+
+      Quaternion rotate_back;
+      rotate_back.rotateY(tjd.game.player_position[0] < tjd.game.camera_position[0] ? to_rad(180.0f) : to_rad(0.0f));
+
+      float      x_delta = tjd.game.player_position[0] - tjd.game.camera_position[0];
+      float      z_delta = tjd.game.player_position[2] - tjd.game.camera_position[2];
+      Quaternion camera;
+      camera.rotateY(static_cast<float>(SDL_atan(z_delta / x_delta)));
+
+      orientation = standing_pose * rotate_back * camera;
+    }
+
+    vec3 color = {0.0f, 0.0f, 0.0f};
+
+    mat4x4 translation_matrix = {};
+    mat4x4_translate(translation_matrix, tjd.game.player_position[0], tjd.game.player_position[1] - 1.0f,
+                     tjd.game.player_position[2]);
+
+    mat4x4 rotation_matrix = {};
+    mat4x4_from_quat(rotation_matrix, orientation.data());
+
+    mat4x4 scale_matrix = {};
+    mat4x4_identity(scale_matrix);
+    mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.5f, 0.5f, 0.5f);
+
+    mat4x4 tmp = {};
+    mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+
+    mat4x4 world_transform = {};
+    mat4x4_mul(world_transform, tmp, scale_matrix);
+
+    vkCmdBindDescriptorSets(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 0,
+                            1, &tjd.game.robot_pbr_material_dset, 0, nullptr);
+
+    tjd.game.robot.renderColored(tjd.engine, tjd.command, tjd.game.projection, tjd.game.view, world_transform, color,
+                                 Engine::SimpleRendering::Pipeline::Scene3D, 0, tjd.game.camera_position);
+  }
+
+  vkEndCommandBuffer(tjd.command);
+  return 0;
+}
+
+int render_helmet_job(ThreadJobData tjd)
+{
+  RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
+  result.command                = tjd.command;
+  result.subpass                = Engine::SimpleRendering::Pass::Objects3D;
+
+  {
+    VkCommandBufferInheritanceInfo inheritance = {
+        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .renderPass  = tjd.engine.simple_rendering.render_pass,
+        .subpass     = Engine::SimpleRendering::Pass::Objects3D,
+        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+    };
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+        .pInheritanceInfo = &inheritance,
+    };
+
+    vkBeginCommandBuffer(tjd.command, &begin_info);
+  }
+
+  vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::Scene3D]);
+
+  {
+    VkDescriptorSet dsets[]    = {tjd.game.pbr_ibl_environment_dset, tjd.game.pbr_dynamic_lights_dset};
+    uint32_t dynamic_offsets[] = {static_cast<uint32_t>(tjd.game.pbr_dynamic_lights_ubo_offsets[tjd.game.image_index])};
+
+    vkCmdBindDescriptorSets(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 1,
+                            SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
+  }
+
+  Quaternion orientation;
+  orientation.rotateX(to_rad(180.0));
+
+  mat4x4 translation_matrix = {};
+  mat4x4_translate(translation_matrix, tjd.game.vr_level_goal[0], 0.0f, tjd.game.vr_level_goal[1]);
+
+  mat4x4 rotation_matrix = {};
+  mat4x4_from_quat(rotation_matrix, orientation.data());
+
+  mat4x4 scale_matrix = {};
+  mat4x4_identity(scale_matrix);
+  mat4x4_scale_aniso(scale_matrix, scale_matrix, 1.6f, 1.6f, 1.6f);
+
+  mat4x4 tmp = {};
+  mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+
+  mat4x4 world_transform = {};
+  mat4x4_mul(world_transform, tmp, scale_matrix);
+
+  vec3 color = {0.0f, 0.0f, 0.0f};
+
+  vkCmdBindDescriptorSets(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 0,
+                          1, &tjd.game.helmet_pbr_material_dset, 0, nullptr);
+
+  tjd.game.helmet.renderColored(tjd.engine, tjd.command, tjd.game.projection, tjd.game.view, world_transform, color,
+                                Engine::SimpleRendering::Pipeline::Scene3D, 0, tjd.game.camera_position);
+
+  vkEndCommandBuffer(tjd.command);
+  return 0;
+}
+
+int render_point_light_boxes(ThreadJobData tjd)
+{
+  RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
+  result.command                = tjd.command;
+  result.subpass                = Engine::SimpleRendering::Pass::Objects3D;
+
+  {
+    VkCommandBufferInheritanceInfo inheritance = {
+        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .renderPass  = tjd.engine.simple_rendering.render_pass,
+        .subpass     = Engine::SimpleRendering::Pass::Objects3D,
+        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+    };
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+        .pInheritanceInfo = &inheritance,
+    };
+
+    vkBeginCommandBuffer(tjd.command, &begin_info);
+  }
+
+  vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometry]);
+
+  for (int i = 0; i < tjd.game.pbr_light_sources_cache.count; ++i)
+  {
+    Quaternion orientation = Quaternion().rotateZ(to_rad(100.0f * tjd.game.current_time_sec)) *
+                             Quaternion().rotateY(to_rad(280.0f * tjd.game.current_time_sec)) *
+                             Quaternion().rotateX(to_rad(60.0f * tjd.game.current_time_sec));
+
+    float* position           = tjd.game.pbr_light_sources_cache.positions[i];
+    mat4x4 translation_matrix = {};
+    mat4x4_translate(translation_matrix, position[0], position[1], position[2]);
+
+    mat4x4 rotation_matrix = {};
+    mat4x4_from_quat(rotation_matrix, orientation.data());
+
+    mat4x4 scale_matrix = {};
+    mat4x4_identity(scale_matrix);
+    mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.05f, 0.05f, 0.05f);
+
+    mat4x4 tmp = {};
+    mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+
+    mat4x4 world_transform = {};
+    mat4x4_mul(world_transform, tmp, scale_matrix);
+
+    float* color = tjd.game.pbr_light_sources_cache.colors[i];
+    tjd.game.box.renderColored(tjd.engine, tjd.command, tjd.game.projection, tjd.game.view, world_transform, color,
+                               Engine::SimpleRendering::Pipeline::ColoredGeometry, 0, tjd.game.camera_position);
+  }
+
+  vkEndCommandBuffer(tjd.command);
+  return 0;
+}
+
+int render_matrioshka_box(ThreadJobData tjd)
+{
+  RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
+  result.command                = tjd.command;
+  result.subpass                = Engine::SimpleRendering::Pass::Objects3D;
+
+  {
+    VkCommandBufferInheritanceInfo inheritance = {
+        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .renderPass  = tjd.engine.simple_rendering.render_pass,
+        .subpass     = Engine::SimpleRendering::Pass::Objects3D,
+        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+    };
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+        .pInheritanceInfo = &inheritance,
+    };
+
+    vkBeginCommandBuffer(tjd.command, &begin_info);
+  }
+
+  vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometry]);
+
+  {
+    Quaternion orientation = Quaternion().rotateZ(to_rad(90.0f * tjd.game.current_time_sec / 90.0f)) *
+                             Quaternion().rotateY(to_rad(140.0f * tjd.game.current_time_sec / 30.0f)) *
+                             Quaternion().rotateX(to_rad(90.0f * tjd.game.current_time_sec / 20.0f));
+
+    mat4x4 translation_matrix = {};
+    mat4x4_translate(translation_matrix, tjd.game.robot_position[0], tjd.game.robot_position[1],
+                     tjd.game.robot_position[2]);
+
+    mat4x4 rotation_matrix = {};
+    mat4x4_from_quat(rotation_matrix, orientation.data());
+
+    mat4x4 world_transform = {};
+    mat4x4_mul(world_transform, translation_matrix, rotation_matrix);
+
+    vec3 color = {0.0, 1.0, 0.0};
+    tjd.game.animatedBox.renderColored(tjd.engine, tjd.command, tjd.game.projection, tjd.game.view, world_transform,
+                                       color, Engine::SimpleRendering::Pipeline::ColoredGeometry, 0,
+                                       tjd.game.camera_position);
+  }
+
+  vkEndCommandBuffer(tjd.command);
+  return 0;
+}
+
+int render_vr_scene(ThreadJobData tjd)
+{
+  RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
+  result.command                = tjd.command;
+  result.subpass                = Engine::SimpleRendering::Pass::Objects3D;
+
+  {
+    VkCommandBufferInheritanceInfo inheritance = {
+        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .renderPass  = tjd.engine.simple_rendering.render_pass,
+        .subpass     = Engine::SimpleRendering::Pass::Objects3D,
+        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+    };
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+        .pInheritanceInfo = &inheritance,
+    };
+
+    vkBeginCommandBuffer(tjd.command, &begin_info);
+  }
+
+  vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometry]);
+
+  mat4x4 projection_view = {};
+  mat4x4_mul(projection_view, tjd.game.projection, tjd.game.view);
+
+  mat4x4 translation_matrix = {};
+  mat4x4_translate(translation_matrix, 0.0, 2.5, 0.0);
+
+  mat4x4 rotation_matrix = {};
+  mat4x4_identity(rotation_matrix);
+
+  mat4x4 scale_matrix = {};
+  mat4x4_identity(scale_matrix);
+  mat4x4_scale_aniso(scale_matrix, scale_matrix, VR_LEVEL_SCALE, VR_LEVEL_SCALE, VR_LEVEL_SCALE);
+
+  mat4x4 tmp = {};
+  mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+
+  mat4x4 model = {};
+  mat4x4_mul(model, tmp, scale_matrix);
+
+  mat4x4 mvp = {};
+  mat4x4_mul(mvp, projection_view, model);
+
+  vkCmdBindIndexBuffer(tjd.command, tjd.engine.gpu_static_geometry.buffer, tjd.game.vr_level_index_buffer_offset,
+                       tjd.game.vr_level_index_type);
+
+  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer,
+                         &tjd.game.vr_level_vertex_buffer_offset);
+
+  vec3 color = {0.5, 0.5, 1.0};
+  vkCmdPushConstants(tjd.command,
+                     tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometry],
+                     VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(vec3), color);
+
+  vkCmdPushConstants(tjd.command,
+                     tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometry],
+                     VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
+
+  vkCmdDrawIndexed(tjd.command, static_cast<uint32_t>(tjd.game.vr_level_index_count), 1, 0, 0, 0);
+
+  vkEndCommandBuffer(tjd.command);
+  return 0;
+}
+
+int render_simple_rigged(ThreadJobData tjd)
+{
+  RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
+  result.command                = tjd.command;
+  result.subpass                = Engine::SimpleRendering::Pass::Objects3D;
+
+  {
+    VkCommandBufferInheritanceInfo inheritance = {
+        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .renderPass  = tjd.engine.simple_rendering.render_pass,
+        .subpass     = Engine::SimpleRendering::Pass::Objects3D,
+        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+    };
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+        .pInheritanceInfo = &inheritance,
+    };
+
+    vkBeginCommandBuffer(tjd.command, &begin_info);
+  }
+
+  vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned]);
+
+  Quaternion orientation;
+  orientation.rotateX(to_rad(45.0f));
+
+  mat4x4 translation_matrix = {};
+  mat4x4_translate(translation_matrix, tjd.game.rigged_position[0], tjd.game.rigged_position[1],
+                   tjd.game.rigged_position[2]);
+
+  mat4x4 rotation_matrix = {};
+  mat4x4_from_quat(rotation_matrix, orientation.data());
+
+  mat4x4 scale_matrix = {};
+  mat4x4_identity(scale_matrix);
+  mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.5f, 0.5f, 0.5f);
+
+  mat4x4 tmp = {};
+  mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+
+  mat4x4 world_transform = {};
+  mat4x4_mul(world_transform, tmp, scale_matrix);
+
+  vec3 color = {0.0, 0.0, 1.0};
+
+  uint32_t dynamic_offsets[] = {
+      static_cast<uint32_t>(tjd.game.rig_skinning_matrices_ubo_offsets[tjd.game.image_index])};
+
+  vkCmdBindDescriptorSets(
+      tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+      tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned], 0, 1,
+      &tjd.game.rig_skinning_matrices_dset, SDL_arraysize(dynamic_offsets), dynamic_offsets);
+
+  tjd.game.riggedSimple.renderColored(tjd.engine, tjd.command, tjd.game.projection, tjd.game.view, world_transform,
+                                      color, Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned,
+                                      tjd.game.rig_skinning_matrices_ubo_offsets[tjd.game.image_index],
+                                      tjd.game.camera_position);
+
+  vkEndCommandBuffer(tjd.command);
+  return 0;
+}
+
+int render_monster_rigged(ThreadJobData tjd)
+{
+  RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
+  result.command                = tjd.command;
+  result.subpass                = Engine::SimpleRendering::Pass::Objects3D;
+
+  {
+    VkCommandBufferInheritanceInfo inheritance = {
+        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .renderPass  = tjd.engine.simple_rendering.render_pass,
+        .subpass     = Engine::SimpleRendering::Pass::Objects3D,
+        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+    };
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+        .pInheritanceInfo = &inheritance,
+    };
+
+    vkBeginCommandBuffer(tjd.command, &begin_info);
+  }
+
+  vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned]);
+
+  Quaternion orientation;
+  orientation.rotateX(to_rad(45.0f));
+
+  mat4x4 translation_matrix = {};
+  mat4x4_translate(translation_matrix, -2.0f, 0.5f, 0.5f);
+
+  mat4x4 rotation_matrix = {};
+  mat4x4_from_quat(rotation_matrix, orientation.data());
+
+  mat4x4 scale_matrix = {};
+  mat4x4_identity(scale_matrix);
+  float factor = 0.025f;
+  mat4x4_scale_aniso(scale_matrix, scale_matrix, factor, factor, factor);
+
+  mat4x4 tmp = {};
+  mat4x4_mul(tmp, rotation_matrix, translation_matrix);
+
+  mat4x4 world_transform = {};
+  mat4x4_mul(world_transform, tmp, scale_matrix);
+
+  vec3 color = {1.0, 1.0, 1.0};
+
+  uint32_t dynamic_offsets[] = {
+      static_cast<uint32_t>(tjd.game.monster_skinning_matrices_ubo_offsets[tjd.game.image_index])};
+  vkCmdBindDescriptorSets(
+      tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+      tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned], 0, 1,
+      &tjd.game.monster_skinning_matrices_dset, SDL_arraysize(dynamic_offsets), dynamic_offsets);
+
+  tjd.game.monster.renderColored(tjd.engine, tjd.command, tjd.game.projection, tjd.game.view, world_transform, color,
+                                 Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned,
+                                 tjd.game.monster_skinning_matrices_ubo_offsets[tjd.game.image_index],
+                                 tjd.game.camera_position);
+
+  vkEndCommandBuffer(tjd.command);
+  return 0;
+}
+
+int render_radar(ThreadJobData tjd)
+{
+  RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
+  result.command                = tjd.command;
+  result.subpass                = Engine::SimpleRendering::Pass::ImGui;
+
+  {
+    VkCommandBufferInheritanceInfo inheritance = {
+        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .renderPass  = tjd.engine.simple_rendering.render_pass,
+        .subpass     = Engine::SimpleRendering::Pass::ImGui,
+        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+    };
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+        .pInheritanceInfo = &inheritance,
+    };
+
+    vkBeginCommandBuffer(tjd.command, &begin_info);
+  }
+
+  vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGui]);
+
+  vkCmdBindDescriptorSets(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGui], 0,
+                          1, &tjd.game.radar_texture_dset, 0, nullptr);
+
+  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer,
+                         &tjd.game.green_gui_billboard_vertex_buffer_offset);
+
+  mat4x4 gui_projection = {};
+
+  {
+    float extent_width        = static_cast<float>(tjd.engine.generic_handles.extent2D.width);
+    float extent_height       = static_cast<float>(tjd.engine.generic_handles.extent2D.height);
+    float aspect_ratio        = extent_width / extent_height;
+    float fov                 = to_rad(90.0f);
+    float near_clipping_plane = 0.001f;
+    float far_clipping_plane  = 100.0f;
+    mat4x4_perspective(gui_projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
+    gui_projection[1][1] *= -1.0f;
+  }
+
+  mat4x4 gui_view = {};
+
+  {
+    vec3 center   = {0.0f, 0.0f, 0.0f};
+    vec3 up       = {0.0f, -1.0f, 0.0f};
+    vec3 position = {0.0f, 0.0f, -10.0f};
+    mat4x4_look_at(gui_view, position, center, up);
+  }
+
+  Quaternion orientation;
+  orientation.rotateY(to_rad(tjd.game.green_gui_radar_rotation));
+
+  mat4x4 translation_matrix = {};
+  mat4x4_translate(translation_matrix, tjd.game.green_gui_radar_position[0], tjd.game.green_gui_radar_position[1],
+                   0.0f);
+
+  mat4x4 rotation_matrix = {};
+  mat4x4_from_quat(rotation_matrix, orientation.data());
+
+  mat4x4 scale_matrix = {};
+  mat4x4_identity(scale_matrix);
+  mat4x4_scale_aniso(scale_matrix, scale_matrix, 2.0f, 2.0f, 1.0f);
+
+  mat4x4 tmp = {};
+  mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+
+  mat4x4 world_transform = {};
+  mat4x4_mul(world_transform, tmp, scale_matrix);
+
+  mat4x4 projection_view = {};
+  mat4x4_mul(projection_view, gui_projection, gui_view);
+
+  mat4x4 mvp = {};
+  mat4x4_mul(mvp, projection_view, world_transform);
+
+  vkCmdPushConstants(tjd.command,
+                     tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGui],
+                     VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
+
+  vkCmdPushConstants(tjd.command,
+                     tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGui],
+                     VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(float), &tjd.game.current_time_sec);
+
+  vkCmdDraw(tjd.command, 4, 1, 0, 0);
+  vkEndCommandBuffer(tjd.command);
+  return 0;
+}
+
+int render_robot_gui_lines(ThreadJobData tjd)
+{
+  RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
+  result.command                = tjd.command;
+  result.subpass                = Engine::SimpleRendering::Pass::ImGui;
+
+  {
+    VkCommandBufferInheritanceInfo inheritance = {
+        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .renderPass  = tjd.engine.simple_rendering.render_pass,
+        .subpass     = Engine::SimpleRendering::Pass::ImGui,
+        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+    };
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+        .pInheritanceInfo = &inheritance,
+    };
+
+    vkBeginCommandBuffer(tjd.command, &begin_info);
+  }
+
+  vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiLines]);
+
+  vkCmdBindDescriptorSets(
+      tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+      tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiLines], 0, 1,
+      &tjd.game.radar_texture_dset, 0, nullptr);
+
+  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_host_visible.buffer,
+                         &tjd.game.green_gui_rulers_buffer_offsets[tjd.game.image_index]);
+
+  {
+    VkRect2D scissor{};
+    scissor.extent.width  = line_to_pixel_length(0.75f, tjd.engine.generic_handles.extent2D.width);
+    scissor.extent.height = line_to_pixel_length(1.02f, tjd.engine.generic_handles.extent2D.height);
+    scissor.offset.x      = (tjd.engine.generic_handles.extent2D.width / 2) - (scissor.extent.width / 2);
+    scissor.offset.y      = line_to_pixel_length(0.29f, tjd.engine.generic_handles.extent2D.height); // 118
+    vkCmdSetScissor(tjd.command, 0, 1, &scissor);
+  }
+
+  uint32_t offset = 0;
+
+  // ------ GREEN ------
+  {
+    const float             line_widths[] = {7.0f, 5.0f, 3.0f, 1.0f};
+    const GuiLineSizeCount& counts        = tjd.game.gui_green_lines_count;
+    const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
+
+    vec4 color = {125.0f / 255.0f, 204.0f / 255.0f, 174.0f / 255.0f, 0.9f};
+    vkCmdPushConstants(tjd.command,
+                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiLines],
+                       VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(vec4), color);
+
+    for (int i = 0; i < 4; ++i)
+    {
+      if (0 == line_counts[i])
+        continue;
+
+      vkCmdSetLineWidth(tjd.command, line_widths[i]);
+      vkCmdDraw(tjd.command, 2 * static_cast<uint32_t>(line_counts[i]), 1, 2 * offset, 0);
+      offset += line_counts[i];
+    }
+  }
+
+  // ------ RED ------
+  {
+    const float             line_widths[] = {7.0f, 5.0f, 3.0f, 1.0f};
+    const GuiLineSizeCount& counts        = tjd.game.gui_red_lines_count;
+    const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
+
+    vec4 color = {1.0f, 0.0f, 0.0f, 0.9f};
+    vkCmdPushConstants(tjd.command,
+                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiLines],
+                       VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(vec4), color);
+
+    for (int i = 0; i < 4; ++i)
+    {
+      if (0 == line_counts[i])
+        continue;
+
+      vkCmdSetLineWidth(tjd.command, line_widths[i]);
+      vkCmdDraw(tjd.command, 2 * static_cast<uint32_t>(line_counts[i]), 1, 2 * offset, 0);
+      offset += line_counts[i];
+    }
+  }
+
+  // ------ YELLOW ------
+  {
+    VkRect2D scissor      = {};
+    scissor.extent.width  = line_to_pixel_length(0.5f, tjd.engine.generic_handles.extent2D.width);
+    scissor.extent.height = line_to_pixel_length(1.3f, tjd.engine.generic_handles.extent2D.height);
+    scissor.offset.x      = (tjd.engine.generic_handles.extent2D.width / 2) - (scissor.extent.width / 2);
+    scissor.offset.y      = line_to_pixel_length(0.2f, tjd.engine.generic_handles.extent2D.height);
+    vkCmdSetScissor(tjd.command, 0, 1, &scissor);
+
+    const float             line_widths[] = {7.0f, 5.0f, 3.0f, 1.0f};
+    const GuiLineSizeCount& counts        = tjd.game.gui_yellow_lines_count;
+    const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
+
+    vec4 color = {1.0f, 1.0f, 0.0f, 0.7f};
+    vkCmdPushConstants(tjd.command,
+                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiLines],
+                       VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(vec4), color);
+
+    for (int i = 0; i < 4; ++i)
+    {
+      if (0 == line_counts[i])
+        continue;
+
+      vkCmdSetLineWidth(tjd.command, line_widths[i]);
+      vkCmdDraw(tjd.command, 2 * static_cast<uint32_t>(line_counts[i]), 1, 2 * offset, 0);
+      offset += line_counts[i];
+    }
+  }
+
+  vkEndCommandBuffer(tjd.command);
+  return 0;
+}
+
+int render_height_ruler_text(ThreadJobData tjd)
+{
+  RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
+  result.command                = tjd.command;
+  result.subpass                = Engine::SimpleRendering::Pass::ImGui;
+
+  {
+    VkCommandBufferInheritanceInfo inheritance = {
+        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .renderPass  = tjd.engine.simple_rendering.render_pass,
+        .subpass     = Engine::SimpleRendering::Pass::ImGui,
+        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+    };
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+        .pInheritanceInfo = &inheritance,
+    };
+
+    vkBeginCommandBuffer(tjd.command, &begin_info);
+  }
+
+  vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont]);
+
+  vkCmdBindDescriptorSets(
+      tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+      tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont], 0, 1,
+      &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
+
+  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer,
+                         &tjd.game.green_gui_billboard_vertex_buffer_offset);
+
+  struct VertexPushConstant
+  {
+    mat4x4 mvp;
+    vec2   character_coordinate;
+    vec2   character_size;
+  } vpc = {};
+
+  struct FragmentPushConstant
+  {
+    vec3  color;
+    float time;
+  } fpc = {};
+
+  fpc.time = tjd.game.current_time_sec;
+
+  //--------------------------------------------------------------------------
+  // height rulers values
+  //--------------------------------------------------------------------------
+  ArrayView<GuiHeightRulerText> scheduled_text_data = {};
+
+  {
+    GenerateGuiLinesCommand cmd = {
+        .player_y_location_meters = -(2.0f - tjd.game.player_position[1]),
+        .camera_x_pitch_radians   = tjd.game.camera_angle,
+        .camera_y_pitch_radians   = tjd.game.camera_updown_angle,
+        .screen_extent2D          = tjd.engine.generic_handles.extent2D,
+    };
+
+    generate_gui_height_ruler_text(cmd, nullptr, &scheduled_text_data.count);
+    scheduled_text_data.data = tjd.allocator.allocate<GuiHeightRulerText>(scheduled_text_data.count);
+    generate_gui_height_ruler_text(cmd, scheduled_text_data.data, &scheduled_text_data.count);
+  }
+
+  char buffer[256];
+  for (GuiHeightRulerText& text : scheduled_text_data)
+  {
+    mat4x4 gui_projection = {};
+    mat4x4_ortho(gui_projection, 0, tjd.engine.generic_handles.extent2D.width, 0,
+                 tjd.engine.generic_handles.extent2D.height, 0.0f, 1.0f);
+
+    float cursor = 0.0f;
+
+    const int length = SDL_snprintf(buffer, 256, "%d", text.value);
+    for (int i = 0; i < length; ++i)
+    {
+      GenerateSdfFontCommand cmd = {
+          .character             = buffer[i],
+          .lookup_table          = tjd.game.lucida_sans_sdf_char_ids,
+          .character_data        = tjd.game.lucida_sans_sdf_chars,
+          .characters_pool_count = SDL_arraysize(tjd.game.lucida_sans_sdf_char_ids),
+          .texture_size          = {512, 256},
+          .scaling               = static_cast<float>(text.size),
+          .position              = {text.offset[0], text.offset[1], -1.0f},
+          .cursor                = cursor,
+      };
+
+      GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
+
+      SDL_memcpy(vpc.character_coordinate, r.character_coordinate, sizeof(vec2));
+      SDL_memcpy(vpc.character_size, r.character_size, sizeof(vec2));
+      mat4x4_mul(vpc.mvp, gui_projection, r.transform);
+      cursor += r.cursor_movement;
+
+      VkRect2D scissor{};
+      scissor.extent.width  = line_to_pixel_length(0.75f, tjd.engine.generic_handles.extent2D.width);
+      scissor.extent.height = line_to_pixel_length(1.02f, tjd.engine.generic_handles.extent2D.height);
+      scissor.offset.x      = (tjd.engine.generic_handles.extent2D.width / 2) - (scissor.extent.width / 2);
+      scissor.offset.y      = line_to_pixel_length(0.29f, tjd.engine.generic_handles.extent2D.height); // 118
+      vkCmdSetScissor(tjd.command, 0, 1, &scissor);
+
+      fpc.color[0] = 1.0f;
+      fpc.color[1] = 0.0f;
+      fpc.color[2] = 0.0f;
+
+      vkCmdPushConstants(
+          tjd.command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
+          VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
+
+      vkCmdPushConstants(
+          tjd.command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
+          VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(fpc), &fpc);
+
+      vkCmdDraw(tjd.command, 4, 1, 0, 0);
+    }
+  }
+
+  vkEndCommandBuffer(tjd.command);
+  return 0;
+}
+
+int render_tilt_ruler_text(ThreadJobData tjd)
+{
+  RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
+  result.command                = tjd.command;
+  result.subpass                = Engine::SimpleRendering::Pass::ImGui;
+
+  {
+    VkCommandBufferInheritanceInfo inheritance = {
+        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .renderPass  = tjd.engine.simple_rendering.render_pass,
+        .subpass     = Engine::SimpleRendering::Pass::ImGui,
+        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+    };
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+        .pInheritanceInfo = &inheritance,
+    };
+
+    vkBeginCommandBuffer(tjd.command, &begin_info);
+  }
+
+  vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont]);
+
+  vkCmdBindDescriptorSets(
+      tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+      tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont], 0, 1,
+      &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
+
+  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer,
+                         &tjd.game.green_gui_billboard_vertex_buffer_offset);
+
+  struct VertexPushConstant
+  {
+    mat4x4 mvp;
+    vec2   character_coordinate;
+    vec2   character_size;
+  } vpc = {};
+
+  struct FragmentPushConstant
+  {
+    vec3  color;
+    float time;
+  } fpc = {};
+
+  fpc.time = tjd.game.current_time_sec;
+
+  //--------------------------------------------------------------------------
+  // tilt rulers values
+  //--------------------------------------------------------------------------
+  ArrayView<GuiHeightRulerText> scheduled_text_data = {};
+
+  {
+    GenerateGuiLinesCommand cmd = {
+        .player_y_location_meters = -(2.0f - tjd.game.player_position[1]),
+        .camera_x_pitch_radians   = tjd.game.camera_angle,
+        .camera_y_pitch_radians   = tjd.game.camera_updown_angle,
+        .screen_extent2D          = tjd.engine.generic_handles.extent2D,
+    };
+
+    generate_gui_tilt_ruler_text(cmd, nullptr, &scheduled_text_data.count);
+    scheduled_text_data.data = tjd.allocator.allocate<GuiHeightRulerText>(scheduled_text_data.count);
+    generate_gui_tilt_ruler_text(cmd, scheduled_text_data.data, &scheduled_text_data.count);
+  }
+
+  char buffer[256];
+  for (GuiHeightRulerText& text : scheduled_text_data)
+  {
+    mat4x4 gui_projection = {};
+    mat4x4_ortho(gui_projection, 0, tjd.engine.generic_handles.extent2D.width, 0,
+                 tjd.engine.generic_handles.extent2D.height, 0.0f, 1.0f);
+
+    float cursor = 0.0f;
+
+    const int length = SDL_snprintf(buffer, 256, "%d", text.value);
+    for (int i = 0; i < length; ++i)
+    {
+      GenerateSdfFontCommand cmd = {
+          .character             = buffer[i],
+          .lookup_table          = tjd.game.lucida_sans_sdf_char_ids,
+          .character_data        = tjd.game.lucida_sans_sdf_chars,
+          .characters_pool_count = SDL_arraysize(tjd.game.lucida_sans_sdf_char_ids),
+          .texture_size          = {512, 256},
+          .scaling               = static_cast<float>(text.size),
+          .position              = {text.offset[0], text.offset[1], -1.0f},
+          .cursor                = cursor,
+      };
+
+      GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
+
+      SDL_memcpy(vpc.character_coordinate, r.character_coordinate, sizeof(vec2));
+      SDL_memcpy(vpc.character_size, r.character_size, sizeof(vec2));
+      mat4x4_mul(vpc.mvp, gui_projection, r.transform);
+      cursor += r.cursor_movement;
+
+      VkRect2D scissor{};
+      scissor.extent.width  = line_to_pixel_length(0.5f, tjd.engine.generic_handles.extent2D.width);
+      scissor.extent.height = line_to_pixel_length(1.3f, tjd.engine.generic_handles.extent2D.height);
+      scissor.offset.x      = (tjd.engine.generic_handles.extent2D.width / 2) - (scissor.extent.width / 2);
+      scissor.offset.y      = line_to_pixel_length(0.2f, tjd.engine.generic_handles.extent2D.height);
+      vkCmdSetScissor(tjd.command, 0, 1, &scissor);
+
+      vkCmdPushConstants(
+          tjd.command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
+          VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
+
+      fpc.color[0] = 1.0f;
+      fpc.color[1] = 1.0f;
+      fpc.color[2] = 0.0f;
+
+      vkCmdPushConstants(
+          tjd.command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
+          VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(fpc), &fpc);
+
+      vkCmdDraw(tjd.command, 4, 1, 0, 0);
+    }
+  }
+
+  vkEndCommandBuffer(tjd.command);
+  return 0;
+}
+
+int render_hello_world_text(ThreadJobData tjd)
+{
+  RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
+  result.command                = tjd.command;
+  result.subpass                = Engine::SimpleRendering::Pass::ImGui;
+
+  {
+    VkCommandBufferInheritanceInfo inheritance = {
+        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .renderPass  = tjd.engine.simple_rendering.render_pass,
+        .subpass     = Engine::SimpleRendering::Pass::ImGui,
+        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+    };
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+        .pInheritanceInfo = &inheritance,
+    };
+
+    vkBeginCommandBuffer(tjd.command, &begin_info);
+  }
+
+  vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont]);
+
+  vkCmdBindDescriptorSets(
+      tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+      tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont], 0, 1,
+      &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
+
+  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer,
+                         &tjd.game.green_gui_billboard_vertex_buffer_offset);
+
+  struct VertexPushConstant
+  {
+    mat4x4 mvp;
+    vec2   character_coordinate;
+    vec2   character_size;
+  } vpc = {};
+
+  struct FragmentPushConstant
+  {
+    vec3  color;
+    float time;
+  } fpc = {};
+
+  fpc.time = tjd.game.current_time_sec;
+
+  //--------------------------------------------------------------------------
+  // 3D rotating text demo
+  //--------------------------------------------------------------------------
+  {
+    mat4x4 gui_projection = {};
+
+    {
+      float extent_width        = static_cast<float>(tjd.engine.generic_handles.extent2D.width);
+      float extent_height       = static_cast<float>(tjd.engine.generic_handles.extent2D.height);
+      float aspect_ratio        = extent_width / extent_height;
+      float fov                 = to_rad(90.0f);
+      float near_clipping_plane = 0.001f;
+      float far_clipping_plane  = 100.0f;
+      mat4x4_perspective(gui_projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
+      gui_projection[1][1] *= -1.0f;
+    }
+
+    mat4x4 gui_view = {};
+
+    {
+      vec3 center   = {0.0f, 0.0f, 0.0f};
+      vec3 up       = {0.0f, -1.0f, 0.0f};
+      vec3 position = {0.0f, 0.0f, -10.0f};
+      mat4x4_look_at(gui_view, position, center, up);
+    }
+
+    mat4x4 projection_view = {};
+    mat4x4_mul(projection_view, gui_projection, gui_view);
+
+    float      cursor = 0.0f;
+    const char word[] = "Hello World!";
+
+    for (const char c : word)
+    {
+      if ('\0' == c)
+        continue;
+
+      GenerateSdfFontCommand cmd = {
+          .character             = c,
+          .lookup_table          = tjd.game.lucida_sans_sdf_char_ids,
+          .character_data        = tjd.game.lucida_sans_sdf_chars,
+          .characters_pool_count = SDL_arraysize(tjd.game.lucida_sans_sdf_char_ids),
+          .texture_size          = {512, 256},
+          .scaling               = 30.0f,
+          .position              = {2.0f, 6.0f, 0.0f},
+          .cursor                = cursor,
+      };
+
+      GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
+
+      SDL_memcpy(vpc.character_coordinate, r.character_coordinate, sizeof(vec2));
+      SDL_memcpy(vpc.character_size, r.character_size, sizeof(vec2));
+      mat4x4_mul(vpc.mvp, projection_view, r.transform);
+      cursor += r.cursor_movement;
+
+      VkRect2D scissor = {.extent = tjd.engine.generic_handles.extent2D};
+      vkCmdSetScissor(tjd.command, 0, 1, &scissor);
+
+      vkCmdPushConstants(
+          tjd.command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
+          VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
+
+      fpc.color[0] = 1.0f;
+      fpc.color[1] = 1.0f;
+      fpc.color[2] = 1.0f;
+
+      vkCmdPushConstants(
+          tjd.command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
+          VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(fpc), &fpc);
+
+      vkCmdDraw(tjd.command, 4, 1, 0, 0);
+    }
+  }
+
+  vkEndCommandBuffer(tjd.command);
+  return 0;
+}
+
+int render_imgui(ThreadJobData tjd)
+{
+  ImDrawData* draw_data = ImGui::GetDrawData();
+  ImGuiIO&    io        = ImGui::GetIO();
+
+  size_t vertex_size = draw_data->TotalVtxCount * sizeof(ImDrawVert);
+  size_t index_size  = draw_data->TotalIdxCount * sizeof(ImDrawIdx);
+
+  if ((0 == vertex_size) or (0 == index_size))
+    return -1;
+
+  RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
+  result.command                = tjd.command;
+  result.subpass                = Engine::SimpleRendering::Pass::ImGui;
+
+  {
+    VkCommandBufferInheritanceInfo inheritance = {
+        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .renderPass  = tjd.engine.simple_rendering.render_pass,
+        .subpass     = Engine::SimpleRendering::Pass::ImGui,
+        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+    };
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+        .pInheritanceInfo = &inheritance,
+    };
+
+    vkBeginCommandBuffer(tjd.command, &begin_info);
+  }
+
+  if (vertex_size and index_size)
+  {
+    vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ImGui]);
+
+    vkCmdBindDescriptorSets(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ImGui], 0,
+                            1, &tjd.game.imgui_font_atlas_dset, 0, nullptr);
+
+    vkCmdBindIndexBuffer(tjd.command, tjd.engine.gpu_host_visible.buffer,
+                         tjd.game.debug_gui.index_buffer_offsets[tjd.game.image_index], VK_INDEX_TYPE_UINT16);
+
+    vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_host_visible.buffer,
+                           &tjd.game.debug_gui.vertex_buffer_offsets[tjd.game.image_index]);
+
+    {
+      VkViewport viewport = {
+          .width    = io.DisplaySize.x,
+          .height   = io.DisplaySize.y,
+          .minDepth = 0.0f,
+          .maxDepth = 1.0f,
+      };
+      vkCmdSetViewport(tjd.command, 0, 1, &viewport);
+    }
+
+    float scale[]     = {2.0f / io.DisplaySize.x, 2.0f / io.DisplaySize.y};
+    float translate[] = {-1.0f, -1.0f};
+
+    vkCmdPushConstants(tjd.command,
+                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ImGui],
+                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float) * 2, scale);
+    vkCmdPushConstants(tjd.command,
+                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ImGui],
+                       VK_SHADER_STAGE_VERTEX_BIT, sizeof(float) * 2, sizeof(float) * 2, translate);
+
+    {
+      int vtx_offset = 0;
+      int idx_offset = 0;
+
+      for (int n = 0; n < draw_data->CmdListsCount; n++)
+      {
+        const ImDrawList* cmd_list = draw_data->CmdLists[n];
+        for (int cmd_i = 0; cmd_i < cmd_list->CmdBuffer.Size; cmd_i++)
+        {
+          const ImDrawCmd* pcmd = &cmd_list->CmdBuffer[cmd_i];
+          if (pcmd->UserCallback)
+          {
+            pcmd->UserCallback(cmd_list, pcmd);
+          }
+          else
+          {
+            VkRect2D scissor = {
+                .offset =
+                    {
+                        .x = (int32_t)(pcmd->ClipRect.x) > 0 ? (int32_t)(pcmd->ClipRect.x) : 0,
+                        .y = (int32_t)(pcmd->ClipRect.y) > 0 ? (int32_t)(pcmd->ClipRect.y) : 0,
+                    },
+                .extent =
+                    {
+                        .width  = (uint32_t)(pcmd->ClipRect.z - pcmd->ClipRect.x),
+                        .height = (uint32_t)(pcmd->ClipRect.w - pcmd->ClipRect.y + 1) // FIXME: Why +1 here?
+                    },
+            };
+            vkCmdSetScissor(tjd.command, 0, 1, &scissor);
+            vkCmdDrawIndexed(tjd.command, pcmd->ElemCount, 1, static_cast<uint32_t>(idx_offset), vtx_offset, 0);
+          }
+          idx_offset += pcmd->ElemCount;
+        }
+        vtx_offset += cmd_list->VtxBuffer.Size;
+      }
+    }
+  }
+
+  vkEndCommandBuffer(tjd.command);
+  return 0;
+}
+
+void worker_function(WorkerThreadData td)
+{
+  JobSystem& job_system = td.game.js;
+
+  int threadId = SDL_AtomicIncRef(&job_system.threads_finished_work);
+  if ((SDL_arraysize(job_system.worker_threads) - 1) == threadId)
+    SDL_SemPost(job_system.all_threads_idle_signal);
+
+  VkCommandBuffer* all_commands                 = td.game.js.worker_commands[threadId].commands;
+  VkCommandBuffer* just_recorded_commands       = &all_commands[0];
+  VkCommandBuffer* recorded_last_frame_commands = &all_commands[64];
+  VkCommandBuffer* ready_to_reset_commands      = &all_commands[128];
+  int              just_recorded_count          = 0;
+  int              recorded_last_frame_count    = 0;
+  int              ready_to_reset_count         = 0;
+
+  LinearAllocator allocator(1024);
+
+  while (not job_system.thread_end_requested)
+  {
+    //
+    // As a proof of concept this signal will always be broadcasted on next render frame.
+    //
+    SDL_LockMutex(job_system.new_jobs_available_mutex);
+    SDL_CondWait(job_system.new_jobs_available_cond, job_system.new_jobs_available_mutex);
+    SDL_UnlockMutex(job_system.new_jobs_available_mutex);
+
+    for (int i = 0; i < ready_to_reset_count; ++i)
+      vkResetCommandBuffer(ready_to_reset_commands[i], 0);
+
+    ready_to_reset_count      = recorded_last_frame_count;
+    recorded_last_frame_count = just_recorded_count;
+    just_recorded_count       = 0;
+
+    VkCommandBuffer* tmp         = ready_to_reset_commands;
+    ready_to_reset_commands      = recorded_last_frame_commands;
+    recorded_last_frame_commands = just_recorded_commands;
+    just_recorded_commands       = tmp;
+
+    int job_idx = SDL_AtomicIncRef(&td.game.js.jobs_taken);
+
+    while (job_idx < job_system.jobs_max)
+    {
+      ThreadJobData tjd = {just_recorded_commands[just_recorded_count], td.engine, td.game, allocator};
+      const Job&    job = job_system.jobs[job_idx];
+
+      ThreadJobStatistic& stat = job_system.profile_data[SDL_AtomicIncRef(&job_system.profile_data_count)];
+      stat.threadId            = threadId;
+      stat.name                = job.name;
+
+      uint64_t ticks_start = SDL_GetPerformanceCounter();
+      int      job_result  = job_system.jobs[job_idx].fcn(tjd);
+      stat.duration_sec    = static_cast<float>(SDL_GetPerformanceCounter() - ticks_start) /
+                          static_cast<float>(SDL_GetPerformanceFrequency());
+
+      if (-1 != job_result)
+        just_recorded_count += 1;
+      allocator.reset();
+
+      job_idx = SDL_AtomicIncRef(&td.game.js.jobs_taken);
+    }
+
+    if ((SDL_arraysize(job_system.worker_threads) - 1) == SDL_AtomicIncRef(&job_system.threads_finished_work))
+      SDL_SemPost(job_system.all_threads_idle_signal);
+  }
+}
+
+int worker_function_decorator(void* arg)
+{
+  worker_function(*reinterpret_cast<WorkerThreadData*>(arg));
+  return 0;
+}
 
 void Game::startup(Engine& engine)
 {
@@ -1238,15 +2527,68 @@ void Game::startup(Engine& engine)
 
   DEBUG_VEC2[0] = 430.0f;
   DEBUG_VEC2[1] = 350.0f;
+
+  js.all_threads_idle_signal  = SDL_CreateSemaphore(0);
+  js.new_jobs_available_cond  = SDL_CreateCond();
+  js.new_jobs_available_mutex = SDL_CreateMutex();
+  js.thread_end_requested     = false;
+
+  for (VkCommandPool& pool : js.worker_pools)
+  {
+    VkCommandPoolCreateInfo info = {
+        .sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+        .queueFamilyIndex = engine.generic_handles.graphics_family_index,
+    };
+    vkCreateCommandPool(engine.generic_handles.device, &info, nullptr, &pool);
+  }
+
+  for (unsigned i = 0; i < SDL_arraysize(js.worker_commands); ++i)
+  {
+    VkCommandBufferAllocateInfo info = {
+        .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool        = js.worker_pools[i],
+        .level              = VK_COMMAND_BUFFER_LEVEL_SECONDARY,
+        .commandBufferCount = 64 * 3,
+    };
+    vkAllocateCommandBuffers(engine.generic_handles.device, &info, js.worker_commands[i].commands);
+  }
+
+  WorkerThreadData data = {engine, *this};
+  for (auto& worker_thread : js.worker_threads)
+    worker_thread = SDL_CreateThread(worker_function_decorator, "worker", &data);
+  SDL_SemWait(js.all_threads_idle_signal);
+  SDL_AtomicSet(&js.threads_finished_work, 0);
 }
 
-void Game::teardown(Engine&)
+void Game::teardown(Engine& engine)
 {
+  vkDeviceWaitIdle(engine.generic_handles.device);
+
+  js.thread_end_requested = true;
+  js.jobs_max             = 0;
+  SDL_AtomicSet(&js.jobs_taken, 0);
+
+  SDL_CondBroadcast(js.new_jobs_available_cond);
+
+  for (auto& worker_thread : js.worker_threads)
+  {
+    int retval = 0;
+    SDL_WaitThread(worker_thread, &retval);
+  }
+
   for (SDL_Cursor* cursor : debug_gui.mousecursors)
     SDL_FreeCursor(cursor);
+
+  SDL_DestroySemaphore(js.all_threads_idle_signal);
+  SDL_DestroyCond(js.new_jobs_available_cond);
+  SDL_DestroyMutex(js.new_jobs_available_mutex);
+
+  for (VkCommandPool pool : js.worker_pools)
+    vkDestroyCommandPool(engine.generic_handles.device, pool, nullptr);
 }
 
-void Game::update(Engine& engine, float current_time_sec, float time_delta_since_last_frame)
+void Game::update(Engine& engine, float time_delta_since_last_frame)
 {
   FunctionTimer timer(update_times, SDL_arraysize(update_times));
 
@@ -1715,33 +3057,82 @@ void Game::update(Engine& engine, float current_time_sec, float time_delta_since
   }
 
   ImGui::End();
+
+  ImGui::Begin("thread profiler");
+
+  if (ImGui::Button("pause"))
+  {
+    if (not js.is_profiling_paused)
+    {
+      js.paused_profile_data_count = SDL_AtomicGet(&js.profile_data_count);
+      SDL_memcpy(js.paused_profile_data, js.profile_data, js.paused_profile_data_count * sizeof(ThreadJobStatistic));
+    }
+
+    js.is_profiling_paused = true;
+  }
+
+  ImGui::SameLine();
+  if (ImGui::Button("resume"))
+  {
+    js.is_profiling_paused = false;
+  }
+
+  const int profile_data_count =
+      js.is_profiling_paused ? js.paused_profile_data_count : SDL_AtomicGet(&js.profile_data_count);
+  const ThreadJobStatistic* statistics = js.is_profiling_paused ? js.paused_profile_data : js.profile_data;
+
+  for (int threadId = 0; threadId < static_cast<int>(SDL_arraysize(js.worker_threads)); ++threadId)
+  {
+    ImGui::Text("worker %d", threadId);
+    float on_thread_duration = 0.0f;
+    for (int i = 0; i < profile_data_count; ++i)
+    {
+      const ThreadJobStatistic& stat = statistics[i];
+      if (threadId == stat.threadId)
+      {
+        on_thread_duration += stat.duration_sec;
+        ImGui::SameLine();
+        ImGui::Button(stat.name, ImVec2(100.0f * 1000.0f * stat.duration_sec, 0));
+        if (ImGui::IsItemHovered())
+        {
+          ImGui::SetTooltip("name: %s\n%.5f sec\n%.2f ms", stat.name, stat.duration_sec, 1000.0f * stat.duration_sec);
+        }
+      }
+    }
+    ImGui::Text("total: %.5fms", 1000.0f * on_thread_duration);
+    ImGui::Separator();
+  }
+  ImGui::End();
 }
 
-void Game::render(Engine& engine, float current_time_sec)
+void Game::render(Engine& engine)
 {
-  FunctionTimer            timer(render_times, SDL_arraysize(render_times));
   Engine::SimpleRendering& renderer = engine.simple_rendering;
 
-  uint32_t image_index = 0;
   vkAcquireNextImageKHR(engine.generic_handles.device, engine.generic_handles.swapchain, UINT64_MAX,
                         engine.generic_handles.image_available, VK_NULL_HANDLE, &image_index);
   vkWaitForFences(engine.generic_handles.device, 1, &renderer.submition_fences[image_index], VK_TRUE, UINT64_MAX);
   vkResetFences(engine.generic_handles.device, 1, &renderer.submition_fences[image_index]);
+
+  FunctionTimer timer(render_times, SDL_arraysize(render_times));
 
   update_ubo(engine.generic_handles.device, engine.ubo_host_visible.memory, sizeof(LightSources),
              pbr_dynamic_lights_ubo_offsets[image_index], &pbr_light_sources_cache);
 
   {
     GenerateGuiLinesCommand cmd = {
-        .allocator                = &engine.double_ended_stack,
         .player_y_location_meters = -(2.0f - player_position[1]),
         .camera_x_pitch_radians   = 0.0f, // to_rad(10) * SDL_sinf(current_time_sec), // simulating future strafe tilts,
         .camera_y_pitch_radians   = camera_updown_angle,
     };
 
-    ArrayView<GuiLine> r                    = generate_gui_lines(cmd);
-    float*             pushed_lines_data    = engine.double_ended_stack.allocate_back<float>(4 * r.count);
-    int                pushed_lines_counter = 0;
+    ArrayView<GuiLine> r = {};
+    generate_gui_lines(cmd, nullptr, &r.count);
+    r.data = engine.double_ended_stack.allocate_back<GuiLine>(r.count);
+    generate_gui_lines(cmd, r.data, &r.count);
+
+    float* pushed_lines_data    = engine.double_ended_stack.allocate_back<float>(4 * r.count);
+    int    pushed_lines_counter = 0;
 
     gui_green_lines_count  = count_lines(r, GuiLine::Color::Green);
     gui_red_lines_count    = count_lines(r, GuiLine::Color::Red);
@@ -1783,970 +3174,148 @@ void Game::render(Engine& engine, float current_time_sec)
     engine.double_ended_stack.reset_back();
   }
 
-  CommandBufferSelector command_selector(engine.simple_rendering, image_index);
-  CommandBufferStarter  command_starter(renderer.render_pass, renderer.framebuffers[image_index]);
+  ImGui::Render();
+  ImDrawData* draw_data = ImGui::GetDrawData();
 
+  size_t vertex_size = draw_data->TotalVtxCount * sizeof(ImDrawVert);
+  size_t index_size  = draw_data->TotalIdxCount * sizeof(ImDrawIdx);
+
+  SDL_assert(Game::DebugGui::VERTEX_BUFFER_CAPACITY_BYTES >= vertex_size);
+  SDL_assert(Game::DebugGui::INDEX_BUFFER_CAPACITY_BYTES >= index_size);
+
+  if (0 < vertex_size)
   {
-    VkCommandBuffer cmd       = command_selector.select(Engine::SimpleRendering::Pipeline::Skybox);
-    ScopedCommand   cmd_scope = command_starter.begin(cmd, Engine::SimpleRendering::Pass::Skybox);
+    ScopedMemoryMap memory_map(engine.generic_handles.device, engine.gpu_host_visible.memory,
+                               debug_gui.vertex_buffer_offsets[image_index], vertex_size);
 
-    struct
+    ImDrawVert* vtx_dst = memory_map.get<ImDrawVert>();
+    for (int n = 0; n < draw_data->CmdListsCount; ++n)
     {
-      mat4x4 projection;
-      mat4x4 view;
-    } push = {};
-
-    mat4x4_dup(push.projection, projection);
-    mat4x4_dup(push.view, view);
-
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      renderer.pipelines[Engine::SimpleRendering::Pipeline::Skybox]);
-
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::Skybox], 0, 1,
-                            &skybox_cubemap_dset, 0, nullptr);
-
-    vkCmdPushConstants(cmd, renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::Skybox],
-                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), &push);
-
-    box.renderRaw(engine, cmd);
-  }
-
-  {
-    VkCommandBuffer cmd       = command_selector.select(Engine::SimpleRendering::Pipeline::Scene3D);
-    ScopedCommand   cmd_scope = command_starter.begin(cmd, Engine::SimpleRendering::Pass::Objects3D);
-
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      renderer.pipelines[Engine::SimpleRendering::Pipeline::Scene3D]);
-
-    {
-      VkDescriptorSet dsets[]           = {pbr_ibl_environment_dset, pbr_dynamic_lights_dset};
-      uint32_t        dynamic_offsets[] = {static_cast<uint32_t>(pbr_dynamic_lights_ubo_offsets[image_index])};
-      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 1,
-                              SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
-    }
-
-    {
-      Quaternion orientation;
-      orientation.rotateX(to_rad(180.0));
-
-      mat4x4 translation_matrix = {};
-      mat4x4_translate(translation_matrix, vr_level_goal[0], 0.0f, vr_level_goal[1]);
-
-      mat4x4 rotation_matrix = {};
-      mat4x4_from_quat(rotation_matrix, orientation.data());
-
-      mat4x4 scale_matrix = {};
-      mat4x4_identity(scale_matrix);
-      mat4x4_scale_aniso(scale_matrix, scale_matrix, 1.6f, 1.6f, 1.6f);
-
-      mat4x4 tmp = {};
-      mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-
-      mat4x4 world_transform = {};
-      mat4x4_mul(world_transform, tmp, scale_matrix);
-
-      vec3 color = {0.0f, 0.0f, 0.0f};
-
-      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 0, 1,
-                              &helmet_pbr_material_dset, 0, nullptr);
-
-      helmet.renderColored(engine, cmd, projection, view, world_transform, color,
-                           Engine::SimpleRendering::Pipeline::Scene3D, 0, camera_position);
-    }
-
-    {
-      Quaternion orientation;
-
-      {
-        Quaternion standing_pose;
-        standing_pose.rotateX(to_rad(180.0));
-
-        Quaternion rotate_back;
-        rotate_back.rotateY(player_position[0] < camera_position[0] ? to_rad(180.0f) : to_rad(0.0f));
-
-        float      x_delta = player_position[0] - camera_position[0];
-        float      z_delta = player_position[2] - camera_position[2];
-        Quaternion camera;
-        camera.rotateY(static_cast<float>(SDL_atan(z_delta / x_delta)));
-
-        orientation = standing_pose * rotate_back * camera;
-      }
-
-      vec3 color = {0.0f, 0.0f, 0.0f};
-
-      mat4x4 translation_matrix = {};
-      mat4x4_translate(translation_matrix, player_position[0], player_position[1] - 1.0f, player_position[2]);
-
-      mat4x4 rotation_matrix = {};
-      mat4x4_from_quat(rotation_matrix, orientation.data());
-
-      mat4x4 scale_matrix = {};
-      mat4x4_identity(scale_matrix);
-      mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.5f, 0.5f, 0.5f);
-
-      mat4x4 tmp = {};
-      mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-
-      mat4x4 world_transform = {};
-      mat4x4_mul(world_transform, tmp, scale_matrix);
-
-      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 0, 1,
-                              &robot_pbr_material_dset, 0, nullptr);
-
-      robot.renderColored(engine, cmd, projection, view, world_transform, color,
-                          Engine::SimpleRendering::Pipeline::Scene3D, 0, camera_position);
+      const ImDrawList* cmd_list = draw_data->CmdLists[n];
+      SDL_memcpy(vtx_dst, cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size * sizeof(ImDrawVert));
+      vtx_dst += cmd_list->VtxBuffer.Size;
     }
   }
 
+  if (0 < index_size)
   {
-    VkCommandBuffer cmd       = command_selector.select(Engine::SimpleRendering::Pipeline::ColoredGeometry);
-    ScopedCommand   cmd_scope = command_starter.begin(cmd, Engine::SimpleRendering::Pass::Objects3D);
+    ScopedMemoryMap memory_map(engine.generic_handles.device, engine.gpu_host_visible.memory,
+                               debug_gui.index_buffer_offsets[image_index], index_size);
 
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      renderer.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometry]);
-
-    for (int i = 0; i < pbr_light_sources_cache.count; ++i)
+    ImDrawIdx* idx_dst = memory_map.get<ImDrawIdx>();
+    for (int n = 0; n < draw_data->CmdListsCount; ++n)
     {
-      Quaternion orientation = Quaternion().rotateZ(to_rad(100.0f * current_time_sec)) *
-                               Quaternion().rotateY(to_rad(280.0f * current_time_sec)) *
-                               Quaternion().rotateX(to_rad(60.0f * current_time_sec));
-
-      float* position           = pbr_light_sources_cache.positions[i];
-      mat4x4 translation_matrix = {};
-      mat4x4_translate(translation_matrix, position[0], position[1], position[2]);
-
-      mat4x4 rotation_matrix = {};
-      mat4x4_from_quat(rotation_matrix, orientation.data());
-
-      mat4x4 scale_matrix = {};
-      mat4x4_identity(scale_matrix);
-      mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.05f, 0.05f, 0.05f);
-
-      mat4x4 tmp = {};
-      mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-
-      mat4x4 world_transform = {};
-      mat4x4_mul(world_transform, tmp, scale_matrix);
-
-      float* color = pbr_light_sources_cache.colors[i];
-      box.renderColored(engine, cmd, projection, view, world_transform, color,
-                        Engine::SimpleRendering::Pipeline::ColoredGeometry, 0, camera_position);
-    }
-
-    {
-      Quaternion orientation = Quaternion().rotateZ(to_rad(90.0f * current_time_sec / 90.0f)) *
-                               Quaternion().rotateY(to_rad(140.0f * current_time_sec / 30.0f)) *
-                               Quaternion().rotateX(to_rad(90.0f * current_time_sec / 20.0f));
-
-      mat4x4 translation_matrix = {};
-      mat4x4_translate(translation_matrix, robot_position[0], robot_position[1], robot_position[2]);
-
-      mat4x4 rotation_matrix = {};
-      mat4x4_from_quat(rotation_matrix, orientation.data());
-
-      mat4x4 world_transform = {};
-      mat4x4_mul(world_transform, translation_matrix, rotation_matrix);
-
-      vec3 color = {0.0, 1.0, 0.0};
-      animatedBox.renderColored(engine, cmd, projection, view, world_transform, color,
-                                Engine::SimpleRendering::Pipeline::ColoredGeometry, 0, camera_position);
-    }
-
-    {
-      mat4x4 projection_view = {};
-      mat4x4_mul(projection_view, projection, view);
-
-      mat4x4 translation_matrix = {};
-      mat4x4_translate(translation_matrix, 0.0, 2.5, 0.0);
-
-      mat4x4 rotation_matrix = {};
-      mat4x4_identity(rotation_matrix);
-
-      mat4x4 scale_matrix = {};
-      mat4x4_identity(scale_matrix);
-      mat4x4_scale_aniso(scale_matrix, scale_matrix, VR_LEVEL_SCALE, VR_LEVEL_SCALE, VR_LEVEL_SCALE);
-
-      mat4x4 tmp = {};
-      mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-
-      mat4x4 model = {};
-      mat4x4_mul(model, tmp, scale_matrix);
-
-      mat4x4 mvp = {};
-      mat4x4_mul(mvp, projection_view, model);
-
-      vkCmdBindIndexBuffer(cmd, engine.gpu_static_geometry.buffer, vr_level_index_buffer_offset, vr_level_index_type);
-      vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_static_geometry.buffer, &vr_level_vertex_buffer_offset);
-
-      vec3 color = {0.5, 0.5, 1.0};
-      vkCmdPushConstants(cmd,
-                         engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometry],
-                         VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(vec3), color);
-
-      vkCmdPushConstants(cmd,
-                         engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometry],
-                         VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
-
-      vkCmdDrawIndexed(cmd, static_cast<uint32_t>(vr_level_index_count), 1, 0, 0, 0);
+      const ImDrawList* cmd_list = draw_data->CmdLists[n];
+      SDL_memcpy(idx_dst, cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx));
+      idx_dst += cmd_list->IdxBuffer.Size;
     }
   }
 
+  js.jobs[0]  = {"skybox", render_skybox_job};
+  js.jobs[1]  = {"robot", render_robot_job};
+  js.jobs[2]  = {"helmet", render_helmet_job};
+  js.jobs[3]  = {"point lights", render_point_light_boxes};
+  js.jobs[4]  = {"box", render_matrioshka_box};
+  js.jobs[5]  = {"vr scene", render_vr_scene};
+  js.jobs[6]  = {"radar", render_radar};
+  js.jobs[7]  = {"gui lines", render_robot_gui_lines};
+  js.jobs[8]  = {"gui height ruler text", render_height_ruler_text};
+  js.jobs[9]  = {"gui tilt ruler text", render_tilt_ruler_text};
+  js.jobs[10] = {"hello world", render_hello_world_text};
+  js.jobs[11] = {"imgui", render_imgui};
+  // js.jobs[11] = render_simple_rigged;
+  // js.jobs[12] = render_monster_rigged;
+  js.jobs_max = 12;
+
+  SDL_AtomicSet(&js.profile_data_count, 0);
+  SDL_CondBroadcast(js.new_jobs_available_cond);
+  SDL_SemWait(js.all_threads_idle_signal);
+  SDL_AtomicSet(&js.threads_finished_work, 0);
+
+  VkCommandBuffer cmd = engine.simple_rendering.primary_command_buffers[image_index];
+
   {
-    VkCommandBuffer cmd       = command_selector.select(Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned);
-    ScopedCommand   cmd_scope = command_starter.begin(cmd, Engine::SimpleRendering::Pass::Objects3D);
-
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      renderer.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned]);
-
-    {
-      Quaternion orientation;
-      orientation.rotateX(to_rad(45.0f));
-
-      mat4x4 translation_matrix = {};
-      mat4x4_translate(translation_matrix, rigged_position[0], rigged_position[1], rigged_position[2]);
-
-      mat4x4 rotation_matrix = {};
-      mat4x4_from_quat(rotation_matrix, orientation.data());
-
-      mat4x4 scale_matrix = {};
-      mat4x4_identity(scale_matrix);
-      mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.5f, 0.5f, 0.5f);
-
-      mat4x4 tmp = {};
-      mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-
-      mat4x4 world_transform = {};
-      mat4x4_mul(world_transform, tmp, scale_matrix);
-
-      vec3 color = {0.0, 0.0, 1.0};
-
-      uint32_t dynamic_offsets[] = {static_cast<uint32_t>(rig_skinning_matrices_ubo_offsets[image_index])};
-      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned], 0,
-                              1, &rig_skinning_matrices_dset, SDL_arraysize(dynamic_offsets), dynamic_offsets);
-
-      riggedSimple.renderColored(engine, cmd, projection, view, world_transform, color,
-                                 Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned,
-                                 rig_skinning_matrices_ubo_offsets[image_index], camera_position);
-    }
-
-    {
-      Quaternion orientation;
-      orientation.rotateX(to_rad(45.0f));
-
-      mat4x4 translation_matrix = {};
-      mat4x4_translate(translation_matrix, -2.0f, 0.5f, 0.5f);
-
-      mat4x4 rotation_matrix = {};
-      mat4x4_from_quat(rotation_matrix, orientation.data());
-
-      mat4x4 scale_matrix = {};
-      mat4x4_identity(scale_matrix);
-      float factor = 0.025f;
-      mat4x4_scale_aniso(scale_matrix, scale_matrix, factor, factor, factor);
-
-      mat4x4 tmp = {};
-      mat4x4_mul(tmp, rotation_matrix, translation_matrix);
-
-      mat4x4 world_transform = {};
-      mat4x4_mul(world_transform, tmp, scale_matrix);
-
-      vec3 color = {1.0, 1.0, 1.0};
-
-      uint32_t dynamic_offsets[] = {static_cast<uint32_t>(monster_skinning_matrices_ubo_offsets[image_index])};
-      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned], 0,
-                              1, &monster_skinning_matrices_dset, SDL_arraysize(dynamic_offsets), dynamic_offsets);
-
-      monster.renderColored(engine, cmd, projection, view, world_transform, color,
-                            Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned,
-                            monster_skinning_matrices_ubo_offsets[image_index], camera_position);
-    }
+    VkCommandBufferBeginInfo begin = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    vkBeginCommandBuffer(cmd, &begin);
   }
 
-  {
-    VkCommandBuffer command_buffer = command_selector.select(Engine::SimpleRendering::Pipeline::GreenGui);
-    ScopedCommand   cmd_scope      = command_starter.begin(command_buffer, Engine::SimpleRendering::Pass::ImGui);
-
-    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      renderer.pipelines[Engine::SimpleRendering::Pipeline::GreenGui]);
-
-    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGui], 0, 1,
-                            &radar_texture_dset, 0, nullptr);
-
-    vkCmdBindVertexBuffers(command_buffer, 0, 1, &engine.gpu_static_geometry.buffer,
-                           &green_gui_billboard_vertex_buffer_offset);
-
-    mat4x4 gui_projection = {};
-
-    {
-      float extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
-      float extent_height       = static_cast<float>(engine.generic_handles.extent2D.height);
-      float aspect_ratio        = extent_width / extent_height;
-      float fov                 = to_rad(90.0f);
-      float near_clipping_plane = 0.001f;
-      float far_clipping_plane  = 100.0f;
-      mat4x4_perspective(gui_projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
-      gui_projection[1][1] *= -1.0f;
-    }
-
-    mat4x4 gui_view = {};
-
-    {
-      vec3 center   = {0.0f, 0.0f, 0.0f};
-      vec3 up       = {0.0f, -1.0f, 0.0f};
-      vec3 position = {0.0f, 0.0f, -10.0f};
-      mat4x4_look_at(gui_view, position, center, up);
-    }
-
-    Quaternion orientation;
-    orientation.rotateY(to_rad(green_gui_radar_rotation));
-
-    mat4x4 translation_matrix = {};
-    mat4x4_translate(translation_matrix, green_gui_radar_position[0], green_gui_radar_position[1], 0.0f);
-
-    mat4x4 rotation_matrix = {};
-    mat4x4_from_quat(rotation_matrix, orientation.data());
-
-    mat4x4 scale_matrix = {};
-    mat4x4_identity(scale_matrix);
-    mat4x4_scale_aniso(scale_matrix, scale_matrix, 2.0f, 2.0f, 1.0f);
-
-    mat4x4 tmp = {};
-    mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-
-    mat4x4 world_transform = {};
-    mat4x4_mul(world_transform, tmp, scale_matrix);
-
-    mat4x4 projection_view = {};
-    mat4x4_mul(projection_view, gui_projection, gui_view);
-
-    mat4x4 mvp = {};
-    mat4x4_mul(mvp, projection_view, world_transform);
-
-    vkCmdPushConstants(command_buffer,
-                       engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGui],
-                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
-
-    vkCmdPushConstants(command_buffer,
-                       engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGui],
-                       VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(float), &current_time_sec);
-
-    vkCmdDraw(command_buffer, 4, 1, 0, 0);
-  }
+  VkClearValue clear_values[] = {
+      {.color = {{0.0f, 0.0f, 0.2f, 1.0f}}},
+      {.depthStencil = {1.0, 0}},
+      {.color = {{0.0f, 0.0f, 0.2f, 1.0f}}},
+      {.depthStencil = {1.0, 0}},
+  };
 
   {
-    VkCommandBuffer command_buffer = command_selector.select(Engine::SimpleRendering::Pipeline::GreenGuiLines);
-    ScopedCommand   cmd_scope      = command_starter.begin(command_buffer, Engine::SimpleRendering::Pass::ImGui);
-
-    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      renderer.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiLines]);
-
-    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiLines], 0, 1,
-                            &radar_texture_dset, 0, nullptr);
-
-    vkCmdBindVertexBuffers(command_buffer, 0, 1, &engine.gpu_host_visible.buffer,
-                           &green_gui_rulers_buffer_offsets[image_index]);
-
-    // this will only work for fixed resolutions!
-    // @todo: adjust to be resolution independent
-    {
-
-      VkRect2D scissor{};
-      scissor.extent.width  = line_to_pixel_length(0.75f, engine.generic_handles.extent2D.width);
-      scissor.extent.height = line_to_pixel_length(1.02f, engine.generic_handles.extent2D.height);
-      scissor.offset.x      = (engine.generic_handles.extent2D.width / 2) - (scissor.extent.width / 2);
-      scissor.offset.y      = line_to_pixel_length(0.29f, engine.generic_handles.extent2D.height); // 118
-
-      vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-    }
-
-    uint32_t offset = 0;
-
-    // ------ GREEN ------
-    {
-      const float             line_widths[] = {7.0f, 5.0f, 3.0f, 1.0f};
-      const GuiLineSizeCount& counts        = gui_green_lines_count;
-      const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
-
-      vec4 color = {125.0f / 255.0f, 204.0f / 255.0f, 174.0f / 255.0f, 0.9f};
-      vkCmdPushConstants(command_buffer,
-                         engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiLines],
-                         VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(vec4), color);
-
-      for (int i = 0; i < 4; ++i)
-      {
-        if (0 == line_counts[i])
-          continue;
-
-        vkCmdSetLineWidth(command_buffer, line_widths[i]);
-        vkCmdDraw(command_buffer, 2 * static_cast<uint32_t>(line_counts[i]), 1, 2 * offset, 0);
-        offset += line_counts[i];
-      }
-    }
-
-    // ------ RED ------
-    {
-      const float             line_widths[] = {7.0f, 5.0f, 3.0f, 1.0f};
-      const GuiLineSizeCount& counts        = gui_red_lines_count;
-      const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
-
-      vec4 color = {1.0f, 0.0f, 0.0f, 0.9f};
-      vkCmdPushConstants(command_buffer,
-                         engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiLines],
-                         VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(vec4), color);
-
-      for (int i = 0; i < 4; ++i)
-      {
-        if (0 == line_counts[i])
-          continue;
-
-        vkCmdSetLineWidth(command_buffer, line_widths[i]);
-        vkCmdDraw(command_buffer, 2 * static_cast<uint32_t>(line_counts[i]), 1, 2 * offset, 0);
-        offset += line_counts[i];
-      }
-    }
-
-    // ------ YELLOW ------
-    {
-      VkRect2D scissor      = {};
-      scissor.extent.width  = line_to_pixel_length(0.5f, engine.generic_handles.extent2D.width);
-      scissor.extent.height = line_to_pixel_length(1.3f, engine.generic_handles.extent2D.height);
-      scissor.offset.x      = (engine.generic_handles.extent2D.width / 2) - (scissor.extent.width / 2);
-      scissor.offset.y      = line_to_pixel_length(0.2f, engine.generic_handles.extent2D.height);
-      vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-
-      const float             line_widths[] = {7.0f, 5.0f, 3.0f, 1.0f};
-      const GuiLineSizeCount& counts        = gui_yellow_lines_count;
-      const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
-
-      vec4 color = {1.0f, 1.0f, 0.0f, 0.7f};
-      vkCmdPushConstants(command_buffer,
-                         engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiLines],
-                         VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(vec4), color);
-
-      for (int i = 0; i < 4; ++i)
-      {
-        if (0 == line_counts[i])
-          continue;
-
-        vkCmdSetLineWidth(command_buffer, line_widths[i]);
-        vkCmdDraw(command_buffer, 2 * static_cast<uint32_t>(line_counts[i]), 1, 2 * offset, 0);
-        offset += line_counts[i];
-      }
-    }
-  }
-
-  {
-    VkCommandBuffer command_buffer = command_selector.select(Engine::SimpleRendering::Pipeline::GreenGuiSdfFont);
-    ScopedCommand   cmd_scope      = command_starter.begin(command_buffer, Engine::SimpleRendering::Pass::ImGui);
-
-    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      renderer.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont]);
-
-    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont], 0, 1,
-                            &lucida_sans_sdf_dset, 0, nullptr);
-
-    vkCmdBindVertexBuffers(command_buffer, 0, 1, &engine.gpu_static_geometry.buffer,
-                           &green_gui_billboard_vertex_buffer_offset);
-
-    struct VertexPushConstant
-    {
-      mat4x4 mvp;
-      vec2   character_coordinate;
-      vec2   character_size;
-    } vpc = {};
-
-    struct FragmentPushConstant
-    {
-      vec3  color;
-      float time;
-    } fpc = {};
-
-    fpc.time = current_time_sec;
-
-    //--------------------------------------------------------------------------
-    // height rulers values
-    //--------------------------------------------------------------------------
-    {
-      ArrayView<GuiHeightRulerText> scheduled_text_data = {};
-
-      {
-        GenerateGuiLinesCommand cmd = {
-            .allocator                = &engine.double_ended_stack,
-            .player_y_location_meters = -(2.0f - player_position[1]),
-            .camera_x_pitch_radians   = camera_angle,
-            .camera_y_pitch_radians   = camera_updown_angle,
-            .screen_extent2D          = engine.generic_handles.extent2D,
-        };
-
-        scheduled_text_data = generate_gui_height_ruler_text(cmd);
-      }
-
-      char buffer[256];
-      for (GuiHeightRulerText& text : scheduled_text_data)
-      {
-        mat4x4 gui_projection = {};
-        mat4x4_ortho(gui_projection, 0, engine.generic_handles.extent2D.width, 0,
-                     engine.generic_handles.extent2D.height, 0.0f, 1.0f);
-
-        float cursor = 0.0f;
-
-        const int length = SDL_snprintf(buffer, 256, "%d", text.value);
-        for (int i = 0; i < length; ++i)
-        {
-          GenerateSdfFontCommand cmd = {
-              .character             = buffer[i],
-              .lookup_table          = lucida_sans_sdf_char_ids,
-              .character_data        = lucida_sans_sdf_chars,
-              .characters_pool_count = SDL_arraysize(lucida_sans_sdf_char_ids),
-              .texture_size          = {512, 256},
-              .scaling               = static_cast<float>(text.size),
-              .position              = {text.offset[0], text.offset[1], -1.0f},
-              .cursor                = cursor,
-          };
-
-          GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
-
-          SDL_memcpy(vpc.character_coordinate, r.character_coordinate, sizeof(vec2));
-          SDL_memcpy(vpc.character_size, r.character_size, sizeof(vec2));
-          mat4x4_mul(vpc.mvp, gui_projection, r.transform);
-          cursor += r.cursor_movement;
-
-          VkRect2D scissor{};
-          scissor.extent.width  = line_to_pixel_length(0.75f, engine.generic_handles.extent2D.width);
-          scissor.extent.height = line_to_pixel_length(1.02f, engine.generic_handles.extent2D.height);
-          scissor.offset.x      = (engine.generic_handles.extent2D.width / 2) - (scissor.extent.width / 2);
-          scissor.offset.y      = line_to_pixel_length(0.29f, engine.generic_handles.extent2D.height); // 118
-          vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-
-          fpc.color[0] = 1.0f;
-          fpc.color[1] = 0.0f;
-          fpc.color[2] = 0.0f;
-
-          vkCmdPushConstants(
-              command_buffer,
-              engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-              VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
-
-          vkCmdPushConstants(
-              command_buffer,
-              engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-              VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(fpc), &fpc);
-
-          vkCmdDraw(command_buffer, 4, 1, 0, 0);
-        }
-      }
-
-      engine.double_ended_stack.reset_back();
-    }
-
-    //--------------------------------------------------------------------------
-    // tilt rulers values
-    //--------------------------------------------------------------------------
-    {
-      ArrayView<GuiHeightRulerText> scheduled_text_data = {};
-
-      {
-        GenerateGuiLinesCommand cmd = {
-            .allocator                = &engine.double_ended_stack,
-            .player_y_location_meters = -(2.0f - player_position[1]),
-            .camera_x_pitch_radians   = camera_angle,
-            .camera_y_pitch_radians   = camera_updown_angle,
-            .screen_extent2D          = engine.generic_handles.extent2D,
-        };
-
-        scheduled_text_data = generate_gui_tilt_ruler_text(cmd);
-      }
-
-      char buffer[256];
-      for (GuiHeightRulerText& text : scheduled_text_data)
-      {
-        mat4x4 gui_projection = {};
-        mat4x4_ortho(gui_projection, 0, engine.generic_handles.extent2D.width, 0,
-                     engine.generic_handles.extent2D.height, 0.0f, 1.0f);
-
-        float cursor = 0.0f;
-
-        const int length = SDL_snprintf(buffer, 256, "%d", text.value);
-        for (int i = 0; i < length; ++i)
-        {
-          GenerateSdfFontCommand cmd = {
-              .character             = buffer[i],
-              .lookup_table          = lucida_sans_sdf_char_ids,
-              .character_data        = lucida_sans_sdf_chars,
-              .characters_pool_count = SDL_arraysize(lucida_sans_sdf_char_ids),
-              .texture_size          = {512, 256},
-              .scaling               = static_cast<float>(text.size),
-              .position              = {text.offset[0], text.offset[1], -1.0f},
-              .cursor                = cursor,
-          };
-
-          GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
-
-          SDL_memcpy(vpc.character_coordinate, r.character_coordinate, sizeof(vec2));
-          SDL_memcpy(vpc.character_size, r.character_size, sizeof(vec2));
-          mat4x4_mul(vpc.mvp, gui_projection, r.transform);
-          cursor += r.cursor_movement;
-
-          VkRect2D scissor{};
-          scissor.extent.width  = line_to_pixel_length(0.5f, engine.generic_handles.extent2D.width);
-          scissor.extent.height = line_to_pixel_length(1.3f, engine.generic_handles.extent2D.height);
-          scissor.offset.x      = (engine.generic_handles.extent2D.width / 2) - (scissor.extent.width / 2);
-          scissor.offset.y      = line_to_pixel_length(0.2f, engine.generic_handles.extent2D.height);
-          vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-
-          vkCmdPushConstants(
-              command_buffer,
-              engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-              VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
-
-          fpc.color[0] = 1.0f;
-          fpc.color[1] = 1.0f;
-          fpc.color[2] = 0.0f;
-
-          vkCmdPushConstants(
-              command_buffer,
-              engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-              VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(fpc), &fpc);
-
-          vkCmdDraw(command_buffer, 4, 1, 0, 0);
-        }
-      }
-    }
-
-    //--------------------------------------------------------------------------
-    // 3D rotating text demo
-    //--------------------------------------------------------------------------
-    {
-      mat4x4 gui_projection = {};
-
-      {
-        float extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
-        float extent_height       = static_cast<float>(engine.generic_handles.extent2D.height);
-        float aspect_ratio        = extent_width / extent_height;
-        float fov                 = to_rad(90.0f);
-        float near_clipping_plane = 0.001f;
-        float far_clipping_plane  = 100.0f;
-        mat4x4_perspective(gui_projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
-        gui_projection[1][1] *= -1.0f;
-      }
-
-      mat4x4 gui_view = {};
-
-      {
-        vec3 center   = {0.0f, 0.0f, 0.0f};
-        vec3 up       = {0.0f, -1.0f, 0.0f};
-        vec3 position = {0.0f, 0.0f, -10.0f};
-        mat4x4_look_at(gui_view, position, center, up);
-      }
-
-      mat4x4 projection_view = {};
-      mat4x4_mul(projection_view, gui_projection, gui_view);
-
-      float      cursor = 0.0f;
-      const char word[] = "Hello World!";
-
-      for (const char c : word)
-      {
-        if ('\0' == c)
-          continue;
-
-        GenerateSdfFontCommand cmd = {
-            .character             = c,
-            .lookup_table          = lucida_sans_sdf_char_ids,
-            .character_data        = lucida_sans_sdf_chars,
-            .characters_pool_count = SDL_arraysize(lucida_sans_sdf_char_ids),
-            .texture_size          = {512, 256},
-            .scaling               = 30.0f,
-            .position              = {2.0f, 6.0f, 0.0f},
-            .cursor                = cursor,
-        };
-
-        GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
-
-        SDL_memcpy(vpc.character_coordinate, r.character_coordinate, sizeof(vec2));
-        SDL_memcpy(vpc.character_size, r.character_size, sizeof(vec2));
-        mat4x4_mul(vpc.mvp, projection_view, r.transform);
-        cursor += r.cursor_movement;
-
-#if 0
-        for (unsigned i = 0; i < SDL_arraysize(lucida_sans_sdf_char_ids); ++i)
-        {
-          if (c == lucida_sans_sdf_char_ids[i])
-          {
-            const SdfChar& char_data = lucida_sans_sdf_chars[i];
-
-            vpc.character_coordinate[0] = static_cast<float>(char_data.x) / 512.0f;
-            vpc.character_coordinate[1] = static_cast<float>(char_data.y) / 256.0f;
-            vpc.character_size[0]       = static_cast<float>(char_data.width) / 512.0f;
-            vpc.character_size[1]       = static_cast<float>(char_data.height) / 256.0f;
-
-            Quaternion orientation;
-            orientation.rotateY(to_rad(30.0f * SDL_sinf(current_time_sec)));
-
-            const float scaling       = 30.0f;
-            vec2        text_position = {2.0f, 6.0f};
-
-            float width_uv_adjusted  = char_data.width / (512.0f * 2.0f);
-            float height_uv_adjusted = char_data.height / (256.0f * 4.0f);
-            float x_scaling          = scaling * width_uv_adjusted;
-            float y_scaling          = scaling * height_uv_adjusted;
-
-            float y_model_adjustment_size_factor   = y_scaling - 2.0f;
-            float y_model_adjustment_offset_factor = scaling * char_data.yoffset / (256.0f * 2.0f);
-            float y_model_adjustment               = y_model_adjustment_offset_factor + y_model_adjustment_size_factor;
-
-            float x_model_adjustment_size_factor   = x_scaling - 2.0f;
-            float x_model_adjustment_offset_factor = scaling * char_data.xoffset / (512.0f * 2.0f);
-            float x_model_adjustment = cursor + x_model_adjustment_size_factor + x_model_adjustment_offset_factor;
-
-            mat4x4 translation_matrix = {};
-            mat4x4_translate(translation_matrix, x_model_adjustment + text_position[0],
-                             y_model_adjustment + text_position[1], 0.0f);
-
-            mat4x4 rotation_matrix = {};
-            mat4x4_from_quat(rotation_matrix, orientation.data());
-
-            mat4x4 scale_matrix = {};
-            mat4x4_identity(scale_matrix);
-            mat4x4_scale_aniso(scale_matrix, scale_matrix, x_scaling, y_scaling, 1.0f);
-
-            mat4x4 tmp = {};
-            mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-
-            mat4x4 world_transform = {};
-            mat4x4_mul(world_transform, tmp, scale_matrix);
-
-            mat4x4_mul(vpc.mvp, projection_view, world_transform);
-
-            cursor += scaling * ((float)(char_data.xadvance) / 512.0f);
-
-            break;
-          }
-        }
-#endif
-
-        VkRect2D scissor = {.extent = engine.generic_handles.extent2D};
-        vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-
-        vkCmdPushConstants(command_buffer,
-                           engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-                           VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
-
-        fpc.color[0] = 1.0f;
-        fpc.color[1] = 1.0f;
-        fpc.color[2] = 1.0f;
-
-        vkCmdPushConstants(command_buffer,
-                           engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-                           VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(fpc), &fpc);
-
-        vkCmdDraw(command_buffer, 4, 1, 0, 0);
-      }
-    }
-  }
-
-  {
-    ImGui::Render();
-    ImDrawData* draw_data = ImGui::GetDrawData();
-    ImGuiIO&    io        = ImGui::GetIO();
-
-    size_t vertex_size = draw_data->TotalVtxCount * sizeof(ImDrawVert);
-    size_t index_size  = draw_data->TotalIdxCount * sizeof(ImDrawIdx);
-
-    SDL_assert(DebugGui::VERTEX_BUFFER_CAPACITY_BYTES >= vertex_size);
-    SDL_assert(DebugGui::INDEX_BUFFER_CAPACITY_BYTES >= index_size);
-
-    if (0 < vertex_size)
-    {
-      ScopedMemoryMap memory_map(engine.generic_handles.device, engine.gpu_host_visible.memory,
-                                 debug_gui.vertex_buffer_offsets[image_index], vertex_size);
-
-      ImDrawVert* vtx_dst = memory_map.get<ImDrawVert>();
-      for (int n = 0; n < draw_data->CmdListsCount; ++n)
-      {
-        const ImDrawList* cmd_list = draw_data->CmdLists[n];
-        SDL_memcpy(vtx_dst, cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size * sizeof(ImDrawVert));
-        vtx_dst += cmd_list->VtxBuffer.Size;
-      }
-    }
-
-    if (0 < index_size)
-    {
-      ScopedMemoryMap memory_map(engine.generic_handles.device, engine.gpu_host_visible.memory,
-                                 debug_gui.index_buffer_offsets[image_index], index_size);
-
-      ImDrawIdx* idx_dst = memory_map.get<ImDrawIdx>();
-      for (int n = 0; n < draw_data->CmdListsCount; ++n)
-      {
-        const ImDrawList* cmd_list = draw_data->CmdLists[n];
-        SDL_memcpy(idx_dst, cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx));
-        idx_dst += cmd_list->IdxBuffer.Size;
-      }
-    }
-
-    VkCommandBuffer command_buffer = command_selector.select(Engine::SimpleRendering::Pipeline::ImGui);
-    ScopedCommand   cmd_scope      = command_starter.begin(command_buffer, Engine::SimpleRendering::Pass::ImGui);
-
-    if (vertex_size and index_size)
-    {
-      vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        renderer.pipelines[Engine::SimpleRendering::Pipeline::ImGui]);
-
-      vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::ImGui], 0, 1,
-                              &imgui_font_atlas_dset, 0, nullptr);
-
-      vkCmdBindIndexBuffer(command_buffer, engine.gpu_host_visible.buffer, debug_gui.index_buffer_offsets[image_index],
-                           VK_INDEX_TYPE_UINT16);
-
-      vkCmdBindVertexBuffers(command_buffer, 0, 1, &engine.gpu_host_visible.buffer,
-                             &debug_gui.vertex_buffer_offsets[image_index]);
-
-      {
-        VkViewport viewport = {
-            .width    = io.DisplaySize.x,
-            .height   = io.DisplaySize.y,
-            .minDepth = 0.0f,
-            .maxDepth = 1.0f,
-        };
-        vkCmdSetViewport(command_buffer, 0, 1, &viewport);
-      }
-
-      float scale[]     = {2.0f / io.DisplaySize.x, 2.0f / io.DisplaySize.y};
-      float translate[] = {-1.0f, -1.0f};
-
-      vkCmdPushConstants(command_buffer, renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::ImGui],
-                         VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float) * 2, scale);
-      vkCmdPushConstants(command_buffer, renderer.pipeline_layouts[Engine::SimpleRendering::Pipeline::ImGui],
-                         VK_SHADER_STAGE_VERTEX_BIT, sizeof(float) * 2, sizeof(float) * 2, translate);
-
-      {
-        int vtx_offset = 0;
-        int idx_offset = 0;
-
-        for (int n = 0; n < draw_data->CmdListsCount; n++)
-        {
-          const ImDrawList* cmd_list = draw_data->CmdLists[n];
-          for (int cmd_i = 0; cmd_i < cmd_list->CmdBuffer.Size; cmd_i++)
-          {
-            const ImDrawCmd* pcmd = &cmd_list->CmdBuffer[cmd_i];
-            if (pcmd->UserCallback)
-            {
-              pcmd->UserCallback(cmd_list, pcmd);
-            }
-            else
-            {
-              {
-                VkRect2D scissor = {
-                    .offset =
-                        {
-                            .x = (int32_t)(pcmd->ClipRect.x) > 0 ? (int32_t)(pcmd->ClipRect.x) : 0,
-                            .y = (int32_t)(pcmd->ClipRect.y) > 0 ? (int32_t)(pcmd->ClipRect.y) : 0,
-                        },
-                    .extent =
-                        {
-                            .width  = (uint32_t)(pcmd->ClipRect.z - pcmd->ClipRect.x),
-                            .height = (uint32_t)(pcmd->ClipRect.w - pcmd->ClipRect.y + 1) // FIXME: Why +1 here?
-                        },
-                };
-                vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-              }
-              vkCmdDrawIndexed(command_buffer, pcmd->ElemCount, 1, static_cast<uint32_t>(idx_offset), vtx_offset, 0);
-            }
-            idx_offset += pcmd->ElemCount;
-          }
-          vtx_offset += cmd_list->VtxBuffer.Size;
-        }
-      }
-    }
-  }
-
-  //
-  // Compiling main primary command buffer out of previous secondary ones recorded
-  //
-
-  {
-    VkCommandBuffer cmd = engine.simple_rendering.primary_command_buffers[image_index];
-
-    {
-      VkCommandBufferBeginInfo begin = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-      vkBeginCommandBuffer(cmd, &begin);
-    }
-
-    VkClearValue clear_values[] = {
-        {.color = {{0.0f, 0.0f, 0.2f, 1.0f}}},
-        {.depthStencil = {1.0, 0}},
-        {.color = {{0.0f, 0.0f, 0.2f, 1.0f}}},
-        {.depthStencil = {1.0, 0}},
+    VkRenderPassBeginInfo begin = {
+        .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+        .renderPass      = engine.simple_rendering.render_pass,
+        .framebuffer     = engine.simple_rendering.framebuffers[image_index],
+        .renderArea      = {.extent = engine.generic_handles.extent2D},
+        .clearValueCount = SDL_arraysize(clear_values),
+        .pClearValues    = clear_values,
     };
 
-    {
-      VkRenderPassBeginInfo begin = {
-          .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-          .renderPass      = engine.simple_rendering.render_pass,
-          .framebuffer     = engine.simple_rendering.framebuffers[image_index],
-          .renderArea      = {.extent = engine.generic_handles.extent2D},
-          .clearValueCount = SDL_arraysize(clear_values),
-          .pClearValues    = clear_values,
-      };
-
-      vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-    }
-
-    int              secondary_stride_offset = Engine::SimpleRendering::Pipeline::Count * image_index;
-    VkCommandBuffer* secondary_cbs = &engine.simple_rendering.secondary_command_buffers[secondary_stride_offset];
-
-    vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::Skybox]);
-    vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-    vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::Scene3D]);
-    vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::ColoredGeometry]);
-    vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned]);
-    vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-    vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::GreenGui]);
-    vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::GreenGuiLines]);
-    vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont]);
-    vkCmdExecuteCommands(cmd, 1, &secondary_cbs[Engine::SimpleRendering::Pipeline::ImGui]);
-    vkCmdEndRenderPass(cmd);
-    vkEndCommandBuffer(cmd);
-
-    {
-      VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-
-      VkSubmitInfo submit = {
-          .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-          .waitSemaphoreCount   = 1,
-          .pWaitSemaphores      = &engine.generic_handles.image_available,
-          .pWaitDstStageMask    = &wait_stage,
-          .commandBufferCount   = 1,
-          .pCommandBuffers      = &cmd,
-          .signalSemaphoreCount = 1,
-          .pSignalSemaphores    = &engine.generic_handles.render_finished,
-      };
-
-      vkQueueSubmit(engine.generic_handles.graphics_queue, 1, &submit,
-                    engine.simple_rendering.submition_fences[image_index]);
-    }
-
-    {
-      VkPresentInfoKHR present = {
-          .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-          .waitSemaphoreCount = 1,
-          .pWaitSemaphores    = &engine.generic_handles.render_finished,
-          .swapchainCount     = 1,
-          .pSwapchains        = &engine.generic_handles.swapchain,
-          .pImageIndices      = &image_index,
-      };
-
-      vkQueuePresentKHR(engine.generic_handles.graphics_queue, &present);
-    }
+    vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
   }
+
+  const int all_secondary_count = SDL_AtomicGet(&js_sink.count);
+
+  for (int i = 0; i < all_secondary_count; ++i)
+  {
+    const RecordedCommandBuffer& recordere = js_sink.commands[i];
+    if (Engine::SimpleRendering::Pass::Skybox == recordere.subpass)
+      vkCmdExecuteCommands(cmd, 1, &recordere.command);
+  }
+
+  vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+
+  for (int i = 0; i < all_secondary_count; ++i)
+  {
+    const RecordedCommandBuffer& recordere = js_sink.commands[i];
+    if (Engine::SimpleRendering::Pass::Objects3D == recordere.subpass)
+      vkCmdExecuteCommands(cmd, 1, &recordere.command);
+  }
+
+  vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+
+  for (int i = 0; i < all_secondary_count; ++i)
+  {
+    const RecordedCommandBuffer& recordere = js_sink.commands[i];
+    if (Engine::SimpleRendering::Pass::ImGui == recordere.subpass)
+      vkCmdExecuteCommands(cmd, 1, &recordere.command);
+  }
+
+  vkCmdEndRenderPass(cmd);
+  vkEndCommandBuffer(cmd);
+
+  SDL_AtomicSet(&js_sink.count, 0);
+  SDL_AtomicSet(&js.jobs_taken, 0);
+
+  VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+  VkSubmitInfo submit = {
+      .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+      .waitSemaphoreCount   = 1,
+      .pWaitSemaphores      = &engine.generic_handles.image_available,
+      .pWaitDstStageMask    = &wait_stage,
+      .commandBufferCount   = 1,
+      .pCommandBuffers      = &cmd,
+      .signalSemaphoreCount = 1,
+      .pSignalSemaphores    = &engine.generic_handles.render_finished,
+  };
+
+  vkQueueSubmit(engine.generic_handles.graphics_queue, 1, &submit,
+                engine.simple_rendering.submition_fences[image_index]);
+
+  VkPresentInfoKHR present = {
+      .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+      .waitSemaphoreCount = 1,
+      .pWaitSemaphores    = &engine.generic_handles.render_finished,
+      .swapchainCount     = 1,
+      .pSwapchains        = &engine.generic_handles.swapchain,
+      .pImageIndices      = &image_index,
+  };
+
+  vkQueuePresentKHR(engine.generic_handles.graphics_queue, &present);
 }

@@ -16,9 +16,15 @@ Current preview (still a veeeery long road ahead)
 - PBR with IBL (huge thanks to Sascha Willems vulkan examples and https://learnopengl.com/PBR/Theory)
 - MSAA
 - Signed Distance Field font rendering
+- Multithreaded rendering / job system
 
-### Wishlist
+### TODO - engine
+- Jobified update function
+- decoupled rendering and updating of models (renderColored)
+- re-enabled skinned models rendering (since they updated ubos in render function)
 - DXT texture compression
+
+### TODO - game
 - movable tilt lines under strafe movement (gui)
 - speed measurement (gui)
 - compass (gui)

@@ -3,6 +3,7 @@ project(vvne CXX)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++2a -O2 -fno-exceptions -fno-rtti -Wall -pedantic -DENABLE_VK_VALIDATION -DSDL_ASSERT_LEVEL=0")
 
+
 include_directories(${CMAKE_CURRENT_LIST_DIR}/thirdparty)
 
 if(WIN32)
@@ -23,6 +24,7 @@ endif()
 add_executable(tests unit_tests/SeekerTests.cc)
 add_executable(level_generator_tests unit_tests/LevelGenerator.cc)
 add_executable(sandbox unit_tests/sandbox.cc)
+add_executable(jobsytem unit_tests/JobSystem.cc)
 
 add_executable(${PROJECT_NAME}
         main.cc
@@ -56,4 +58,5 @@ endif()
 target_link_libraries(${PROJECT_NAME} ${SDL_LIBRARY} ${VULKAN_LIBRARY})
 target_link_libraries(tests ${SDL_LIBRARY})
 target_link_libraries(level_generator_tests ${SDL_LIBRARY})
+target_link_libraries(jobsytem ${SDL_LIBRARY})
 

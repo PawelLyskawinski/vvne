@@ -182,7 +182,6 @@ struct Engine
 
     VkPipelineLayout pipeline_layouts[Pipeline::Count];
     VkPipeline       pipelines[Pipeline::Count];
-    VkCommandBuffer  secondary_command_buffers[SWAPCHAIN_IMAGES_COUNT * Pipeline::Count];
     VkCommandBuffer  primary_command_buffers[SWAPCHAIN_IMAGES_COUNT];
     VkFence          submition_fences[SWAPCHAIN_IMAGES_COUNT];
   } simple_rendering;

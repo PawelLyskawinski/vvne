@@ -18,8 +18,8 @@
 #include <stb_image.h>
 #pragma GCC diagnostic pop
 
-#define INITIAL_WINDOW_WIDTH 800
-#define INITIAL_WINDOW_HEIGHT 600
+#define INITIAL_WINDOW_WIDTH 1200
+#define INITIAL_WINDOW_HEIGHT 800
 
 VkBool32
 #ifndef __linux__
@@ -1914,16 +1914,5 @@ void Engine::setup_simple_rendering()
     };
 
     vkAllocateCommandBuffers(ctx.device, &alloc, renderer.primary_command_buffers);
-  }
-
-  {
-    VkCommandBufferAllocateInfo alloc = {
-        .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool        = ctx.graphics_command_pool,
-        .level              = VK_COMMAND_BUFFER_LEVEL_SECONDARY,
-        .commandBufferCount = SDL_arraysize(renderer.secondary_command_buffers),
-    };
-
-    vkAllocateCommandBuffers(ctx.device, &alloc, renderer.secondary_command_buffers);
   }
 }

@@ -9,15 +9,16 @@ uint32_t line_to_pixel_length(float coord, int pixel_max_size)
 
 } // namespace
 
-ArrayView<GuiLine> generate_gui_lines(const GenerateGuiLinesCommand& cmd)
+void generate_gui_lines(const GenerateGuiLinesCommand& cmd, GuiLine* dst, int* count)
 {
-  ArrayView<GuiLine> r{};
-  r.count       = 64;
-  r.data        = cmd.allocator->allocate_back<GuiLine>(r.count);
-  GuiLine* line = r.data;
+  if (nullptr == dst)
+  {
+    *count = 64;
+    return;
+  }
 
   //////////////////////////////////////////////////////////////////////////////
-  // Main green rulers
+  /// Main green rulers
   //////////////////////////////////////////////////////////////////////////////
 
   const float width               = 0.75f;
@@ -31,116 +32,98 @@ ArrayView<GuiLine> generate_gui_lines(const GenerateGuiLinesCommand& cmd)
   const float top_y               = -0.5f * height - offset_up;
   const float bottom_y            = 0.5f * height - offset_up;
 
-  // :: 0
-  line->a[0]  = max_left_x;
-  line->a[1]  = top_y;
-  line->b[0]  = max_left_x + ruler_lid_length;
-  line->b[1]  = top_y;
-  line->size  = GuiLine::Size::Big;
-  line->color = GuiLine::Color::Green;
-  line++;
+  dst[0] = {
+      {max_left_x, top_y},
+      {max_left_x + ruler_lid_length, top_y},
+      GuiLine::Size::Big,
+      GuiLine::Color::Green,
+  };
 
-  // :: 1
-  line->a[0]  = max_left_x + ruler_lid_length;
-  line->a[1]  = top_y - vertical_correction;
-  line->b[0]  = max_left_x + ruler_lid_length;
-  line->b[1]  = bottom_y + vertical_correction;
-  line->size  = GuiLine::Size::Small;
-  line->color = GuiLine::Color::Green;
-  line++;
+  dst[1] = {
+      {max_left_x + ruler_lid_length, top_y - vertical_correction},
+      {max_left_x + ruler_lid_length, bottom_y + vertical_correction},
+      GuiLine::Size::Small,
+      GuiLine::Color::Green,
+  };
 
-  // :: 2
-  line->a[0]  = max_left_x + ruler_lid_length - tiny_line_offset;
-  line->a[1]  = top_y - vertical_correction;
-  line->b[0]  = max_left_x + ruler_lid_length - tiny_line_offset;
-  line->b[1]  = bottom_y + vertical_correction;
-  line->size  = GuiLine::Size::Tiny;
-  line->color = GuiLine::Color::Green;
-  line++;
+  dst[2] = {
+      {max_left_x + ruler_lid_length - tiny_line_offset, top_y - vertical_correction},
+      {max_left_x + ruler_lid_length - tiny_line_offset, bottom_y + vertical_correction},
+      GuiLine::Size::Tiny,
+      GuiLine::Color::Green,
+  };
 
-  // :: 3
-  line->a[0]  = max_left_x;
-  line->a[1]  = bottom_y;
-  line->b[0]  = max_left_x + ruler_lid_length;
-  line->b[1]  = bottom_y;
-  line->size  = GuiLine::Size::Big;
-  line->color = GuiLine::Color::Green;
-  line++;
+  dst[3] = {
+      {max_left_x, bottom_y},
+      {max_left_x + ruler_lid_length, bottom_y},
+      GuiLine::Size::Big,
+      GuiLine::Color::Green,
+  };
 
-  // :: 4
-  line->a[0]  = max_right_x - ruler_lid_length;
-  line->a[1]  = top_y;
-  line->b[0]  = max_right_x;
-  line->b[1]  = top_y;
-  line->size  = GuiLine::Size::Big;
-  line->color = GuiLine::Color::Green;
-  line++;
+  dst[4] = {
+      {max_right_x - ruler_lid_length, top_y},
+      {max_right_x, top_y},
+      GuiLine::Size::Big,
+      GuiLine::Color::Green,
+  };
 
-  // :: 5
-  line->a[0]  = max_right_x - ruler_lid_length;
-  line->a[1]  = top_y - vertical_correction;
-  line->b[0]  = max_right_x - ruler_lid_length;
-  line->b[1]  = bottom_y + vertical_correction;
-  line->size  = GuiLine::Size::Small;
-  line->color = GuiLine::Color::Green;
-  line++;
+  dst[5] = {
+      {max_right_x - ruler_lid_length, top_y - vertical_correction},
+      {max_right_x - ruler_lid_length, bottom_y + vertical_correction},
+      GuiLine::Size::Small,
+      GuiLine::Color::Green,
+  };
 
-  // :: 6
-  line->a[0]  = max_right_x - ruler_lid_length + tiny_line_offset;
-  line->a[1]  = top_y - vertical_correction;
-  line->b[0]  = max_right_x - ruler_lid_length + tiny_line_offset;
-  line->b[1]  = bottom_y + vertical_correction;
-  line->size  = GuiLine::Size::Tiny;
-  line->color = GuiLine::Color::Green;
-  line++;
+  dst[6] = {
+      {max_right_x - ruler_lid_length + tiny_line_offset, top_y - vertical_correction},
+      {max_right_x - ruler_lid_length + tiny_line_offset, bottom_y + vertical_correction},
+      GuiLine::Size::Tiny,
+      GuiLine::Color::Green,
+  };
 
-  // :: 7
-  line->a[0]  = max_right_x;
-  line->a[1]  = bottom_y;
-  line->b[0]  = max_right_x - ruler_lid_length;
-  line->b[1]  = bottom_y;
-  line->size  = GuiLine::Size::Big;
-  line->color = GuiLine::Color::Green;
-  line++;
+  dst[7] = {
+      {max_right_x, bottom_y},
+      {max_right_x - ruler_lid_length, bottom_y},
+      GuiLine::Size::Big,
+      GuiLine::Color::Green,
+  };
 
   //////////////////////////////////////////////////////////////////////////////
-  // Detail on left green ruler
+  /// Detail on left green ruler
   //////////////////////////////////////////////////////////////////////////////
 
-  // :: 7 -> 32
   for (int i = 0; i < 25; ++i)
   {
     const float offset       = 0.04f;
     const float big_indent   = 0.025f;
     const float small_indent = 0.01f;
+    GuiLine&    line         = dst[8 + i];
 
-    line->a[0]  = max_left_x + big_indent;
-    line->a[1]  = top_y + (i * offset);
-    line->b[0]  = max_left_x + ruler_lid_length - tiny_line_offset;
-    line->b[1]  = top_y + (i * offset);
-    line->size  = GuiLine::Size::Small;
-    line->color = GuiLine::Color::Green;
+    line = {
+        {max_left_x + big_indent, top_y + (i * offset)},
+        {max_left_x + ruler_lid_length - tiny_line_offset, top_y + (i * offset)},
+        GuiLine::Size::Small,
+        GuiLine::Color::Green,
+    };
 
     if (0 == ((i + 2) % 5))
-      line->a[0] = max_left_x + small_indent;
-
-    line++;
+      line.a[0] = max_left_x + small_indent;
   }
 
   //////////////////////////////////////////////////////////////////////////////
-  // Red height rulers
+  /// Red height rulers
   //////////////////////////////////////////////////////////////////////////////
 
   const float red_x_offset                 = 0.02f;
   const float height_ruler_length          = 0.04f;
   const float height_ruler_left_x_position = max_left_x + ruler_lid_length + red_x_offset;
 
-  // :: 32 -> 56
   for (int side = 0; side < 2; ++side)
   {
     for (int i = 0; i < 4; ++i)
     {
-      const float side_mod   = side ? -1.0f : 1.0f;
+      GuiLine*    line_stride = &dst[32 + 3 * ((4 * side) + i)];
+      const float side_mod    = (0 < side) ? -1.0f : 1.0f;
       const vec2 base_offset = {side_mod * height_ruler_left_x_position, -1.2f - (cmd.player_y_location_meters / 8.0f)};
       const vec2 size        = {side_mod * height_ruler_length, 0.2f};
 
@@ -148,37 +131,31 @@ ArrayView<GuiLine> generate_gui_lines(const GenerateGuiLinesCommand& cmd)
       vec2 correction = {0.0f, i * 0.4f};
       vec2_add(offset, correction, base_offset);
 
-      // Top
-      line->a[0]  = offset[0];
-      line->a[1]  = offset[1] + size[1] / 2.0f;
-      line->b[0]  = offset[0] + size[0];
-      line->b[1]  = offset[1] + size[1] / 2.0f;
-      line->size  = GuiLine::Size::Tiny;
-      line->color = GuiLine::Color::Red;
-      line++;
+      line_stride[0] = {
+          {offset[0], offset[1] + size[1] / 2.0f},
+          {offset[0] + size[0], offset[1] + size[1] / 2.0f},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Red,
+      };
 
-      // Mid
-      line->a[0]  = offset[0];
-      line->a[1]  = offset[1] + size[1] / 2.0f;
-      line->b[0]  = offset[0];
-      line->b[1]  = offset[1] - size[1] / 2.0f;
-      line->size  = GuiLine::Size::Tiny;
-      line->color = GuiLine::Color::Red;
-      line++;
+      line_stride[1] = {
+          {offset[0], offset[1] + size[1] / 2.0f},
+          {offset[0], offset[1] - size[1] / 2.0f},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Red,
+      };
 
-      // Bottom
-      line->a[0]  = offset[0];
-      line->a[1]  = offset[1] - size[1] / 2.0f;
-      line->b[0]  = offset[0] + size[0];
-      line->b[1]  = offset[1] - size[1] / 2.0f;
-      line->size  = GuiLine::Size::Tiny;
-      line->color = GuiLine::Color::Red;
-      line++;
+      line_stride[2] = {
+          {offset[0], offset[1] - size[1] / 2.0f},
+          {offset[0] + size[0], offset[1] - size[1] / 2.0f},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Red,
+      };
     }
   }
 
   //////////////////////////////////////////////////////////////////////////////
-  // Yellow pitch rulers
+  /// Yellow pitch rulers
   //////////////////////////////////////////////////////////////////////////////
 
   // :: 56 -> 64
@@ -194,23 +171,22 @@ ArrayView<GuiLine> generate_gui_lines(const GenerateGuiLinesCommand& cmd)
     float rotation_matrix[] = {SDL_cosf(cmd.camera_x_pitch_radians), -1.0f * SDL_sinf(cmd.camera_x_pitch_radians),
                                SDL_sinf(cmd.camera_x_pitch_radians), SDL_cosf(cmd.camera_x_pitch_radians)};
 
-    line->a[0]  = x_left * rotation_matrix[0] + y * rotation_matrix[2];
-    line->a[1]  = x_left * rotation_matrix[1] + y * rotation_matrix[3];
-    line->b[0]  = x_right * rotation_matrix[0] + y * rotation_matrix[2];
-    line->b[1]  = x_right * rotation_matrix[1] + y * rotation_matrix[3];
-    line->size  = GuiLine::Size::Small;
-    line->color = GuiLine::Color::Yellow;
-    line++;
+    dst[56 + i] = {
+        {x_left * rotation_matrix[0] + y * rotation_matrix[2], x_left * rotation_matrix[1] + y * rotation_matrix[3]},
+        {x_right * rotation_matrix[0] + y * rotation_matrix[2], x_right * rotation_matrix[1] + y * rotation_matrix[3]},
+        GuiLine::Size::Small,
+        GuiLine::Color::Yellow,
+    };
   }
-
-  return r;
 }
 
-ArrayView<GuiHeightRulerText> generate_gui_height_ruler_text(struct GenerateGuiLinesCommand& cmd)
+void generate_gui_height_ruler_text(struct GenerateGuiLinesCommand& cmd, GuiHeightRulerText* dst, int* count)
 {
-  ArrayView<GuiHeightRulerText> r{};
-  r.count = 12;
-  r.data  = cmd.allocator->allocate_back<GuiHeightRulerText>(r.count);
+  if (nullptr == dst)
+  {
+    *count = 12;
+    return;
+  }
 
   float y_zeroed      = line_to_pixel_length(0.88f - (cmd.player_y_location_meters / 8.0f), cmd.screen_extent2D.height);
   float y_step        = line_to_pixel_length(0.2f, cmd.screen_extent2D.height);
@@ -223,10 +199,10 @@ ArrayView<GuiHeightRulerText> generate_gui_height_ruler_text(struct GenerateGuiL
   {
     int y_step_modifier = (i < 4) ? (-1 * i) : (i - 3);
 
-    r.data[i].offset[0] = x_offset_left;
-    r.data[i].offset[1] = y_zeroed + (y_step_modifier * y_step);
-    r.data[i].value     = -5 * y_step_modifier;
-    r.data[i].size      = size;
+    dst[i].offset[0] = x_offset_left;
+    dst[i].offset[1] = y_zeroed + (y_step_modifier * y_step);
+    dst[i].value     = -5 * y_step_modifier;
+    dst[i].size      = size;
   }
 
   // -------- right side --------
@@ -238,20 +214,20 @@ ArrayView<GuiHeightRulerText> generate_gui_height_ruler_text(struct GenerateGuiL
 
     float additional_character_offset = ((SDL_abs(value) > 9) ? 6.0f : 0.0f) + ((value < 0) ? 6.8f : 0.0f);
 
-    r.data[idx].offset[0] = x_offset_right - additional_character_offset;
-    r.data[idx].offset[1] = y_zeroed + (y_step_modifier * y_step);
-    r.data[idx].value     = value;
-    r.data[idx].size      = size;
+    dst[idx].offset[0] = x_offset_right - additional_character_offset;
+    dst[idx].offset[1] = y_zeroed + (y_step_modifier * y_step);
+    dst[idx].value     = value;
+    dst[idx].size      = size;
   }
-
-  return r;
 }
 
-ArrayView<GuiHeightRulerText> generate_gui_tilt_ruler_text(struct GenerateGuiLinesCommand& cmd)
+void generate_gui_tilt_ruler_text(struct GenerateGuiLinesCommand& cmd, GuiHeightRulerText* dst, int* count)
 {
-  ArrayView<GuiHeightRulerText> r{};
-  r.count = 7;
-  r.data  = cmd.allocator->allocate_back<GuiHeightRulerText>(r.count);
+  if (nullptr == dst)
+  {
+    *count = 7;
+    return;
+  }
 
   float start_x_offset           = line_to_pixel_length(1.18f, cmd.screen_extent2D.width);
   float start_y_offset           = line_to_pixel_length(1.58f, cmd.screen_extent2D.height);
@@ -262,12 +238,10 @@ ArrayView<GuiHeightRulerText> generate_gui_tilt_ruler_text(struct GenerateGuiLin
 
   for (int i = 0; i < 7; ++i)
   {
-    r.data[i].offset[0] = start_x_offset;
-    r.data[i].offset[1] =
+    dst[i].offset[0] = start_x_offset;
+    dst[i].offset[1] =
         start_y_offset + ((2 - i) * y_distance_between_lines) + (y_pitch_modifier * cmd.camera_y_pitch_radians);
-    r.data[i].value = SDL_abs((4 - i) * step_between_lines);
-    r.data[i].size  = size;
+    dst[i].value = SDL_abs((4 - i) * step_between_lines);
+    dst[i].size  = size;
   }
-
-  return r;
 }

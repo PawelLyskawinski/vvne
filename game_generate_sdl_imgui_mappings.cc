@@ -6,111 +6,27 @@ ArrayView<KeyMapping> generate_sdl_imgui_keymap(Engine::DoubleEndedStack& alloca
   r.count = 21;
   r.data  = allocator.allocate_back<KeyMapping>(r.count);
 
-  KeyMapping* mapping = r.data;
-
-  // :: 0
-  mapping->imgui = ImGuiKey_Tab;
-  mapping->sdl   = SDL_SCANCODE_TAB;
-  mapping++;
-
-  // :: 1
-  mapping->imgui = ImGuiKey_LeftArrow;
-  mapping->sdl   = SDL_SCANCODE_LEFT;
-  mapping++;
-
-  // :: 2
-  mapping->imgui = ImGuiKey_RightArrow;
-  mapping->sdl   = SDL_SCANCODE_RIGHT;
-  mapping++;
-
-  // :: 3
-  mapping->imgui = ImGuiKey_UpArrow;
-  mapping->sdl   = SDL_SCANCODE_UP;
-  mapping++;
-
-  // :: 4
-  mapping->imgui = ImGuiKey_DownArrow;
-  mapping->sdl   = SDL_SCANCODE_DOWN;
-  mapping++;
-
-  // :: 5
-  mapping->imgui = ImGuiKey_PageUp;
-  mapping->sdl   = SDL_SCANCODE_PAGEUP;
-  mapping++;
-
-  // :: 6
-  mapping->imgui = ImGuiKey_PageDown;
-  mapping->sdl   = SDL_SCANCODE_PAGEDOWN;
-  mapping++;
-
-  // :: 7
-  mapping->imgui = ImGuiKey_Home;
-  mapping->sdl   = SDL_SCANCODE_HOME;
-  mapping++;
-
-  // :: 8
-  mapping->imgui = ImGuiKey_End;
-  mapping->sdl   = SDL_SCANCODE_END;
-  mapping++;
-
-  // :: 9
-  mapping->imgui = ImGuiKey_Insert;
-  mapping->sdl   = SDL_SCANCODE_INSERT;
-  mapping++;
-
-  // :: 10
-  mapping->imgui = ImGuiKey_Delete;
-  mapping->sdl   = SDL_SCANCODE_DELETE;
-  mapping++;
-
-  // :: 11
-  mapping->imgui = ImGuiKey_Backspace;
-  mapping->sdl   = SDL_SCANCODE_BACKSPACE;
-  mapping++;
-
-  // :: 12
-  mapping->imgui = ImGuiKey_Space;
-  mapping->sdl   = SDL_SCANCODE_SPACE;
-  mapping++;
-
-  // :: 13
-  mapping->imgui = ImGuiKey_Enter;
-  mapping->sdl   = SDL_SCANCODE_RETURN;
-  mapping++;
-
-  // :: 14
-  mapping->imgui = ImGuiKey_Escape;
-  mapping->sdl   = SDL_SCANCODE_ESCAPE;
-  mapping++;
-
-  // :: 15
-  mapping->imgui = ImGuiKey_A;
-  mapping->sdl   = SDL_SCANCODE_A;
-  mapping++;
-
-  // :: 16
-  mapping->imgui = ImGuiKey_C;
-  mapping->sdl   = SDL_SCANCODE_C;
-  mapping++;
-
-  // :: 17
-  mapping->imgui = ImGuiKey_V;
-  mapping->sdl   = SDL_SCANCODE_V;
-  mapping++;
-
-  // :: 18
-  mapping->imgui = ImGuiKey_X;
-  mapping->sdl   = SDL_SCANCODE_X;
-  mapping++;
-
-  // :: 19
-  mapping->imgui = ImGuiKey_Y;
-  mapping->sdl   = SDL_SCANCODE_Y;
-  mapping++;
-
-  // :: 20
-  mapping->imgui = ImGuiKey_Z;
-  mapping->sdl   = SDL_SCANCODE_Z;
+  r.data[0]  = {ImGuiKey_Tab, SDL_SCANCODE_TAB};
+  r.data[1]  = {ImGuiKey_LeftArrow, SDL_SCANCODE_LEFT};
+  r.data[2]  = {ImGuiKey_RightArrow, SDL_SCANCODE_RIGHT};
+  r.data[3]  = {ImGuiKey_UpArrow, SDL_SCANCODE_UP};
+  r.data[4]  = {ImGuiKey_DownArrow, SDL_SCANCODE_DOWN};
+  r.data[5]  = {ImGuiKey_PageUp, SDL_SCANCODE_PAGEUP};
+  r.data[6]  = {ImGuiKey_PageDown, SDL_SCANCODE_PAGEDOWN};
+  r.data[7]  = {ImGuiKey_Home, SDL_SCANCODE_HOME};
+  r.data[8]  = {ImGuiKey_End, SDL_SCANCODE_END};
+  r.data[9]  = {ImGuiKey_Insert, SDL_SCANCODE_INSERT};
+  r.data[10] = {ImGuiKey_Delete, SDL_SCANCODE_DELETE};
+  r.data[11] = {ImGuiKey_Backspace, SDL_SCANCODE_BACKSPACE};
+  r.data[12] = {ImGuiKey_Space, SDL_SCANCODE_SPACE};
+  r.data[13] = {ImGuiKey_Enter, SDL_SCANCODE_RETURN};
+  r.data[14] = {ImGuiKey_Escape, SDL_SCANCODE_ESCAPE};
+  r.data[15] = {ImGuiKey_A, SDL_SCANCODE_A};
+  r.data[16] = {ImGuiKey_C, SDL_SCANCODE_C};
+  r.data[17] = {ImGuiKey_V, SDL_SCANCODE_V};
+  r.data[18] = {ImGuiKey_X, SDL_SCANCODE_X};
+  r.data[19] = {ImGuiKey_Y, SDL_SCANCODE_Y};
+  r.data[20] = {ImGuiKey_Z, SDL_SCANCODE_Z};
 
   return r;
 }
@@ -121,34 +37,13 @@ ArrayView<CursorMapping> generate_sdl_imgui_cursormap(Engine::DoubleEndedStack& 
   r.count = 7;
   r.data  = allocator.allocate_back<CursorMapping>(r.count);
 
-  CursorMapping* mapping = r.data;
-
-  mapping->imgui = ImGuiMouseCursor_Arrow;
-  mapping->sdl   = SDL_SYSTEM_CURSOR_ARROW;
-  mapping++;
-
-  mapping->imgui = ImGuiMouseCursor_TextInput;
-  mapping->sdl   = SDL_SYSTEM_CURSOR_IBEAM;
-  mapping++;
-
-  mapping->imgui = ImGuiMouseCursor_ResizeAll;
-  mapping->sdl   = SDL_SYSTEM_CURSOR_SIZEALL;
-  mapping++;
-
-  mapping->imgui = ImGuiMouseCursor_ResizeNS;
-  mapping->sdl   = SDL_SYSTEM_CURSOR_SIZENS;
-  mapping++;
-
-  mapping->imgui = ImGuiMouseCursor_ResizeEW;
-  mapping->sdl   = SDL_SYSTEM_CURSOR_SIZEWE;
-  mapping++;
-
-  mapping->imgui = ImGuiMouseCursor_ResizeNESW;
-  mapping->sdl   = SDL_SYSTEM_CURSOR_SIZENESW;
-  mapping++;
-
-  mapping->imgui = ImGuiMouseCursor_ResizeNWSE;
-  mapping->sdl   = SDL_SYSTEM_CURSOR_SIZENWSE;
+  r.data[0] = {ImGuiMouseCursor_Arrow, SDL_SYSTEM_CURSOR_ARROW};
+  r.data[1] = {ImGuiMouseCursor_TextInput, SDL_SYSTEM_CURSOR_IBEAM};
+  r.data[2] = {ImGuiMouseCursor_ResizeAll, SDL_SYSTEM_CURSOR_SIZEALL};
+  r.data[3] = {ImGuiMouseCursor_ResizeNS, SDL_SYSTEM_CURSOR_SIZENS};
+  r.data[4] = {ImGuiMouseCursor_ResizeEW, SDL_SYSTEM_CURSOR_SIZEWE};
+  r.data[5] = {ImGuiMouseCursor_ResizeNESW, SDL_SYSTEM_CURSOR_SIZENESW};
+  r.data[6] = {ImGuiMouseCursor_ResizeNWSE, SDL_SYSTEM_CURSOR_SIZENWSE};
 
   return r;
 }

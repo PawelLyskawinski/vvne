@@ -4,7 +4,43 @@
 #include "gltf.hh"
 #include "imgui.h"
 #include <SDL2/SDL_mouse.h>
+#include <SDL2/SDL_mutex.h>
 #include <SDL2/SDL_scancode.h>
+#include <SDL2/SDL_thread.h>
+
+class LinearAllocator
+{
+public:
+  explicit LinearAllocator(size_t size)
+      : memory(reinterpret_cast<uint8_t*>(SDL_malloc(size)))
+      , bytes_used(0)
+  {
+  }
+
+  ~LinearAllocator()
+  {
+    SDL_free(memory);
+  }
+
+  template <typename T> T* allocate(int count = 1)
+  {
+    T*  result         = reinterpret_cast<T*>(&memory[bytes_used]);
+    int size           = count * sizeof(T);
+    int padding        = (size % 8) ? 8 - (size % 8) : 0;
+    int corrected_size = size + padding;
+    bytes_used += corrected_size;
+    return result;
+  }
+
+  void reset()
+  {
+    bytes_used = 0;
+  }
+
+private:
+  uint8_t* memory;
+  int      bytes_used;
+};
 
 struct LightSources
 {
@@ -96,12 +132,80 @@ struct GenerateSdfFontCommandResult
 
 struct GenerateGuiLinesCommand
 {
-  Engine::DoubleEndedStack* allocator;
-
   float      player_y_location_meters;
   float      camera_x_pitch_radians;
   float      camera_y_pitch_radians;
   VkExtent2D screen_extent2D;
+};
+
+struct Game;
+
+struct ThreadJobData
+{
+  VkCommandBuffer  command;
+  Engine&          engine;
+  Game&            game;
+  LinearAllocator& allocator;
+};
+
+struct Job
+{
+  using Fcn = int (*)(ThreadJobData tjd);
+  const char* name;
+  Fcn         fcn;
+};
+
+struct ThreadJobStatistic
+{
+  int         threadId;
+  float       duration_sec;
+  const char* name;
+};
+
+struct JobSystem
+{
+  // general controls
+  bool thread_end_requested;
+
+  // Workload dispatching
+  Job          jobs[64];
+  int          jobs_max;
+  SDL_atomic_t jobs_taken;
+
+  // Synchronization
+  SDL_cond*    new_jobs_available_cond;
+  SDL_mutex*   new_jobs_available_mutex;
+  SDL_sem*     all_threads_idle_signal;
+  SDL_atomic_t threads_finished_work;
+
+  // Worker thread resources
+  SDL_Thread*   worker_threads[4];
+  VkCommandPool worker_pools[4];
+
+  struct WorkerCommands
+  {
+    VkCommandBuffer commands[64 * 3];
+  } worker_commands[4];
+
+  // profiling data
+  ThreadJobStatistic profile_data[64];
+  SDL_atomic_t       profile_data_count;
+
+  bool               is_profiling_paused;
+  ThreadJobStatistic paused_profile_data[64];
+  int                paused_profile_data_count;
+};
+
+struct RecordedCommandBuffer
+{
+  VkCommandBuffer command;
+  int             subpass;
+};
+
+struct SecondaryCommandBufferSink
+{
+  RecordedCommandBuffer commands[512];
+  SDL_atomic_t          count;
 };
 
 struct Game
@@ -218,8 +322,13 @@ struct Game
   int  lmb_last_cursor_position[2];
   int  lmb_current_cursor_position[2];
 
+  uint32_t                   image_index;
+  JobSystem                  js;
+  SecondaryCommandBufferSink js_sink;
+  float                      current_time_sec;
+
   void startup(Engine& engine);
   void teardown(Engine& engine);
-  void update(Engine& engine, float current_time_sec, float time_delta_since_last_frame);
-  void render(Engine& engine, float current_time_sec);
+  void update(Engine& engine, float time_delta_since_last_frame);
+  void render(Engine& engine);
 };
