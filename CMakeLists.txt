@@ -47,7 +47,7 @@ add_executable(${PROJECT_NAME}
         thirdparty/imgui_draw.cpp
         thirdparty/imgui_internal.h
         thirdparty/linmath.h
-		)
+        ecs.cc ecs.hh)
 
 target_link_libraries(${PROJECT_NAME} ${SDL_LIBRARY} ${VULKAN_LIBRARY})
 if(WIN32)
