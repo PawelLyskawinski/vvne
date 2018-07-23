@@ -864,7 +864,6 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
           const float* src = reinterpret_cast<const float*>(&binary_data[input_start_offset + (input_stride * i)]);
           *dst             = *src;
         }
-
       }
 
       current_sampler.time_frame[0] = current_sampler.times[0];

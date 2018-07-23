@@ -55,11 +55,6 @@ struct NodeParentHierarchy
   uint8_t hierarchy[64];
 };
 
-struct NodeRenderability
-{
-  uint8_t renderability[64];
-};
-
 struct NodeTransforms
 {
   mat4x4 transforms[64];
@@ -84,7 +79,7 @@ struct EntityComponentSystem
   AnimationRotation    animation_rotations[64];
   float                animation_start_times[64];
   NodeParentHierarchy  node_parent_hierarchies[64];
-  NodeRenderability    node_renderabilities[64];
+  uint64_t             node_renderabilities[64];
   NodeTransforms       node_transforms[64];
   JointMatrices        joint_matrices[64];
 };

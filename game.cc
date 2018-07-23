@@ -2034,20 +2034,18 @@ void setup_node_parent_hierarchy(const Entity entity, EntityComponentSystem& ecs
   setup_node_parent_hierarchy(ecs.node_parent_hierarchies[entity.node_parent_hierarchy], model.scene_graph.nodes);
 }
 
-void propagate_node_renderability_hierarchy(int node_idx, uint8_t* dst, const ArrayView<Node>& nodes)
+void propagate_node_renderability_hierarchy(int node_idx, uint64_t& dst, const ArrayView<Node>& nodes)
 {
   for (int child_idx : nodes[node_idx].children)
     propagate_node_renderability_hierarchy(child_idx, dst, nodes);
-  dst[node_idx] = SDL_TRUE;
+  dst |= (1 << node_idx);
 }
 
-void setup_node_renderability_hierarchy(NodeRenderability& dst, const Scene& scene, const ArrayView<Node>& nodes)
+void setup_node_renderability_hierarchy(uint64_t& dst, const Scene& scene, const ArrayView<Node>& nodes)
 {
-  for (uint8_t& iter : dst.renderability)
-    iter = SDL_FALSE;
-
+  dst = 0;
   for (int scene_node_idx : scene.nodes)
-    propagate_node_renderability_hierarchy(scene_node_idx, dst.renderability, nodes);
+    propagate_node_renderability_hierarchy(scene_node_idx, dst, nodes);
 }
 
 void setup_node_renderability_hierarchy(const Entity entity, EntityComponentSystem& ecs,

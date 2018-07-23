@@ -209,6 +209,16 @@ struct SecondaryCommandBufferSink
   SDL_atomic_t          count;
 };
 
+struct RenderEntityParams
+{
+  VkCommandBuffer cmd;
+  mat4x4          projection;
+  mat4x4          view;
+  vec3            camera_position;
+  vec3            color;
+  int             pipeline;
+};
+
 struct Game
 {
   uint8_t lucida_sans_sdf_char_ids[97];
