@@ -145,22 +145,18 @@ void recalculate_node_transforms(const Entity entity, EntityComponentSystem& ecs
                                  mat4x4 world_transform)
 {
   const uint8_t*         node_parent_hierarchy = ecs.node_parent_hierarchies[entity.node_parent_hierarchy].hierarchy;
-  mat4x4*                transforms            = ecs.node_transforms[entity.node_transforms].transforms;
   const ArrayView<Node>& nodes                 = model.scene_graph.nodes;
-  const Scene&           scene                 = model.scene_graph.scenes[0];
 
-  initialize_matrices(transforms, nodes.count);
-  copy_sparse(transforms, world_transform, scene.nodes.data, nodes.count);
+  mat4x4 local_transforms[64] = {};
+  initialize_matrices(local_transforms, nodes.count);
+  copy_sparse(local_transforms, world_transform, = model.scene_graph.scenes[0].nodes.data, nodes.count);
 
   if (not model.scene_graph.skins.empty())
   {
     int skeleton_node_idx   = model.scene_graph.skins[0].skeleton;
     int skeleton_parent_idx = node_parent_hierarchy[skeleton_node_idx];
-    mat4x4_dup(transforms[skeleton_parent_idx], world_transform);
+    mat4x4_dup(local_transforms[skeleton_parent_idx], world_transform);
   }
-
-  mat4x4 local_transforms[64] = {};
-  initialize_matrices(local_transforms, SDL_arraysize(local_transforms));
 
   //////////////////////////////////////////////////////////////////////////////
   /// Apply Rotations
@@ -225,8 +221,10 @@ void recalculate_node_transforms(const Entity entity, EntityComponentSystem& ecs
   {
     if (node_idx == node_parent_hierarchy[node_idx])
       for (int child_idx : nodes[node_idx].children)
-        depth_first_node_transform(transforms, nodes.data, node_idx, child_idx);
+        depth_first_node_transform(local_transforms, nodes.data, node_idx, child_idx);
   }
+
+  SDL_memcpy(ecs.node_transforms[entity.node_transforms].transforms, local_transforms, sizeof(local_transforms));
 }
 
 void recalculate_skinning_matrices(const Entity entity, EntityComponentSystem& ecs, const gltf::RenderableModel& model,
