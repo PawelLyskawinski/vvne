@@ -24,7 +24,7 @@ struct SkinningUbo
   vec3   camera_position;
 };
 
-SkinningUbo to_skinning(const RenderEntityParams& p, mat4x4 transform)
+SkinningUbo to_skinning(RenderEntityParams& p, mat4x4 transform)
 {
   SkinningUbo r = {};
 
@@ -40,8 +40,8 @@ SkinningUbo to_skinning(const RenderEntityParams& p, mat4x4 transform)
 
 } // namespace
 
-void render_skinned_entity(Entity entity, EntityComponentSystem& ecs, gltf::RenderableModel& model, Engine& engine,
-                           const RenderEntityParams& p)
+void render_pbr_entity(Entity entity, EntityComponentSystem &ecs, gltf::RenderableModel &model, Engine &engine,
+                       RenderEntityParams &p)
 {
   const uint64_t bitmap =
       ecs.node_renderabilities[entity.node_renderabilities] & filter_nodes_with_mesh(model.scene_graph.nodes);
@@ -49,7 +49,7 @@ void render_skinned_entity(Entity entity, EntityComponentSystem& ecs, gltf::Rend
 
   for (int node_idx = 0; node_idx < model.scene_graph.nodes.count; ++node_idx)
   {
-    if (bitmap == (bitmap | (1 << node_idx)))
+    if (bitmap != (bitmap | (1 << node_idx)))
       continue;
 
     int         mesh_idx = model.scene_graph.nodes.data[node_idx].mesh;
@@ -65,7 +65,7 @@ void render_skinned_entity(Entity entity, EntityComponentSystem& ecs, gltf::Rend
 }
 
 void render_entity(Entity entity, EntityComponentSystem& ecs, gltf::RenderableModel& model, Engine& engine,
-                   const RenderEntityParams& p)
+                   RenderEntityParams& p)
 {
   mat4x4 projection_view = {};
   mat4x4_mul(projection_view, p.projection, p.view);
@@ -76,7 +76,7 @@ void render_entity(Entity entity, EntityComponentSystem& ecs, gltf::RenderableMo
 
   for (int node_idx = 0; node_idx < model.scene_graph.nodes.count; ++node_idx)
   {
-    if (bitmap == (bitmap | (1 << node_idx)))
+    if (bitmap != (bitmap | (1 << node_idx)))
       continue;
 
     int         mesh_idx = model.scene_graph.nodes.data[node_idx].mesh;
