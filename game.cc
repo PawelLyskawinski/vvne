@@ -1891,6 +1891,9 @@ int render_imgui(ThreadJobData tjd)
                        tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ImGui],
                        VK_SHADER_STAGE_VERTEX_BIT, sizeof(float) * 2, sizeof(float) * 2, translate);
 
+    vkCmdPipelineBarrier(tjd.command, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 0, nullptr);
+
     {
       int vtx_offset = 0;
       int idx_offset = 0;

@@ -1520,6 +1520,14 @@ void Engine::setup_simple_rendering()
             .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
             .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
         },
+        {
+            .srcSubpass    = SimpleRendering::Pass::ImGui,
+            .dstSubpass    = SimpleRendering::Pass::ImGui,
+            .srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+        },
     };
 
     VkRenderPassCreateInfo ci = {
