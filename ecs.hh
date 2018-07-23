@@ -40,12 +40,14 @@ private:
 
 struct AnimationTranslation
 {
-  vec3 animations[64];
+  vec3     animations[64];
+  uint64_t applicability;
 };
 
 struct AnimationRotation
 {
-  quat rotations[64];
+  quat     rotations[64];
+  uint64_t applicability;
 };
 
 struct NodeParentHierarchy
@@ -63,6 +65,11 @@ struct NodeTransforms
   mat4x4 transforms[64];
 };
 
+struct JointMatrices
+{
+  mat4x4 joints[64];
+};
+
 struct EntityComponentSystem
 {
   ComponentBitfield animation_translations_usage;
@@ -71,6 +78,7 @@ struct EntityComponentSystem
   ComponentBitfield node_parent_hierarchies_usage;
   ComponentBitfield node_renderabilities_usage;
   ComponentBitfield node_transforms_usage;
+  ComponentBitfield joint_matrices_usage;
 
   AnimationTranslation animation_translations[64];
   AnimationRotation    animation_rotations[64];
@@ -78,6 +86,7 @@ struct EntityComponentSystem
   NodeParentHierarchy  node_parent_hierarchies[64];
   NodeRenderability    node_renderabilities[64];
   NodeTransforms       node_transforms[64];
+  JointMatrices        joint_matrices[64];
 };
 
 struct Entity
@@ -88,4 +97,16 @@ struct Entity
   int node_parent_hierarchy;
   int node_renderabilities;
   int node_transforms;
+  int joint_matrices;
+
+  void reset()
+  {
+    animation_translation = -1;
+    animation_rotation    = -1;
+    animation_start_time  = -1;
+    node_parent_hierarchy = -1;
+    node_renderabilities  = -1;
+    node_transforms       = -1;
+    joint_matrices        = -1;
+  }
 };

@@ -35,6 +35,7 @@ add_executable(${PROJECT_NAME}
         game_generate_gui_lines.cc
         game_generate_sdf_font.cc
         game_generate_sdl_imgui_mappings.cc
+        game_recalculate_node_transforms.cc
         gltf.hh
         gltf.cc
         cubemap.cc

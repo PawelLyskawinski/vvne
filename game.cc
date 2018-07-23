@@ -720,6 +720,14 @@ GenerateSdfFontCommandResult generate_sdf_font(const GenerateSdfFontCommand& cmd
 ArrayView<KeyMapping>    generate_sdl_imgui_keymap(Engine::DoubleEndedStack& allocator);
 ArrayView<CursorMapping> generate_sdl_imgui_cursormap(Engine::DoubleEndedStack& allocator);
 
+// game_recalculate_node_transforms.cc
+void recalculate_node_transforms(Entity entity, EntityComponentSystem& ecs, const gltf::RenderableModel& model,
+                                 mat4x4 world_transform);
+void recalculate_skinning_matrices(const Entity entity, EntityComponentSystem& ecs, const gltf::RenderableModel& model,
+                                   mat4x4 world_transform);
+
+namespace {
+
 struct WorkerThreadData
 {
   Engine& engine;
@@ -2009,6 +2017,48 @@ int worker_function_decorator(void* arg)
   return 0;
 }
 
+void setup_node_parent_hierarchy(NodeParentHierarchy& dst, const ArrayView<Node>& nodes)
+{
+  uint8_t* hierarchy = dst.hierarchy;
+
+  for (uint8_t i = 0; i < SDL_arraysize(dst.hierarchy); ++i)
+    hierarchy[i] = i;
+
+  for (uint8_t node_idx = 0; node_idx < nodes.count; ++node_idx)
+    for (int child_idx : nodes[node_idx].children)
+      hierarchy[child_idx] = node_idx;
+}
+
+void setup_node_parent_hierarchy(const Entity entity, EntityComponentSystem& ecs, const gltf::RenderableModel& model)
+{
+  setup_node_parent_hierarchy(ecs.node_parent_hierarchies[entity.node_parent_hierarchy], model.scene_graph.nodes);
+}
+
+void propagate_node_renderability_hierarchy(int node_idx, uint8_t* dst, const ArrayView<Node>& nodes)
+{
+  for (int child_idx : nodes[node_idx].children)
+    propagate_node_renderability_hierarchy(child_idx, dst, nodes);
+  dst[node_idx] = SDL_TRUE;
+}
+
+void setup_node_renderability_hierarchy(NodeRenderability& dst, const Scene& scene, const ArrayView<Node>& nodes)
+{
+  for (uint8_t& iter : dst.renderability)
+    iter = SDL_FALSE;
+
+  for (int scene_node_idx : scene.nodes)
+    propagate_node_renderability_hierarchy(scene_node_idx, dst.renderability, nodes);
+}
+
+void setup_node_renderability_hierarchy(const Entity entity, EntityComponentSystem& ecs,
+                                        const gltf::RenderableModel& model)
+{
+  setup_node_renderability_hierarchy(ecs.node_renderabilities[entity.node_renderabilities], model.scene_graph.scenes[0],
+                                     model.scene_graph.nodes);
+}
+
+} // namespace
+
 void Game::startup(Engine& engine)
 {
   //
@@ -2054,15 +2104,63 @@ void Game::startup(Engine& engine)
     }
   }
 
-  //
-  // Proof of concept GLB loader
-  //
   helmet.loadGLB(engine, "../assets/DamagedHelmet.glb");
-  box.loadGLB(engine, "../assets/Box.glb");
-  animatedBox.loadGLB(engine, "../assets/BoxAnimated.glb");
-  riggedSimple.loadGLB(engine, "../assets/RiggedSimple.glb");
-  monster.loadGLB(engine, "../assets/Monster.glb");
+  helmet_entity.reset();
+  helmet_entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
+  helmet_entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
+  helmet_entity.node_transforms       = ecs.node_transforms_usage.allocate();
+
+  setup_node_parent_hierarchy(helmet_entity, ecs, helmet);
+  setup_node_renderability_hierarchy(helmet_entity, ecs, helmet);
+
   robot.loadGLB(engine, "../assets/su-47.glb");
+  robot_entity.reset();
+  robot_entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
+  robot_entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
+  robot_entity.node_transforms       = ecs.node_transforms_usage.allocate();
+
+  setup_node_parent_hierarchy(robot_entity, ecs, robot);
+  setup_node_renderability_hierarchy(robot_entity, ecs, robot);
+
+  monster.loadGLB(engine, "../assets/Monster.glb");
+  monster_entity.reset();
+  monster_entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
+  monster_entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
+  monster_entity.node_transforms       = ecs.node_transforms_usage.allocate();
+  monster_entity.joint_matrices        = ecs.joint_matrices_usage.allocate();
+
+  setup_node_parent_hierarchy(monster_entity, ecs, monster);
+  setup_node_renderability_hierarchy(monster_entity, ecs, monster);
+
+  box.loadGLB(engine, "../assets/Box.glb");
+  for (Entity& entity : box_entities)
+  {
+    entity.reset();
+    entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
+    entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
+    entity.node_transforms       = ecs.node_transforms_usage.allocate();
+    setup_node_parent_hierarchy(entity, ecs, box);
+    setup_node_renderability_hierarchy(entity, ecs, box);
+  }
+
+  animatedBox.loadGLB(engine, "../assets/BoxAnimated.glb");
+  matrioshka_entity.reset();
+  matrioshka_entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
+  matrioshka_entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
+  matrioshka_entity.node_transforms       = ecs.node_transforms_usage.allocate();
+
+  setup_node_parent_hierarchy(matrioshka_entity, ecs, animatedBox);
+  setup_node_renderability_hierarchy(matrioshka_entity, ecs, animatedBox);
+
+  riggedSimple.loadGLB(engine, "../assets/RiggedSimple.glb");
+  rigged_simple_entity.reset();
+  rigged_simple_entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
+  rigged_simple_entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
+  rigged_simple_entity.node_transforms       = ecs.node_transforms_usage.allocate();
+  rigged_simple_entity.joint_matrices        = ecs.joint_matrices_usage.allocate();
+
+  setup_node_parent_hierarchy(rigged_simple_entity, ecs, riggedSimple);
+  setup_node_renderability_hierarchy(rigged_simple_entity, ecs, riggedSimple);
 
   {
     int cubemap_size[2]     = {512, 512};
@@ -2823,6 +2921,17 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
   animate_model(riggedSimple, current_time_sec);
   animate_model(monster, current_time_sec);
   animate_model(robot, current_time_sec);
+
+  mat4x4 world_transform = {};
+  recalculate_node_transforms(helmet_entity, ecs, helmet, world_transform);
+  recalculate_node_transforms(robot_entity, ecs, robot, world_transform);
+  recalculate_node_transforms(monster_entity, ecs, monster, world_transform);
+  recalculate_skinning_matrices(monster_entity, ecs, monster, world_transform);
+  recalculate_node_transforms(matrioshka_entity, ecs, animatedBox, world_transform);
+  recalculate_node_transforms(rigged_simple_entity, ecs, riggedSimple, world_transform);
+  recalculate_skinning_matrices(rigged_simple_entity, ecs, riggedSimple, world_transform);
+  for (Entity& entity : box_entities)
+    recalculate_node_transforms(entity, ecs, box, world_transform);
 
   for (int i = 0; i < 3; ++i)
   {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ecs.hh"
 #include "engine.hh"
 #include "gltf.hh"
 #include "imgui.h"
@@ -326,6 +327,16 @@ struct Game
   JobSystem                  js;
   SecondaryCommandBufferSink js_sink;
   float                      current_time_sec;
+
+  EntityComponentSystem ecs;
+
+  Entity helmet_entity;
+  Entity robot_entity;
+  Entity monster_entity;
+  Entity box_entities[6];
+  Entity matrioshka_entity;
+  Entity rigged_simple_entity;
+
 
   void startup(Engine& engine);
   void teardown(Engine& engine);

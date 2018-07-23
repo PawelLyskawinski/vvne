@@ -39,6 +39,11 @@ template <typename T> struct ArrayView
   {
     return &data[count];
   }
+
+  bool empty() const
+  {
+      return 0 == count;
+  }
 };
 
 struct Material
