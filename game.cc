@@ -726,6 +726,12 @@ void recalculate_node_transforms(Entity entity, EntityComponentSystem& ecs, cons
 void recalculate_skinning_matrices(const Entity entity, EntityComponentSystem& ecs, const gltf::RenderableModel& model,
                                    mat4x4 world_transform);
 
+// game_render_entity.cc
+void render_pbr_entity(Entity entity, EntityComponentSystem &ecs, gltf::RenderableModel &model, Engine &engine,
+                       RenderEntityParams &p);
+void render_entity(Entity entity, EntityComponentSystem& ecs, gltf::RenderableModel& model, Engine& engine,
+                   RenderEntityParams& p);
+
 namespace {
 
 struct WorkerThreadData
@@ -902,33 +908,23 @@ int render_helmet_job(ThreadJobData tjd)
                             SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
   }
 
-  Quaternion orientation;
-  orientation.rotateX(to_rad(180.0));
-
-  mat4x4 translation_matrix = {};
-  mat4x4_translate(translation_matrix, tjd.game.vr_level_goal[0], 0.0f, tjd.game.vr_level_goal[1]);
-
-  mat4x4 rotation_matrix = {};
-  mat4x4_from_quat(rotation_matrix, orientation.data());
-
-  mat4x4 scale_matrix = {};
-  mat4x4_identity(scale_matrix);
-  mat4x4_scale_aniso(scale_matrix, scale_matrix, 1.6f, 1.6f, 1.6f);
-
-  mat4x4 tmp = {};
-  mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-
-  mat4x4 world_transform = {};
-  mat4x4_mul(world_transform, tmp, scale_matrix);
-
-  vec3 color = {0.0f, 0.0f, 0.0f};
-
   vkCmdBindDescriptorSets(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
                           tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 0,
                           1, &tjd.game.helmet_pbr_material_dset, 0, nullptr);
 
-  tjd.game.helmet.renderColored(tjd.engine, tjd.command, tjd.game.projection, tjd.game.view, world_transform, color,
-                                Engine::SimpleRendering::Pipeline::Scene3D, 0, tjd.game.camera_position);
+  RenderEntityParams params = {
+      .cmd      = tjd.command,
+      .color    = {0.0f, 0.0f, 0.0f},
+      .pipeline = Engine::SimpleRendering::Pipeline::Scene3D,
+  };
+
+  mat4x4_dup(params.projection, tjd.game.projection);
+  mat4x4_dup(params.view, tjd.game.view);
+  SDL_memcpy(params.camera_position, tjd.game.camera_position, sizeof(vec3));
+  render_pbr_entity(tjd.game.helmet_entity, tjd.game.ecs, tjd.game.helmet, tjd.engine, params);
+
+  //tjd.game.helmet.renderColored(tjd.engine, tjd.command, tjd.game.projection, tjd.game.view, world_transform, color,
+                                //Engine::SimpleRendering::Pipeline::Scene3D, 0, tjd.game.camera_position);
 
   vkEndCommandBuffer(tjd.command);
   return 0;
@@ -2920,16 +2916,6 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
   animate_model(monster, current_time_sec);
   animate_model(robot, current_time_sec);
 
-  mat4x4 world_transform = {};
-  recalculate_node_transforms(helmet_entity, ecs, helmet, world_transform);
-  recalculate_node_transforms(robot_entity, ecs, robot, world_transform);
-  recalculate_node_transforms(monster_entity, ecs, monster, world_transform);
-  recalculate_skinning_matrices(monster_entity, ecs, monster, world_transform);
-  recalculate_node_transforms(matrioshka_entity, ecs, animatedBox, world_transform);
-  recalculate_node_transforms(rigged_simple_entity, ecs, riggedSimple, world_transform);
-  recalculate_skinning_matrices(rigged_simple_entity, ecs, riggedSimple, world_transform);
-  for (Entity& entity : box_entities)
-    recalculate_node_transforms(entity, ecs, box, world_transform);
 
   for (int i = 0; i < 3; ++i)
   {
@@ -3213,6 +3199,38 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
     ImGui::Separator();
   }
   ImGui::End();
+
+  // !!!!!!!!!!!!!!! TEST !!!!!!!!!!!!!!!
+  // helmet world transform
+  Quaternion orientation;
+  orientation.rotateX(to_rad(180.0));
+
+  mat4x4 translation_matrix = {};
+  mat4x4_translate(translation_matrix, vr_level_goal[0], 0.0f, vr_level_goal[1]);
+
+  mat4x4 rotation_matrix = {};
+  mat4x4_from_quat(rotation_matrix, orientation.data());
+
+  mat4x4 scale_matrix = {};
+  mat4x4_identity(scale_matrix);
+  mat4x4_scale_aniso(scale_matrix, scale_matrix, 1.6f, 1.6f, 1.6f);
+
+  mat4x4 tmp = {};
+  mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+
+  mat4x4 world_transform = {};
+  mat4x4_mul(world_transform, tmp, scale_matrix);
+
+  recalculate_node_transforms(helmet_entity, ecs, helmet, world_transform);
+  recalculate_node_transforms(robot_entity, ecs, robot, world_transform);
+  recalculate_node_transforms(monster_entity, ecs, monster, world_transform);
+  recalculate_skinning_matrices(monster_entity, ecs, monster, world_transform);
+  recalculate_node_transforms(matrioshka_entity, ecs, animatedBox, world_transform);
+  recalculate_node_transforms(rigged_simple_entity, ecs, riggedSimple, world_transform);
+  recalculate_skinning_matrices(rigged_simple_entity, ecs, riggedSimple, world_transform);
+  for (Entity& entity : box_entities)
+    recalculate_node_transforms(entity, ecs, box, world_transform);
+  // !!!!!!!!!!!!!!! TEST !!!!!!!!!!!!!!!
 }
 
 void Game::render(Engine& engine)
