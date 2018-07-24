@@ -8,12 +8,6 @@ void initialize_matrices(mat4x4 matrices[], int n)
     mat4x4_identity(matrices[i]);
 }
 
-void copy_sparse(mat4x4 dst[], mat4x4 src, const int* indices, int n)
-{
-  for (int i = 0; i < n; ++i)
-    mat4x4_dup(dst[indices[i]], src);
-}
-
 void copy_sparse_from_quat(mat4x4 dst[], quat* rotations, uint64_t bitmap)
 {
   for (int i = 0; i < 64; ++i)
@@ -70,7 +64,7 @@ uint64_t gather_properties(const Node* nodes, int n, Node::Property property)
 {
   uint64_t result = 0;
   for (int i = 0; i < n; ++i)
-    if (nodes[n].has(property))
+    if (nodes[i].has(property))
       result |= (1 << i);
   return result;
 }
@@ -147,84 +141,112 @@ void recalculate_node_transforms(const Entity entity, EntityComponentSystem& ecs
   const uint8_t*         node_parent_hierarchy = ecs.node_parent_hierarchies[entity.node_parent_hierarchy].hierarchy;
   const ArrayView<Node>& nodes                 = model.scene_graph.nodes;
 
-  mat4x4 local_transforms[64] = {};
-  initialize_matrices(local_transforms, nodes.count);
-  copy_sparse(local_transforms, world_transform, = model.scene_graph.scenes[0].nodes.data, nodes.count);
+  mat4x4 transforms[64] = {};
+
+  for (int i = 0; i < model.scene_graph.nodes.count; ++i)
+    mat4x4_identity(transforms[i]);
+
+  for (int node_idx : model.scene_graph.scenes[0].nodes)
+    mat4x4_dup(transforms[node_idx], world_transform);
 
   if (not model.scene_graph.skins.empty())
   {
     int skeleton_node_idx   = model.scene_graph.skins[0].skeleton;
     int skeleton_parent_idx = node_parent_hierarchy[skeleton_node_idx];
-    mat4x4_dup(local_transforms[skeleton_parent_idx], world_transform);
-  }
-
-  //////////////////////////////////////////////////////////////////////////////
-  /// Apply Rotations
-  //////////////////////////////////////////////////////////////////////////////
-  {
-    uint64_t rotations_from_animations = 0;
-    uint64_t rotations_from_properties = 0;
-
-    if (0 <= entity.animation_rotation)
-    {
-      AnimationRotation& comp   = ecs.animation_rotations[entity.animation_rotation];
-      rotations_from_animations = comp.applicability;
-      copy_sparse_from_quat(local_transforms, comp.rotations, rotations_from_animations);
-    }
-
-    rotations_from_properties = clear_bits(gather_rotation_properties(nodes), rotations_from_animations);
-
-    quat rotations[64] = {};
-    copy_rotations(rotations, nodes);
-    copy_sparse_from_quat(local_transforms, rotations, rotations_from_properties);
+    mat4x4_dup(transforms[skeleton_parent_idx], world_transform);
   }
 
   //////////////////////////////////////////////////////////////////////////////
   /// Apply Translations
   //////////////////////////////////////////////////////////////////////////////
+  for (int i = 0; i < 64; ++i)
   {
-    uint64_t translations_from_animations = 0;
-    uint64_t translations_from_properties = 0;
-
-    mat4x4 translations[64] = {};
-    initialize_matrices(translations, SDL_arraysize(translations));
+    mat4x4 translation_matrix = {};
+    mat4x4_identity(translation_matrix);
 
     if (0 <= entity.animation_translation)
     {
-      AnimationTranslation& comp   = ecs.animation_translations[entity.animation_translation];
-      translations_from_animations = comp.applicability;
-      translate_sparse(translations, comp.animations, comp.applicability);
+      AnimationTranslation& comp = ecs.animation_translations[entity.animation_translation];
+      if (comp.applicability & (1ULL << i))
+      {
+        float* t = comp.animations[i];
+        mat4x4_translate(translation_matrix, t[0], t[1], t[2]);
+      }
+      else if (nodes[i].has(Node::Property::Translation))
+      {
+        vec3 t = {};
+        copy_vec3(t, nodes[i].translation);
+        mat4x4_translate(translation_matrix, t[0], t[1], t[2]);
+      }
+    }
+    else if (nodes[i].has(Node::Property::Rotation))
+    {
+      vec3 t = {};
+      copy_vec3(t, nodes[i].translation);
+      mat4x4_translate(translation_matrix, t[0], t[1], t[2]);
     }
 
-    translations_from_properties = clear_bits(gather_translation_properties(nodes), translations_from_animations);
+    mat4x4_mul(transforms[i], transforms[i], translation_matrix);
+  }
 
-    vec3 property_translations[64] = {};
-    copy_translations(property_translations, nodes);
-    translate_sparse(translations, property_translations, translations_from_properties);
-    multiply_matrices_into_rhs(translations, local_transforms, SDL_arraysize(translations));
+  //////////////////////////////////////////////////////////////////////////////
+  /// Apply Rotations
+  //////////////////////////////////////////////////////////////////////////////
+  for (int i = 0; i < 64; ++i)
+  {
+    mat4x4 rotation_matrix = {};
+    mat4x4_identity(rotation_matrix);
+
+    if (0 <= entity.animation_rotation)
+    {
+      AnimationRotation& comp = ecs.animation_rotations[entity.animation_rotation];
+      if (comp.applicability & (1ULL << i))
+      {
+        mat4x4_from_quat(rotation_matrix, comp.rotations[i]);
+      }
+      else if (nodes[i].has(Node::Property::Rotation))
+      {
+        quat tmp = {};
+        copy_quat(tmp, nodes[i].rotation);
+        mat4x4_from_quat(rotation_matrix, tmp);
+      }
+    }
+    else if (nodes[i].has(Node::Property::Rotation))
+    {
+      quat tmp = {};
+      copy_quat(tmp, nodes[i].rotation);
+      mat4x4_from_quat(rotation_matrix, tmp);
+    }
+
+    mat4x4_mul(transforms[i], transforms[i], rotation_matrix);
   }
 
   //////////////////////////////////////////////////////////////////////////////
   /// Apply Scaling
   //////////////////////////////////////////////////////////////////////////////
+  for (int i = 0; i < 64; ++i)
   {
-    mat4x4 scales[64] = {};
-    initialize_matrices(scales, SDL_arraysize(scales));
+    mat4x4 scale_matrix = {};
+    mat4x4_identity(scale_matrix);
 
-    vec3 property_scales[64] = {};
-    copy_scales(property_scales, nodes);
-    scale_sparse(scales, property_scales, gather_scale_properties(nodes));
-    multiply_matrices_into_lhs(local_transforms, scales, SDL_arraysize(scales));
+    if (nodes[i].has(Node::Property::Scale))
+    {
+      vec3 s = {};
+      copy_vec3(s, nodes[i].scale);
+      mat4x4_scale_aniso(scale_matrix, scale_matrix, s[0], s[1], s[2]);
+    }
+
+    mat4x4_mul(transforms[i], transforms[i], scale_matrix);
   }
 
   for (uint8_t node_idx = 0; node_idx < nodes.count; ++node_idx)
   {
     if (node_idx == node_parent_hierarchy[node_idx])
       for (int child_idx : nodes[node_idx].children)
-        depth_first_node_transform(local_transforms, nodes.data, node_idx, child_idx);
+        depth_first_node_transform(transforms, nodes.data, node_idx, child_idx);
   }
 
-  SDL_memcpy(ecs.node_transforms[entity.node_transforms].transforms, local_transforms, sizeof(local_transforms));
+  SDL_memcpy(ecs.node_transforms[entity.node_transforms].transforms, transforms, sizeof(transforms));
 }
 
 void recalculate_skinning_matrices(const Entity entity, EntityComponentSystem& ecs, const gltf::RenderableModel& model,
@@ -240,8 +262,12 @@ void recalculate_skinning_matrices(const Entity entity, EntityComponentSystem& e
 
   for (int joint_id = 0; joint_id < skin.joints.count; ++joint_id)
   {
+    mat4x4 transform = {};
+    mat4x4_dup(transform, transforms[skin.joints[joint_id]]);
+
     mat4x4 tmp = {};
-    mat4x4_mul(tmp, inverted_world_transform, transforms[skin.joints[joint_id]]);
+    mat4x4_mul(tmp, inverted_world_transform, transform);
+
     mat4x4_mul(skinning[joint_id], tmp, skin.inverse_bind_matrices[joint_id]);
   }
 }

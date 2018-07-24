@@ -40,27 +40,28 @@ SkinningUbo to_skinning(RenderEntityParams& p, mat4x4 transform)
 
 } // namespace
 
-void render_pbr_entity(Entity entity, EntityComponentSystem &ecs, gltf::RenderableModel &model, Engine &engine,
-                       RenderEntityParams &p)
+void render_pbr_entity(Entity entity, EntityComponentSystem& ecs, gltf::RenderableModel& model, Engine& engine,
+                       RenderEntityParams& p)
 {
   const uint64_t bitmap =
       ecs.node_renderabilities[entity.node_renderabilities] & filter_nodes_with_mesh(model.scene_graph.nodes);
+
   mat4x4* transforms = ecs.node_transforms[entity.node_transforms].transforms;
 
-  for (int node_idx = 0; node_idx < model.scene_graph.nodes.count; ++node_idx)
+  for (int node_idx = 0; node_idx < 64; ++node_idx)
   {
-    if (bitmap != (bitmap | (1 << node_idx)))
-      continue;
+    if (bitmap & (1ULL << node_idx))
+    {
+      int         mesh_idx = model.scene_graph.nodes.data[node_idx].mesh;
+      const Mesh& mesh     = model.scene_graph.meshes.data[mesh_idx];
+      SkinningUbo ubo      = to_skinning(p, transforms[node_idx]);
 
-    int         mesh_idx = model.scene_graph.nodes.data[node_idx].mesh;
-    const Mesh& mesh     = model.scene_graph.meshes.data[mesh_idx];
-    SkinningUbo ubo      = to_skinning(p, transforms[node_idx]);
-
-    vkCmdBindIndexBuffer(p.cmd, engine.gpu_static_geometry.buffer, mesh.indices_offset, mesh.indices_type);
-    vkCmdBindVertexBuffers(p.cmd, 0, 1, &engine.gpu_static_geometry.buffer, &mesh.vertices_offset);
-    vkCmdPushConstants(p.cmd, engine.simple_rendering.pipeline_layouts[p.pipeline],
-                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ubo), &ubo);
-    vkCmdDrawIndexed(p.cmd, mesh.indices_count, 1, 0, 0, 0);
+      vkCmdBindIndexBuffer(p.cmd, engine.gpu_static_geometry.buffer, mesh.indices_offset, mesh.indices_type);
+      vkCmdBindVertexBuffers(p.cmd, 0, 1, &engine.gpu_static_geometry.buffer, &mesh.vertices_offset);
+      vkCmdPushConstants(p.cmd, engine.simple_rendering.pipeline_layouts[p.pipeline],
+                         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ubo), &ubo);
+      vkCmdDrawIndexed(p.cmd, mesh.indices_count, 1, 0, 0, 0);
+    }
   }
 }
 
@@ -74,26 +75,26 @@ void render_entity(Entity entity, EntityComponentSystem& ecs, gltf::RenderableMo
       ecs.node_renderabilities[entity.node_renderabilities] & filter_nodes_with_mesh(model.scene_graph.nodes);
   mat4x4* transforms = ecs.node_transforms[entity.node_transforms].transforms;
 
-  for (int node_idx = 0; node_idx < model.scene_graph.nodes.count; ++node_idx)
+  for (int node_idx = 0; node_idx < 64; ++node_idx)
   {
-    if (bitmap != (bitmap | (1 << node_idx)))
-      continue;
+    if (bitmap & (1ULL << node_idx))
+    {
+      int         mesh_idx = model.scene_graph.nodes.data[node_idx].mesh;
+      const Mesh& mesh     = model.scene_graph.meshes.data[mesh_idx];
 
-    int         mesh_idx = model.scene_graph.nodes.data[node_idx].mesh;
-    const Mesh& mesh     = model.scene_graph.meshes.data[mesh_idx];
+      vkCmdBindIndexBuffer(p.cmd, engine.gpu_static_geometry.buffer, mesh.indices_offset, mesh.indices_type);
+      vkCmdBindVertexBuffers(p.cmd, 0, 1, &engine.gpu_static_geometry.buffer, &mesh.vertices_offset);
 
-    vkCmdBindIndexBuffer(p.cmd, engine.gpu_static_geometry.buffer, mesh.indices_offset, mesh.indices_type);
-    vkCmdBindVertexBuffers(p.cmd, 0, 1, &engine.gpu_static_geometry.buffer, &mesh.vertices_offset);
+      mat4x4 calculated_mvp = {};
+      mat4x4_mul(calculated_mvp, projection_view, transforms[node_idx]);
 
-    mat4x4 calculated_mvp = {};
-    mat4x4_mul(calculated_mvp, projection_view, transforms[node_idx]);
+      vkCmdPushConstants(p.cmd, engine.simple_rendering.pipeline_layouts[p.pipeline], VK_SHADER_STAGE_VERTEX_BIT, 0,
+                         sizeof(mat4x4), calculated_mvp);
 
-    vkCmdPushConstants(p.cmd, engine.simple_rendering.pipeline_layouts[p.pipeline], VK_SHADER_STAGE_VERTEX_BIT, 0,
-                       sizeof(mat4x4), calculated_mvp);
+      vkCmdPushConstants(p.cmd, engine.simple_rendering.pipeline_layouts[p.pipeline], VK_SHADER_STAGE_FRAGMENT_BIT,
+                         sizeof(mat4x4), sizeof(vec3), p.color);
 
-    vkCmdPushConstants(p.cmd, engine.simple_rendering.pipeline_layouts[p.pipeline], VK_SHADER_STAGE_FRAGMENT_BIT,
-                       sizeof(mat4x4), sizeof(vec3), p.color);
-
-    vkCmdDrawIndexed(p.cmd, mesh.indices_count, 1, 0, 0, 0);
+      vkCmdDrawIndexed(p.cmd, mesh.indices_count, 1, 0, 0, 0);
+    }
   }
 }

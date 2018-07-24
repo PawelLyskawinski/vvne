@@ -1487,6 +1487,13 @@ void Engine::setup_simple_rendering()
             .pDepthStencilAttachment = &depth_reference,
         },
         {
+            // robot gui pass
+            .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
+            .colorAttachmentCount = 1,
+            .pColorAttachments    = &color_reference,
+            .pResolveAttachments  = &resolve_reference,
+        },
+        {
             // imgui pass
             .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
             .colorAttachmentCount = 1,
@@ -1514,14 +1521,14 @@ void Engine::setup_simple_rendering()
         },
         {
             .srcSubpass    = SimpleRendering::Pass::Objects3D,
-            .dstSubpass    = SimpleRendering::Pass::ImGui,
+            .dstSubpass    = SimpleRendering::Pass::RobotGui,
             .srcStageMask  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
             .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
             .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
             .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
         },
         {
-            .srcSubpass    = SimpleRendering::Pass::ImGui,
+            .srcSubpass    = SimpleRendering::Pass::RobotGui,
             .dstSubpass    = SimpleRendering::Pass::ImGui,
             .srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
             .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,

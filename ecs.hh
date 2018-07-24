@@ -16,7 +16,7 @@ public:
 
       for (int offset = 0; offset < 64; ++offset)
       {
-        const uint64_t mask = (1u << offset);
+        const uint64_t mask = (1ULL << offset);
 
         if (current_batch & mask)
           continue;
@@ -31,7 +31,8 @@ public:
 
   void free(int i)
   {
-    usage[i / 64] &= ~(1 << (i % 64));
+    if (0 <= i)
+      usage[i / 64] &= ~(1ULL << (i % 64));
   }
 
 private:

@@ -1069,7 +1069,7 @@ void pipeline_reload_simple_rendering_green_gui_reload(Engine& engine)
       .pColorBlendState    = &color_blend_state,
       .layout              = engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGui],
       .renderPass          = engine.simple_rendering.render_pass,
-      .subpass             = Engine::SimpleRendering::Pass::ImGui,
+      .subpass             = Engine::SimpleRendering::Pass::RobotGui,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
@@ -1241,7 +1241,7 @@ void pipeline_reload_simple_rendering_green_gui_lines_reload(Engine& engine)
       .pDynamicState       = &dynamic_state_info,
       .layout              = engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiLines],
       .renderPass          = engine.simple_rendering.render_pass,
-      .subpass             = Engine::SimpleRendering::Pass::ImGui,
+      .subpass             = Engine::SimpleRendering::Pass::RobotGui,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
@@ -1421,7 +1421,7 @@ void pipeline_reload_simple_rendering_green_gui_sdf_reload(Engine& engine)
       .pDynamicState       = &dynamic_state,
       .layout     = engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
       .renderPass = engine.simple_rendering.render_pass,
-      .subpass    = Engine::SimpleRendering::Pass::ImGui,
+      .subpass    = Engine::SimpleRendering::Pass::RobotGui,
       .basePipelineHandle = VK_NULL_HANDLE,
       .basePipelineIndex  = -1,
   };

@@ -166,17 +166,7 @@ namespace gltf {
 struct RenderableModel
 {
   SceneGraph scene_graph;
-
-  bool    animation_enabled;
-  float   animation_start_time;
-  vec3    animation_translations[64];
-  quat    animation_rotations[64];
-  uint8_t animation_properties[64];
-
   void loadGLB(Engine& engine, const char* path) noexcept;
-  void renderColored(Engine& engine, VkCommandBuffer cmd, mat4x4 projection, mat4x4 view, mat4x4 world_transform,
-                     vec3 color, int pipeline, VkDeviceSize joint_ubo_offset, vec3 camera_position) noexcept;
-  void renderRaw(Engine& engine, VkCommandBuffer cmd) const noexcept;
 };
 
 } // namespace gltf
