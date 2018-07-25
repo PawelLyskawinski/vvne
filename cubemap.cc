@@ -513,7 +513,13 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
       vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[i]);
       vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
 
-      game->box.renderRaw(*engine, cmd);
+      const Node& node = game->box.scene_graph.nodes.data[1];
+      Mesh&       mesh = game->box.scene_graph.meshes.data[node.mesh];
+
+      vkCmdBindIndexBuffer(cmd, engine->gpu_static_geometry.buffer, mesh.indices_offset, mesh.indices_type);
+      vkCmdBindVertexBuffers(cmd, 0, 1, &engine->gpu_static_geometry.buffer, &mesh.vertices_offset);
+      vkCmdDrawIndexed(cmd, mesh.indices_count, 1, 0, 0, 0);
+
       if (5 != i)
         vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
     }
@@ -1013,7 +1019,13 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
       vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[i]);
       vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set, 0, nullptr);
       vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
-      game->box.renderRaw(*engine, cmd);
+
+      const Node& node = game->box.scene_graph.nodes.data[1];
+      Mesh&       mesh = game->box.scene_graph.meshes.data[node.mesh];
+
+      vkCmdBindIndexBuffer(cmd, engine->gpu_static_geometry.buffer, mesh.indices_offset, mesh.indices_type);
+      vkCmdBindVertexBuffers(cmd, 0, 1, &engine->gpu_static_geometry.buffer, &mesh.vertices_offset);
+      vkCmdDrawIndexed(cmd, mesh.indices_count, 1, 0, 0, 0);
 
       if (5 != i)
         vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
@@ -1534,7 +1546,13 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
         vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
         vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(float),
                            &roughness);
-        game->box.renderRaw(*engine, cmd);
+
+        const Node& node = game->box.scene_graph.nodes.data[1];
+        Mesh&       mesh = game->box.scene_graph.meshes.data[node.mesh];
+
+        vkCmdBindIndexBuffer(cmd, engine->gpu_static_geometry.buffer, mesh.indices_offset, mesh.indices_type);
+        vkCmdBindVertexBuffers(cmd, 0, 1, &engine->gpu_static_geometry.buffer, &mesh.vertices_offset);
+        vkCmdDrawIndexed(cmd, mesh.indices_count, 1, 0, 0, 0);
 
         if (5 != cube_side)
           vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);

@@ -69,13 +69,14 @@ void hermite_cubic_spline_interpolation(const float a_in[], const float b_in[], 
   }
 }
 
-void animate_model(gltf::RenderableModel& model, float current_time_sec)
+void animate_entity(Entity& entity, EntityComponentSystem& ecs, gltf::RenderableModel& model, float current_time_sec)
 {
-  if (not model.animation_enabled)
+  if (-1 == entity.animation_start_time)
     return;
 
-  const Animation& animation      = model.scene_graph.animations.data[0];
-  const float      animation_time = current_time_sec - model.animation_start_time;
+  const float      animation_start_time = ecs.animation_start_times[entity.animation_start_time];
+  const Animation& animation            = model.scene_graph.animations.data[0];
+  const float      animation_time       = current_time_sec - animation_start_time;
 
   bool is_animation_still_ongoing = false;
   for (const AnimationChannel& channel : animation.channels)
@@ -90,7 +91,14 @@ void animate_model(gltf::RenderableModel& model, float current_time_sec)
 
   if (not is_animation_still_ongoing)
   {
-    model.animation_enabled = false;
+    ecs.animation_start_times_usage.free(entity.animation_start_time);
+    ecs.animation_rotations_usage.free(entity.animation_rotation);
+    ecs.animation_translations_usage.free(entity.animation_translation);
+
+    entity.animation_start_time  = -1;
+    entity.animation_rotation    = -1;
+    entity.animation_translation = -1;
+
     return;
   }
 
@@ -106,11 +114,28 @@ void animate_model(gltf::RenderableModel& model, float current_time_sec)
 
       if (AnimationChannel::Path::Rotation == channel.target_path)
       {
+        AnimationRotation* rotation_component = nullptr;
+
+        if (-1 == entity.animation_rotation)
+        {
+          entity.animation_rotation = ecs.animation_rotations_usage.allocate();
+          rotation_component        = &ecs.animation_rotations[entity.animation_rotation];
+          SDL_memset(rotation_component, 0, sizeof(AnimationRotation));
+        }
+        else
+        {
+          rotation_component = &ecs.animation_rotations[entity.animation_rotation];
+        }
+
+        rotation_component->applicability |= (1ULL << channel.target_node_idx);
+
+        float* animation_rotation = rotation_component->rotations[channel.target_node_idx];
+
         if (AnimationSampler::Interpolation::Linear == sampler.interpolation)
         {
           float* a = &sampler.values[4 * keyframe_lower];
           float* b = &sampler.values[4 * keyframe_upper];
-          float* c = model.animation_rotations[channel.target_node_idx];
+          float* c = animation_rotation;
           lerp(a, b, c, 4, keyframe_uniform_time);
           vec4_norm(c, c);
         }
@@ -118,34 +143,46 @@ void animate_model(gltf::RenderableModel& model, float current_time_sec)
         {
           float* a = &sampler.values[3 * 4 * keyframe_lower];
           float* b = &sampler.values[3 * 4 * keyframe_upper];
-          float* c = model.animation_rotations[channel.target_node_idx];
+          float* c = animation_rotation;
           hermite_cubic_spline_interpolation(a, b, c, 4, keyframe_uniform_time,
                                              sampler.time_frame[1] - sampler.time_frame[0]);
           vec4_norm(c, c);
         }
-
-        model.animation_properties[channel.target_node_idx] |= Node::Property::Rotation;
       }
       else if (AnimationChannel::Path::Translation == channel.target_path)
       {
+        AnimationTranslation* translation_component = nullptr;
+
+        if (-1 == entity.animation_translation)
+        {
+          entity.animation_translation = ecs.animation_translations_usage.allocate();
+          translation_component        = &ecs.animation_translations[entity.animation_translation];
+          SDL_memset(translation_component, 0, sizeof(AnimationTranslation));
+        }
+        else
+        {
+          translation_component = &ecs.animation_translations[entity.animation_translation];
+        }
+
+        translation_component->applicability |= (1ULL << channel.target_node_idx);
+
+        float* animation_translation = translation_component->animations[channel.target_node_idx];
+
         if (AnimationSampler::Interpolation::Linear == sampler.interpolation)
         {
           float* a = &sampler.values[3 * keyframe_lower];
           float* b = &sampler.values[3 * keyframe_upper];
-          float* c = model.animation_translations[channel.target_node_idx];
+          float* c = animation_translation;
           lerp(a, b, c, 3, keyframe_uniform_time);
         }
         else if (AnimationSampler::Interpolation::CubicSpline == sampler.interpolation)
         {
           float* a = &sampler.values[3 * 3 * keyframe_lower];
           float* b = &sampler.values[3 * 3 * keyframe_upper];
-          float* c = model.animation_translations[channel.target_node_idx];
+          float* c = animation_translation;
           hermite_cubic_spline_interpolation(a, b, c, 3, keyframe_uniform_time,
                                              sampler.time_frame[1] - sampler.time_frame[0]);
-          model.animation_properties[channel.target_node_idx] |= Node::Property::Translation;
         }
-
-        model.animation_properties[channel.target_node_idx] |= Node::Property::Translation;
       }
     }
   }
@@ -204,78 +241,6 @@ public:
 private:
   const uint64_t start_ticks;
   PushBuffer     storage;
-};
-
-#if 0
-class CommandBufferSelector
-{
-public:
-  CommandBufferSelector(Engine::SimpleRendering& renderer, int image_index)
-      : collection(renderer.secondary_command_buffers)
-      , image_index(image_index)
-  {
-  }
-
-  VkCommandBuffer select(int pipeline) const
-  {
-    return collection[Engine::SimpleRendering::Pipeline::Count * image_index + pipeline];
-  }
-
-private:
-  VkCommandBuffer* collection;
-  const int        image_index;
-};
-#endif
-
-class ScopedCommand
-{
-public:
-  explicit ScopedCommand(VkCommandBuffer cmd)
-      : cmd(cmd)
-  {
-  }
-
-  ~ScopedCommand()
-  {
-    vkEndCommandBuffer(cmd);
-  }
-
-private:
-  VkCommandBuffer cmd;
-};
-
-class CommandBufferStarter
-{
-public:
-  CommandBufferStarter(VkRenderPass render_pass, VkFramebuffer framebuffer)
-      : render_pass(render_pass)
-      , framebuffer(framebuffer)
-  {
-  }
-
-  ScopedCommand begin(VkCommandBuffer cmd, uint32_t subpass)
-  {
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass           = render_pass,
-        .subpass              = subpass,
-        .framebuffer          = framebuffer,
-        .occlusionQueryEnable = VK_FALSE,
-    };
-
-    VkCommandBufferBeginInfo begin = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(cmd, &begin);
-    return ScopedCommand(cmd);
-  }
-
-private:
-  VkRenderPass  render_pass;
-  VkFramebuffer framebuffer;
 };
 
 class Quaternion
@@ -370,12 +335,6 @@ bool is_any(const bool* array, int n)
     if (array[i])
       return true;
   return false;
-}
-
-void restart_animation(gltf::RenderableModel& model, float current_time_sec)
-{
-  model.animation_enabled    = true;
-  model.animation_start_time = current_time_sec;
 }
 
 struct VrLevelLoadResult
@@ -720,6 +679,20 @@ GenerateSdfFontCommandResult generate_sdf_font(const GenerateSdfFontCommand& cmd
 ArrayView<KeyMapping>    generate_sdl_imgui_keymap(Engine::DoubleEndedStack& allocator);
 ArrayView<CursorMapping> generate_sdl_imgui_cursormap(Engine::DoubleEndedStack& allocator);
 
+// game_recalculate_node_transforms.cc
+void recalculate_node_transforms(Entity entity, EntityComponentSystem& ecs, const gltf::RenderableModel& model,
+                                 mat4x4 world_transform);
+void recalculate_skinning_matrices(Entity entity, EntityComponentSystem& ecs, const gltf::RenderableModel& model,
+                                   mat4x4 world_transform);
+
+// game_render_entity.cc
+void render_pbr_entity(Entity entity, EntityComponentSystem& ecs, gltf::RenderableModel& model, Engine& engine,
+                       RenderEntityParams& p);
+void render_entity(Entity entity, EntityComponentSystem& ecs, gltf::RenderableModel& model, Engine& engine,
+                   RenderEntityParams& p);
+
+namespace {
+
 struct WorkerThreadData
 {
   Engine& engine;
@@ -769,7 +742,12 @@ int render_skybox_job(ThreadJobData tjd)
                      tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Skybox],
                      VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), &push);
 
-  tjd.game.box.renderRaw(tjd.engine, tjd.command);
+  const Node& node = tjd.game.box.scene_graph.nodes.data[1];
+  Mesh&       mesh = tjd.game.box.scene_graph.meshes.data[node.mesh];
+
+  vkCmdBindIndexBuffer(tjd.command, tjd.engine.gpu_static_geometry.buffer, mesh.indices_offset, mesh.indices_type);
+  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer, &mesh.vertices_offset);
+  vkCmdDrawIndexed(tjd.command, mesh.indices_count, 1, 0, 0, 0);
 
   vkEndCommandBuffer(tjd.command);
   return 0;
@@ -810,50 +788,20 @@ int render_robot_job(ThreadJobData tjd)
                             SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
   }
 
-  {
-    Quaternion orientation;
+  vkCmdBindDescriptorSets(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 0,
+                          1, &tjd.game.robot_pbr_material_dset, 0, nullptr);
 
-    {
-      Quaternion standing_pose;
-      standing_pose.rotateX(to_rad(180.0));
+  RenderEntityParams params = {
+      .cmd      = tjd.command,
+      .color    = {0.0f, 0.0f, 0.0f},
+      .pipeline = Engine::SimpleRendering::Pipeline::Scene3D,
+  };
 
-      Quaternion rotate_back;
-      rotate_back.rotateY(tjd.game.player_position[0] < tjd.game.camera_position[0] ? to_rad(180.0f) : to_rad(0.0f));
-
-      float      x_delta = tjd.game.player_position[0] - tjd.game.camera_position[0];
-      float      z_delta = tjd.game.player_position[2] - tjd.game.camera_position[2];
-      Quaternion camera;
-      camera.rotateY(static_cast<float>(SDL_atan(z_delta / x_delta)));
-
-      orientation = standing_pose * rotate_back * camera;
-    }
-
-    vec3 color = {0.0f, 0.0f, 0.0f};
-
-    mat4x4 translation_matrix = {};
-    mat4x4_translate(translation_matrix, tjd.game.player_position[0], tjd.game.player_position[1] - 1.0f,
-                     tjd.game.player_position[2]);
-
-    mat4x4 rotation_matrix = {};
-    mat4x4_from_quat(rotation_matrix, orientation.data());
-
-    mat4x4 scale_matrix = {};
-    mat4x4_identity(scale_matrix);
-    mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.5f, 0.5f, 0.5f);
-
-    mat4x4 tmp = {};
-    mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-
-    mat4x4 world_transform = {};
-    mat4x4_mul(world_transform, tmp, scale_matrix);
-
-    vkCmdBindDescriptorSets(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 0,
-                            1, &tjd.game.robot_pbr_material_dset, 0, nullptr);
-
-    tjd.game.robot.renderColored(tjd.engine, tjd.command, tjd.game.projection, tjd.game.view, world_transform, color,
-                                 Engine::SimpleRendering::Pipeline::Scene3D, 0, tjd.game.camera_position);
-  }
+  mat4x4_dup(params.projection, tjd.game.projection);
+  mat4x4_dup(params.view, tjd.game.view);
+  SDL_memcpy(params.camera_position, tjd.game.camera_position, sizeof(vec3));
+  render_pbr_entity(tjd.game.robot_entity, tjd.game.ecs, tjd.game.robot, tjd.engine, params);
 
   vkEndCommandBuffer(tjd.command);
   return 0;
@@ -894,33 +842,20 @@ int render_helmet_job(ThreadJobData tjd)
                             SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
   }
 
-  Quaternion orientation;
-  orientation.rotateX(to_rad(180.0));
-
-  mat4x4 translation_matrix = {};
-  mat4x4_translate(translation_matrix, tjd.game.vr_level_goal[0], 0.0f, tjd.game.vr_level_goal[1]);
-
-  mat4x4 rotation_matrix = {};
-  mat4x4_from_quat(rotation_matrix, orientation.data());
-
-  mat4x4 scale_matrix = {};
-  mat4x4_identity(scale_matrix);
-  mat4x4_scale_aniso(scale_matrix, scale_matrix, 1.6f, 1.6f, 1.6f);
-
-  mat4x4 tmp = {};
-  mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-
-  mat4x4 world_transform = {};
-  mat4x4_mul(world_transform, tmp, scale_matrix);
-
-  vec3 color = {0.0f, 0.0f, 0.0f};
-
   vkCmdBindDescriptorSets(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
                           tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 0,
                           1, &tjd.game.helmet_pbr_material_dset, 0, nullptr);
 
-  tjd.game.helmet.renderColored(tjd.engine, tjd.command, tjd.game.projection, tjd.game.view, world_transform, color,
-                                Engine::SimpleRendering::Pipeline::Scene3D, 0, tjd.game.camera_position);
+  RenderEntityParams params = {
+      .cmd      = tjd.command,
+      .color    = {0.0f, 0.0f, 0.0f},
+      .pipeline = Engine::SimpleRendering::Pipeline::Scene3D,
+  };
+
+  mat4x4_dup(params.projection, tjd.game.projection);
+  mat4x4_dup(params.view, tjd.game.view);
+  SDL_memcpy(params.camera_position, tjd.game.camera_position, sizeof(vec3));
+  render_pbr_entity(tjd.game.helmet_entity, tjd.game.ecs, tjd.game.helmet, tjd.engine, params);
 
   vkEndCommandBuffer(tjd.command);
   return 0;
@@ -952,32 +887,20 @@ int render_point_light_boxes(ThreadJobData tjd)
   vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
                     tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometry]);
 
-  for (int i = 0; i < tjd.game.pbr_light_sources_cache.count; ++i)
+  RenderEntityParams params = {
+      .cmd      = tjd.command,
+      .color    = {0.0f, 0.0f, 0.0f},
+      .pipeline = Engine::SimpleRendering::Pipeline::ColoredGeometry,
+  };
+
+  mat4x4_dup(params.projection, tjd.game.projection);
+  mat4x4_dup(params.view, tjd.game.view);
+  SDL_memcpy(params.camera_position, tjd.game.camera_position, sizeof(vec3));
+
+  for (unsigned i = 0; i < SDL_arraysize(tjd.game.box_entities); ++i)
   {
-    Quaternion orientation = Quaternion().rotateZ(to_rad(100.0f * tjd.game.current_time_sec)) *
-                             Quaternion().rotateY(to_rad(280.0f * tjd.game.current_time_sec)) *
-                             Quaternion().rotateX(to_rad(60.0f * tjd.game.current_time_sec));
-
-    float* position           = tjd.game.pbr_light_sources_cache.positions[i];
-    mat4x4 translation_matrix = {};
-    mat4x4_translate(translation_matrix, position[0], position[1], position[2]);
-
-    mat4x4 rotation_matrix = {};
-    mat4x4_from_quat(rotation_matrix, orientation.data());
-
-    mat4x4 scale_matrix = {};
-    mat4x4_identity(scale_matrix);
-    mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.05f, 0.05f, 0.05f);
-
-    mat4x4 tmp = {};
-    mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-
-    mat4x4 world_transform = {};
-    mat4x4_mul(world_transform, tmp, scale_matrix);
-
-    float* color = tjd.game.pbr_light_sources_cache.colors[i];
-    tjd.game.box.renderColored(tjd.engine, tjd.command, tjd.game.projection, tjd.game.view, world_transform, color,
-                               Engine::SimpleRendering::Pipeline::ColoredGeometry, 0, tjd.game.camera_position);
+    SDL_memcpy(params.color, tjd.game.pbr_light_sources_cache.colors[i], sizeof(vec3));
+    render_entity(tjd.game.box_entities[i], tjd.game.ecs, tjd.game.box, tjd.engine, params);
   }
 
   vkEndCommandBuffer(tjd.command);
@@ -1010,26 +933,16 @@ int render_matrioshka_box(ThreadJobData tjd)
   vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
                     tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometry]);
 
-  {
-    Quaternion orientation = Quaternion().rotateZ(to_rad(90.0f * tjd.game.current_time_sec / 90.0f)) *
-                             Quaternion().rotateY(to_rad(140.0f * tjd.game.current_time_sec / 30.0f)) *
-                             Quaternion().rotateX(to_rad(90.0f * tjd.game.current_time_sec / 20.0f));
+  RenderEntityParams params = {
+      .cmd      = tjd.command,
+      .color    = {0.0f, 1.0f, 0.0f},
+      .pipeline = Engine::SimpleRendering::Pipeline::ColoredGeometry,
+  };
 
-    mat4x4 translation_matrix = {};
-    mat4x4_translate(translation_matrix, tjd.game.robot_position[0], tjd.game.robot_position[1],
-                     tjd.game.robot_position[2]);
-
-    mat4x4 rotation_matrix = {};
-    mat4x4_from_quat(rotation_matrix, orientation.data());
-
-    mat4x4 world_transform = {};
-    mat4x4_mul(world_transform, translation_matrix, rotation_matrix);
-
-    vec3 color = {0.0, 1.0, 0.0};
-    tjd.game.animatedBox.renderColored(tjd.engine, tjd.command, tjd.game.projection, tjd.game.view, world_transform,
-                                       color, Engine::SimpleRendering::Pipeline::ColoredGeometry, 0,
-                                       tjd.game.camera_position);
-  }
+  mat4x4_dup(params.projection, tjd.game.projection);
+  mat4x4_dup(params.view, tjd.game.view);
+  SDL_memcpy(params.camera_position, tjd.game.camera_position, sizeof(vec3));
+  render_entity(tjd.game.matrioshka_entity, tjd.game.ecs, tjd.game.animatedBox, tjd.engine, params);
 
   vkEndCommandBuffer(tjd.command);
   return 0;
@@ -1130,28 +1043,6 @@ int render_simple_rigged(ThreadJobData tjd)
   vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
                     tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned]);
 
-  Quaternion orientation;
-  orientation.rotateX(to_rad(45.0f));
-
-  mat4x4 translation_matrix = {};
-  mat4x4_translate(translation_matrix, tjd.game.rigged_position[0], tjd.game.rigged_position[1],
-                   tjd.game.rigged_position[2]);
-
-  mat4x4 rotation_matrix = {};
-  mat4x4_from_quat(rotation_matrix, orientation.data());
-
-  mat4x4 scale_matrix = {};
-  mat4x4_identity(scale_matrix);
-  mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.5f, 0.5f, 0.5f);
-
-  mat4x4 tmp = {};
-  mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-
-  mat4x4 world_transform = {};
-  mat4x4_mul(world_transform, tmp, scale_matrix);
-
-  vec3 color = {0.0, 0.0, 1.0};
-
   uint32_t dynamic_offsets[] = {
       static_cast<uint32_t>(tjd.game.rig_skinning_matrices_ubo_offsets[tjd.game.image_index])};
 
@@ -1160,10 +1051,16 @@ int render_simple_rigged(ThreadJobData tjd)
       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned], 0, 1,
       &tjd.game.rig_skinning_matrices_dset, SDL_arraysize(dynamic_offsets), dynamic_offsets);
 
-  tjd.game.riggedSimple.renderColored(tjd.engine, tjd.command, tjd.game.projection, tjd.game.view, world_transform,
-                                      color, Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned,
-                                      tjd.game.rig_skinning_matrices_ubo_offsets[tjd.game.image_index],
-                                      tjd.game.camera_position);
+  RenderEntityParams params = {
+      .cmd      = tjd.command,
+      .color    = {0.0f, 0.0f, 0.0f},
+      .pipeline = Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned,
+  };
+
+  mat4x4_dup(params.projection, tjd.game.projection);
+  mat4x4_dup(params.view, tjd.game.view);
+  SDL_memcpy(params.camera_position, tjd.game.camera_position, sizeof(vec3));
+  render_entity(tjd.game.rigged_simple_entity, tjd.game.ecs, tjd.game.riggedSimple, tjd.engine, params);
 
   vkEndCommandBuffer(tjd.command);
   return 0;
@@ -1195,39 +1092,24 @@ int render_monster_rigged(ThreadJobData tjd)
   vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
                     tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned]);
 
-  Quaternion orientation;
-  orientation.rotateX(to_rad(45.0f));
-
-  mat4x4 translation_matrix = {};
-  mat4x4_translate(translation_matrix, -2.0f, 0.5f, 0.5f);
-
-  mat4x4 rotation_matrix = {};
-  mat4x4_from_quat(rotation_matrix, orientation.data());
-
-  mat4x4 scale_matrix = {};
-  mat4x4_identity(scale_matrix);
-  float factor = 0.025f;
-  mat4x4_scale_aniso(scale_matrix, scale_matrix, factor, factor, factor);
-
-  mat4x4 tmp = {};
-  mat4x4_mul(tmp, rotation_matrix, translation_matrix);
-
-  mat4x4 world_transform = {};
-  mat4x4_mul(world_transform, tmp, scale_matrix);
-
-  vec3 color = {1.0, 1.0, 1.0};
-
   uint32_t dynamic_offsets[] = {
       static_cast<uint32_t>(tjd.game.monster_skinning_matrices_ubo_offsets[tjd.game.image_index])};
+
   vkCmdBindDescriptorSets(
       tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned], 0, 1,
       &tjd.game.monster_skinning_matrices_dset, SDL_arraysize(dynamic_offsets), dynamic_offsets);
 
-  tjd.game.monster.renderColored(tjd.engine, tjd.command, tjd.game.projection, tjd.game.view, world_transform, color,
-                                 Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned,
-                                 tjd.game.monster_skinning_matrices_ubo_offsets[tjd.game.image_index],
-                                 tjd.game.camera_position);
+  RenderEntityParams params = {
+      .cmd      = tjd.command,
+      .color    = {1.0f, 1.0f, 1.0f},
+      .pipeline = Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned,
+  };
+
+  mat4x4_dup(params.projection, tjd.game.projection);
+  mat4x4_dup(params.view, tjd.game.view);
+  SDL_memcpy(params.camera_position, tjd.game.camera_position, sizeof(vec3));
+  render_entity(tjd.game.monster_entity, tjd.game.ecs, tjd.game.monster, tjd.engine, params);
 
   vkEndCommandBuffer(tjd.command);
   return 0;
@@ -1237,13 +1119,13 @@ int render_radar(ThreadJobData tjd)
 {
   RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
   result.command                = tjd.command;
-  result.subpass                = Engine::SimpleRendering::Pass::ImGui;
+  result.subpass                = Engine::SimpleRendering::Pass::RobotGui;
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
         .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::ImGui,
+        .subpass     = Engine::SimpleRendering::Pass::RobotGui,
         .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
     };
 
@@ -1331,13 +1213,13 @@ int render_robot_gui_lines(ThreadJobData tjd)
 {
   RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
   result.command                = tjd.command;
-  result.subpass                = Engine::SimpleRendering::Pass::ImGui;
+  result.subpass                = Engine::SimpleRendering::Pass::RobotGui;
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
         .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::ImGui,
+        .subpass     = Engine::SimpleRendering::Pass::RobotGui,
         .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
     };
 
@@ -1453,13 +1335,13 @@ int render_height_ruler_text(ThreadJobData tjd)
 {
   RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
   result.command                = tjd.command;
-  result.subpass                = Engine::SimpleRendering::Pass::ImGui;
+  result.subpass                = Engine::SimpleRendering::Pass::RobotGui;
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
         .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::ImGui,
+        .subpass     = Engine::SimpleRendering::Pass::RobotGui,
         .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
     };
 
@@ -1577,13 +1459,13 @@ int render_tilt_ruler_text(ThreadJobData tjd)
 {
   RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
   result.command                = tjd.command;
-  result.subpass                = Engine::SimpleRendering::Pass::ImGui;
+  result.subpass                = Engine::SimpleRendering::Pass::RobotGui;
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
         .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::ImGui,
+        .subpass     = Engine::SimpleRendering::Pass::RobotGui,
         .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
     };
 
@@ -1701,13 +1583,13 @@ int render_hello_world_text(ThreadJobData tjd)
 {
   RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
   result.command                = tjd.command;
-  result.subpass                = Engine::SimpleRendering::Pass::ImGui;
+  result.subpass                = Engine::SimpleRendering::Pass::RobotGui;
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
         .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::ImGui,
+        .subpass     = Engine::SimpleRendering::Pass::RobotGui,
         .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
     };
 
@@ -1951,12 +1833,12 @@ void worker_function(WorkerThreadData td)
 
   LinearAllocator allocator(1024);
 
+  SDL_LockMutex(job_system.new_jobs_available_mutex);
   while (not job_system.thread_end_requested)
   {
     //
     // As a proof of concept this signal will always be broadcasted on next render frame.
     //
-    SDL_LockMutex(job_system.new_jobs_available_mutex);
     SDL_CondWait(job_system.new_jobs_available_cond, job_system.new_jobs_available_mutex);
     SDL_UnlockMutex(job_system.new_jobs_available_mutex);
 
@@ -1995,9 +1877,11 @@ void worker_function(WorkerThreadData td)
       job_idx = SDL_AtomicIncRef(&td.game.js.jobs_taken);
     }
 
+    SDL_LockMutex(job_system.new_jobs_available_mutex);
     if ((SDL_arraysize(job_system.worker_threads) - 1) == SDL_AtomicIncRef(&job_system.threads_finished_work))
       SDL_SemPost(job_system.all_threads_idle_signal);
   }
+  SDL_UnlockMutex(job_system.new_jobs_available_mutex);
 }
 
 int worker_function_decorator(void* arg)
@@ -2005,6 +1889,53 @@ int worker_function_decorator(void* arg)
   worker_function(*reinterpret_cast<WorkerThreadData*>(arg));
   return 0;
 }
+
+void depth_first_node_parent_hierarchy(uint8_t* hierarchy, const Node* nodes, uint8_t parent_idx, uint8_t node_idx)
+{
+  for (int child_idx : nodes[node_idx].children)
+    depth_first_node_parent_hierarchy(hierarchy, nodes, node_idx, static_cast<uint8_t>(child_idx));
+  hierarchy[node_idx] = parent_idx;
+}
+
+void setup_node_parent_hierarchy(NodeParentHierarchy& dst, const ArrayView<Node>& nodes)
+{
+  uint8_t* hierarchy = dst.hierarchy;
+
+  for (uint8_t i = 0; i < SDL_arraysize(dst.hierarchy); ++i)
+    hierarchy[i] = i;
+
+  for (uint8_t node_idx = 0; node_idx < nodes.count; ++node_idx)
+    for (int child_idx : nodes[node_idx].children)
+      depth_first_node_parent_hierarchy(hierarchy, nodes.data, node_idx, static_cast<uint8_t>(child_idx));
+}
+
+void setup_node_parent_hierarchy(const Entity entity, EntityComponentSystem& ecs, const gltf::RenderableModel& model)
+{
+  setup_node_parent_hierarchy(ecs.node_parent_hierarchies[entity.node_parent_hierarchy], model.scene_graph.nodes);
+}
+
+void propagate_node_renderability_hierarchy(int node_idx, uint64_t& dst, const ArrayView<Node>& nodes)
+{
+  for (int child_idx : nodes[node_idx].children)
+    propagate_node_renderability_hierarchy(child_idx, dst, nodes);
+  dst |= (1 << node_idx);
+}
+
+void setup_node_renderability_hierarchy(uint64_t& dst, const Scene& scene, const ArrayView<Node>& nodes)
+{
+  dst = 0;
+  for (int scene_node_idx : scene.nodes)
+    propagate_node_renderability_hierarchy(scene_node_idx, dst, nodes);
+}
+
+void setup_node_renderability_hierarchy(const Entity entity, EntityComponentSystem& ecs,
+                                        const gltf::RenderableModel& model)
+{
+  setup_node_renderability_hierarchy(ecs.node_renderabilities[entity.node_renderabilities], model.scene_graph.scenes[0],
+                                     model.scene_graph.nodes);
+}
+
+} // namespace
 
 void Game::startup(Engine& engine)
 {
@@ -2051,15 +1982,63 @@ void Game::startup(Engine& engine)
     }
   }
 
-  //
-  // Proof of concept GLB loader
-  //
   helmet.loadGLB(engine, "../assets/DamagedHelmet.glb");
-  box.loadGLB(engine, "../assets/Box.glb");
-  animatedBox.loadGLB(engine, "../assets/BoxAnimated.glb");
-  riggedSimple.loadGLB(engine, "../assets/RiggedSimple.glb");
-  monster.loadGLB(engine, "../assets/Monster.glb");
+  helmet_entity.reset();
+  helmet_entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
+  helmet_entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
+  helmet_entity.node_transforms       = ecs.node_transforms_usage.allocate();
+
+  setup_node_parent_hierarchy(helmet_entity, ecs, helmet);
+  setup_node_renderability_hierarchy(helmet_entity, ecs, helmet);
+
   robot.loadGLB(engine, "../assets/su-47.glb");
+  robot_entity.reset();
+  robot_entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
+  robot_entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
+  robot_entity.node_transforms       = ecs.node_transforms_usage.allocate();
+
+  setup_node_parent_hierarchy(robot_entity, ecs, robot);
+  setup_node_renderability_hierarchy(robot_entity, ecs, robot);
+
+  monster.loadGLB(engine, "../assets/Monster.glb");
+  monster_entity.reset();
+  monster_entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
+  monster_entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
+  monster_entity.node_transforms       = ecs.node_transforms_usage.allocate();
+  monster_entity.joint_matrices        = ecs.joint_matrices_usage.allocate();
+
+  setup_node_parent_hierarchy(monster_entity, ecs, monster);
+  setup_node_renderability_hierarchy(monster_entity, ecs, monster);
+
+  box.loadGLB(engine, "../assets/Box.glb");
+  for (Entity& entity : box_entities)
+  {
+    entity.reset();
+    entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
+    entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
+    entity.node_transforms       = ecs.node_transforms_usage.allocate();
+    setup_node_parent_hierarchy(entity, ecs, box);
+    setup_node_renderability_hierarchy(entity, ecs, box);
+  }
+
+  animatedBox.loadGLB(engine, "../assets/BoxAnimated.glb");
+  matrioshka_entity.reset();
+  matrioshka_entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
+  matrioshka_entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
+  matrioshka_entity.node_transforms       = ecs.node_transforms_usage.allocate();
+
+  setup_node_parent_hierarchy(matrioshka_entity, ecs, animatedBox);
+  setup_node_renderability_hierarchy(matrioshka_entity, ecs, animatedBox);
+
+  riggedSimple.loadGLB(engine, "../assets/RiggedSimple.glb");
+  rigged_simple_entity.reset();
+  rigged_simple_entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
+  rigged_simple_entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
+  rigged_simple_entity.node_transforms       = ecs.node_transforms_usage.allocate();
+  rigged_simple_entity.joint_matrices        = ecs.joint_matrices_usage.allocate();
+
+  setup_node_parent_hierarchy(rigged_simple_entity, ecs, riggedSimple);
+  setup_node_renderability_hierarchy(rigged_simple_entity, ecs, riggedSimple);
 
   {
     int cubemap_size[2]     = {512, 512};
@@ -2595,7 +2574,6 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
   ImGuiIO& io             = ImGui::GetIO();
   bool     quit_requested = false;
 
-  // Event dispatching
   {
     SDL_Event event = {};
     while (SDL_PollEvent(&event))
@@ -2775,9 +2753,9 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
 
   if (ImGui::CollapsingHeader("Timings"))
   {
-    ImGui::PlotHistogram("update times", update_times, SDL_arraysize(update_times), 0, nullptr, 0.0, 0.001,
+    ImGui::PlotHistogram("update times", update_times, SDL_arraysize(update_times), 0, nullptr, 0.0, 0.005,
                          ImVec2(300, 20));
-    ImGui::PlotHistogram("render times", render_times, SDL_arraysize(render_times), 0, nullptr, 0.0, 0.03,
+    ImGui::PlotHistogram("render times", render_times, SDL_arraysize(render_times), 0, nullptr, 0.0, 0.005,
                          ImVec2(300, 20));
 
     ImGui::Text("Average update time: %f", avg(update_times, SDL_arraysize(update_times)));
@@ -2786,26 +2764,32 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
 
   if (ImGui::CollapsingHeader("Animations"))
   {
-    auto print_animation_stat = [](gltf::RenderableModel& model, float current_time_sec) {
-      ImGui::Text("animation: %s, %.2f", model.animation_enabled ? "ongoing" : "stopped",
-                  model.animation_enabled ? current_time_sec - model.animation_start_time : 0.0f);
-    };
-
     if (ImGui::Button("restart cube animation"))
-      restart_animation(animatedBox, current_time_sec);
-    print_animation_stat(animatedBox, current_time_sec);
+    {
+      if (-1 == matrioshka_entity.animation_start_time)
+      {
+        matrioshka_entity.animation_start_time                            = ecs.animation_start_times_usage.allocate();
+        ecs.animation_start_times[matrioshka_entity.animation_start_time] = current_time_sec;
+      }
+    }
 
     if (ImGui::Button("restart rigged animation"))
-      restart_animation(riggedSimple, current_time_sec);
-    print_animation_stat(riggedSimple, current_time_sec);
+    {
+      if (-1 == rigged_simple_entity.animation_start_time)
+      {
+        rigged_simple_entity.animation_start_time = ecs.animation_start_times_usage.allocate();
+        ecs.animation_start_times[rigged_simple_entity.animation_start_time] = current_time_sec;
+      }
+    }
 
     if (ImGui::Button("monster animation"))
-      restart_animation(monster, current_time_sec);
-    print_animation_stat(monster, current_time_sec);
-
-    if (ImGui::Button("robot animation"))
-      restart_animation(robot, current_time_sec);
-    print_animation_stat(robot, current_time_sec);
+    {
+      if (-1 == monster_entity.animation_start_time)
+      {
+        monster_entity.animation_start_time                            = ecs.animation_start_times_usage.allocate();
+        ecs.animation_start_times[monster_entity.animation_start_time] = current_time_sec;
+      }
+    }
   }
 
   if (ImGui::CollapsingHeader("Gameplay features"))
@@ -2815,11 +2799,6 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
     ImGui::Text("%d %d | %d %d", lmb_last_cursor_position[0], lmb_last_cursor_position[1],
                 lmb_current_cursor_position[0], lmb_current_cursor_position[1]);
   }
-
-  animate_model(animatedBox, current_time_sec);
-  animate_model(riggedSimple, current_time_sec);
-  animate_model(monster, current_time_sec);
-  animate_model(robot, current_time_sec);
 
   for (int i = 0; i < 3; ++i)
   {
@@ -3103,6 +3082,152 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
     ImGui::Separator();
   }
   ImGui::End();
+
+  mat4x4 world_transform = {};
+
+  {
+    Quaternion orientation;
+    orientation.rotateX(to_rad(180.0));
+
+    mat4x4 translation_matrix = {};
+    mat4x4_translate(translation_matrix, vr_level_goal[0], 0.0f, vr_level_goal[1]);
+
+    mat4x4 rotation_matrix = {};
+    mat4x4_from_quat(rotation_matrix, orientation.data());
+
+    mat4x4 scale_matrix = {};
+    mat4x4_identity(scale_matrix);
+    mat4x4_scale_aniso(scale_matrix, scale_matrix, 1.6f, 1.6f, 1.6f);
+
+    mat4x4 tmp = {};
+    mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+    mat4x4_mul(world_transform, tmp, scale_matrix);
+  }
+
+  recalculate_node_transforms(helmet_entity, ecs, helmet, world_transform);
+
+  {
+    Quaternion orientation;
+
+    {
+      Quaternion standing_pose;
+      standing_pose.rotateX(to_rad(180.0));
+
+      Quaternion rotate_back;
+      rotate_back.rotateY(player_position[0] < camera_position[0] ? to_rad(180.0f) : to_rad(0.0f));
+
+      float      x_delta = player_position[0] - camera_position[0];
+      float      z_delta = player_position[2] - camera_position[2];
+      Quaternion camera;
+      camera.rotateY(static_cast<float>(SDL_atan(z_delta / x_delta)));
+
+      orientation = standing_pose * rotate_back * camera;
+    }
+
+    mat4x4 translation_matrix = {};
+    mat4x4_translate(translation_matrix, player_position[0], player_position[1] - 1.0f, player_position[2]);
+
+    mat4x4 rotation_matrix = {};
+    mat4x4_from_quat(rotation_matrix, orientation.data());
+
+    mat4x4 scale_matrix = {};
+    mat4x4_identity(scale_matrix);
+    mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.5f, 0.5f, 0.5f);
+
+    mat4x4 tmp = {};
+    mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+    mat4x4_mul(world_transform, tmp, scale_matrix);
+  }
+
+  recalculate_node_transforms(robot_entity, ecs, robot, world_transform);
+
+  {
+    Quaternion orientation;
+    orientation.rotateX(to_rad(45.0f));
+
+    mat4x4 translation_matrix = {};
+    mat4x4_translate(translation_matrix, -2.0f, 0.5f, 0.5f);
+
+    mat4x4 rotation_matrix = {};
+    mat4x4_from_quat(rotation_matrix, orientation.data());
+
+    mat4x4 scale_matrix = {};
+    mat4x4_identity(scale_matrix);
+    float factor = 0.025f;
+    mat4x4_scale_aniso(scale_matrix, scale_matrix, factor, factor, factor);
+
+    mat4x4 tmp = {};
+    mat4x4_mul(tmp, rotation_matrix, translation_matrix);
+    mat4x4_mul(world_transform, tmp, scale_matrix);
+  }
+
+  animate_entity(monster_entity, ecs, monster, current_time_sec);
+  recalculate_node_transforms(monster_entity, ecs, monster, world_transform);
+  recalculate_skinning_matrices(monster_entity, ecs, monster, world_transform);
+
+  {
+    Quaternion orientation;
+    orientation.rotateX(to_rad(45.0f));
+
+    mat4x4 translation_matrix = {};
+    mat4x4_translate(translation_matrix, rigged_position[0], rigged_position[1], rigged_position[2]);
+
+    mat4x4 rotation_matrix = {};
+    mat4x4_from_quat(rotation_matrix, orientation.data());
+
+    mat4x4 scale_matrix = {};
+    mat4x4_identity(scale_matrix);
+    mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.5f, 0.5f, 0.5f);
+
+    mat4x4 tmp = {};
+    mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+    mat4x4_mul(world_transform, tmp, scale_matrix);
+  }
+
+  animate_entity(rigged_simple_entity, ecs, riggedSimple, current_time_sec);
+  recalculate_node_transforms(rigged_simple_entity, ecs, riggedSimple, world_transform);
+  recalculate_skinning_matrices(rigged_simple_entity, ecs, riggedSimple, world_transform);
+
+  for (int i = 0; i < pbr_light_sources_cache.count; ++i)
+  {
+    Quaternion orientation = Quaternion().rotateZ(to_rad(100.0f * current_time_sec)) *
+                             Quaternion().rotateY(to_rad(280.0f * current_time_sec)) *
+                             Quaternion().rotateX(to_rad(60.0f * current_time_sec));
+
+    float* position = pbr_light_sources_cache.positions[i];
+
+    mat4x4 translation_matrix = {};
+    mat4x4_translate(translation_matrix, position[0], position[1], position[2]);
+
+    mat4x4 rotation_matrix = {};
+    mat4x4_from_quat(rotation_matrix, orientation.data());
+
+    mat4x4 scale_matrix = {};
+    mat4x4_identity(scale_matrix);
+    mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.05f, 0.05f, 0.05f);
+
+    mat4x4 tmp = {};
+    mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+    mat4x4_mul(world_transform, tmp, scale_matrix);
+
+    recalculate_node_transforms(box_entities[i], ecs, box, world_transform);
+  }
+
+  {
+    Quaternion orientation = Quaternion().rotateZ(to_rad(90.0f * current_time_sec / 90.0f)) *
+                             Quaternion().rotateY(to_rad(140.0f * current_time_sec / 30.0f)) *
+                             Quaternion().rotateX(to_rad(90.0f * current_time_sec / 20.0f));
+
+    mat4x4 translation_matrix = {};
+    mat4x4_translate(translation_matrix, robot_position[0], robot_position[1], robot_position[2]);
+
+    mat4x4 rotation_matrix = {};
+    mat4x4_from_quat(rotation_matrix, orientation.data());
+    mat4x4_mul(world_transform, translation_matrix, rotation_matrix);
+  }
+
+  animate_entity(matrioshka_entity, ecs, animatedBox, current_time_sec);
+  recalculate_node_transforms(matrioshka_entity, ecs, animatedBox, world_transform);
 }
 
 void Game::render(Engine& engine)
@@ -3118,6 +3243,22 @@ void Game::render(Engine& engine)
 
   update_ubo(engine.generic_handles.device, engine.ubo_host_visible.memory, sizeof(LightSources),
              pbr_dynamic_lights_ubo_offsets[image_index], &pbr_light_sources_cache);
+
+  //
+  // rigged simple skinning matrices
+  //
+  update_ubo(engine.generic_handles.device, engine.ubo_host_visible.memory,
+             SDL_arraysize(ecs.joint_matrices[0].joints) * sizeof(mat4x4),
+             rig_skinning_matrices_ubo_offsets[image_index],
+             ecs.joint_matrices[rigged_simple_entity.joint_matrices].joints);
+
+  //
+  // monster skinning matrices
+  //
+  update_ubo(engine.generic_handles.device, engine.ubo_host_visible.memory,
+             SDL_arraysize(ecs.joint_matrices[0].joints) * sizeof(mat4x4),
+             monster_skinning_matrices_ubo_offsets[image_index],
+             ecs.joint_matrices[monster_entity.joint_matrices].joints);
 
   {
     GenerateGuiLinesCommand cmd = {
@@ -3223,12 +3364,15 @@ void Game::render(Engine& engine)
   js.jobs[9]  = {"gui tilt ruler text", render_tilt_ruler_text};
   js.jobs[10] = {"hello world", render_hello_world_text};
   js.jobs[11] = {"imgui", render_imgui};
-  // js.jobs[11] = render_simple_rigged;
-  // js.jobs[12] = render_monster_rigged;
-  js.jobs_max = 12;
+  js.jobs[12] = {"simple rigged", render_simple_rigged};
+  js.jobs[13] = {"monster", render_monster_rigged};
+  js.jobs_max = 14;
 
   SDL_AtomicSet(&js.profile_data_count, 0);
+  SDL_LockMutex(js.new_jobs_available_mutex);
   SDL_CondBroadcast(js.new_jobs_available_cond);
+  SDL_UnlockMutex(js.new_jobs_available_mutex);
+
   SDL_SemWait(js.all_threads_idle_signal);
   SDL_AtomicSet(&js.threads_finished_work, 0);
 
@@ -3274,6 +3418,15 @@ void Game::render(Engine& engine)
   {
     const RecordedCommandBuffer& recordere = js_sink.commands[i];
     if (Engine::SimpleRendering::Pass::Objects3D == recordere.subpass)
+      vkCmdExecuteCommands(cmd, 1, &recordere.command);
+  }
+
+  vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+
+  for (int i = 0; i < all_secondary_count; ++i)
+  {
+    const RecordedCommandBuffer& recordere = js_sink.commands[i];
+    if (Engine::SimpleRendering::Pass::RobotGui == recordere.subpass)
       vkCmdExecuteCommands(cmd, 1, &recordere.command);
   }
 

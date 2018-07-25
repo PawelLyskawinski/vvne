@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ecs.hh"
 #include "engine.hh"
 #include "gltf.hh"
 #include "imgui.h"
@@ -208,6 +209,16 @@ struct SecondaryCommandBufferSink
   SDL_atomic_t          count;
 };
 
+struct RenderEntityParams
+{
+  VkCommandBuffer cmd;
+  mat4x4          projection;
+  mat4x4          view;
+  vec3            camera_position;
+  vec3            color;
+  int             pipeline;
+};
+
 struct Game
 {
   uint8_t lucida_sans_sdf_char_ids[97];
@@ -326,6 +337,16 @@ struct Game
   JobSystem                  js;
   SecondaryCommandBufferSink js_sink;
   float                      current_time_sec;
+
+  EntityComponentSystem ecs;
+
+  Entity helmet_entity;
+  Entity robot_entity;
+  Entity monster_entity;
+  Entity box_entities[6];
+  Entity matrioshka_entity;
+  Entity rigged_simple_entity;
+
 
   void startup(Engine& engine);
   void teardown(Engine& engine);

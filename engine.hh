@@ -159,6 +159,7 @@ struct Engine
       {
         Skybox,
         Objects3D,
+        RobotGui,
         ImGui,
         Count
       };
