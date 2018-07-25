@@ -3228,6 +3228,8 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
 
   animate_entity(matrioshka_entity, ecs, animatedBox, current_time_sec);
   recalculate_node_transforms(matrioshka_entity, ecs, animatedBox, world_transform);
+
+  ImGui::Render();
 }
 
 void Game::render(Engine& engine)
@@ -3240,6 +3242,27 @@ void Game::render(Engine& engine)
   vkResetFences(engine.generic_handles.device, 1, &renderer.submition_fences[image_index]);
 
   FunctionTimer timer(render_times, SDL_arraysize(render_times));
+
+  js.jobs[0]  = {"skybox", render_skybox_job};
+  js.jobs[1]  = {"robot", render_robot_job};
+  js.jobs[2]  = {"helmet", render_helmet_job};
+  js.jobs[3]  = {"point lights", render_point_light_boxes};
+  js.jobs[4]  = {"box", render_matrioshka_box};
+  js.jobs[5]  = {"vr scene", render_vr_scene};
+  js.jobs[6]  = {"radar", render_radar};
+  js.jobs[7]  = {"gui lines", render_robot_gui_lines};
+  js.jobs[8]  = {"gui height ruler text", render_height_ruler_text};
+  js.jobs[9]  = {"gui tilt ruler text", render_tilt_ruler_text};
+  js.jobs[10] = {"hello world", render_hello_world_text};
+  js.jobs[11] = {"imgui", render_imgui};
+  js.jobs[12] = {"simple rigged", render_simple_rigged};
+  js.jobs[13] = {"monster", render_monster_rigged};
+  js.jobs_max = 14;
+
+  SDL_AtomicSet(&js.profile_data_count, 0);
+  SDL_LockMutex(js.new_jobs_available_mutex);
+  SDL_CondBroadcast(js.new_jobs_available_cond);
+  SDL_UnlockMutex(js.new_jobs_available_mutex);
 
   update_ubo(engine.generic_handles.device, engine.ubo_host_visible.memory, sizeof(LightSources),
              pbr_dynamic_lights_ubo_offsets[image_index], &pbr_light_sources_cache);
@@ -3315,7 +3338,6 @@ void Game::render(Engine& engine)
     engine.double_ended_stack.reset_back();
   }
 
-  ImGui::Render();
   ImDrawData* draw_data = ImGui::GetDrawData();
 
   size_t vertex_size = draw_data->TotalVtxCount * sizeof(ImDrawVert);
@@ -3351,27 +3373,6 @@ void Game::render(Engine& engine)
       idx_dst += cmd_list->IdxBuffer.Size;
     }
   }
-
-  js.jobs[0]  = {"skybox", render_skybox_job};
-  js.jobs[1]  = {"robot", render_robot_job};
-  js.jobs[2]  = {"helmet", render_helmet_job};
-  js.jobs[3]  = {"point lights", render_point_light_boxes};
-  js.jobs[4]  = {"box", render_matrioshka_box};
-  js.jobs[5]  = {"vr scene", render_vr_scene};
-  js.jobs[6]  = {"radar", render_radar};
-  js.jobs[7]  = {"gui lines", render_robot_gui_lines};
-  js.jobs[8]  = {"gui height ruler text", render_height_ruler_text};
-  js.jobs[9]  = {"gui tilt ruler text", render_tilt_ruler_text};
-  js.jobs[10] = {"hello world", render_hello_world_text};
-  js.jobs[11] = {"imgui", render_imgui};
-  js.jobs[12] = {"simple rigged", render_simple_rigged};
-  js.jobs[13] = {"monster", render_monster_rigged};
-  js.jobs_max = 14;
-
-  SDL_AtomicSet(&js.profile_data_count, 0);
-  SDL_LockMutex(js.new_jobs_available_mutex);
-  SDL_CondBroadcast(js.new_jobs_available_cond);
-  SDL_UnlockMutex(js.new_jobs_available_mutex);
 
   SDL_SemWait(js.all_threads_idle_signal);
   SDL_AtomicSet(&js.threads_finished_work, 0);

@@ -180,13 +180,13 @@ struct JobSystem
   SDL_atomic_t threads_finished_work;
 
   // Worker thread resources
-  SDL_Thread*   worker_threads[4];
-  VkCommandPool worker_pools[4];
+  SDL_Thread*   worker_threads[3];
+  VkCommandPool worker_pools[3];
 
   struct WorkerCommands
   {
     VkCommandBuffer commands[64 * 3];
-  } worker_commands[4];
+  } worker_commands[3];
 
   // profiling data
   ThreadJobStatistic profile_data[64];
