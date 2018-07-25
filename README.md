@@ -20,13 +20,10 @@ Current preview (still a veeeery long road ahead)
 
 ### TODO - engine
 - Jobified update function
-- decoupled rendering and updating of models (renderColored)
-- re-enabled skinned models rendering (since they updated ubos in render function)
 - DXT texture compression
 
 ### TODO - game
 - movable tilt lines under strafe movement (gui)
-- speed measurement (gui)
 - compass (gui)
 - working radar (gui)
 - weapon selection (gui)

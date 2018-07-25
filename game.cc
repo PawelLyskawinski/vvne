@@ -1245,7 +1245,7 @@ int render_robot_gui_lines(ThreadJobData tjd)
 
   {
     VkRect2D scissor{};
-    scissor.extent.width  = line_to_pixel_length(0.75f, tjd.engine.generic_handles.extent2D.width);
+    scissor.extent.width  = line_to_pixel_length(1.50f, tjd.engine.generic_handles.extent2D.width);
     scissor.extent.height = line_to_pixel_length(1.02f, tjd.engine.generic_handles.extent2D.height);
     scissor.offset.x      = (tjd.engine.generic_handles.extent2D.width / 2) - (scissor.extent.width / 2);
     scissor.offset.y      = line_to_pixel_length(0.29f, tjd.engine.generic_handles.extent2D.height); // 118
@@ -1327,6 +1327,202 @@ int render_robot_gui_lines(ThreadJobData tjd)
     }
   }
 
+  vkEndCommandBuffer(tjd.command);
+  return 0;
+}
+
+int render_robot_gui_speed_meter_text(ThreadJobData tjd)
+{
+  RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
+  result.command                = tjd.command;
+  result.subpass                = Engine::SimpleRendering::Pass::RobotGui;
+
+  {
+    VkCommandBufferInheritanceInfo inheritance = {
+        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .renderPass  = tjd.engine.simple_rendering.render_pass,
+        .subpass     = Engine::SimpleRendering::Pass::RobotGui,
+        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+    };
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+        .pInheritanceInfo = &inheritance,
+    };
+
+    vkBeginCommandBuffer(tjd.command, &begin_info);
+  }
+
+  vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont]);
+
+  vkCmdBindDescriptorSets(
+      tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+      tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont], 0, 1,
+      &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
+
+  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer,
+                         &tjd.game.green_gui_billboard_vertex_buffer_offset);
+
+  struct VertexPushConstant
+  {
+    mat4x4 mvp;
+    vec2   character_coordinate;
+    vec2   character_size;
+  } vpc = {};
+
+  struct FragmentPushConstant
+  {
+    vec3  color;
+    float time;
+  } fpc = {};
+
+  fpc.time = tjd.game.current_time_sec;
+
+  {
+    mat4x4 gui_projection = {};
+    mat4x4_ortho(gui_projection, 0, tjd.engine.generic_handles.extent2D.width, 0,
+                 tjd.engine.generic_handles.extent2D.height, 0.0f, 1.0f);
+
+    float speed     = vec3_len(tjd.game.player_velocity) * 1500.0f;
+    int   speed_int = static_cast<int>(speed);
+
+    char thousands = 0;
+    while (1000 <= speed_int)
+    {
+      thousands += 1;
+      speed_int -= 1000;
+    }
+
+    char hundreds = 0;
+    while (100 <= speed_int)
+    {
+      hundreds += 1;
+      speed_int -= 100;
+    }
+
+    char tens = 0;
+    while (10 <= speed_int)
+    {
+      tens += 1;
+      speed_int -= 10;
+    }
+
+    char singles = 0;
+    while (1 <= speed_int)
+    {
+      singles += 1;
+      speed_int -= 1;
+    }
+
+    char text_form[4] = {};
+
+    text_form[0] = thousands + '0';
+    text_form[1] = hundreds + '0';
+    text_form[2] = tens + '0';
+    text_form[3] = singles + '0';
+
+    float cursor = 0.0f;
+
+    for (const char c : text_form)
+    {
+      auto line_to_pixel_length = [](float coord, int pixel_max_size) -> float {
+        return (coord * pixel_max_size * 0.5f);
+      };
+
+      GenerateSdfFontCommand cmd = {
+          .character             = c,
+          .lookup_table          = tjd.game.lucida_sans_sdf_char_ids,
+          .character_data        = tjd.game.lucida_sans_sdf_chars,
+          .characters_pool_count = SDL_arraysize(tjd.game.lucida_sans_sdf_char_ids),
+          .texture_size          = {512, 256},
+          .scaling               = 220.0f, // tjd.game.DEBUG_VEC2[0],
+          .position =
+              {
+                  line_to_pixel_length(0.48f, tjd.engine.generic_handles.extent2D.width),  // 0.65f
+                  line_to_pixel_length(0.80f, tjd.engine.generic_handles.extent2D.height), // 0.42f
+                  -1.0f,
+              },
+          .cursor = cursor,
+      };
+
+      GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
+
+      SDL_memcpy(vpc.character_coordinate, r.character_coordinate, sizeof(vec2));
+      SDL_memcpy(vpc.character_size, r.character_size, sizeof(vec2));
+      mat4x4_mul(vpc.mvp, gui_projection, r.transform);
+      cursor += r.cursor_movement;
+
+      VkRect2D scissor = {.extent = tjd.engine.generic_handles.extent2D};
+      vkCmdSetScissor(tjd.command, 0, 1, &scissor);
+
+      vkCmdPushConstants(
+          tjd.command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
+          VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
+
+      fpc.color[0] = 125.0f / 255.0f;
+      fpc.color[1] = 204.0f / 255.0f;
+      fpc.color[2] = 174.0f / 255.0f;
+
+      vkCmdPushConstants(
+          tjd.command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
+          VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(fpc), &fpc);
+
+      vkCmdDraw(tjd.command, 4, 1, 0, 0);
+    }
+  }
+
+  vkEndCommandBuffer(tjd.command);
+  return 0;
+}
+
+int render_robot_gui_speed_meter_triangle(ThreadJobData tjd)
+{
+  RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
+  result.command                = tjd.command;
+  result.subpass                = Engine::SimpleRendering::Pass::RobotGui;
+
+  {
+    VkCommandBufferInheritanceInfo inheritance = {
+        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .renderPass  = tjd.engine.simple_rendering.render_pass,
+        .subpass     = Engine::SimpleRendering::Pass::RobotGui,
+        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+    };
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+        .pInheritanceInfo = &inheritance,
+    };
+
+    vkBeginCommandBuffer(tjd.command, &begin_info);
+  }
+
+  vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiTriangle]);
+
+  struct VertPush
+  {
+    vec4 offset;
+    vec4 scale;
+  } vpush = {
+      .offset = {-0.384f, -0.180f, 0.0f, 0.0f},
+      .scale  = {0.012f, 0.02f, 1.0f, 1.0f},
+  };
+
+  vkCmdPushConstants(tjd.command,
+                     tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiTriangle],
+                     VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpush), &vpush);
+
+  vec4 color = {125.0f / 255.0f, 204.0f / 255.0f, 174.0f / 255.0f, 1.0f};
+
+  vkCmdPushConstants(tjd.command,
+                     tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiTriangle],
+                     VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpush), sizeof(vec4), color);
+
+  vkCmdDraw(tjd.command, 3, 1, 0, 0);
   vkEndCommandBuffer(tjd.command);
   return 0;
 }
@@ -2504,8 +2700,10 @@ void Game::startup(Engine& engine)
     engine.double_ended_stack.reset_back();
   }
 
-  DEBUG_VEC2[0] = 430.0f;
-  DEBUG_VEC2[1] = 350.0f;
+  DEBUG_VEC2[0] = -0.342f;
+  DEBUG_VEC2[1] = -0.180f;
+
+  diagnostic_meas_scale = 1.0f;
 
   js.all_threads_idle_signal  = SDL_CreateSemaphore(0);
   js.new_jobs_available_cond  = SDL_CreateCond();
@@ -2905,6 +3103,8 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
 
     ImGui::InputFloat2("green_gui_radar_position", green_gui_radar_position);
     ImGui::InputFloat("green_gui_radar_rotation", &green_gui_radar_rotation);
+
+    // ImGui::Text("velocity: %.5f", vec2_len(player_velocity));
   }
 
   if (ImGui::Button("quit"))
@@ -2936,36 +3136,9 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
 
   if (ImGui::CollapsingHeader("Pipeline reload"))
   {
-#if 0
-    if (ImGui::Button("skybox"))
+    if (ImGui::Button("green gui triangle"))
     {
-      pipeline_reload_simple_rendering_skybox_reload(engine);
-    }
-
-    if (ImGui::Button("scene3d"))
-    {
-      pipeline_reload_simple_rendering_scene3d_reload(engine);
-    }
-
-    if (ImGui::Button("colored geometry"))
-    {
-      pipeline_reload_simple_rendering_coloredgeometry_reload(engine);
-    }
-
-    if (ImGui::Button("colored geometry skinned"))
-    {
-      pipeline_reload_simple_rendering_coloredgeometryskinned_reload(engine);
-    }
-
-    if (ImGui::Button("imgui"))
-    {
-      pipeline_reload_simple_rendering_imgui_reload(engine);
-    }
-#endif
-
-    if (ImGui::Button("green gui sdf"))
-    {
-      pipeline_reload_simple_rendering_green_gui_sdf_reload(engine);
+      pipeline_reload_simple_rendering_green_gui_triangle_reload(engine);
     }
   }
 
@@ -2996,6 +3169,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
   }
 
   ImGui::InputFloat2("debug vec2", DEBUG_VEC2);
+  ImGui::InputFloat2("debug vec2 additional", DEBUG_VEC2_ADDITIONAL);
 
   pbr_light_sources_cache.count = 5;
 
@@ -3056,6 +3230,9 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
     js.is_profiling_paused = false;
   }
 
+  ImGui::SameLine();
+  ImGui::SliderFloat("measurements scale", &diagnostic_meas_scale, 1.0f, 100.0f);
+
   const int profile_data_count =
       js.is_profiling_paused ? js.paused_profile_data_count : SDL_AtomicGet(&js.profile_data_count);
   const ThreadJobStatistic* statistics = js.is_profiling_paused ? js.paused_profile_data : js.profile_data;
@@ -3069,12 +3246,13 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
       const ThreadJobStatistic& stat = statistics[i];
       if (threadId == stat.threadId)
       {
-        on_thread_duration += stat.duration_sec;
+        const float scaled_duration = diagnostic_meas_scale * stat.duration_sec;
+        on_thread_duration += scaled_duration;
         ImGui::SameLine();
-        ImGui::Button(stat.name, ImVec2(100.0f * 1000.0f * stat.duration_sec, 0));
+        ImGui::Button(stat.name, ImVec2(100.0f * 1000.0f * scaled_duration, 0));
         if (ImGui::IsItemHovered())
         {
-          ImGui::SetTooltip("name: %s\n%.5f sec\n%.2f ms", stat.name, stat.duration_sec, 1000.0f * stat.duration_sec);
+          ImGui::SetTooltip("name: %s\n%.8f sec\n%.2f ms", stat.name, stat.duration_sec, 1000.0f * stat.duration_sec);
         }
       }
     }
@@ -3257,7 +3435,9 @@ void Game::render(Engine& engine)
   js.jobs[11] = {"imgui", render_imgui};
   js.jobs[12] = {"simple rigged", render_simple_rigged};
   js.jobs[13] = {"monster", render_monster_rigged};
-  js.jobs_max = 14;
+  js.jobs[14] = {"speed meter", render_robot_gui_speed_meter_text};
+  js.jobs[15] = {"speed meter triangle", render_robot_gui_speed_meter_triangle};
+  js.jobs_max = 16;
 
   SDL_AtomicSet(&js.profile_data_count, 0);
   SDL_LockMutex(js.new_jobs_available_mutex);

@@ -28,3 +28,5 @@ compile green_gui_lines.frag
 compile green_gui_lines.vert
 compile green_gui_sdf.frag
 compile green_gui_sdf.vert
+compile green_gui_triangle.frag
+compile green_gui_triangle.vert

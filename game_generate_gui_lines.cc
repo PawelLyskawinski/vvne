@@ -13,7 +13,7 @@ void generate_gui_lines(const GenerateGuiLinesCommand& cmd, GuiLine* dst, int* c
 {
   if (nullptr == dst)
   {
-    *count = 64;
+    *count = 103;
     return;
   }
 
@@ -158,7 +158,6 @@ void generate_gui_lines(const GenerateGuiLinesCommand& cmd, GuiLine* dst, int* c
   /// Yellow pitch rulers
   //////////////////////////////////////////////////////////////////////////////
 
-  // :: 56 -> 64
   for (int i = 0; i < 7; ++i)
   {
     const float distance_from_main = 0.16f;
@@ -177,6 +176,369 @@ void generate_gui_lines(const GenerateGuiLinesCommand& cmd, GuiLine* dst, int* c
         GuiLine::Size::Small,
         GuiLine::Color::Yellow,
     };
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
+  /// Green speed meter frame
+  //////////////////////////////////////////////////////////////////////////////
+  {
+    const float length  = 0.125f;
+    const float upper_y = -0.202f;
+
+    // 3 main horizontal lines
+    dst[64 + 0] = {
+        {max_left_x - 0.09f - (length / 2.0f), upper_y},
+        {max_left_x - 0.09f + (length / 2.0f), upper_y},
+        GuiLine::Size::Tiny,
+        GuiLine::Color::Green,
+    };
+
+    dst[64 + 1] = {
+        {max_left_x - 0.09f - (length / 2.0f), upper_y + 0.04f},
+        {max_left_x - 0.09f + (length / 2.0f), upper_y + 0.04f},
+        GuiLine::Size::Tiny,
+        GuiLine::Color::Green,
+    };
+
+    dst[64 + 2] = {
+        {max_left_x - 0.09f - (length / 2.0f), upper_y + 0.065f},
+        {max_left_x - 0.09f + (length / 2.0f), upper_y + 0.065f},
+        GuiLine::Size::Tiny,
+        GuiLine::Color::Green,
+    };
+
+    // 2 main side vertical lines
+    dst[64 + 3] = {
+        {max_left_x - 0.09f - (length / 2.0f), upper_y},
+        {max_left_x - 0.09f - (length / 2.0f), upper_y + 0.065f},
+        GuiLine::Size::Tiny,
+        GuiLine::Color::Green,
+    };
+
+    dst[64 + 4] = {
+        {max_left_x - 0.09f + (length / 2.0f), upper_y},
+        {max_left_x - 0.09f + (length / 2.0f), upper_y + 0.065f},
+        GuiLine::Size::Tiny,
+        GuiLine::Color::Green,
+    };
+
+    // "SPEED" text inside speed meter frame
+    // 'S' - 5 lines
+    // 'P' - 4 lines
+    // 'E' - 4 lines
+    // 'E' - 4 lines
+    // 'D' - 6 lines
+    // -------------
+    //      23 lines
+
+    float letter_left_x        = max_left_x - 0.0f - length;
+    float letter_bottom_y      = upper_y + 0.0595f;
+    float letter_width         = 0.01f;
+    float letter_height        = 0.014f;
+    float letter_space_between = 0.005f;
+
+    {
+      GuiLine* S_letter = &dst[69];
+
+      S_letter[0] = {
+          {letter_left_x, letter_bottom_y},
+          {letter_left_x + letter_width, letter_bottom_y},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      S_letter[1] = {
+          {letter_left_x, letter_bottom_y - (letter_height / 2.0f)},
+          {letter_left_x + letter_width, letter_bottom_y - (letter_height / 2.0f)},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      S_letter[2] = {
+          {letter_left_x, letter_bottom_y - letter_height},
+          {letter_left_x + letter_width, letter_bottom_y - letter_height},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      S_letter[3] = {
+          {letter_left_x + letter_width, letter_bottom_y},
+          {letter_left_x + letter_width, letter_bottom_y - (letter_height / 2.0f)},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      S_letter[4] = {
+          {letter_left_x, letter_bottom_y - (letter_height / 2.0f)},
+          {letter_left_x, letter_bottom_y - letter_height},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+    }
+
+    letter_left_x += letter_width + letter_space_between;
+
+    {
+      GuiLine* P_letter = &dst[74];
+
+      P_letter[0] = {
+          {letter_left_x, letter_bottom_y},
+          {letter_left_x, letter_bottom_y - letter_height},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      P_letter[1] = {
+          {letter_left_x, letter_bottom_y - letter_height},
+          {letter_left_x + letter_width, letter_bottom_y - letter_height},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      P_letter[2] = {
+          {letter_left_x + letter_width, letter_bottom_y - letter_height},
+          {letter_left_x + letter_width, letter_bottom_y - (letter_height / 2.0f)},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      P_letter[3] = {
+          {letter_left_x + letter_width, letter_bottom_y - (letter_height / 2.0f)},
+          {letter_left_x, letter_bottom_y - (letter_height / 2.0f)},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+    }
+
+    letter_left_x += letter_width + letter_space_between;
+
+    {
+      GuiLine* E0_letter = &dst[78];
+
+      E0_letter[0] = {
+          {letter_left_x, letter_bottom_y},
+          {letter_left_x, letter_bottom_y - letter_height},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      E0_letter[1] = {
+          {letter_left_x, letter_bottom_y - letter_height},
+          {letter_left_x + letter_width, letter_bottom_y - letter_height},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      E0_letter[2] = {
+          {letter_left_x, letter_bottom_y - (letter_height / 2.0f)},
+          {letter_left_x + letter_width, letter_bottom_y - (letter_height / 2.0f)},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      E0_letter[3] = {
+          {letter_left_x, letter_bottom_y},
+          {letter_left_x + letter_width, letter_bottom_y},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+    }
+
+    letter_left_x += letter_width + letter_space_between;
+
+    {
+      GuiLine* E1_letter = &dst[82];
+
+      E1_letter[0] = {
+          {letter_left_x, letter_bottom_y},
+          {letter_left_x, letter_bottom_y - letter_height},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      E1_letter[1] = {
+          {letter_left_x, letter_bottom_y - letter_height},
+          {letter_left_x + letter_width, letter_bottom_y - letter_height},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      E1_letter[2] = {
+          {letter_left_x, letter_bottom_y - (letter_height / 2.0f)},
+          {letter_left_x + letter_width, letter_bottom_y - (letter_height / 2.0f)},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      E1_letter[3] = {
+          {letter_left_x, letter_bottom_y},
+          {letter_left_x + letter_width, letter_bottom_y},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+    }
+
+    letter_left_x += letter_width + letter_space_between;
+
+    {
+      GuiLine* D_letter = &dst[86];
+
+      D_letter[0] = {
+          {letter_left_x, letter_bottom_y},
+          {letter_left_x, letter_bottom_y - letter_height},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      D_letter[1] = {
+          {letter_left_x, letter_bottom_y - letter_height},
+          {letter_left_x + (0.75f * letter_width), letter_bottom_y - letter_height},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      D_letter[2] = {
+          {letter_left_x, letter_bottom_y},
+          {letter_left_x + (0.75f * letter_width), letter_bottom_y},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      D_letter[3] = {
+          {letter_left_x + (0.75f * letter_width), letter_bottom_y - letter_height},
+          {letter_left_x + letter_width, letter_bottom_y - (0.75f * letter_height)},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      D_letter[4] = {
+          {letter_left_x + (0.75f * letter_width), letter_bottom_y},
+          {letter_left_x + letter_width, letter_bottom_y - (0.25f * letter_height)},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      D_letter[5] = {
+          {letter_left_x + letter_width, letter_bottom_y - (0.25f * letter_height)},
+          {letter_left_x + letter_width, letter_bottom_y - (0.75f * letter_height)},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+    }
+
+    // "km/h" text inside speed meter frame
+    // 'k' - 3 lines
+    // 'm' - 4 lines
+    // '/' - 1 line
+    // 'h' - 3 lines
+    // -------------
+    //      11 lines
+
+    letter_left_x              = max_left_x + 0.04f - length;
+    letter_bottom_y            = upper_y + 0.033f;
+    letter_width               = 0.01f;
+    letter_height              = 0.025f;
+    letter_space_between       = 0.003f;
+    const float letter_y_guide = letter_bottom_y - (0.6f * letter_height);
+
+    {
+      GuiLine* K_letter = &dst[92];
+
+      K_letter[0] = {
+          {letter_left_x, letter_bottom_y},
+          {letter_left_x, letter_bottom_y - letter_height},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      K_letter[1] = {
+          {letter_left_x, letter_bottom_y - (0.2f * letter_height)},
+          {letter_left_x + letter_width, letter_y_guide},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      K_letter[2] = {
+          {letter_left_x + (0.5f * letter_width), letter_bottom_y - (0.35f * letter_height)},
+          {letter_left_x + letter_width, letter_bottom_y},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+    }
+
+    letter_left_x += letter_width + letter_space_between;
+
+    {
+      GuiLine* M_letter = &dst[95];
+
+      M_letter[0] = {
+          {letter_left_x, letter_y_guide},
+          {letter_left_x + letter_width, letter_y_guide},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      M_letter[1] = {
+          {letter_left_x, letter_bottom_y},
+          {letter_left_x, letter_y_guide},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      M_letter[2] = {
+          {letter_left_x + (0.5f * letter_width), letter_bottom_y},
+          {letter_left_x + (0.5f * letter_width), letter_y_guide},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      M_letter[3] = {
+          {letter_left_x + letter_width, letter_bottom_y},
+          {letter_left_x + letter_width, letter_y_guide},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+    }
+
+    letter_left_x += letter_width + letter_space_between;
+
+    {
+      GuiLine* slash = &dst[99];
+
+      *slash = {
+          {letter_left_x, letter_bottom_y},
+          {letter_left_x + letter_width, letter_bottom_y - letter_height},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+    }
+
+    letter_left_x += letter_width + letter_space_between;
+
+    {
+      GuiLine* H_letter = &dst[100];
+
+      H_letter[0] = {
+          {letter_left_x, letter_bottom_y},
+          {letter_left_x, letter_bottom_y - letter_height},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      H_letter[1] = {
+          {letter_left_x, letter_y_guide},
+          {letter_left_x + letter_width, letter_y_guide},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+
+      H_letter[2] = {
+          {letter_left_x + letter_width, letter_bottom_y},
+          {letter_left_x + letter_width, letter_y_guide},
+          GuiLine::Size::Tiny,
+          GuiLine::Color::Green,
+      };
+    }
   }
 }
 

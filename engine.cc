@@ -1869,6 +1869,30 @@ void Engine::setup_simple_rendering()
         {
             .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
             .offset     = 0,
+            .size       = 2 * sizeof(vec4),
+        },
+        {
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .offset     = 2 * sizeof(vec4),
+            .size       = sizeof(vec4),
+        },
+    };
+
+    VkPipelineLayoutCreateInfo ci = {
+        .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .pushConstantRangeCount = SDL_arraysize(ranges),
+        .pPushConstantRanges    = ranges,
+    };
+
+    vkCreatePipelineLayout(ctx.device, &ci, nullptr,
+                           &renderer.pipeline_layouts[SimpleRendering::Pipeline::GreenGuiTriangle]);
+  }
+
+  {
+    VkPushConstantRange ranges[] = {
+        {
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .offset     = 0,
             .size       = 16 * sizeof(float),
         },
     };
@@ -1893,6 +1917,7 @@ void Engine::setup_simple_rendering()
   pipeline_reload_simple_rendering_green_gui_reload(*this);
   pipeline_reload_simple_rendering_green_gui_lines_reload(*this);
   pipeline_reload_simple_rendering_green_gui_sdf_reload(*this);
+  pipeline_reload_simple_rendering_green_gui_triangle_reload(*this);
   pipeline_reload_simple_rendering_imgui_reload(*this);
 
   for (uint32_t i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)

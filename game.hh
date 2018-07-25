@@ -244,6 +244,7 @@ struct Game
   bool DEBUG_FLAG_1;
   bool DEBUG_FLAG_2;
   vec2 DEBUG_VEC2;
+  vec2 DEBUG_VEC2_ADDITIONAL;
 
   // materials
   VkDescriptorSet pbr_ibl_environment_dset;
@@ -337,6 +338,7 @@ struct Game
   JobSystem                  js;
   SecondaryCommandBufferSink js_sink;
   float                      current_time_sec;
+  float diagnostic_meas_scale;
 
   EntityComponentSystem ecs;
 

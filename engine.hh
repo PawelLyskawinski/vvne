@@ -176,6 +176,7 @@ struct Engine
         GreenGui,
         GreenGuiLines,
         GreenGuiSdfFont,
+        GreenGuiTriangle,
         ImGui,
         Count
       };

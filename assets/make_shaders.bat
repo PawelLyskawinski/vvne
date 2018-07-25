@@ -24,6 +24,8 @@ call:compile green_gui_lines.frag
 call:compile green_gui_lines.vert
 call:compile green_gui_sdf.frag
 call:compile green_gui_sdf.vert
+call:compile green_gui_triangle.frag
+call:compile green_gui_triangle.vert
 pause
 goto:eof
 
