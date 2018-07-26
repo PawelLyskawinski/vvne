@@ -3,7 +3,6 @@ project(vvne CXX)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++2a -O2 -fno-exceptions -fno-rtti -Wall -pedantic")# -DENABLE_VK_VALIDATION -DSDL_ASSERT_LEVEL=0")
 
-
 include_directories(${CMAKE_CURRENT_LIST_DIR}/thirdparty)
 
 if(WIN32)

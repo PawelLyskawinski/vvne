@@ -13,7 +13,7 @@ void generate_gui_lines(const GenerateGuiLinesCommand& cmd, GuiLine* dst, int* c
 {
   if (nullptr == dst)
   {
-    *count = 103;
+    *count = 103 + 4;
     return;
   }
 
@@ -539,6 +539,45 @@ void generate_gui_lines(const GenerateGuiLinesCommand& cmd, GuiLine* dst, int* c
           GuiLine::Color::Green,
       };
     }
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
+  /// Compass border
+  //////////////////////////////////////////////////////////////////////////////
+  {
+    float width  = 0.5f;
+    float height = 0.04f;
+    float bottom_y_offset = 0.38f;
+
+    GuiLine* border = &dst[103];
+
+    border[0] = {
+        {-0.5f * width, bottom_y_offset},
+        {0.5f * width, bottom_y_offset},
+        GuiLine::Size::Tiny,
+        GuiLine::Color::Green,
+    };
+
+    border[1] = {
+        {-0.5f * width, bottom_y_offset - height},
+        {0.5f * width, bottom_y_offset - height},
+        GuiLine::Size::Tiny,
+        GuiLine::Color::Green,
+    };
+
+    border[2] = {
+        {-0.5f * width, bottom_y_offset},
+        {-0.5f * width, bottom_y_offset - height},
+        GuiLine::Size::Tiny,
+        GuiLine::Color::Green,
+    };
+
+    border[3] = {
+        {0.5f * width, bottom_y_offset},
+        {0.5f * width, bottom_y_offset - height},
+        GuiLine::Size::Tiny,
+        GuiLine::Color::Green,
+    };
   }
 }
 

@@ -18,6 +18,11 @@ constexpr float to_rad(float deg) noexcept
   return (float(M_PI) * deg) / 180.0f;
 }
 
+constexpr float to_deg(float rad) noexcept
+{
+  return (180.0f * rad) / float(M_PI);
+}
+
 float clamp(float val, float min, float max)
 {
   return (val < min) ? min : (val > max) ? max : val;
@@ -1243,19 +1248,13 @@ int render_robot_gui_lines(ThreadJobData tjd)
   vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_host_visible.buffer,
                          &tjd.game.green_gui_rulers_buffer_offsets[tjd.game.image_index]);
 
-  {
-    VkRect2D scissor{};
-    scissor.extent.width  = line_to_pixel_length(1.50f, tjd.engine.generic_handles.extent2D.width);
-    scissor.extent.height = line_to_pixel_length(1.02f, tjd.engine.generic_handles.extent2D.height);
-    scissor.offset.x      = (tjd.engine.generic_handles.extent2D.width / 2) - (scissor.extent.width / 2);
-    scissor.offset.y      = line_to_pixel_length(0.29f, tjd.engine.generic_handles.extent2D.height); // 118
-    vkCmdSetScissor(tjd.command, 0, 1, &scissor);
-  }
-
   uint32_t offset = 0;
 
   // ------ GREEN ------
   {
+    VkRect2D scissor{.extent = tjd.engine.generic_handles.extent2D};
+    vkCmdSetScissor(tjd.command, 0, 1, &scissor);
+
     const float             line_widths[] = {7.0f, 5.0f, 3.0f, 1.0f};
     const GuiLineSizeCount& counts        = tjd.game.gui_green_lines_count;
     const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
@@ -1278,6 +1277,13 @@ int render_robot_gui_lines(ThreadJobData tjd)
 
   // ------ RED ------
   {
+    VkRect2D scissor{};
+    scissor.extent.width  = line_to_pixel_length(1.50f, tjd.engine.generic_handles.extent2D.width);
+    scissor.extent.height = line_to_pixel_length(1.02f, tjd.engine.generic_handles.extent2D.height);
+    scissor.offset.x      = (tjd.engine.generic_handles.extent2D.width / 2) - (scissor.extent.width / 2);
+    scissor.offset.y      = line_to_pixel_length(0.29f, tjd.engine.generic_handles.extent2D.height); // 118
+    vkCmdSetScissor(tjd.command, 0, 1, &scissor);
+
     const float             line_widths[] = {7.0f, 5.0f, 3.0f, 1.0f};
     const GuiLineSizeCount& counts        = tjd.game.gui_red_lines_count;
     const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
@@ -1769,6 +1775,255 @@ int render_tilt_ruler_text(ThreadJobData tjd)
 
       vkCmdDraw(tjd.command, 4, 1, 0, 0);
     }
+  }
+
+  vkEndCommandBuffer(tjd.command);
+  return 0;
+}
+
+int render_compass_text(ThreadJobData tjd)
+{
+  RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
+  result.command                = tjd.command;
+  result.subpass                = Engine::SimpleRendering::Pass::RobotGui;
+
+  {
+    VkCommandBufferInheritanceInfo inheritance = {
+        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .renderPass  = tjd.engine.simple_rendering.render_pass,
+        .subpass     = Engine::SimpleRendering::Pass::RobotGui,
+        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+    };
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+        .pInheritanceInfo = &inheritance,
+    };
+
+    vkBeginCommandBuffer(tjd.command, &begin_info);
+  }
+
+  vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont]);
+
+  vkCmdBindDescriptorSets(
+      tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+      tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont], 0, 1,
+      &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
+
+  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer,
+                         &tjd.game.green_gui_billboard_vertex_buffer_offset);
+
+  struct VertexPushConstant
+  {
+    mat4x4 mvp;
+    vec2   character_coordinate;
+    vec2   character_size;
+  } vpc = {};
+
+  struct FragmentPushConstant
+  {
+    vec3  color;
+    float time;
+  } fpc = {.time = tjd.game.current_time_sec};
+
+  const char* directions[] = {"N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+                              "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"};
+
+  const float direction_increment = to_rad(22.5f);
+
+  float angle_mod = tjd.game.camera_angle + (0.5f * direction_increment);
+  if (angle_mod > (2 * M_PI))
+    angle_mod -= (2 * M_PI);
+
+  int direction_iter = 0;
+  while (angle_mod > direction_increment)
+  {
+    direction_iter += 1;
+    angle_mod -= direction_increment;
+  }
+
+  const int left_direction_iter  = (0 == direction_iter) ? (SDL_arraysize(directions) - 1) : (direction_iter - 1);
+  const int right_direction_iter = ((SDL_arraysize(directions) - 1) == direction_iter) ? 0 : direction_iter + 1;
+
+  const char* center_text = directions[direction_iter];
+  const char* left_text   = directions[left_direction_iter];
+  const char* right_text  = directions[right_direction_iter];
+
+  mat4x4 gui_projection = {};
+  mat4x4_ortho(gui_projection, 0, tjd.engine.generic_handles.extent2D.width, 0,
+               tjd.engine.generic_handles.extent2D.height, 0.0f, 1.0f);
+  float cursor = 0.0f;
+
+  //////////////////////////////////////////////////////////////////////////////
+  // CENTER TEXT RENDERING
+  //////////////////////////////////////////////////////////////////////////////
+  for (unsigned i = 0; i < SDL_strlen(center_text); ++i)
+  {
+    const char c = center_text[i];
+
+    if ('\0' == c)
+      continue;
+
+    auto line_to_pixel_length = [](float coord, int pixel_max_size) -> float {
+      return (coord * pixel_max_size * 0.5f);
+    };
+
+    GenerateSdfFontCommand cmd = {
+        .character             = c,
+        .lookup_table          = tjd.game.lucida_sans_sdf_char_ids,
+        .character_data        = tjd.game.lucida_sans_sdf_chars,
+        .characters_pool_count = SDL_arraysize(tjd.game.lucida_sans_sdf_char_ids),
+        .texture_size          = {512, 256},
+        .scaling               = 300.0f,
+        .position =
+            {
+                line_to_pixel_length(1.0f - angle_mod + (0.5f * direction_increment),
+                                     tjd.engine.generic_handles.extent2D.width),
+                line_to_pixel_length(1.335f, tjd.engine.generic_handles.extent2D.height),
+                -1.0f,
+            },
+        .cursor = cursor,
+    };
+
+    GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
+
+    SDL_memcpy(vpc.character_coordinate, r.character_coordinate, sizeof(vec2));
+    SDL_memcpy(vpc.character_size, r.character_size, sizeof(vec2));
+    mat4x4_mul(vpc.mvp, gui_projection, r.transform);
+    cursor += r.cursor_movement;
+
+    VkRect2D scissor = {.extent = tjd.engine.generic_handles.extent2D};
+    vkCmdSetScissor(tjd.command, 0, 1, &scissor);
+
+    vkCmdPushConstants(tjd.command,
+                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
+                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
+
+    fpc.color[0] = 125.0f / 255.0f;
+    fpc.color[1] = 204.0f / 255.0f;
+    fpc.color[2] = 174.0f / 255.0f;
+
+    vkCmdPushConstants(tjd.command,
+                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
+                       VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(fpc), &fpc);
+
+    vkCmdDraw(tjd.command, 4, 1, 0, 0);
+  }
+
+  cursor = 0.0f;
+
+  //////////////////////////////////////////////////////////////////////////////
+  // LEFT TEXT RENDERING
+  //////////////////////////////////////////////////////////////////////////////
+  for (unsigned i = 0; i < SDL_strlen(left_text); ++i)
+  {
+    const char c = left_text[i];
+
+    if ('\0' == c)
+      continue;
+
+    auto line_to_pixel_length = [](float coord, int pixel_max_size) -> float {
+      return (coord * pixel_max_size * 0.5f);
+    };
+
+    GenerateSdfFontCommand cmd = {
+        .character             = c,
+        .lookup_table          = tjd.game.lucida_sans_sdf_char_ids,
+        .character_data        = tjd.game.lucida_sans_sdf_chars,
+        .characters_pool_count = SDL_arraysize(tjd.game.lucida_sans_sdf_char_ids),
+        .texture_size          = {512, 256},
+        .scaling               = 200.0f, // tjd.game.DEBUG_VEC2[0],
+        .position =
+            {
+                line_to_pixel_length(0.8f, tjd.engine.generic_handles.extent2D.width),    // 0.65f
+                line_to_pixel_length(1.345f, tjd.engine.generic_handles.extent2D.height), // 0.42f
+                -1.0f,
+            },
+        .cursor = cursor,
+    };
+
+    GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
+
+    SDL_memcpy(vpc.character_coordinate, r.character_coordinate, sizeof(vec2));
+    SDL_memcpy(vpc.character_size, r.character_size, sizeof(vec2));
+    mat4x4_mul(vpc.mvp, gui_projection, r.transform);
+    cursor += r.cursor_movement;
+
+    VkRect2D scissor = {.extent = tjd.engine.generic_handles.extent2D};
+    vkCmdSetScissor(tjd.command, 0, 1, &scissor);
+
+    vkCmdPushConstants(tjd.command,
+                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
+                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
+
+    fpc.color[0] = 125.0f / 255.0f;
+    fpc.color[1] = 204.0f / 255.0f;
+    fpc.color[2] = 174.0f / 255.0f;
+
+    vkCmdPushConstants(tjd.command,
+                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
+                       VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(fpc), &fpc);
+
+    vkCmdDraw(tjd.command, 4, 1, 0, 0);
+  }
+
+  cursor = 0.0f;
+
+  //////////////////////////////////////////////////////////////////////////////
+  // RIGHT TEXT RENDERING
+  //////////////////////////////////////////////////////////////////////////////
+  for (unsigned i = 0; i < SDL_strlen(right_text); ++i)
+  {
+    const char c = right_text[i];
+
+    if ('\0' == c)
+      continue;
+
+    auto line_to_pixel_length = [](float coord, int pixel_max_size) -> float {
+      return (coord * pixel_max_size * 0.5f);
+    };
+
+    GenerateSdfFontCommand cmd = {
+        .character             = c,
+        .lookup_table          = tjd.game.lucida_sans_sdf_char_ids,
+        .character_data        = tjd.game.lucida_sans_sdf_chars,
+        .characters_pool_count = SDL_arraysize(tjd.game.lucida_sans_sdf_char_ids),
+        .texture_size          = {512, 256},
+        .scaling               = 200.0f, // tjd.game.DEBUG_VEC2[0],
+        .position =
+            {
+                line_to_pixel_length(1.2f, tjd.engine.generic_handles.extent2D.width),    // 0.65f
+                line_to_pixel_length(1.345f, tjd.engine.generic_handles.extent2D.height), // 0.42f
+                -1.0f,
+            },
+        .cursor = cursor,
+    };
+
+    GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
+
+    SDL_memcpy(vpc.character_coordinate, r.character_coordinate, sizeof(vec2));
+    SDL_memcpy(vpc.character_size, r.character_size, sizeof(vec2));
+    mat4x4_mul(vpc.mvp, gui_projection, r.transform);
+    cursor += r.cursor_movement;
+
+    VkRect2D scissor = {.extent = tjd.engine.generic_handles.extent2D};
+    vkCmdSetScissor(tjd.command, 0, 1, &scissor);
+
+    vkCmdPushConstants(tjd.command,
+                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
+                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
+
+    fpc.color[0] = 125.0f / 255.0f;
+    fpc.color[1] = 204.0f / 255.0f;
+    fpc.color[2] = 174.0f / 255.0f;
+
+    vkCmdPushConstants(tjd.command,
+                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
+                       VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(fpc), &fpc);
+
+    vkCmdDraw(tjd.command, 4, 1, 0, 0);
   }
 
   vkEndCommandBuffer(tjd.command);
@@ -2528,7 +2783,6 @@ void Game::startup(Engine& engine)
   vr_level_goal[1] *= 25.0f;
 
   vec3_set(player_position, vr_level_entry[0], 2.0f, vr_level_entry[1]);
-  quat_identity(player_orientation);
 
   vec3_set(player_acceleration, 0.0f, 0.0f, 0.0f);
   vec3_set(player_velocity, 0.0f, 0.0f, 0.0f);
@@ -2823,6 +3077,16 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
         if (SDL_GetRelativeMouseMode())
         {
           camera_angle += (0.01f * event.motion.xrel);
+
+          if (camera_angle > 2 * float(M_PI))
+          {
+            camera_angle -= 2 * float(M_PI);
+          }
+          else if (camera_angle < 0.0f)
+          {
+            camera_angle += 2 * float(M_PI);
+          }
+
           camera_updown_angle -= (0.005f * event.motion.yrel);
         }
 
@@ -3095,6 +3359,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
     ImGui::Text("acceleration: %.2f %.2f %.2f", player_acceleration[0], player_acceleration[1], player_acceleration[2]);
     ImGui::Text("velocity:     %.2f %.2f %.2f", player_velocity[0], player_velocity[1], player_velocity[2]);
     ImGui::Text("time:         %.4f", current_time_sec);
+    ImGui::Text("camera angle: %.2f", to_deg(camera_angle));
 
     ImGui::Text("WASD - movement");
     ImGui::Text("F1 - enable first person view");
@@ -3437,7 +3702,8 @@ void Game::render(Engine& engine)
   js.jobs[13] = {"monster", render_monster_rigged};
   js.jobs[14] = {"speed meter", render_robot_gui_speed_meter_text};
   js.jobs[15] = {"speed meter triangle", render_robot_gui_speed_meter_triangle};
-  js.jobs_max = 16;
+  js.jobs[16] = {"compass text", render_compass_text};
+  js.jobs_max = 17;
 
   SDL_AtomicSet(&js.profile_data_count, 0);
   SDL_LockMutex(js.new_jobs_available_mutex);

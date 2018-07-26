@@ -312,7 +312,6 @@ struct Game
   GuiLineSizeCount gui_yellow_lines_count;
 
   vec3  player_position;
-  quat  player_orientation;
   vec3  player_velocity;
   vec3  player_acceleration;
   float camera_angle;
@@ -338,7 +337,7 @@ struct Game
   JobSystem                  js;
   SecondaryCommandBufferSink js_sink;
   float                      current_time_sec;
-  float diagnostic_meas_scale;
+  float                      diagnostic_meas_scale;
 
   EntityComponentSystem ecs;
 
@@ -348,7 +347,6 @@ struct Game
   Entity box_entities[6];
   Entity matrioshka_entity;
   Entity rigged_simple_entity;
-
 
   void startup(Engine& engine);
   void teardown(Engine& engine);
