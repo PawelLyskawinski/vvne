@@ -26,6 +26,8 @@ call:compile green_gui_sdf.frag
 call:compile green_gui_sdf.vert
 call:compile green_gui_triangle.frag
 call:compile green_gui_triangle.vert
+call:compile green_gui_radar_dots.frag
+call:compile green_gui_radar_dots.vert
 pause
 goto:eof
 

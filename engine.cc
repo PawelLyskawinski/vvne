@@ -1494,6 +1494,13 @@ void Engine::setup_simple_rendering()
             .pResolveAttachments  = &resolve_reference,
         },
         {
+            // robot gui radar dots pass
+            .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
+            .colorAttachmentCount = 1,
+            .pColorAttachments    = &color_reference,
+            .pResolveAttachments  = &resolve_reference,
+        },
+        {
             // imgui pass
             .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
             .colorAttachmentCount = 1,
@@ -1529,6 +1536,14 @@ void Engine::setup_simple_rendering()
         },
         {
             .srcSubpass    = SimpleRendering::Pass::RobotGui,
+            .dstSubpass    = SimpleRendering::Pass::RadarDots,
+            .srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+        },
+        {
+            .srcSubpass    = SimpleRendering::Pass::RadarDots,
             .dstSubpass    = SimpleRendering::Pass::ImGui,
             .srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
             .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -1893,6 +1908,30 @@ void Engine::setup_simple_rendering()
         {
             .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
             .offset     = 0,
+            .size       = sizeof(vec4),
+        },
+        {
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .offset     = sizeof(vec4),
+            .size       = sizeof(vec4),
+        },
+    };
+
+    VkPipelineLayoutCreateInfo ci = {
+        .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .pushConstantRangeCount = SDL_arraysize(ranges),
+        .pPushConstantRanges    = ranges,
+    };
+
+    vkCreatePipelineLayout(ctx.device, &ci, nullptr,
+                           &renderer.pipeline_layouts[SimpleRendering::Pipeline::GreenGuiRadarDots]);
+  }
+
+  {
+    VkPushConstantRange ranges[] = {
+        {
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .offset     = 0,
             .size       = 16 * sizeof(float),
         },
     };
@@ -1918,6 +1957,7 @@ void Engine::setup_simple_rendering()
   pipeline_reload_simple_rendering_green_gui_lines_reload(*this);
   pipeline_reload_simple_rendering_green_gui_sdf_reload(*this);
   pipeline_reload_simple_rendering_green_gui_triangle_reload(*this);
+  pipeline_reload_simple_rendering_green_gui_radar_dots_reload(*this);
   pipeline_reload_simple_rendering_imgui_reload(*this);
 
   for (uint32_t i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)

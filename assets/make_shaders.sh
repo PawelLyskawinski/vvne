@@ -30,3 +30,5 @@ compile green_gui_sdf.frag
 compile green_gui_sdf.vert
 compile green_gui_triangle.frag
 compile green_gui_triangle.vert
+compile green_gui_radar_dots.frag
+compile green_gui_radar_dots.vert

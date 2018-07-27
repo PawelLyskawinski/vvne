@@ -24,8 +24,6 @@ Current preview (still a veeeery long road ahead)
 
 ### TODO - game
 - movable tilt lines under strafe movement (gui)
-- compass (gui)
-- working radar (gui)
 - weapon selection (gui)
 - health bar / resource indicator (gui)
 - corrected camera movement

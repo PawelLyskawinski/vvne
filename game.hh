@@ -255,7 +255,6 @@ struct Game
   VkDescriptorSet imgui_font_atlas_dset;
   VkDescriptorSet rig_skinning_matrices_dset;
   VkDescriptorSet monster_skinning_matrices_dset;
-  VkDescriptorSet radar_texture_dset;
   VkDescriptorSet lucida_sans_sdf_dset;
 
   // ubos
@@ -282,7 +281,6 @@ struct Game
   int brdf_lookup_idx;
 
   // textures - game
-  int          green_gui_radar_idx;
   VkDeviceSize green_gui_billboard_vertex_buffer_offset;
 
   vec2  green_gui_radar_position;
@@ -318,6 +316,7 @@ struct Game
   float camera_updown_angle;
   bool  player_jumping;
   float player_jump_start_timestamp_sec;
+  float radar_scale;
 
   bool player_forward_pressed;
   bool player_back_pressed;

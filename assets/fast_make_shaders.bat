@@ -1,7 +1,7 @@
 @echo off
 
-call:compile green_gui_triangle.frag
-call:compile green_gui_triangle.vert
+call:compile green_gui.frag
+call:compile green_gui.vert
 goto:eof
 
 :compile

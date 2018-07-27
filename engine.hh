@@ -160,6 +160,7 @@ struct Engine
         Skybox,
         Objects3D,
         RobotGui,
+        RadarDots,
         ImGui,
         Count
       };
@@ -177,6 +178,7 @@ struct Engine
         GreenGuiLines,
         GreenGuiSdfFont,
         GreenGuiTriangle,
+        GreenGuiRadarDots,
         ImGui,
         Count
       };

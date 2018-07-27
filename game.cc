@@ -670,6 +670,11 @@ uint32_t line_to_pixel_length(float coord, int pixel_max_size)
   return static_cast<uint32_t>((coord * pixel_max_size * 0.5f));
 }
 
+float pixels_to_line_length(int pixels, int pixels_max_size)
+{
+  return static_cast<float>(2 * pixels) / static_cast<float>(pixels_max_size);
+}
+
 } // namespace
 
 // game_generate_gui_lines.cc
@@ -1146,60 +1151,31 @@ int render_radar(ThreadJobData tjd)
   vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
                     tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGui]);
 
-  vkCmdBindDescriptorSets(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGui], 0,
-                          1, &tjd.game.radar_texture_dset, 0, nullptr);
-
   vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer,
                          &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
   mat4x4 gui_projection = {};
+  mat4x4_ortho(gui_projection, 0, tjd.engine.generic_handles.extent2D.width, 0,
+               tjd.engine.generic_handles.extent2D.height, 0.0f, 1.0f);
 
-  {
-    float extent_width        = static_cast<float>(tjd.engine.generic_handles.extent2D.width);
-    float extent_height       = static_cast<float>(tjd.engine.generic_handles.extent2D.height);
-    float aspect_ratio        = extent_width / extent_height;
-    float fov                 = to_rad(90.0f);
-    float near_clipping_plane = 0.001f;
-    float far_clipping_plane  = 100.0f;
-    mat4x4_perspective(gui_projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
-    gui_projection[1][1] *= -1.0f;
-  }
+  const float rectangle_dimension_pixels = 100.0f;
+  const float offset_from_edge           = 10.0f;
 
-  mat4x4 gui_view = {};
-
-  {
-    vec3 center   = {0.0f, 0.0f, 0.0f};
-    vec3 up       = {0.0f, -1.0f, 0.0f};
-    vec3 position = {0.0f, 0.0f, -10.0f};
-    mat4x4_look_at(gui_view, position, center, up);
-  }
-
-  Quaternion orientation;
-  orientation.rotateY(to_rad(tjd.game.green_gui_radar_rotation));
+  const vec2 translation = {rectangle_dimension_pixels + offset_from_edge,
+                            rectangle_dimension_pixels + offset_from_edge};
 
   mat4x4 translation_matrix = {};
-  mat4x4_translate(translation_matrix, tjd.game.green_gui_radar_position[0], tjd.game.green_gui_radar_position[1],
-                   0.0f);
-
-  mat4x4 rotation_matrix = {};
-  mat4x4_from_quat(rotation_matrix, orientation.data());
+  mat4x4_translate(translation_matrix, translation[0], translation[1], -1.0f);
 
   mat4x4 scale_matrix = {};
   mat4x4_identity(scale_matrix);
-  mat4x4_scale_aniso(scale_matrix, scale_matrix, 2.0f, 2.0f, 1.0f);
-
-  mat4x4 tmp = {};
-  mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+  mat4x4_scale_aniso(scale_matrix, scale_matrix, rectangle_dimension_pixels, rectangle_dimension_pixels, 1.0f);
 
   mat4x4 world_transform = {};
-  mat4x4_mul(world_transform, tmp, scale_matrix);
-
-  mat4x4 projection_view = {};
-  mat4x4_mul(projection_view, gui_projection, gui_view);
+  mat4x4_mul(world_transform, translation_matrix, scale_matrix);
 
   mat4x4 mvp = {};
-  mat4x4_mul(mvp, projection_view, world_transform);
+  mat4x4_mul(mvp, gui_projection, world_transform);
 
   vkCmdPushConstants(tjd.command,
                      tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGui],
@@ -1239,11 +1215,6 @@ int render_robot_gui_lines(ThreadJobData tjd)
 
   vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
                     tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiLines]);
-
-  vkCmdBindDescriptorSets(
-      tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-      tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiLines], 0, 1,
-      &tjd.game.radar_texture_dset, 0, nullptr);
 
   vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_host_visible.buffer,
                          &tjd.game.green_gui_rulers_buffer_offsets[tjd.game.image_index]);
@@ -2030,6 +2001,86 @@ int render_compass_text(ThreadJobData tjd)
   return 0;
 }
 
+int render_radar_dots(ThreadJobData tjd)
+{
+  RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
+  result.command                = tjd.command;
+  result.subpass                = Engine::SimpleRendering::Pass::RadarDots;
+
+  {
+    VkCommandBufferInheritanceInfo inheritance = {
+        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .renderPass  = tjd.engine.simple_rendering.render_pass,
+        .subpass     = Engine::SimpleRendering::Pass::RadarDots,
+        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+    };
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+        .pInheritanceInfo = &inheritance,
+    };
+
+    vkBeginCommandBuffer(tjd.command, &begin_info);
+  }
+
+  vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiRadarDots]);
+
+  int   rectangle_dim           = 100;
+  float vertical_length         = pixels_to_line_length(rectangle_dim, tjd.engine.generic_handles.extent2D.width);
+  float offset_from_screen_edge = pixels_to_line_length(rectangle_dim / 10, tjd.engine.generic_handles.extent2D.width);
+
+  const float horizontal_length = pixels_to_line_length(rectangle_dim, tjd.engine.generic_handles.extent2D.height);
+  const float offset_from_top_edge =
+      pixels_to_line_length(rectangle_dim / 10, tjd.engine.generic_handles.extent2D.height);
+
+  const vec2 center_radar_position = {
+      -1.0f + offset_from_screen_edge + vertical_length,
+      -1.0f + offset_from_top_edge + horizontal_length,
+  };
+
+  vec2 robot_position  = {tjd.game.vr_level_goal[0], tjd.game.vr_level_goal[1]};
+  vec2 player_position = {tjd.game.player_position[0], tjd.game.player_position[2]};
+
+  // players position becomes the cartesian (0, 0) point for us, hence the substraction order
+  vec2 distance = {};
+  vec2_sub(distance, robot_position, player_position);
+
+  // normalization helps to
+  vec2 normalized = {};
+  vec2_norm(normalized, distance);
+
+  float robot_angle = SDL_atan2f(normalized[0], normalized[1]);
+  float angle       = tjd.game.camera_angle - robot_angle - ((float)M_PI / 2.0f);
+
+  float      final_distance  = 0.01f * vec2_len(distance);
+
+  float aspect_ratio = vertical_length / horizontal_length;
+
+  const vec2 helmet_position = {
+          aspect_ratio * final_distance * SDL_sinf(angle),
+          final_distance * SDL_cosf(angle)
+  };
+
+  vec2 relative_helmet_position = {};
+  vec2_sub(relative_helmet_position, center_radar_position, helmet_position);
+
+  vec4 position = {relative_helmet_position[0], relative_helmet_position[1], 0.0f, 1.0f};
+  vkCmdPushConstants(tjd.command,
+                     tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiRadarDots],
+                     VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vec4), position);
+
+  vec4 color = {1.0f, 0.0f, 0.0f, (final_distance < 0.22f) ? 0.6f : 0.0f};
+  vkCmdPushConstants(tjd.command,
+                     tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiRadarDots],
+                     VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vec4), sizeof(vec4), color);
+
+  vkCmdDraw(tjd.command, 1, 1, 0, 0);
+  vkEndCommandBuffer(tjd.command);
+  return 0;
+}
+
 int render_hello_world_text(ThreadJobData tjd)
 {
   RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
@@ -2499,7 +2550,6 @@ void Game::startup(Engine& engine)
     brdf_lookup_idx         = generate_brdf_lookup(&engine, cubemap_size[0]);
   }
 
-  green_gui_radar_idx       = engine.load_texture("../assets/radar_small.png");
   lucida_sans_sdf_image_idx = engine.load_texture("../assets/lucida_sans_sdf.png");
 
   const VkDeviceSize light_sources_ubo_size     = sizeof(LightSources);
@@ -2678,7 +2728,6 @@ void Game::startup(Engine& engine)
 
     vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &skybox_cubemap_dset);
     vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &imgui_font_atlas_dset);
-    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &radar_texture_dset);
     vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &lucida_sans_sdf_dset);
   }
 
@@ -2703,10 +2752,6 @@ void Game::startup(Engine& engine)
 
     image.imageView = engine.images.image_views[environment_cubemap_idx];
     write.dstSet    = skybox_cubemap_dset;
-    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
-
-    image.imageView = engine.images.image_views[green_gui_radar_idx];
-    write.dstSet    = radar_texture_dset;
     vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
 
     image.imageView = engine.images.image_views[lucida_sans_sdf_image_idx];
@@ -2956,6 +3001,7 @@ void Game::startup(Engine& engine)
 
   DEBUG_VEC2[0] = -0.342f;
   DEBUG_VEC2[1] = -0.180f;
+  radar_scale   = 0.75f;
 
   diagnostic_meas_scale = 1.0f;
 
@@ -3368,8 +3414,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
 
     ImGui::InputFloat2("green_gui_radar_position", green_gui_radar_position);
     ImGui::InputFloat("green_gui_radar_rotation", &green_gui_radar_rotation);
-
-    // ImGui::Text("velocity: %.5f", vec2_len(player_velocity));
+    ImGui::InputFloat("radar scale", &radar_scale);
   }
 
   if (ImGui::Button("quit"))
@@ -3401,9 +3446,9 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
 
   if (ImGui::CollapsingHeader("Pipeline reload"))
   {
-    if (ImGui::Button("green gui triangle"))
+    if (ImGui::Button("green gui"))
     {
-      pipeline_reload_simple_rendering_green_gui_triangle_reload(engine);
+      pipeline_reload_simple_rendering_green_gui_reload(engine);
     }
   }
 
@@ -3505,16 +3550,31 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
   for (int threadId = 0; threadId < static_cast<int>(SDL_arraysize(js.worker_threads)); ++threadId)
   {
     ImGui::Text("worker %d", threadId);
-    float on_thread_duration = 0.0f;
+    float on_thread_duration     = 0.0f;
+    bool  first_element_indented = false;
+
     for (int i = 0; i < profile_data_count; ++i)
     {
       const ThreadJobStatistic& stat = statistics[i];
       if (threadId == stat.threadId)
       {
         const float scaled_duration = diagnostic_meas_scale * stat.duration_sec;
-        on_thread_duration += scaled_duration;
-        ImGui::SameLine();
-        ImGui::Button(stat.name, ImVec2(100.0f * 1000.0f * scaled_duration, 0));
+        on_thread_duration += stat.duration_sec;
+
+        if (not first_element_indented)
+        {
+          ImGui::SameLine();
+          first_element_indented = true;
+        }
+        else
+        {
+          ImGui::SameLine(0.0f, 0.1f);
+        }
+
+        // IMGUI_API bool          ColorButton(const char* desc_id, const ImVec4& col, ImGuiColorEditFlags flags = 0,
+        // ImVec2 size = ImVec2(0,0));  // display a colored square/button, hover for details, return true when pressed.
+        ImGui::ColorButton(stat.name, ImVec4((float)i / (float)profile_data_count, 0.1f, 0.1, 1.0f), 0,
+                           ImVec2(100.0f * 1000.0f * scaled_duration, 0));
         if (ImGui::IsItemHovered())
         {
           ImGui::SetTooltip("name: %s\n%.8f sec\n%.2f ms", stat.name, stat.duration_sec, 1000.0f * stat.duration_sec);
@@ -3696,13 +3756,14 @@ void Game::render(Engine& engine)
   js.jobs[7]  = {"gui lines", render_robot_gui_lines};
   js.jobs[8]  = {"gui height ruler text", render_height_ruler_text};
   js.jobs[9]  = {"gui tilt ruler text", render_tilt_ruler_text};
-  js.jobs[10] = {"hello world", render_hello_world_text};
-  js.jobs[11] = {"imgui", render_imgui};
-  js.jobs[12] = {"simple rigged", render_simple_rigged};
-  js.jobs[13] = {"monster", render_monster_rigged};
-  js.jobs[14] = {"speed meter", render_robot_gui_speed_meter_text};
-  js.jobs[15] = {"speed meter triangle", render_robot_gui_speed_meter_triangle};
-  js.jobs[16] = {"compass text", render_compass_text};
+  js.jobs[10] = {"imgui", render_imgui};
+  js.jobs[11] = {"simple rigged", render_simple_rigged};
+  js.jobs[12] = {"monster", render_monster_rigged};
+  js.jobs[13] = {"speed meter", render_robot_gui_speed_meter_text};
+  js.jobs[14] = {"speed meter triangle", render_robot_gui_speed_meter_triangle};
+  js.jobs[15] = {"compass text", render_compass_text};
+  js.jobs[16] = {"radar dots", render_radar_dots};
+  // js.jobs[16] = {"hello world", render_hello_world_text};
   js.jobs_max = 17;
 
   SDL_AtomicSet(&js.profile_data_count, 0);
@@ -3874,6 +3935,15 @@ void Game::render(Engine& engine)
   {
     const RecordedCommandBuffer& recordere = js_sink.commands[i];
     if (Engine::SimpleRendering::Pass::RobotGui == recordere.subpass)
+      vkCmdExecuteCommands(cmd, 1, &recordere.command);
+  }
+
+  vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+
+  for (int i = 0; i < all_secondary_count; ++i)
+  {
+    const RecordedCommandBuffer& recordere = js_sink.commands[i];
+    if (Engine::SimpleRendering::Pass::RadarDots == recordere.subpass)
       vkCmdExecuteCommands(cmd, 1, &recordere.command);
   }
 
