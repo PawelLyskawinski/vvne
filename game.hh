@@ -9,6 +9,8 @@
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_thread.h>
 
+#define VR_LEVEL_SCALE 100.0f
+
 class LinearAllocator
 {
 public:
@@ -219,6 +221,21 @@ struct RenderEntityParams
   int             pipeline;
 };
 
+struct WeaponSelection
+{
+public:
+  void init();
+  void select(int new_dst);
+  void animate(float step);
+  void calculate(float transparencies[3]);
+
+private:
+  int   src;
+  int   dst;
+  bool  switch_animation;
+  float switch_animation_time;
+};
+
 struct Game
 {
   uint8_t lucida_sans_sdf_char_ids[97];
@@ -346,6 +363,8 @@ struct Game
   Entity box_entities[6];
   Entity matrioshka_entity;
   Entity rigged_simple_entity;
+
+  WeaponSelection weapon_selections[2];
 
   void startup(Engine& engine);
   void teardown(Engine& engine);

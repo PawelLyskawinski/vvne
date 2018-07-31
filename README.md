@@ -21,10 +21,10 @@ Current preview (still a veeeery long road ahead)
 ### TODO - engine
 - Jobified update function
 - DXT texture compression
+- shader name obfuscation
 
 ### TODO - game
 - movable tilt lines under strafe movement (gui)
-- weapon selection (gui)
 - health bar / resource indicator (gui)
 - corrected camera movement
 

@@ -24,6 +24,10 @@ compile brdf_compute.frag
 compile brdf_compute.vert
 compile green_gui.frag
 compile green_gui.vert
+compile green_gui_weapon_selector_box_left.frag
+compile green_gui_weapon_selector_box_right.vert
+compile green_gui_weapon_selector_box_left.frag
+compile green_gui_weapon_selector_box_right.vert
 compile green_gui_lines.frag
 compile green_gui_lines.vert
 compile green_gui_sdf.frag

@@ -1818,6 +1818,62 @@ void Engine::setup_simple_rendering()
   {
     VkPushConstantRange ranges[] = {
         {
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .offset     = 0,
+            .size       = sizeof(mat4x4),
+        },
+        {
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .offset     = sizeof(mat4x4),
+            .size       = 3 * sizeof(float),
+        },
+    };
+
+    VkDescriptorSetLayout descriptor_sets[] = {renderer.single_texture_in_frag_descriptor_set_layout};
+
+    VkPipelineLayoutCreateInfo ci = {
+        .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount         = SDL_arraysize(descriptor_sets),
+        .pSetLayouts            = descriptor_sets,
+        .pushConstantRangeCount = SDL_arraysize(ranges),
+        .pPushConstantRanges    = ranges,
+    };
+
+    vkCreatePipelineLayout(ctx.device, &ci, nullptr,
+                           &renderer.pipeline_layouts[SimpleRendering::Pipeline::GreenGuiWeaponSelectorBoxLeft]);
+  }
+
+  {
+    VkPushConstantRange ranges[] = {
+        {
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .offset     = 0,
+            .size       = sizeof(mat4x4),
+        },
+        {
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .offset     = sizeof(mat4x4),
+            .size       = 3 * sizeof(float),
+        },
+    };
+
+    VkDescriptorSetLayout descriptor_sets[] = {renderer.single_texture_in_frag_descriptor_set_layout};
+
+    VkPipelineLayoutCreateInfo ci = {
+        .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount         = SDL_arraysize(descriptor_sets),
+        .pSetLayouts            = descriptor_sets,
+        .pushConstantRangeCount = SDL_arraysize(ranges),
+        .pPushConstantRanges    = ranges,
+    };
+
+    vkCreatePipelineLayout(ctx.device, &ci, nullptr,
+                           &renderer.pipeline_layouts[SimpleRendering::Pipeline::GreenGuiWeaponSelectorBoxRight]);
+  }
+
+  {
+    VkPushConstantRange ranges[] = {
+        {
             .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
             .offset     = 0,
             .size       = sizeof(vec4),
@@ -1954,6 +2010,8 @@ void Engine::setup_simple_rendering()
   pipeline_reload_simple_rendering_coloredgeometry_reload(*this);
   pipeline_reload_simple_rendering_coloredgeometryskinned_reload(*this);
   pipeline_reload_simple_rendering_green_gui_reload(*this);
+  pipeline_reload_simple_rendering_green_gui_weapon_selector_box_left_reload(*this);
+  pipeline_reload_simple_rendering_green_gui_weapon_selector_box_right_reload(*this);
   pipeline_reload_simple_rendering_green_gui_lines_reload(*this);
   pipeline_reload_simple_rendering_green_gui_sdf_reload(*this);
   pipeline_reload_simple_rendering_green_gui_triangle_reload(*this);

@@ -175,6 +175,8 @@ struct Engine
         ColoredGeometry,
         ColoredGeometrySkinned,
         GreenGui,
+        GreenGuiWeaponSelectorBoxLeft,
+        GreenGuiWeaponSelectorBoxRight,
         GreenGuiLines,
         GreenGuiSdfFont,
         GreenGuiTriangle,

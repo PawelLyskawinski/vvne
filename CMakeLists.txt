@@ -37,6 +37,7 @@ add_executable(${PROJECT_NAME}
         gltf.cc
         cubemap.cc
         pipelines.cc
+        render_jobs.cc
         thirdparty/imgui.cpp
         thirdparty/imgui_draw.cpp
         )

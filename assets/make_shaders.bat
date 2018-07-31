@@ -20,6 +20,10 @@ call:compile brdf_compute.frag
 call:compile brdf_compute.vert
 call:compile green_gui.frag
 call:compile green_gui.vert
+call:compile green_gui_weapon_selector_box_left.frag
+call:compile green_gui_weapon_selector_box_left.vert
+call:compile green_gui_weapon_selector_box_right.frag
+call:compile green_gui_weapon_selector_box_right.vert
 call:compile green_gui_lines.frag
 call:compile green_gui_lines.vert
 call:compile green_gui_sdf.frag
