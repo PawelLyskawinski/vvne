@@ -2217,6 +2217,7 @@ void Game::render(Engine& engine)
 
   FunctionTimer timer(render_times, SDL_arraysize(render_times));
 
+  js.jobs_max = 0;
   js.jobs[js.jobs_max++] = {"skybox", render::skybox_job};
   js.jobs[js.jobs_max++] = {"robot", render::robot_job};
   js.jobs[js.jobs_max++] = {"helmet", render::helmet_job};
