@@ -31,6 +31,12 @@
 *.out
 *.app
 
-# binary path
+# Paths
 bin
 .idea
+ideas
+build
+cmake-build-debug
+
+# Very big assets
+assets/old_industrial_hall.*
