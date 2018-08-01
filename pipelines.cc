@@ -58,13 +58,13 @@ void pipeline_reload_simple_rendering_skybox_reload(Engine& engine)
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("skybox.vert.spv"),
+          .module = engine.load_shader("skybox.vert"),
           .pName  = "main",
       },
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("skybox.frag.spv"),
+          .module = engine.load_shader("skybox.frag"),
           .pName  = "main",
       },
   };
@@ -221,14 +221,14 @@ void pipeline_reload_simple_rendering_scene3d_reload(Engine& engine)
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("triangle_push.vert.spv"),
+          .module = engine.load_shader("triangle_push.vert"),
           .pName  = "main",
       },
       {
 
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("triangle_push.frag.spv"),
+          .module = engine.load_shader("triangle_push.frag"),
           .pName  = "main",
       },
   };
@@ -397,13 +397,13 @@ void pipeline_reload_simple_rendering_coloredgeometry_reload(Engine& engine)
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("colored_geometry.vert.spv"),
+          .module = engine.load_shader("colored_geometry.vert"),
           .pName  = "main",
       },
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("colored_geometry.frag.spv"),
+          .module = engine.load_shader("colored_geometry.frag"),
           .pName  = "main",
       },
   };
@@ -561,13 +561,13 @@ void pipeline_reload_simple_rendering_coloredgeometryskinned_reload(Engine& engi
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("colored_geometry_skinned.vert.spv"),
+          .module = engine.load_shader("colored_geometry_skinned.vert"),
           .pName  = "main",
       },
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("colored_geometry_skinned.frag.spv"),
+          .module = engine.load_shader("colored_geometry_skinned.frag"),
           .pName  = "main",
       },
   };
@@ -749,13 +749,13 @@ void pipeline_reload_simple_rendering_imgui_reload(Engine& engine)
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("imgui.vert.spv"),
+          .module = engine.load_shader("imgui.vert"),
           .pName  = "main",
       },
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("imgui.frag.spv"),
+          .module = engine.load_shader("imgui.frag"),
           .pName  = "main",
       },
   };
@@ -921,13 +921,13 @@ void pipeline_reload_simple_rendering_green_gui_reload(Engine& engine)
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("green_gui.vert.spv"),
+          .module = engine.load_shader("green_gui.vert"),
           .pName  = "main",
       },
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("green_gui.frag.spv"),
+          .module = engine.load_shader("green_gui.frag"),
           .pName  = "main",
       },
   };
@@ -1091,13 +1091,13 @@ void pipeline_reload_simple_rendering_green_gui_weapon_selector_box_left_reload(
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("green_gui_weapon_selector_box_left.vert.spv"),
+          .module = engine.load_shader("green_gui_weapon_selector_box_left.vert"),
           .pName  = "main",
       },
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("green_gui_weapon_selector_box_left.frag.spv"),
+          .module = engine.load_shader("green_gui_weapon_selector_box_left.frag"),
           .pName  = "main",
       },
   };
@@ -1263,13 +1263,13 @@ void pipeline_reload_simple_rendering_green_gui_weapon_selector_box_right_reload
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("green_gui_weapon_selector_box_right.vert.spv"),
+          .module = engine.load_shader("green_gui_weapon_selector_box_right.vert"),
           .pName  = "main",
       },
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("green_gui_weapon_selector_box_right.frag.spv"),
+          .module = engine.load_shader("green_gui_weapon_selector_box_right.frag"),
           .pName  = "main",
       },
   };
@@ -1434,13 +1434,13 @@ void pipeline_reload_simple_rendering_green_gui_lines_reload(Engine& engine)
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("green_gui_lines.vert.spv"),
+          .module = engine.load_shader("green_gui_lines.vert"),
           .pName  = "main",
       },
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("green_gui_lines.frag.spv"),
+          .module = engine.load_shader("green_gui_lines.frag"),
           .pName  = "main",
       },
   };
@@ -1606,13 +1606,13 @@ void pipeline_reload_simple_rendering_green_gui_sdf_reload(Engine& engine)
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("green_gui_sdf.vert.spv"),
+          .module = engine.load_shader("green_gui_sdf.vert"),
           .pName  = "main",
       },
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("green_gui_sdf.frag.spv"),
+          .module = engine.load_shader("green_gui_sdf.frag"),
           .pName  = "main",
       },
   };
@@ -1787,13 +1787,13 @@ void pipeline_reload_simple_rendering_green_gui_triangle_reload(Engine& engine)
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("green_gui_triangle.vert.spv"),
+          .module = engine.load_shader("green_gui_triangle.vert"),
           .pName  = "main",
       },
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("green_gui_triangle.frag.spv"),
+          .module = engine.load_shader("green_gui_triangle.frag"),
           .pName  = "main",
       },
   };
@@ -1920,13 +1920,13 @@ void pipeline_reload_simple_rendering_green_gui_radar_dots_reload(Engine& engine
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("green_gui_radar_dots.vert.spv"),
+          .module = engine.load_shader("green_gui_radar_dots.vert"),
           .pName  = "main",
       },
       {
           .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("green_gui_radar_dots.frag.spv"),
+          .module = engine.load_shader("green_gui_radar_dots.frag"),
           .pName  = "main",
       },
   };

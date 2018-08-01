@@ -277,13 +277,13 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
         {
             .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-            .module = engine->load_shader("equirectangular_to_cubemap.vert.spv"),
+            .module = engine->load_shader("equirectangular_to_cubemap.vert"),
             .pName  = "main",
         },
         {
             .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-            .module = engine->load_shader("equirectangular_to_cubemap.frag.spv"),
+            .module = engine->load_shader("equirectangular_to_cubemap.frag"),
             .pName  = "main",
         },
     };
@@ -783,13 +783,13 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
         {
             .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-            .module = engine->load_shader("cubemap_to_irradiance.vert.spv"),
+            .module = engine->load_shader("cubemap_to_irradiance.vert"),
             .pName  = "main",
         },
         {
             .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-            .module = engine->load_shader("cubemap_to_irradiance.frag.spv"),
+            .module = engine->load_shader("cubemap_to_irradiance.frag"),
             .pName  = "main",
         },
     };
@@ -1297,13 +1297,13 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
         {
             .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-            .module = engine->load_shader("cubemap_prefiltering.vert.spv"),
+            .module = engine->load_shader("cubemap_prefiltering.vert"),
             .pName  = "main",
         },
         {
             .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-            .module = engine->load_shader("cubemap_prefiltering.frag.spv"),
+            .module = engine->load_shader("cubemap_prefiltering.frag"),
             .pName  = "main",
         },
     };
@@ -1808,13 +1808,13 @@ int generate_brdf_lookup(Engine* engine, int size)
         {
             .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-            .module = engine->load_shader("brdf_compute.vert.spv"),
+            .module = engine->load_shader("brdf_compute.vert"),
             .pName  = "main",
         },
         {
             .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-            .module = engine->load_shader("brdf_compute.frag.spv"),
+            .module = engine->load_shader("brdf_compute.frag"),
             .pName  = "main",
         },
     };

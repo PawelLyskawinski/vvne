@@ -21,7 +21,6 @@ Current preview (still a veeeery long road ahead)
 ### TODO - engine
 - Jobified update function
 - DXT texture compression
-- shader name obfuscation
 
 ### TODO - game
 - movable tilt lines under strafe movement (gui)
@@ -43,7 +42,8 @@ Current preview (still a veeeery long road ahead)
 ### How to build?
 Modification inside CMakeLists.txt are needed. Depending on which platform is used different paths for vulkan and SDL dynamic libraries may be required.
 
-Shaders can be build using assets/make_shaders scripts, but path to glslangvalidator need to be substituted
+Shaders can be build using assets/make_shaders scripts, but path to glslangvalidator need to be substituted.
+Since shaders are renamed using hashes make sure that 'hashlib' package is available.
 
 GCC 8.1 is nessesary since a brand new standard is used.
 

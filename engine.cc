@@ -10,6 +10,7 @@
 #include <SDL2/SDL_log.h>
 #include <SDL2/SDL_vulkan.h>
 #include <linmath.h>
+#include <sha256.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #pragma GCC diagnostic push
@@ -1382,7 +1383,35 @@ struct ImguiVertex
 
 VkShaderModule Engine::load_shader(const char* file_path)
 {
-  SDL_RWops* handle      = SDL_RWFromFile(file_path, "rb");
+  //
+  // File names are 10-character files formed out of last 5 SHA-256 has of file name.
+  // Since the files are created offline the true name has to be calculated.
+  //
+  SHA256_CTX ctx = {};
+  sha256_init(&ctx);
+  sha256_update(&ctx, reinterpret_cast<const uint8_t*>(file_path), SDL_strlen(file_path));
+
+  uint8_t hash[32] = {};
+  sha256_final(&ctx, hash);
+
+  char hash_string[65] = {};
+  for (int i = 0; i < 32; ++i)
+  {
+    uint8_t first  = static_cast<uint8_t>((hash[i] & 0xF0) >> 4u);
+    uint8_t second = static_cast<uint8_t>(hash[i] & 0x0F);
+
+    auto to_char = [](uint8_t in) -> char {
+      if (in < 0x0A)
+        return in + '0';
+      return (in - uint8_t(0x0A)) + 'a';
+    };
+
+    hash_string[2 * i + 0] = to_char(first);
+    hash_string[2 * i + 1] = to_char(second);
+  }
+  hash_string[64] = '\0';
+
+  SDL_RWops* handle      = SDL_RWFromFile(&hash_string[54], "rb");
   uint32_t   file_length = static_cast<uint32_t>(SDL_RWsize(handle));
   uint8_t*   buffer      = static_cast<uint8_t*>(SDL_malloc(file_length));
 

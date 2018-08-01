@@ -40,6 +40,7 @@ add_executable(${PROJECT_NAME}
         render_jobs.cc
         thirdparty/imgui.cpp
         thirdparty/imgui_draw.cpp
+        thirdparty/sha256.cpp
         )
 
 target_link_libraries(${PROJECT_NAME} ${SDL_LIBRARY} ${VULKAN_LIBRARY})
