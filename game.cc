@@ -664,7 +664,6 @@ GuiLineSizeCount count_lines(const ArrayView<GuiLine>& lines, const GuiLine::Col
   return r;
 }
 
-
 } // namespace
 
 // game_generate_gui_lines.cc
@@ -834,7 +833,7 @@ void WeaponSelection::init()
 
 void WeaponSelection::select(int new_dst)
 {
-  if((not switch_animation) and (new_dst != src))
+  if ((not switch_animation) and (new_dst != src))
   {
     dst                   = new_dst;
     switch_animation      = true;
@@ -2218,26 +2217,25 @@ void Game::render(Engine& engine)
 
   FunctionTimer timer(render_times, SDL_arraysize(render_times));
 
-  js.jobs[0]  = {"skybox", render::skybox_job};
-  js.jobs[1]  = {"robot", render::robot_job};
-  js.jobs[2]  = {"helmet", render::helmet_job};
-  js.jobs[3]  = {"point lights", render::point_light_boxes};
-  js.jobs[4]  = {"box", render::matrioshka_box};
-  js.jobs[5]  = {"vr scene", render::vr_scene};
-  js.jobs[6]  = {"radar", render::radar};
-  js.jobs[7]  = {"gui lines", render::robot_gui_lines};
-  js.jobs[8]  = {"gui height ruler text", render::height_ruler_text};
-  js.jobs[9]  = {"gui tilt ruler text", render::tilt_ruler_text};
-  js.jobs[10] = {"imgui", render::imgui};
-  js.jobs[11] = {"simple rigged", render::simple_rigged};
-  js.jobs[12] = {"monster", render::monster_rigged};
-  js.jobs[13] = {"speed meter", render::robot_gui_speed_meter_text};
-  js.jobs[14] = {"speed meter triangle", render::robot_gui_speed_meter_triangle};
-  js.jobs[15] = {"compass text", render::compass_text};
-  js.jobs[16] = {"radar dots", render::radar_dots};
-  js.jobs[17] = {"weapon selectors - left", render::weapon_selectors_left};
-  js.jobs[18] = {"weapon selectors - right", render::weapon_selectors_right};
-  js.jobs_max = 19;
+  js.jobs[js.jobs_max++] = {"skybox", render::skybox_job};
+  js.jobs[js.jobs_max++] = {"robot", render::robot_job};
+  js.jobs[js.jobs_max++] = {"helmet", render::helmet_job};
+  js.jobs[js.jobs_max++] = {"point lights", render::point_light_boxes};
+  js.jobs[js.jobs_max++] = {"box", render::matrioshka_box};
+  js.jobs[js.jobs_max++] = {"vr scene", render::vr_scene};
+  js.jobs[js.jobs_max++] = {"radar", render::radar};
+  js.jobs[js.jobs_max++] = {"gui lines", render::robot_gui_lines};
+  js.jobs[js.jobs_max++] = {"gui height ruler text", render::height_ruler_text};
+  js.jobs[js.jobs_max++] = {"gui tilt ruler text", render::tilt_ruler_text};
+  js.jobs[js.jobs_max++] = {"imgui", render::imgui};
+  js.jobs[js.jobs_max++] = {"simple rigged", render::simple_rigged};
+  js.jobs[js.jobs_max++] = {"monster", render::monster_rigged};
+  js.jobs[js.jobs_max++] = {"speed meter", render::robot_gui_speed_meter_text};
+  js.jobs[js.jobs_max++] = {"speed meter triangle", render::robot_gui_speed_meter_triangle};
+  js.jobs[js.jobs_max++] = {"compass text", render::compass_text};
+  js.jobs[js.jobs_max++] = {"radar dots", render::radar_dots};
+  js.jobs[js.jobs_max++] = {"weapon selectors - left", render::weapon_selectors_left};
+  js.jobs[js.jobs_max++] = {"weapon selectors - right", render::weapon_selectors_right};
 
   SDL_AtomicSet(&js.profile_data_count, 0);
   SDL_LockMutex(js.new_jobs_available_mutex);

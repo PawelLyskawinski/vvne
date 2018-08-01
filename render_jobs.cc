@@ -1702,8 +1702,8 @@ int weapon_selectors_right(ThreadJobData tjd)
           .characters_pool_count = SDL_arraysize(tjd.game.lucida_sans_sdf_char_ids),
           .texture_size          = {512, 256},
           .scaling               = 250.0f,
-          .position              = {translation[0] - 105.0f - 30.0f * (0.4f - transparencies[i]), translation[1] - 10.0f, -1.0f},
-          .cursor                = cursor,
+          .position = {translation[0] - 105.0f - 30.0f * (0.4f - transparencies[i]), translation[1] - 10.0f, -1.0f},
+          .cursor   = cursor,
       };
 
       GenerateSdfFontCommandResult r = generate_sdf_font(cmd);

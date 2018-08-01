@@ -545,8 +545,8 @@ void generate_gui_lines(const GenerateGuiLinesCommand& cmd, GuiLine* dst, int* c
   /// Compass border
   //////////////////////////////////////////////////////////////////////////////
   {
-    float width  = 0.5f;
-    float height = 0.04f;
+    float width           = 0.5f;
+    float height          = 0.04f;
     float bottom_y_offset = 0.38f;
 
     GuiLine* border = &dst[103];

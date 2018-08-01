@@ -42,7 +42,7 @@ template <typename T> struct ArrayView
 
   bool empty() const
   {
-      return 0 == count;
+    return 0 == count;
   }
 };
 
@@ -166,7 +166,7 @@ namespace gltf {
 struct RenderableModel
 {
   SceneGraph scene_graph;
-  void loadGLB(Engine& engine, const char* path) noexcept;
+  void       loadGLB(Engine& engine, const char* path) noexcept;
 };
 
 } // namespace gltf
