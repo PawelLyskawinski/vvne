@@ -1860,10 +1860,10 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
     player_jump_start_timestamp_sec = current_time_sec;
   }
 
-  float camera_distance = 2.5f;
-  float x_camera_offset = SDL_cosf(camera_angle) * camera_distance;
-  float y_camera_offset = SDL_sinf(camera_updown_angle) * camera_distance;
-  float z_camera_offset = SDL_sinf(camera_angle) * camera_distance;
+  const float camera_distance = 2.5f;
+  float       x_camera_offset = SDL_cosf(camera_angle) * camera_distance;
+  float       y_camera_offset = SDL_sinf(clamp(camera_updown_angle, -1.5f, 1.5f)) * camera_distance;
+  float       z_camera_offset = SDL_sinf(camera_angle) * camera_distance;
 
   camera_position[0] = player_position[0] + x_camera_offset;
   camera_position[1] = y_camera_offset;
@@ -1875,6 +1875,9 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
 
   if (ImGui::CollapsingHeader("Debug and info"))
   {
+    ImGui::Text("camera offsets: %.2f %.2f %.2f", x_camera_offset, y_camera_offset, z_camera_offset);
+    ImGui::Text("camera angles: %.2f %.2f", camera_angle, camera_updown_angle);
+
     ImGui::Text("position:     %.2f %.2f %.2f", player_position[0], player_position[1], player_position[2]);
     ImGui::Text("camera:       %.2f %.2f %.2f", camera_position[0], camera_position[1], camera_position[2]);
     ImGui::Text("acceleration: %.2f %.2f %.2f", player_acceleration[0], player_acceleration[1], player_acceleration[2]);
@@ -2217,7 +2220,7 @@ void Game::render(Engine& engine)
 
   FunctionTimer timer(render_times, SDL_arraysize(render_times));
 
-  js.jobs_max = 0;
+  js.jobs_max            = 0;
   js.jobs[js.jobs_max++] = {"skybox", render::skybox_job};
   js.jobs[js.jobs_max++] = {"robot", render::robot_job};
   js.jobs[js.jobs_max++] = {"helmet", render::helmet_job};

@@ -25,7 +25,6 @@ Current preview (still a veeeery long road ahead)
 ### TODO - game
 - movable tilt lines under strafe movement (gui)
 - health bar / resource indicator (gui)
-- corrected camera movement
 
 ### Used C++ subset
 - no stl
