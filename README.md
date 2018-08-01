@@ -48,5 +48,5 @@ GCC 8.1 is nessesary since a brand new standard is used.
 
 Binary should be run inside "bin" folder.
 
-One asset which was not included (but can be found in releases) is "Old Industrial Hall" pack from http://www.hdrlabs.com/sibl/archive.htm.
+One asset which was not included (but can be found in releases) is "Old Industrial Hall" pack from http://www.hdrlabs.com/sibl/archive.html.
 Texture itself weights about 4mb so it wasn't the best idea to include it with repo.
