@@ -25,6 +25,10 @@ Current preview (still a veeeery long road ahead)
 ### TODO - game
 - movable tilt lines under strafe movement (gui)
 - health bar / resource indicator (gui)
+- collision with ground
+- better model
+- better model animations (while only using keyframes from glb)
+- particles from engine when using boost
 
 ### Used C++ subset
 - no stl
@@ -47,6 +51,3 @@ Since shaders are renamed using hashes make sure that 'hashlib' package is avail
 GCC 8.1 is nessesary since a brand new standard is used.
 
 Binary should be run inside "bin" folder.
-
-One asset which was not included (but can be found in releases) is "Old Industrial Hall" pack from http://www.hdrlabs.com/sibl/archive.html.
-Texture itself weights about 4mb so it wasn't the best idea to include it with repo.

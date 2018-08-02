@@ -244,21 +244,15 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
   const uint8_t* binary_data      = &glb_file_content[offset_to_binary + offset_to_chunk_data];
 
   auto load_texture = [&engine, binary_data](Seeker buffer_view) -> int {
-    int      offset      = buffer_view.integer("byteOffset");
-    int      length      = buffer_view.integer("byteLength");
-    int      x           = 0;
-    int      y           = 0;
-    int      real_format = 0;
-    stbi_uc* pixels      = stbi_load_from_memory(&binary_data[offset], length, &x, &y, &real_format, STBI_rgb_alpha);
-
-    int          depth        = 32;
-    int          pitch        = 4 * x;
-    Uint32       pixel_format = SDL_PIXELFORMAT_RGBA32;
-    SDL_Surface* surface      = SDL_CreateRGBSurfaceWithFormatFrom(pixels, x, y, depth, pitch, pixel_format);
-
-    int result = engine.load_texture(surface);
-
-    SDL_FreeSurface(surface);
+    int offset      = buffer_view.integer("byteOffset");
+    int length      = buffer_view.integer("byteLength");
+    int x           = 0;
+    int y           = 0;
+    int real_format = 0;
+    SDL_PixelFormat format  = {.format = SDL_PIXELFORMAT_RGBA32, .BitsPerPixel = 32, .BytesPerPixel = (32 + 7) / 8};
+    stbi_uc*        pixels  = stbi_load_from_memory(&binary_data[offset], length, &x, &y, &real_format, STBI_rgb_alpha);
+    SDL_Surface     surface = {.format = &format, .w = x, .h = y, .pitch = 4 * x, .pixels = pixels};
+    int             result  = engine.load_texture(&surface);
     stbi_image_free(pixels);
     return result;
   };

@@ -9,8 +9,6 @@
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_thread.h>
 
-#define VR_LEVEL_SCALE 100.0f
-
 class LinearAllocator
 {
 public:
@@ -273,6 +271,7 @@ struct Game
   VkDescriptorSet rig_skinning_matrices_dset;
   VkDescriptorSet monster_skinning_matrices_dset;
   VkDescriptorSet lucida_sans_sdf_dset;
+  VkDescriptorSet sandy_level_pbr_material_dset;
 
   // ubos
   VkDeviceSize rig_skinning_matrices_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
@@ -297,6 +296,12 @@ struct Game
   int prefiltered_cubemap_idx;
   int brdf_lookup_idx;
 
+  int sand_albedo_idx;
+  int sand_ambient_occlusion_idx;
+  int sand_metallic_roughness_idx;
+  int sand_normal_idx;
+  int sand_emissive_idx;
+
   // textures - game
   VkDeviceSize green_gui_billboard_vertex_buffer_offset;
 
@@ -309,6 +314,7 @@ struct Game
 
   float update_times[50];
   float render_times[50];
+  float gpu_wait_for_frame_times[50];
 
   mat4x4 projection;
   mat4x4 view;

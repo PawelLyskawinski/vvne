@@ -36,10 +36,10 @@ int main(int argc, char* argv[])
     game->render(*engine);
 
     uint64_t frame_time_counter = SDL_GetPerformanceCounter() - start_of_frame_ticks;
-    float    elapsed_ms         = 1000.0f * ((float)frame_time_counter / (float)performance_frequency);
+    float    elapsed_ms         = (float)frame_time_counter / (float)performance_frequency;
 
     if (elapsed_ms < desired_frame_duration_sec)
-      SDL_Delay((uint32_t)SDL_fabs(desired_frame_duration_sec - elapsed_ms));
+      SDL_Delay((uint32_t)SDL_fabsf(desired_frame_duration_sec - elapsed_ms));
   }
   SDL_HideWindow(engine->generic_handles.window);
 

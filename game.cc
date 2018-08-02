@@ -352,54 +352,15 @@ struct VrLevelLoadResult
   VkIndexType  index_type;
 };
 
-VrLevelLoadResult level_generator_vr(Engine* engine)
+VrLevelLoadResult level_generator_vr(Engine *engine)
 {
-  struct Rectangle
-  {
-    vec2 size;
-    vec2 position;
-  };
-
-  struct Building
-  {
-    vec2  size;
-    vec2  position;
-    float height;
-  };
-
-  // @todo: add reading saved data from file
-  Rectangle rooms[] = {
-      {
-          .size     = {0.4f, 1.0f},
-          .position = {0.0f, 0.5f},
-      },
-  };
-
-  float    building_dim  = 0.1f;
-  Building buildings[20] = {};
-
-  for (int i = 0; i < 10; ++i)
-  {
-    vec2 size = {building_dim, building_dim};
-    SDL_memcpy(buildings[i].size, size, sizeof(vec2));
-    SDL_memcpy(buildings[i + 10].size, size, sizeof(vec2));
-
-    vec2 left  = {0.2f + (building_dim / 2.0f), i * building_dim + (building_dim / 2.0f)};
-    vec2 right = {-0.2f - (building_dim / 2.0f), i * building_dim + (building_dim / 2.0f)};
-
-    SDL_memcpy(buildings[i].position, left, sizeof(vec2));
-    SDL_memcpy(buildings[i + 10].position, right, sizeof(vec2));
-
-    float height             = 0.08f;
-    buildings[i].height      = (SDL_sinf(i * 0.5f) * height) + height;
-    buildings[i + 10].height = (SDL_cosf(i * 0.5f) * height) + height;
-  }
-
-  int vertex_count = (SDL_arraysize(rooms) * 4) +     // rooms
-                     (SDL_arraysize(buildings) * 20); // buildings
-
-  int index_count = (SDL_arraysize(rooms) * 6) +     // rooms
-                    (SDL_arraysize(buildings) * 30); // buildings
+  float size[]               = {10.0f, 10.0f};
+  float resolution[]         = {0.1f, 0.1f};
+  int   vertex_counts[]      = {static_cast<int>(size[0] / resolution[0]), static_cast<int>(size[1] / resolution[1])};
+  int   total_vertex_count   = vertex_counts[0] * vertex_counts[1];
+  int   rectangles_in_row    = vertex_counts[0] - 1;
+  int   rectangles_in_column = vertex_counts[1] - 1;
+  int   total_index_count    = 6 * (rectangles_in_row) * (rectangles_in_column);
 
   using IndexType = uint16_t;
 
@@ -410,133 +371,71 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
     vec2 texcoord;
   };
 
-  VkDeviceSize host_vertex_offset = engine->gpu_static_transfer.allocate(vertex_count * sizeof(Vertex));
-  VkDeviceSize host_index_offset  = engine->gpu_static_transfer.allocate(index_count * sizeof(IndexType));
+  VkDeviceSize host_vertex_offset = engine->gpu_static_transfer.allocate(total_vertex_count * sizeof(Vertex));
+  VkDeviceSize host_index_offset  = engine->gpu_static_transfer.allocate(total_index_count * sizeof(IndexType));
 
   {
     ScopedMemoryMap memory_map(engine->generic_handles.device, engine->gpu_static_transfer.memory, host_vertex_offset,
-                               vertex_count * sizeof(Vertex));
+                               total_vertex_count * sizeof(Vertex));
 
-    Vertex* dst_vertices = memory_map.get<Vertex>();
-    Vertex* current      = dst_vertices;
+    Vertex* vertices = memory_map.get<Vertex>();
+    float   center[] = {0.5f * size[0], 0.5f * size[1]};
 
-    for (const Rectangle& r : rooms)
+    for (int y = 0; y < vertex_counts[1]; ++y)
     {
-      float left   = r.position[0] - (r.size[0] / 2.0f);
-      float right  = r.position[0] + (r.size[0] / 2.0f);
-      float top    = r.position[1] + (r.size[1] / 2.0f);
-      float bottom = r.position[1] - (r.size[1] / 2.0f);
-
-      vec3 positions[] = {
-          {left, 0.0f, bottom},
-          {right, 0.0f, bottom},
-          {right, 0.0f, top},
-          {left, 0.0f, top},
-      };
-
-      for (unsigned i = 0; i < SDL_arraysize(positions); ++i)
+      for (int x = 0; x < vertex_counts[0]; ++x)
       {
-        SDL_memcpy(current[i].position, positions[i], sizeof(vec3));
-        SDL_memset(current[i].normal, 0, sizeof(vec3));
-        SDL_memset(current[i].texcoord, 0, sizeof(vec3));
+        Vertex& vtx = vertices[(vertex_counts[0] * y) + x];
+
+        vtx.position[0] = (x * resolution[0]) - center[0];
+        vtx.position[1] =
+            0.05f * (SDL_cosf(static_cast<float>(x) * 0.5f) + SDL_cosf(static_cast<float>(y) * 0.1f));// + 0.5f;
+        vtx.position[2] = (y * resolution[1]) - center[1];
+
+        vtx.texcoord[0] = static_cast<float>(x) / static_cast<float>(vertex_counts[0]);
+        vtx.texcoord[1] = static_cast<float>(y) / static_cast<float>(vertex_counts[1]);
+
+        vtx.normal[0] = 0.0f;
+        vtx.normal[1] = -1.0f;
+        vtx.normal[2] = 0.0f;
       }
-
-      current = &current[SDL_arraysize(positions)];
-    }
-
-    for (const Building& b : buildings)
-    {
-      float left   = b.position[0] - (b.size[0] / 2.0f);
-      float right  = b.position[0] + (b.size[0] / 2.0f);
-      float top    = b.position[1] + (b.size[1] / 2.0f);
-      float bottom = b.position[1] - (b.size[1] / 2.0f);
-      float height = -b.height;
-
-      vec3 vertices[] = {
-          // rooftop
-          {left, height, bottom},
-          {right, height, bottom},
-          {right, height, top},
-          {left, height, top},
-          // front wall
-          {left, 0.0f, bottom},
-          {right, 0.0f, bottom},
-          {right, height, bottom},
-          {left, height, bottom},
-          // right wall
-          {right, 0.0f, bottom},
-          {right, 0.0f, top},
-          {right, height, top},
-          {right, height, bottom},
-          // left wall
-          {left, 0.0f, top},
-          {left, 0.0f, bottom},
-          {left, height, bottom},
-          {left, height, top},
-          // back wall
-          {right, 0.0f, top},
-          {left, 0.0f, top},
-          {left, height, top},
-          {right, height, top},
-      };
-
-      for (unsigned i = 0; i < SDL_arraysize(vertices); ++i)
-      {
-        SDL_memcpy(current[i].position, vertices[i], sizeof(vec3));
-        SDL_memset(current[i].normal, 0, sizeof(vec3));
-        SDL_memset(current[i].texcoord, 0, sizeof(vec3));
-      }
-
-      current = &current[SDL_arraysize(vertices)];
     }
   }
 
   {
     ScopedMemoryMap memory_map(engine->generic_handles.device, engine->gpu_static_transfer.memory, host_index_offset,
-                               index_count * sizeof(IndexType));
-    uint16_t*       dst_indices = memory_map.get<uint16_t>();
+                               total_index_count * sizeof(IndexType));
 
-    for (uint16_t i = 0; i < SDL_arraysize(rooms); ++i)
+    uint16_t* indices = memory_map.get<uint16_t>();
+
+    for (int y = 0; y < rectangles_in_column; ++y)
     {
-      uint16_t     rectangle_indices[] = {0, 1, 2, 2, 3, 0};
-      const size_t stride              = SDL_arraysize(rectangle_indices);
-
-      for (uint16_t& idx : rectangle_indices)
-        idx += 4 * i;
-
-      uint16_t* dst_rectangle_indices = &dst_indices[stride * i];
-      SDL_memcpy(dst_rectangle_indices, rectangle_indices, sizeof(uint16_t) * stride);
-    }
-
-    for (uint16_t i = 0; i < SDL_arraysize(buildings); ++i)
-    {
-      const uint16_t rectangle_indices[]                       = {0, 1, 2, 2, 3, 0};
-      const size_t   total_indices_per_building                = 5 * SDL_arraysize(rectangle_indices);
-      uint16_t       total_indices[total_indices_per_building] = {};
-
-      for (unsigned j = 0; j < SDL_arraysize(total_indices); ++j)
+      for (int x = 0; x < rectangles_in_row; ++x)
       {
-        const uint16_t rectangle_index   = rectangle_indices[j % SDL_arraysize(rectangle_indices)];
-        const uint16_t index_offset      = 4 * (j / SDL_arraysize(rectangle_indices));
-        const uint16_t building_offset   = i * uint16_t(20);
-        const uint16_t offset_from_rooms = 4 * SDL_arraysize(rooms);
-        total_indices[j]                 = rectangle_index + index_offset + building_offset + offset_from_rooms;
-      }
+        int x_offset_bottom_line = vertex_counts[0] * y;
+        int x_offset_top_line    = vertex_counts[0] * (y + 1);
 
-      uint16_t* dst_building_indices = &dst_indices[(SDL_arraysize(rooms) * 6) + (SDL_arraysize(total_indices) * i)];
-      SDL_memcpy(dst_building_indices, total_indices, sizeof(uint16_t) * SDL_arraysize(total_indices));
+        indices[0] = static_cast<uint16_t>(x_offset_bottom_line + x + 0);
+        indices[1] = static_cast<uint16_t>(x_offset_bottom_line + x + 1);
+        indices[2] = static_cast<uint16_t>(x_offset_top_line + x + 0);
+        indices[3] = static_cast<uint16_t>(x_offset_top_line + x + 0);
+        indices[4] = static_cast<uint16_t>(x_offset_bottom_line + x + 1);
+        indices[5] = static_cast<uint16_t>(x_offset_top_line + x + 1);
+
+        indices += 6;
+      }
     }
   }
 
-  VkDeviceSize device_vertex_offset = engine->gpu_static_geometry.allocate(vertex_count * sizeof(Vertex));
-  VkDeviceSize device_index_offset  = engine->gpu_static_geometry.allocate(index_count * sizeof(IndexType));
+  VkDeviceSize device_vertex_offset = engine->gpu_static_geometry.allocate(total_vertex_count * sizeof(Vertex));
+  VkDeviceSize device_index_offset  = engine->gpu_static_geometry.allocate(total_index_count * sizeof(IndexType));
 
   VrLevelLoadResult result = {
       .entrance_point       = {0.0f, 0.0f},
       .target_goal          = {0.0f, 0.2f},
       .vertex_target_offset = device_vertex_offset,
       .index_target_offset  = device_index_offset,
-      .index_count          = index_count,
+      .index_count          = total_index_count,
       .index_type           = VK_INDEX_TYPE_UINT16,
   };
 
@@ -563,12 +462,12 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
         {
             .srcOffset = host_vertex_offset,
             .dstOffset = device_vertex_offset,
-            .size      = vertex_count * sizeof(Vertex),
+            .size      = total_vertex_count * sizeof(Vertex),
         },
         {
             .srcOffset = host_index_offset,
             .dstOffset = device_index_offset,
-            .size      = index_count * sizeof(IndexType),
+            .size      = total_index_count * sizeof(IndexType),
         },
     };
 
@@ -584,7 +483,7 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .buffer              = engine->gpu_static_geometry.buffer,
             .offset              = device_vertex_offset,
-            .size                = vertex_count * sizeof(Vertex),
+            .size                = total_vertex_count * sizeof(Vertex),
         },
         {
             .sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -594,7 +493,7 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .buffer              = engine->gpu_static_geometry.buffer,
             .offset              = device_index_offset,
-            .size                = index_count * sizeof(IndexType),
+            .size                = total_index_count * sizeof(IndexType),
         },
     };
 
@@ -991,13 +890,20 @@ void Game::startup(Engine& engine)
 
   {
     int cubemap_size[2]     = {512, 512};
-    environment_cubemap_idx = generate_cubemap(&engine, this, "../assets/old_industrial_hall.jpg", cubemap_size);
+    environment_cubemap_idx = generate_cubemap(&engine, this, "../assets/mono_lake.jpg", cubemap_size);
     irradiance_cubemap_idx  = generate_irradiance_cubemap(&engine, this, environment_cubemap_idx, cubemap_size);
     prefiltered_cubemap_idx = generate_prefiltered_cubemap(&engine, this, environment_cubemap_idx, cubemap_size);
     brdf_lookup_idx         = generate_brdf_lookup(&engine, cubemap_size[0]);
   }
 
   lucida_sans_sdf_image_idx = engine.load_texture("../assets/lucida_sans_sdf.png");
+
+  // Sand PBR for environment
+  sand_albedo_idx             = engine.load_texture("../assets/pbr_sand/sand_albedo.jpg");
+  sand_ambient_occlusion_idx  = engine.load_texture("../assets/pbr_sand/sand_ambient_occlusion.jpg");
+  sand_metallic_roughness_idx = engine.load_texture("../assets/pbr_sand/sand_metallic_roughness.jpg");
+  sand_normal_idx             = engine.load_texture("../assets/pbr_sand/sand_normal.jpg");
+  sand_emissive_idx           = engine.load_texture("../assets/pbr_sand/sand_emissive.jpg");
 
   const VkDeviceSize light_sources_ubo_size     = sizeof(LightSources);
   const VkDeviceSize skinning_matrices_ubo_size = 64 * sizeof(mat4x4);
@@ -1031,6 +937,7 @@ void Game::startup(Engine& engine)
 
     vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &helmet_pbr_material_dset);
     vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &robot_pbr_material_dset);
+    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &sandy_level_pbr_material_dset);
   }
 
   {
@@ -1064,6 +971,17 @@ void Game::startup(Engine& engine)
 
     fill_infos(robot.scene_graph.materials[0], engine.images.image_views, images);
     update.dstSet = robot_pbr_material_dset,
+    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &update, 0, nullptr);
+
+    Material sand_material = {
+        .albedo_texture_idx          = sand_albedo_idx,
+        .metal_roughness_texture_idx = sand_metallic_roughness_idx,
+        .emissive_texture_idx        = sand_emissive_idx,
+        .AO_texture_idx              = sand_ambient_occlusion_idx,
+        .normal_texture_idx          = sand_normal_idx,
+    };
+    fill_infos(sand_material, engine.images.image_views, images);
+    update.dstSet = sandy_level_pbr_material_dset;
     vkUpdateDescriptorSets(engine.generic_handles.device, 1, &update, 0, nullptr);
   }
 
@@ -1268,8 +1186,8 @@ void Game::startup(Engine& engine)
   SDL_memcpy(vr_level_entry, result.entrance_point, sizeof(vec2));
   SDL_memcpy(vr_level_goal, result.target_goal, sizeof(vec2));
 
-  vr_level_entry[0] *= VR_LEVEL_SCALE;
-  vr_level_entry[1] *= VR_LEVEL_SCALE;
+  //vr_level_entry[0] *= VR_LEVEL_SCALE;
+  //vr_level_entry[1] *= VR_LEVEL_SCALE;
 
   vr_level_goal[0] *= 25.0f;
   vr_level_goal[1] *= 25.0f;
@@ -1740,9 +1658,13 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
                          ImVec2(300, 20));
     ImGui::PlotHistogram("render times", render_times, SDL_arraysize(render_times), 0, nullptr, 0.0, 0.005,
                          ImVec2(300, 20));
+    ImGui::PlotHistogram("gpu wait times", gpu_wait_for_frame_times, SDL_arraysize(gpu_wait_for_frame_times), 0,
+                         nullptr, 0.0, 0.030, ImVec2(300, 20));
 
-    ImGui::Text("Average update time: %f", avg(update_times, SDL_arraysize(update_times)));
-    ImGui::Text("Average render time: %f", avg(render_times, SDL_arraysize(render_times)));
+    ImGui::Text("Average update time:            %.2fms", 1000.0f * avg(update_times, SDL_arraysize(update_times)));
+    ImGui::Text("Average render time:            %.2fms", 1000.0f * avg(render_times, SDL_arraysize(render_times)));
+    ImGui::Text("Average gpu time:               %.2fms",
+                1000.0f * avg(gpu_wait_for_frame_times, SDL_arraysize(gpu_wait_for_frame_times)));
   }
 
   if (ImGui::CollapsingHeader("Animations"))
@@ -1799,7 +1721,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
       player_velocity[i] += drag;
     }
 
-    const float max_speed = 1.0f;
+    const float max_speed = 3.0f;
     player_velocity[i]    = clamp(player_velocity[i], -max_speed, max_speed);
 
     player_acceleration[i] = 0.0f;
@@ -1811,7 +1733,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
   {
     if (booster_jet_fuel > 0.0f)
     {
-      booster_jet_fuel -= 0.001f;
+      //booster_jet_fuel -= 0.001f;
       acceleration = 0.0006f;
     }
   }
@@ -1860,7 +1782,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
     player_jump_start_timestamp_sec = current_time_sec;
   }
 
-  const float camera_distance = 2.5f;
+  const float camera_distance = 3.0f;
   float       x_camera_offset = SDL_cosf(camera_angle) * camera_distance;
   float       y_camera_offset = SDL_sinf(clamp(camera_updown_angle, -1.5f, 1.5f)) * camera_distance;
   float       z_camera_offset = SDL_sinf(camera_angle) * camera_distance;
@@ -2213,10 +2135,13 @@ void Game::render(Engine& engine)
 {
   Engine::SimpleRendering& renderer = engine.simple_rendering;
 
-  vkAcquireNextImageKHR(engine.generic_handles.device, engine.generic_handles.swapchain, UINT64_MAX,
-                        engine.generic_handles.image_available, VK_NULL_HANDLE, &image_index);
-  vkWaitForFences(engine.generic_handles.device, 1, &renderer.submition_fences[image_index], VK_TRUE, UINT64_MAX);
-  vkResetFences(engine.generic_handles.device, 1, &renderer.submition_fences[image_index]);
+  {
+    FunctionTimer timer(gpu_wait_for_frame_times, SDL_arraysize(gpu_wait_for_frame_times));
+    vkAcquireNextImageKHR(engine.generic_handles.device, engine.generic_handles.swapchain, UINT64_MAX,
+                          engine.generic_handles.image_available, VK_NULL_HANDLE, &image_index);
+    vkWaitForFences(engine.generic_handles.device, 1, &renderer.submition_fences[image_index], VK_TRUE, UINT64_MAX);
+    vkResetFences(engine.generic_handles.device, 1, &renderer.submition_fences[image_index]);
+  }
 
   FunctionTimer timer(render_times, SDL_arraysize(render_times));
 

@@ -11,7 +11,7 @@ transformation;
 
 // texture ordering:
 // 0. albedo
-// 1. metallic roughness (r: UNUSED, b: metallness, g: roughness)
+// 1. metallic roughness (r: UNUSED, g: roughnes, b: metallness)
 // 2. emissive
 // 3. ambient occlusion
 // 4. normal

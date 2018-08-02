@@ -1,7 +1,7 @@
 #!/bin/bash
 
 function compile {
-  glslangValidator -V $1 -o ../bin/$1.spv
+  glslangValidator -V $1 -o ../bin/$(./hasher.py $1)
 }
 
 compile imgui.frag

@@ -797,20 +797,16 @@ void Engine::teardown()
 
 int Engine::load_texture(const char* filepath)
 {
-  int x           = 0;
-  int y           = 0;
-  int real_format = 0;
-  int result      = 0;
+  int             x           = 0;
+  int             y           = 0;
+  int             real_format = 0;
+  SDL_PixelFormat format      = {.format = SDL_PIXELFORMAT_RGBA32, .BitsPerPixel = 32, .BytesPerPixel = (32 + 7) / 8};
+  stbi_uc*        pixels      = stbi_load(filepath, &x, &y, &real_format, STBI_rgb_alpha);
 
-  stbi_uc*     pixels       = stbi_load(filepath, &x, &y, &real_format, STBI_rgb_alpha);
-  int          depth        = 32;
-  int          pitch        = 4 * x;
-  Uint32       pixel_format = SDL_PIXELFORMAT_RGBA32;
-  SDL_Surface* surface      = SDL_CreateRGBSurfaceWithFormatFrom(pixels, x, y, depth, pitch, pixel_format);
+  SDL_assert(nullptr != pixels);
 
-  result = load_texture(surface);
-
-  SDL_FreeSurface(surface);
+  SDL_Surface surface = {.format = &format, .w = x, .h = y, .pitch = 4 * x, .pixels = pixels};
+  int         result  = load_texture(&surface);
   stbi_image_free(pixels);
 
   return result;

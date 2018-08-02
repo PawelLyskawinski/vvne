@@ -312,29 +312,20 @@ int vr_scene(ThreadJobData tjd)
   }
 
   vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometry]);
+                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::Scene3D]);
 
-  mat4x4 projection_view = {};
-  mat4x4_mul(projection_view, tjd.game.projection, tjd.game.view);
+  {
+    VkDescriptorSet dsets[]    = {tjd.game.pbr_ibl_environment_dset, tjd.game.pbr_dynamic_lights_dset};
+    uint32_t dynamic_offsets[] = {static_cast<uint32_t>(tjd.game.pbr_dynamic_lights_ubo_offsets[tjd.game.image_index])};
 
-  mat4x4 translation_matrix = {};
-  mat4x4_translate(translation_matrix, 0.0, 2.5, 0.0);
+    vkCmdBindDescriptorSets(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 1,
+                            SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
+  }
 
-  mat4x4 rotation_matrix = {};
-  mat4x4_identity(rotation_matrix);
-
-  mat4x4 scale_matrix = {};
-  mat4x4_identity(scale_matrix);
-  mat4x4_scale_aniso(scale_matrix, scale_matrix, VR_LEVEL_SCALE, VR_LEVEL_SCALE, VR_LEVEL_SCALE);
-
-  mat4x4 tmp = {};
-  mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-
-  mat4x4 model = {};
-  mat4x4_mul(model, tmp, scale_matrix);
-
-  mat4x4 mvp = {};
-  mat4x4_mul(mvp, projection_view, model);
+  vkCmdBindDescriptorSets(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 0,
+                          1, &tjd.game.sandy_level_pbr_material_dset, 0, nullptr);
 
   vkCmdBindIndexBuffer(tjd.command, tjd.engine.gpu_static_geometry.buffer, tjd.game.vr_level_index_buffer_offset,
                        tjd.game.vr_level_index_type);
@@ -342,14 +333,38 @@ int vr_scene(ThreadJobData tjd)
   vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer,
                          &tjd.game.vr_level_vertex_buffer_offset);
 
-  vec3 color = {0.5, 0.5, 1.0};
-  vkCmdPushConstants(tjd.command,
-                     tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometry],
-                     VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(vec3), color);
+  mat4x4 translation_matrix = {};
+  mat4x4_translate(translation_matrix, 0.0, 3.0, 0.0);
+
+  mat4x4 rotation_matrix = {};
+  mat4x4_identity(rotation_matrix);
+
+  mat4x4 scale_matrix = {};
+  mat4x4_identity(scale_matrix);
+  const float scale = 100.0f;
+  mat4x4_scale_aniso(scale_matrix, scale_matrix, scale, scale, scale);
+
+  mat4x4 tmp = {};
+  mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+
+  struct SkinningUbo
+  {
+    mat4x4 projection;
+    mat4x4 view;
+    mat4x4 model;
+    vec3   camera_position;
+  } ubo = {};
+
+  mat4x4_dup(ubo.projection, tjd.game.projection);
+  mat4x4_dup(ubo.view, tjd.game.view);
+  mat4x4_mul(ubo.model, tmp, scale_matrix);
+
+  for (int i = 0; i < 3; ++i)
+    ubo.camera_position[i] = tjd.game.camera_position[i];
 
   vkCmdPushConstants(tjd.command,
-                     tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometry],
-                     VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
+                     tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D],
+                     VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ubo), &ubo);
 
   vkCmdDrawIndexed(tjd.command, static_cast<uint32_t>(tjd.game.vr_level_index_count), 1, 0, 0, 0);
 
