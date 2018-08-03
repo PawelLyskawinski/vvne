@@ -373,6 +373,6 @@ struct Game
 
   void startup(Engine& engine);
   void teardown(Engine& engine);
-  void update(Engine& engine, float time_delta_since_last_frame);
+  void update(Engine& engine, float time_delta_since_last_frame_ms);
   void render(Engine& engine);
 };

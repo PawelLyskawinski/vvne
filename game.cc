@@ -1440,7 +1440,7 @@ void Game::teardown(Engine& engine)
     vkDestroyCommandPool(engine.generic_handles.device, pool, nullptr);
 }
 
-void Game::update(Engine& engine, float time_delta_since_last_frame)
+void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 {
   FunctionTimer timer(update_times, SDL_arraysize(update_times));
 
@@ -1650,7 +1650,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
   }
 
   for (WeaponSelection& sel : weapon_selections)
-    sel.animate(0.008f * time_delta_since_last_frame);
+    sel.animate(0.008f * time_delta_since_last_frame_ms);
 
   ImGui::NewFrame();
   ImGui::Begin("Main Panel");
@@ -1710,10 +1710,10 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
 
   for (int i = 0; i < 3; ++i)
   {
-    player_position[i] += player_velocity[i] * time_delta_since_last_frame;
+    player_position[i] += player_velocity[i] * time_delta_since_last_frame_ms;
     const float friction = 0.2f;
     float       drag     = friction * player_velocity[i];
-    player_velocity[i] += player_acceleration[i] * time_delta_since_last_frame;
+    player_velocity[i] += player_acceleration[i] * time_delta_since_last_frame_ms;
 
     if (player_velocity[i])
     {

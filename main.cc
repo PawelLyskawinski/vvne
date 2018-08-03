@@ -3,6 +3,15 @@
 #include "game.hh"
 #include <SDL2/SDL.h>
 
+namespace {
+
+float max(float a, float b)
+{
+  return a > b ? a : b;
+}
+
+} // namespace
+
 int main(int argc, char* argv[])
 {
   (void)argc;
@@ -19,27 +28,28 @@ int main(int argc, char* argv[])
   engine->startup();
   game->startup(*engine);
 
-  uint64_t performance_frequency = SDL_GetPerformanceFrequency();
-  uint64_t start_of_game_ticks   = SDL_GetPerformanceCounter();
+  uint64_t    performance_frequency     = SDL_GetPerformanceFrequency();
+  uint64_t    start_of_game_ticks       = SDL_GetPerformanceCounter();
+  const int   desired_frames_per_sec    = 60;
+  const float desired_frame_duration_ms = (1000.0f / static_cast<float>(desired_frames_per_sec));
+  float       elapsed_ms                = desired_frame_duration_ms;
 
   SDL_ShowWindow(engine->generic_handles.window);
   while (!SDL_QuitRequested())
   {
-    uint64_t    start_of_frame_ticks       = SDL_GetPerformanceCounter();
-    uint64_t    ticks_from_game_start      = start_of_frame_ticks - start_of_game_ticks;
-    float       current_time_sec           = (float)ticks_from_game_start / (float)performance_frequency;
-    const int   desired_frames_per_sec     = 60;
-    const float desired_frame_duration_sec = (1000.0f / (float)desired_frames_per_sec);
+    uint64_t start_of_frame_ticks  = SDL_GetPerformanceCounter();
+    uint64_t ticks_from_game_start = start_of_frame_ticks - start_of_game_ticks;
+    float    current_time_sec = static_cast<float>(ticks_from_game_start) / static_cast<float>(performance_frequency);
 
     game->current_time_sec = current_time_sec;
-    game->update(*engine, desired_frame_duration_sec);
+    game->update(*engine, max(elapsed_ms, desired_frame_duration_ms));
     game->render(*engine);
 
     uint64_t frame_time_counter = SDL_GetPerformanceCounter() - start_of_frame_ticks;
-    float    elapsed_ms         = (float)frame_time_counter / (float)performance_frequency;
+    elapsed_ms = 1000.0f * (static_cast<float>(frame_time_counter) / static_cast<float>(performance_frequency));
 
-    if (elapsed_ms < desired_frame_duration_sec)
-      SDL_Delay((uint32_t)SDL_fabsf(desired_frame_duration_sec - elapsed_ms));
+    if (elapsed_ms < desired_frame_duration_ms)
+      SDL_Delay((uint32_t)SDL_fabsf(desired_frame_duration_ms - elapsed_ms));
   }
   SDL_HideWindow(engine->generic_handles.window);
 
