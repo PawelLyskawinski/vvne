@@ -352,7 +352,12 @@ struct VrLevelLoadResult
   VkIndexType  index_type;
 };
 
-VrLevelLoadResult level_generator_vr(Engine *engine)
+float get_vr_level_height(float x, float y)
+{
+  return 0.05f * (SDL_cosf(x * 0.5f) + SDL_cosf(y * 0.5f)) - 0.07f;
+}
+
+VrLevelLoadResult level_generator_vr(Engine* engine)
 {
   float size[]               = {10.0f, 10.0f};
   float resolution[]         = {0.1f, 0.1f};
@@ -388,8 +393,7 @@ VrLevelLoadResult level_generator_vr(Engine *engine)
         Vertex& vtx = vertices[(vertex_counts[0] * y) + x];
 
         vtx.position[0] = (x * resolution[0]) - center[0];
-        vtx.position[1] =
-            0.05f * (SDL_cosf(static_cast<float>(x) * 0.5f) + SDL_cosf(static_cast<float>(y) * 0.1f));// + 0.5f;
+        vtx.position[1] = get_vr_level_height(x, y);
         vtx.position[2] = (y * resolution[1]) - center[1];
 
         vtx.texcoord[0] = static_cast<float>(x) / static_cast<float>(vertex_counts[0]);
@@ -1163,9 +1167,8 @@ void Game::startup(Engine& engine)
     vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
   }
 
-  vec3_set(helmet_translation, 1.0f, 1.0f, 3.0f);
-  vec3_set(robot_position, -2.0f, -1.0f, 3.0f);
-  vec3_set(rigged_position, -2.0f, 0.0f, 3.0f);
+  vec3_set(robot_position, -2.0f, 3.0f, 3.0f);
+  vec3_set(rigged_position, -2.0f, 3.0f, 3.0f);
 
   float extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
   float extent_height       = static_cast<float>(engine.generic_handles.extent2D.height);
@@ -1186,8 +1189,8 @@ void Game::startup(Engine& engine)
   SDL_memcpy(vr_level_entry, result.entrance_point, sizeof(vec2));
   SDL_memcpy(vr_level_goal, result.target_goal, sizeof(vec2));
 
-  //vr_level_entry[0] *= VR_LEVEL_SCALE;
-  //vr_level_entry[1] *= VR_LEVEL_SCALE;
+  // vr_level_entry[0] *= VR_LEVEL_SCALE;
+  // vr_level_entry[1] *= VR_LEVEL_SCALE;
 
   vr_level_goal[0] *= 25.0f;
   vr_level_goal[1] *= 25.0f;
@@ -1733,7 +1736,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
   {
     if (booster_jet_fuel > 0.0f)
     {
-      //booster_jet_fuel -= 0.001f;
+      // booster_jet_fuel -= 0.001f;
       acceleration = 0.0006f;
     }
   }
@@ -1761,25 +1764,37 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
   }
 
   // dirty hack, to be replaced with better code in the future
-  const float jump_duration_sec = 0.5f;
-  const float jump_height       = 1.0f;
+  const float jump_duration_sec = 1.5f;
+  const float jump_height       = 5.0f;
   if (player_jumping)
   {
     if (current_time_sec < (player_jump_start_timestamp_sec + jump_duration_sec))
     {
       const float current_jump_time = (current_time_sec - player_jump_start_timestamp_sec) / jump_duration_sec;
-      player_position[1]            = 2.0f - (jump_height * SDL_sinf(current_jump_time * (float)M_PI));
+
+      // For now this is hardcoded to fit height sampling function.
+      // @todo: Refactor to something readable
+      player_position[1] =
+          100.0f * get_vr_level_height(-0.1f * player_position[0] + 0.25f, -0.1f * player_position[2] + 0.25f) + 2.5f;
+      player_position[1] -= (jump_height * SDL_sinf(current_jump_time * (float)M_PI));
     }
     else
     {
-      player_jumping     = false;
-      player_position[1] = 2.0f;
+      player_jumping = false;
     }
   }
-  else if (player_jump_pressed)
+  else
   {
-    player_jumping                  = true;
-    player_jump_start_timestamp_sec = current_time_sec;
+    // For now this is hardcoded to fit height sampling function.
+    // @todo: Refactor to something readable
+    player_position[1] =
+        100.0f * get_vr_level_height(-0.1f * player_position[0] + 0.25f, -0.1f * player_position[2] + 0.25f) + 2.5f;
+
+    if (player_jump_pressed)
+    {
+      player_jumping                  = true;
+      player_jump_start_timestamp_sec = current_time_sec;
+    }
   }
 
   const float camera_distance = 3.0f;
@@ -1788,10 +1803,10 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
   float       z_camera_offset = SDL_sinf(camera_angle) * camera_distance;
 
   camera_position[0] = player_position[0] + x_camera_offset;
-  camera_position[1] = y_camera_offset;
+  camera_position[1] = player_position[1] + y_camera_offset - 1.5f;
   camera_position[2] = player_position[2] - z_camera_offset;
 
-  vec3 center = {player_position[0], 0.0f, player_position[2]};
+  vec3 center = {player_position[0], player_position[1] - 1.5f, player_position[2]};
   vec3 up     = {0.0f, -1.0f, 0.0f};
   mat4x4_look_at(view, camera_position, center, up);
 
@@ -1885,32 +1900,32 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
   };
 
   {
-    vec3 position = {SDL_sinf(current_time_sec), -0.5f, 3.0f + SDL_cosf(current_time_sec)};
+    vec3 position = {SDL_sinf(current_time_sec), 3.5f, 3.0f + SDL_cosf(current_time_sec)};
     vec3 color    = {20.0f + (5.0f * SDL_sinf(current_time_sec + 0.4f)), 0.0, 0.0};
     update_light(pbr_light_sources_cache, 0, position, color);
   }
 
   {
-    vec3 position = {0.8f * SDL_cosf(current_time_sec), -0.6f, 3.0f + (0.8f * SDL_sinf(current_time_sec))};
+    vec3 position = {0.8f * SDL_cosf(current_time_sec), 3.6f, 3.0f + (0.8f * SDL_sinf(current_time_sec))};
     vec3 color    = {0.0, 20.0, 0.0};
     update_light(pbr_light_sources_cache, 1, position, color);
   }
 
   {
-    vec3 position = {0.8f * SDL_sinf(current_time_sec / 2.0f), -0.3f,
+    vec3 position = {0.8f * SDL_sinf(current_time_sec / 2.0f), 3.3f,
                      3.0f + (0.8f * SDL_cosf(current_time_sec / 2.0f))};
     vec3 color    = {0.0, 0.0, 20.0};
     update_light(pbr_light_sources_cache, 2, position, color);
   }
 
   {
-    vec3 position = {SDL_sinf(current_time_sec / 1.2f), -0.1f, 2.5f * SDL_cosf(current_time_sec / 1.2f)};
+    vec3 position = {SDL_sinf(current_time_sec / 1.2f), 3.1f, 2.5f * SDL_cosf(current_time_sec / 1.2f)};
     vec3 color    = {8.0, 8.0, 8.0};
     update_light(pbr_light_sources_cache, 3, position, color);
   }
 
   {
-    vec3 position = {0.0f, -1.0f, 4.0f};
+    vec3 position = {0.0f, 3.0f, 4.0f};
     vec3 color    = {10.0, 0.0, 10.0};
     update_light(pbr_light_sources_cache, 4, position, color);
   }
@@ -1989,7 +2004,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
     orientation.rotateX(to_rad(180.0));
 
     mat4x4 translation_matrix = {};
-    mat4x4_translate(translation_matrix, vr_level_goal[0], 0.0f, vr_level_goal[1]);
+    mat4x4_translate(translation_matrix, vr_level_goal[0], 3.0f, vr_level_goal[1]);
 
     mat4x4 rotation_matrix = {};
     mat4x4_from_quat(rotation_matrix, orientation.data());
@@ -2045,7 +2060,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame)
     orientation.rotateX(to_rad(45.0f));
 
     mat4x4 translation_matrix = {};
-    mat4x4_translate(translation_matrix, -2.0f, 0.5f, 0.5f);
+    mat4x4_translate(translation_matrix, -2.0f, 5.5f, 0.5f);
 
     mat4x4 rotation_matrix = {};
     mat4x4_from_quat(rotation_matrix, orientation.data());

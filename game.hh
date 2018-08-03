@@ -310,7 +310,6 @@ struct Game
 
   float robot_position[3];
   float rigged_position[3];
-  float helmet_translation[3];
 
   float update_times[50];
   float render_times[50];

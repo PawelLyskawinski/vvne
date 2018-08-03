@@ -21,6 +21,7 @@ Current preview (still a veeeery long road ahead)
 ### TODO - engine
 - Jobified update function
 - DXT texture compression
+- fix incomplete model rendering (occasional cases)
 
 ### TODO - game
 - movable tilt lines under strafe movement (gui)
@@ -29,6 +30,7 @@ Current preview (still a veeeery long road ahead)
 - better model
 - better model animations (while only using keyframes from glb)
 - particles from engine when using boost
+- refactor height calculation
 
 ### Used C++ subset
 - no stl
