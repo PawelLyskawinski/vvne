@@ -26,7 +26,6 @@ Current preview (still a veeeery long road ahead)
 ### TODO - game
 - movable tilt lines under strafe movement (gui)
 - health bar / resource indicator (gui)
-- collision with ground
 - better model
 - better model animations (while only using keyframes from glb)
 - particles from engine when using boost
