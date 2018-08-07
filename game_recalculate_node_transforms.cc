@@ -67,7 +67,7 @@ void recalculate_node_transforms(const Entity entity, EntityComponentSystem& ecs
         mat4x4_translate(translation_matrix, t[0], t[1], t[2]);
       }
     }
-    else if (nodes[i].has(Node::Property::Rotation))
+    else if (nodes[i].has(Node::Property::Translation))
     {
       vec3 t = {};
       copy_vec3(t, nodes[i].translation);

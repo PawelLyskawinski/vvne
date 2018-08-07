@@ -7,7 +7,7 @@ uint64_t filter_nodes_with_mesh(const Node nodes[], const int n)
   uint64_t result = 0;
   for (int i = 0; i < n; ++i)
     if (nodes[i].has(Node::Property::Mesh))
-      result |= (1 << i);
+      result |= (1ULL << i);
   return result;
 }
 
@@ -43,10 +43,10 @@ SkinningUbo to_skinning(RenderEntityParams& p, mat4x4 transform)
 void render_pbr_entity(Entity entity, EntityComponentSystem& ecs, gltf::RenderableModel& model, Engine& engine,
                        RenderEntityParams& p)
 {
-  const uint64_t bitmap =
-      ecs.node_renderabilities[entity.node_renderabilities] & filter_nodes_with_mesh(model.scene_graph.nodes);
-
-  mat4x4* transforms = ecs.node_transforms[entity.node_transforms].transforms;
+  uint64_t renderable_nodes_bitmap = ecs.node_renderabilities[entity.node_renderabilities];
+  uint64_t nodes_with_mesh_bitmap  = filter_nodes_with_mesh(model.scene_graph.nodes);
+  uint64_t bitmap                  = renderable_nodes_bitmap & nodes_with_mesh_bitmap;
+  mat4x4*  transforms              = ecs.node_transforms[entity.node_transforms].transforms;
 
   for (int node_idx = 0; node_idx < 64; ++node_idx)
   {
