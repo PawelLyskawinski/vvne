@@ -272,6 +272,7 @@ struct Game
   VkDescriptorSet monster_skinning_matrices_dset;
   VkDescriptorSet lucida_sans_sdf_dset;
   VkDescriptorSet sandy_level_pbr_material_dset;
+  VkDescriptorSet pbr_water_material_dset;
 
   // ubos
   VkDeviceSize rig_skinning_matrices_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
@@ -302,8 +303,11 @@ struct Game
   int sand_normal_idx;
   int sand_emissive_idx;
 
+  int water_normal_idx;
+
   // textures - game
   VkDeviceSize green_gui_billboard_vertex_buffer_offset;
+  VkDeviceSize regular_billboard_vertex_buffer_offset;
 
   vec2  green_gui_radar_position;
   float green_gui_radar_rotation;
@@ -313,7 +317,6 @@ struct Game
 
   float update_times[50];
   float render_times[50];
-  float gpu_wait_for_frame_times[50];
 
   mat4x4 projection;
   mat4x4 view;

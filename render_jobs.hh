@@ -24,5 +24,6 @@ int weapon_selectors_left(ThreadJobData tjd);
 int weapon_selectors_right(ThreadJobData tjd);
 int hello_world_text(ThreadJobData tjd);
 int imgui(ThreadJobData tjd);
+int water(ThreadJobData tjd);
 
 } // namespace render

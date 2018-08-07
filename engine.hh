@@ -172,7 +172,9 @@ struct Engine
       {
         Skybox,
         Scene3D,
+        PbrWater,
         ColoredGeometry,
+        ColoredGeometryTriangleStrip,
         ColoredGeometrySkinned,
         GreenGui,
         GreenGuiWeaponSelectorBoxLeft,

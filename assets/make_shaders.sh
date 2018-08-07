@@ -36,3 +36,5 @@ compile green_gui_triangle.frag
 compile green_gui_triangle.vert
 compile green_gui_radar_dots.frag
 compile green_gui_radar_dots.vert
+compile pbr_water.vert
+compile pbr_water.frag

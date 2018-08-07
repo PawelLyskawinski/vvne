@@ -5,6 +5,7 @@ struct Engine;
 void pipeline_reload_simple_rendering_skybox_reload(Engine& engine);
 void pipeline_reload_simple_rendering_scene3d_reload(Engine& engine);
 void pipeline_reload_simple_rendering_coloredgeometry_reload(Engine& engine);
+void pipeline_reload_simple_rendering_coloredgeometry_triangle_strip_reload(Engine& engine);
 void pipeline_reload_simple_rendering_coloredgeometryskinned_reload(Engine& engine);
 void pipeline_reload_simple_rendering_green_gui_reload(Engine& engine);
 void pipeline_reload_simple_rendering_green_gui_weapon_selector_box_left_reload(Engine& engine);
@@ -14,3 +15,4 @@ void pipeline_reload_simple_rendering_green_gui_radar_dots_reload(Engine& engine
 void pipeline_reload_simple_rendering_green_gui_sdf_reload(Engine& engine);
 void pipeline_reload_simple_rendering_green_gui_triangle_reload(Engine& engine);
 void pipeline_reload_simple_rendering_imgui_reload(Engine& engine);
+void pipeline_reload_simple_rendering_pbr_water_reload(Engine& engine);

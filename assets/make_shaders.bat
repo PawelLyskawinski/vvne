@@ -32,6 +32,8 @@ call:compile green_gui_triangle.frag
 call:compile green_gui_triangle.vert
 call:compile green_gui_radar_dots.frag
 call:compile green_gui_radar_dots.vert
+call:compile pbr_water.vert
+call:compile pbr_water.frag
 pause
 goto:eof
 

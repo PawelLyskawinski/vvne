@@ -19,8 +19,8 @@
 #include <stb_image.h>
 #pragma GCC diagnostic pop
 
-#define INITIAL_WINDOW_WIDTH 1200
-#define INITIAL_WINDOW_HEIGHT 800
+#define INITIAL_WINDOW_WIDTH 900
+#define INITIAL_WINDOW_HEIGHT 600
 
 VkBool32
 #ifndef __linux__
@@ -238,6 +238,18 @@ void Engine::startup()
         break;
       }
     }
+
+    const char* selected_mode = nullptr;
+    switch (ctx.present_mode)
+    {
+    case VK_PRESENT_MODE_MAILBOX_KHR:
+      selected_mode = "MAILBOX (smart v-sync)";
+      break;
+    default:
+      selected_mode = "FIFO (v-sync)";
+      break;
+    }
+    SDL_Log("Selected presentation mode: %s", selected_mode);
   }
 
   {
@@ -1380,9 +1392,13 @@ struct ImguiVertex
 VkShaderModule Engine::load_shader(const char* file_path)
 {
   //
-  // File names are 10-character files formed out of last 5 SHA-256 has of file name.
-  // Since the files are created offline the true name has to be calculated.
+  // offline compilation process:
+  // assets/shader_name.frag --sha256--> bin/obfuscated_shader_name (last 5 bytes / 10 characters)
   //
+  // Real name of shader will be stored in binary .text data segment.
+  // Obfuscated file name has to be calculated here at runtime.
+  //
+
   SHA256_CTX ctx = {};
   sha256_init(&ctx);
   sha256_update(&ctx, reinterpret_cast<const uint8_t*>(file_path), SDL_strlen(file_path));
@@ -1761,6 +1777,30 @@ void Engine::setup_simple_rendering()
   {
     VkPushConstantRange ranges[] = {
         {
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+            .offset     = 0,
+            .size       = 3 * sizeof(mat4x4) + sizeof(vec3) + sizeof(float),
+        },
+    };
+
+    VkDescriptorSetLayout descriptor_sets[] = {renderer.pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout,
+                                               renderer.pbr_dynamic_lights_descriptor_set_layout,
+                                               renderer.single_texture_in_frag_descriptor_set_layout};
+
+    VkPipelineLayoutCreateInfo ci = {
+        .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount         = SDL_arraysize(descriptor_sets),
+        .pSetLayouts            = descriptor_sets,
+        .pushConstantRangeCount = SDL_arraysize(ranges),
+        .pPushConstantRanges    = ranges,
+    };
+
+    vkCreatePipelineLayout(ctx.device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Pipeline::PbrWater]);
+  }
+
+  {
+    VkPushConstantRange ranges[] = {
+        {
             .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
             .offset     = 0,
             .size       = sizeof(mat4x4),
@@ -1781,6 +1821,31 @@ void Engine::setup_simple_rendering()
 
     vkCreatePipelineLayout(ctx.device, &ci, nullptr,
                            &renderer.pipeline_layouts[SimpleRendering::Pipeline::ColoredGeometry]);
+  }
+
+  {
+    VkPushConstantRange ranges[] = {
+        {
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .offset     = 0,
+            .size       = sizeof(mat4x4),
+        },
+        {
+
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .offset     = sizeof(mat4x4),
+            .size       = 3 * sizeof(float),
+        },
+    };
+
+    VkPipelineLayoutCreateInfo ci = {
+        .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .pushConstantRangeCount = SDL_arraysize(ranges),
+        .pPushConstantRanges    = ranges,
+    };
+
+    vkCreatePipelineLayout(ctx.device, &ci, nullptr,
+                           &renderer.pipeline_layouts[SimpleRendering::Pipeline::ColoredGeometryTriangleStrip]);
   }
 
   {
@@ -2033,6 +2098,7 @@ void Engine::setup_simple_rendering()
   pipeline_reload_simple_rendering_skybox_reload(*this);
   pipeline_reload_simple_rendering_scene3d_reload(*this);
   pipeline_reload_simple_rendering_coloredgeometry_reload(*this);
+  pipeline_reload_simple_rendering_coloredgeometry_triangle_strip_reload(*this);
   pipeline_reload_simple_rendering_coloredgeometryskinned_reload(*this);
   pipeline_reload_simple_rendering_green_gui_reload(*this);
   pipeline_reload_simple_rendering_green_gui_weapon_selector_box_left_reload(*this);
@@ -2042,6 +2108,7 @@ void Engine::setup_simple_rendering()
   pipeline_reload_simple_rendering_green_gui_triangle_reload(*this);
   pipeline_reload_simple_rendering_green_gui_radar_dots_reload(*this);
   pipeline_reload_simple_rendering_imgui_reload(*this);
+  pipeline_reload_simple_rendering_pbr_water_reload(*this);
 
   for (uint32_t i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
   {

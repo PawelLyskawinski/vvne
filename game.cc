@@ -396,8 +396,8 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
         vtx.position[1] = get_vr_level_height(x, y);
         vtx.position[2] = (y * resolution[1]) - center[1];
 
-        vtx.texcoord[0] = static_cast<float>(x) / static_cast<float>(vertex_counts[0]);
-        vtx.texcoord[1] = static_cast<float>(y) / static_cast<float>(vertex_counts[1]);
+        vtx.texcoord[0] = static_cast<float>(x) / static_cast<float>(vertex_counts[0] / 64);
+        vtx.texcoord[1] = static_cast<float>(y) / static_cast<float>(vertex_counts[1] / 64);
 
         vtx.normal[0] = 0.0f;
         vtx.normal[1] = -1.0f;
@@ -435,7 +435,7 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
   VkDeviceSize device_index_offset  = engine->gpu_static_geometry.allocate(total_index_count * sizeof(IndexType));
 
   VrLevelLoadResult result = {
-      .entrance_point       = {0.0f, 0.0f},
+      .entrance_point       = {0.0f, -30.0f},
       .target_goal          = {0.0f, 0.2f},
       .vertex_target_offset = device_vertex_offset,
       .index_target_offset  = device_index_offset,
@@ -909,6 +909,8 @@ void Game::startup(Engine& engine)
   sand_normal_idx             = engine.load_texture("../assets/pbr_sand/sand_normal.jpg");
   sand_emissive_idx           = engine.load_texture("../assets/pbr_sand/sand_emissive.jpg");
 
+  water_normal_idx = engine.load_texture("../assets/pbr_water/normal_map.jpg");
+
   const VkDeviceSize light_sources_ubo_size     = sizeof(LightSources);
   const VkDeviceSize skinning_matrices_ubo_size = 64 * sizeof(mat4x4);
 
@@ -1098,6 +1100,7 @@ void Game::startup(Engine& engine)
     vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &skybox_cubemap_dset);
     vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &imgui_font_atlas_dset);
     vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &lucida_sans_sdf_dset);
+    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &pbr_water_material_dset);
   }
 
   {
@@ -1125,6 +1128,10 @@ void Game::startup(Engine& engine)
 
     image.imageView = engine.images.image_views[lucida_sans_sdf_image_idx];
     write.dstSet    = lucida_sans_sdf_dset;
+    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
+
+    image.imageView = engine.images.image_views[water_normal_idx];
+    write.dstSet    = pbr_water_material_dset;
     vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
   }
 
@@ -1195,7 +1202,7 @@ void Game::startup(Engine& engine)
   vr_level_goal[0] *= 25.0f;
   vr_level_goal[1] *= 25.0f;
 
-  vec3_set(player_position, vr_level_entry[0], 2.0f, vr_level_entry[1]);
+  vec3_set(player_position, vr_level_entry[0], 0.0f, vr_level_entry[1]);
 
   vec3_set(player_acceleration, 0.0f, 0.0f, 0.0f);
   vec3_set(player_velocity, 0.0f, 0.0f, 0.0f);
@@ -1210,7 +1217,7 @@ void Game::startup(Engine& engine)
   green_gui_radar_rotation    = -6.0f;
 
   //
-  // billboard vertex data for green gui triangle strip
+  // billboard vertex data (triangle strip topology)
   //
   {
     struct GreenGuiVertex
@@ -1238,14 +1245,52 @@ void Game::startup(Engine& engine)
         },
     };
 
-    engine.gpu_static_transfer.used_memory   = 0;
+    struct ColoredGeometryVertex
+    {
+      vec3 position;
+      vec3 normal;
+      vec2 tex_coord;
+    };
+
+    ColoredGeometryVertex cg_vertices[] = {
+        {
+            .position  = {-1.0f, -1.0f, 0.0f},
+            .normal    = {0.0f, 0.0f, 1.0f},
+            .tex_coord = {0.0f, 0.0f},
+        },
+        {
+            .position  = {1.0f, -1.0f, 0.0f},
+            .normal    = {0.0f, 0.0f, 1.0f},
+            .tex_coord = {1.0f, 0.0f},
+        },
+        {
+            .position  = {-1.0f, 1.0f, 0.0f},
+            .normal    = {0.0f, 0.0f, 1.0f},
+            .tex_coord = {0.0f, 1.0f},
+        },
+        {
+            .position  = {1.0f, 1.0f, 0.0f},
+            .normal    = {0.0f, 0.0f, 1.0f},
+            .tex_coord = {1.0f, 1.0f},
+        },
+    };
+
+    engine.gpu_static_transfer.used_memory = 0;
+
     VkDeviceSize vertices_host_offset        = engine.gpu_static_transfer.allocate(sizeof(vertices));
     green_gui_billboard_vertex_buffer_offset = engine.gpu_static_geometry.allocate(sizeof(vertices));
-
     {
       ScopedMemoryMap vertices_map(engine.generic_handles.device, engine.gpu_static_transfer.memory,
                                    vertices_host_offset, sizeof(vertices));
       SDL_memcpy(vertices_map.get<void>(), vertices, sizeof(vertices));
+    }
+
+    VkDeviceSize cg_vertices_host_offset   = engine.gpu_static_transfer.allocate(sizeof(cg_vertices));
+    regular_billboard_vertex_buffer_offset = engine.gpu_static_geometry.allocate(sizeof(cg_vertices));
+    {
+      ScopedMemoryMap vertices_map(engine.generic_handles.device, engine.gpu_static_transfer.memory,
+                                   cg_vertices_host_offset, sizeof(cg_vertices));
+      SDL_memcpy(vertices_map.get<void>(), cg_vertices, sizeof(cg_vertices));
     }
 
     VkCommandBuffer cmd = VK_NULL_HANDLE;
@@ -1271,13 +1316,21 @@ void Game::startup(Engine& engine)
     }
 
     {
-      VkBufferCopy copy = {
-          .srcOffset = vertices_host_offset,
-          .dstOffset = green_gui_billboard_vertex_buffer_offset,
-          .size      = sizeof(vertices),
+      VkBufferCopy copies[] = {
+          {
+              .srcOffset = vertices_host_offset,
+              .dstOffset = green_gui_billboard_vertex_buffer_offset,
+              .size      = sizeof(vertices),
+          },
+          {
+              .srcOffset = cg_vertices_host_offset,
+              .dstOffset = regular_billboard_vertex_buffer_offset,
+              .size      = sizeof(cg_vertices),
+          },
       };
 
-      vkCmdCopyBuffer(cmd, engine.gpu_static_transfer.buffer, engine.gpu_static_geometry.buffer, 1, &copy);
+      vkCmdCopyBuffer(cmd, engine.gpu_static_transfer.buffer, engine.gpu_static_geometry.buffer, SDL_arraysize(copies),
+                      copies);
     }
 
     {
@@ -1661,13 +1714,9 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
                          ImVec2(300, 20));
     ImGui::PlotHistogram("render times", render_times, SDL_arraysize(render_times), 0, nullptr, 0.0, 0.005,
                          ImVec2(300, 20));
-    ImGui::PlotHistogram("gpu wait times", gpu_wait_for_frame_times, SDL_arraysize(gpu_wait_for_frame_times), 0,
-                         nullptr, 0.0, 0.030, ImVec2(300, 20));
 
     ImGui::Text("Average update time:            %.2fms", 1000.0f * avg(update_times, SDL_arraysize(update_times)));
     ImGui::Text("Average render time:            %.2fms", 1000.0f * avg(render_times, SDL_arraysize(render_times)));
-    ImGui::Text("Average gpu time:               %.2fms",
-                1000.0f * avg(gpu_wait_for_frame_times, SDL_arraysize(gpu_wait_for_frame_times)));
   }
 
   if (ImGui::CollapsingHeader("Animations"))
@@ -1860,8 +1909,8 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   }
 
   if (ImGui::CollapsingHeader("Pipeline reload"))
-    if (ImGui::Button("green gui weapon selector box"))
-      pipeline_reload_simple_rendering_green_gui_weapon_selector_box_left_reload(engine);
+    if (ImGui::Button("water shaders"))
+      pipeline_reload_simple_rendering_pbr_water_reload(engine);
 
   if (ImGui::CollapsingHeader("Memory"))
   {
@@ -1912,8 +1961,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   }
 
   {
-    vec3 position = {0.8f * SDL_sinf(current_time_sec / 2.0f), 3.3f,
-                     3.0f + (0.8f * SDL_cosf(current_time_sec / 2.0f))};
+    vec3 position = {0.8f * SDL_sinf(current_time_sec / 2.0f), 3.3f, 3.0f + (0.8f * SDL_cosf(current_time_sec / 2.0f))};
     vec3 color    = {0.0, 0.0, 20.0};
     update_light(pbr_light_sources_cache, 2, position, color);
   }
@@ -2151,7 +2199,6 @@ void Game::render(Engine& engine)
   Engine::SimpleRendering& renderer = engine.simple_rendering;
 
   {
-    FunctionTimer timer(gpu_wait_for_frame_times, SDL_arraysize(gpu_wait_for_frame_times));
     vkAcquireNextImageKHR(engine.generic_handles.device, engine.generic_handles.swapchain, UINT64_MAX,
                           engine.generic_handles.image_available, VK_NULL_HANDLE, &image_index);
     vkWaitForFences(engine.generic_handles.device, 1, &renderer.submition_fences[image_index], VK_TRUE, UINT64_MAX);
@@ -2180,6 +2227,7 @@ void Game::render(Engine& engine)
   js.jobs[js.jobs_max++] = {"radar dots", render::radar_dots};
   js.jobs[js.jobs_max++] = {"weapon selectors - left", render::weapon_selectors_left};
   js.jobs[js.jobs_max++] = {"weapon selectors - right", render::weapon_selectors_right};
+  js.jobs[js.jobs_max++] = {"water", render::water};
 
   SDL_AtomicSet(&js.profile_data_count, 0);
   SDL_LockMutex(js.new_jobs_available_mutex);

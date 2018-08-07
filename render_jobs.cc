@@ -1401,7 +1401,7 @@ int radar_dots(ThreadJobData tjd)
   float robot_angle = SDL_atan2f(normalized[0], normalized[1]);
   float angle       = tjd.game.camera_angle - robot_angle - ((float)M_PI / 2.0f);
 
-  float final_distance = 0.01f * vec2_len(distance);
+  float final_distance = 0.005f * vec2_len(distance);
 
   float aspect_ratio = vertical_length / horizontal_length;
 
@@ -1983,6 +1983,91 @@ int imgui(ThreadJobData tjd)
     }
   }
 
+  vkEndCommandBuffer(tjd.command);
+  return 0;
+}
+
+int water(ThreadJobData tjd)
+{
+  RecordedCommandBuffer& result = tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)];
+  result.command                = tjd.command;
+  result.subpass                = Engine::SimpleRendering::Pass::Objects3D;
+
+  {
+    VkCommandBufferInheritanceInfo inheritance = {
+        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .renderPass  = tjd.engine.simple_rendering.render_pass,
+        .subpass     = Engine::SimpleRendering::Pass::Objects3D,
+        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+    };
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+        .pInheritanceInfo = &inheritance,
+    };
+
+    vkBeginCommandBuffer(tjd.command, &begin_info);
+  }
+
+  vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::PbrWater]);
+
+  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer,
+                         &tjd.game.regular_billboard_vertex_buffer_offset);
+
+  mat4x4 rotation_matrix = {};
+  mat4x4_identity(rotation_matrix);
+  mat4x4_rotate_X(rotation_matrix, rotation_matrix, to_rad(90.0f));
+
+  mat4x4 scale_matrix = {};
+  mat4x4_identity(scale_matrix);
+  mat4x4_scale_aniso(scale_matrix, scale_matrix, 10.0f, 10.0f, 1.0f);
+
+  for (int x = 0; x < 3; ++x)
+  {
+    for (int y = 0; y < 3; ++y)
+    {
+      mat4x4 translation_matrix = {};
+      mat4x4_translate(translation_matrix,
+              20.0f * x - 20.0f,
+              4.5f,// + 0.02f * SDL_sinf(tjd.game.current_time_sec),
+              20.0f * y - 20.0f);
+
+      mat4x4 tmp = {};
+      mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+
+      struct PushConst
+      {
+        mat4x4 projection;
+        mat4x4 view;
+        mat4x4 model;
+        vec3   camPos;
+        float  time;
+      } push = {};
+
+      mat4x4_dup(push.projection, tjd.game.projection);
+      mat4x4_dup(push.view, tjd.game.view);
+      mat4x4_mul(push.model, tmp, scale_matrix);
+      SDL_memcpy(push.camPos, tjd.game.camera_position, sizeof(vec3));
+      push.time = tjd.game.current_time_sec;
+
+      vkCmdPushConstants(tjd.command,
+                         tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::PbrWater],
+                         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
+
+      VkDescriptorSet dsets[]           = {tjd.game.pbr_ibl_environment_dset, tjd.game.pbr_dynamic_lights_dset,
+                                 tjd.game.pbr_water_material_dset};
+      uint32_t        dynamic_offsets[] = {
+          static_cast<uint32_t>(tjd.game.pbr_dynamic_lights_ubo_offsets[tjd.game.image_index])};
+
+      vkCmdBindDescriptorSets(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::PbrWater],
+                              0, SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
+
+      vkCmdDraw(tjd.command, 4, 1, 0, 0);
+    }
+  }
   vkEndCommandBuffer(tjd.command);
   return 0;
 }
