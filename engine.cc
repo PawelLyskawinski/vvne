@@ -58,10 +58,45 @@ uint32_t find_memory_type_index(VkPhysicalDeviceMemoryProperties* properties, Vk
 
 } // namespace
 
+VkDeviceSize align(VkDeviceSize unaligned, VkDeviceSize alignment)
+{
+  if (unaligned)
+  {
+    VkDeviceSize remainder = unaligned % alignment;
+    if (remainder)
+      return unaligned + alignment - remainder;
+  }
+  return unaligned;
+}
+
+int find_first_zeroed_bit_offset(uint64_t bitmap)
+{
+  for (int i = 0; i < 64; ++i)
+    if (0 == (bitmap & (uint64_t(1) << i)))
+      return i;
+  return 64;
+}
+
+void* DoubleEndedStack::allocate_front(uint64_t size)
+{
+  void* result = reinterpret_cast<void*>(&memory[stack_pointer_front]);
+  stack_pointer_front += align(size, 8);
+  return result;
+}
+
+void* DoubleEndedStack::allocate_back(uint64_t size)
+{
+  stack_pointer_back += align(size, 8);
+  return reinterpret_cast<void*>(&memory[MEMORY_ALLOCATOR_POOL_SIZE - stack_pointer_back]);
+}
+
+void DoubleEndedStack::reset_back()
+{
+  stack_pointer_back = 0;
+}
+
 void Engine::startup()
 {
-  GenericHandles& ctx = generic_handles;
-
   {
     VkApplicationInfo ai = {
         .sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -103,7 +138,7 @@ void Engine::startup()
         .ppEnabledExtensionNames = instance_extensions,
     };
 
-    vkCreateInstance(&ci, nullptr, &ctx.instance);
+    vkCreateInstance(&ci, nullptr, &instance);
   }
 
 #ifdef ENABLE_VK_VALIDATION
@@ -115,51 +150,52 @@ void Engine::startup()
         .pfnCallback = vulkan_debug_callback,
     };
 
-    auto fcn = (PFN_vkCreateDebugReportCallbackEXT)(
-        vkGetInstanceProcAddr(generic_handles.instance, "vkCreateDebugReportCallbackEXT"));
-    fcn(generic_handles.instance, &ci, nullptr, &generic_handles.debug_callback);
+    auto fcn = (PFN_vkCreateDebugReportCallbackEXT)(vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT"));
+    fcn(instance, &ci, nullptr, &debug_callback);
   }
 #endif
 
-  ctx.window = SDL_CreateWindow("vvne", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, INITIAL_WINDOW_WIDTH,
-                                INITIAL_WINDOW_HEIGHT, SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
+  window = SDL_CreateWindow("vvne", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, INITIAL_WINDOW_WIDTH,
+                            INITIAL_WINDOW_HEIGHT, SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
 
   {
     uint32_t count = 0;
-    vkEnumeratePhysicalDevices(ctx.instance, &count, nullptr);
-    VkPhysicalDevice* handles = double_ended_stack.allocate_back<VkPhysicalDevice>(count);
-    vkEnumeratePhysicalDevices(ctx.instance, &count, handles);
+    vkEnumeratePhysicalDevices(instance, &count, nullptr);
+    void*             allocation = allocator.allocate_back(count * sizeof(VkPhysicalDevice));
+    VkPhysicalDevice* handles    = reinterpret_cast<VkPhysicalDevice*>(allocation);
+    vkEnumeratePhysicalDevices(instance, &count, handles);
 
-    ctx.physical_device = handles[0];
-    vkGetPhysicalDeviceProperties(ctx.physical_device, &ctx.physical_device_properties);
-    SDL_Log("Selecting graphics card: %s", ctx.physical_device_properties.deviceName);
+    physical_device = handles[0];
+    vkGetPhysicalDeviceProperties(physical_device, &physical_device_properties);
+    SDL_Log("Selecting graphics card: %s", physical_device_properties.deviceName);
   }
 
-  SDL_bool surface_result = SDL_Vulkan_CreateSurface(ctx.window, ctx.instance, &ctx.surface);
+  SDL_bool surface_result = SDL_Vulkan_CreateSurface(window, instance, &surface);
   if (SDL_FALSE == surface_result)
   {
     SDL_Log("%s", SDL_GetError());
     return;
   }
 
-  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(ctx.physical_device, ctx.surface, &ctx.surface_capabilities);
-  ctx.extent2D = ctx.surface_capabilities.currentExtent;
+  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &surface_capabilities);
+  extent2D = surface_capabilities.currentExtent;
 
   {
     uint32_t count = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(ctx.physical_device, &count, nullptr);
-    VkQueueFamilyProperties* all_properties = double_ended_stack.allocate_back<VkQueueFamilyProperties>(count);
-    vkGetPhysicalDeviceQueueFamilyProperties(ctx.physical_device, &count, all_properties);
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, nullptr);
+    void*                    allocation     = allocator.allocate_back(count * sizeof(VkQueueFamilyProperties));
+    VkQueueFamilyProperties* all_properties = reinterpret_cast<VkQueueFamilyProperties*>(allocation);
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, all_properties);
 
     for (uint32_t i = 0; count; ++i)
     {
       VkQueueFamilyProperties properties          = all_properties[i];
       VkBool32                has_present_support = 0;
-      vkGetPhysicalDeviceSurfaceSupportKHR(ctx.physical_device, i, ctx.surface, &has_present_support);
+      vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, surface, &has_present_support);
 
       if (has_present_support && (properties.queueFlags & VK_QUEUE_GRAPHICS_BIT))
       {
-        ctx.graphics_family_index = i;
+        graphics_family_index = i;
         break;
       }
     }
@@ -175,7 +211,7 @@ void Engine::startup()
 
     VkDeviceQueueCreateInfo graphics = {
         .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-        .queueFamilyIndex = ctx.graphics_family_index,
+        .queueFamilyIndex = graphics_family_index,
         .queueCount       = SDL_arraysize(queue_priorities),
         .pQueuePriorities = queue_priorities,
     };
@@ -198,18 +234,19 @@ void Engine::startup()
         .pEnabledFeatures        = &device_features,
     };
 
-    vkCreateDevice(ctx.physical_device, &ci, nullptr, &ctx.device);
+    vkCreateDevice(physical_device, &ci, nullptr, &device);
   }
 
-  vkGetDeviceQueue(ctx.device, ctx.graphics_family_index, 0, &ctx.graphics_queue);
+  vkGetDeviceQueue(device, graphics_family_index, 0, &graphics_queue);
 
   {
     uint32_t count = 0;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(ctx.physical_device, ctx.surface, &count, nullptr);
-    VkSurfaceFormatKHR* formats = double_ended_stack.allocate_back<VkSurfaceFormatKHR>(count);
-    vkGetPhysicalDeviceSurfaceFormatsKHR(ctx.physical_device, ctx.surface, &count, formats);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, nullptr);
+    void*               allocation = allocator.allocate_back(count * sizeof(VkSurfaceFormatKHR));
+    VkSurfaceFormatKHR* formats    = reinterpret_cast<VkSurfaceFormatKHR*>(allocation);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, formats);
 
-    ctx.surface_format = formats[0];
+    surface_format = formats[0];
     for (uint32_t i = 0; i < count; ++i)
     {
       if (VK_FORMAT_B8G8R8A8_UNORM != formats[i].format)
@@ -218,29 +255,30 @@ void Engine::startup()
       if (VK_COLOR_SPACE_SRGB_NONLINEAR_KHR != formats[i].colorSpace)
         continue;
 
-      ctx.surface_format = formats[i];
+      surface_format = formats[i];
       break;
     }
   }
 
   {
     uint32_t count = 0;
-    vkGetPhysicalDeviceSurfacePresentModesKHR(ctx.physical_device, ctx.surface, &count, nullptr);
-    VkPresentModeKHR* present_modes = double_ended_stack.allocate_back<VkPresentModeKHR>(count);
-    vkGetPhysicalDeviceSurfacePresentModesKHR(ctx.physical_device, ctx.surface, &count, present_modes);
+    vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, nullptr);
+    void*             allocation    = allocator.allocate_back(count * sizeof(VkPresentModeKHR));
+    VkPresentModeKHR* present_modes = reinterpret_cast<VkPresentModeKHR*>(allocation);
+    vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, present_modes);
 
-    ctx.present_mode = VK_PRESENT_MODE_FIFO_KHR;
+    present_mode = VK_PRESENT_MODE_FIFO_KHR;
     for (uint32_t i = 0; i < count; ++i)
     {
       if (VK_PRESENT_MODE_MAILBOX_KHR == present_modes[i])
       {
-        ctx.present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
+        present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
         break;
       }
     }
 
     const char* selected_mode = nullptr;
-    switch (ctx.present_mode)
+    switch (present_mode)
     {
     case VK_PRESENT_MODE_MAILBOX_KHR:
       selected_mode = "MAILBOX (smart v-sync)";
@@ -255,26 +293,26 @@ void Engine::startup()
   {
     VkSwapchainCreateInfoKHR ci = {
         .sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-        .surface          = ctx.surface,
+        .surface          = surface,
         .minImageCount    = SWAPCHAIN_IMAGES_COUNT,
-        .imageFormat      = ctx.surface_format.format,
-        .imageColorSpace  = ctx.surface_format.colorSpace,
-        .imageExtent      = ctx.extent2D,
+        .imageFormat      = surface_format.format,
+        .imageColorSpace  = surface_format.colorSpace,
+        .imageExtent      = extent2D,
         .imageArrayLayers = 1,
         .imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
         .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
-        .preTransform     = ctx.surface_capabilities.currentTransform,
+        .preTransform     = surface_capabilities.currentTransform,
         .compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-        .presentMode      = ctx.present_mode,
+        .presentMode      = present_mode,
         .clipped          = VK_TRUE,
     };
 
-    vkCreateSwapchainKHR(ctx.device, &ci, nullptr, &ctx.swapchain);
+    vkCreateSwapchainKHR(device, &ci, nullptr, &swapchain);
 
     uint32_t swapchain_images_count = 0;
-    vkGetSwapchainImagesKHR(ctx.device, ctx.swapchain, &swapchain_images_count, nullptr);
+    vkGetSwapchainImagesKHR(device, swapchain, &swapchain_images_count, nullptr);
     SDL_assert(SWAPCHAIN_IMAGES_COUNT == swapchain_images_count);
-    vkGetSwapchainImagesKHR(ctx.device, ctx.swapchain, &swapchain_images_count, ctx.swapchain_images);
+    vkGetSwapchainImagesKHR(device, swapchain, &swapchain_images_count, swapchain_images);
   }
 
   {
@@ -295,14 +333,14 @@ void Engine::startup()
     {
       VkImageViewCreateInfo ci = {
           .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-          .image            = ctx.swapchain_images[i],
+          .image            = swapchain_images[i],
           .viewType         = VK_IMAGE_VIEW_TYPE_2D,
-          .format           = ctx.surface_format.format,
+          .format           = surface_format.format,
           .components       = cm,
           .subresourceRange = sr,
       };
 
-      vkCreateImageView(ctx.device, &ci, nullptr, &ctx.swapchain_image_views[i]);
+      vkCreateImageView(device, &ci, nullptr, &swapchain_image_views[i]);
     }
   }
 
@@ -310,10 +348,10 @@ void Engine::startup()
     VkCommandPoolCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-        .queueFamilyIndex = ctx.graphics_family_index,
+        .queueFamilyIndex = graphics_family_index,
     };
 
-    vkCreateCommandPool(ctx.device, &ci, nullptr, &ctx.graphics_command_pool);
+    vkCreateCommandPool(device, &ci, nullptr, &graphics_command_pool);
   }
 
   // Pool sizes below are just an suggestions. They have to be adjusted for the final release builds
@@ -330,13 +368,13 @@ void Engine::startup()
         .pPoolSizes    = pool_sizes,
     };
 
-    vkCreateDescriptorPool(ctx.device, &ci, nullptr, &ctx.descriptor_pool);
+    vkCreateDescriptorPool(device, &ci, nullptr, &descriptor_pool);
   }
 
   {
     VkSemaphoreCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-    vkCreateSemaphore(ctx.device, &ci, nullptr, &ctx.image_available);
-    vkCreateSemaphore(ctx.device, &ci, nullptr, &ctx.render_finished);
+    vkCreateSemaphore(device, &ci, nullptr, &image_available);
+    vkCreateSemaphore(device, &ci, nullptr, &render_finished);
   }
 
   {
@@ -344,7 +382,7 @@ void Engine::startup()
         .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .imageType     = VK_IMAGE_TYPE_2D,
         .format        = VK_FORMAT_D32_SFLOAT,
-        .extent        = {.width = ctx.extent2D.width, .height = ctx.extent2D.height, .depth = 1},
+        .extent        = {.width = extent2D.width, .height = extent2D.height, .depth = 1},
         .mipLevels     = 1,
         .arrayLayers   = 1,
         .samples       = VK_SAMPLE_COUNT_1_BIT,
@@ -354,15 +392,15 @@ void Engine::startup()
         .initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED,
     };
 
-    vkCreateImage(ctx.device, &ci, nullptr, &ctx.depth_image);
+    vkCreateImage(device, &ci, nullptr, &depth_image);
   }
 
   {
     VkImageCreateInfo ci = {
         .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .imageType     = VK_IMAGE_TYPE_2D,
-        .format        = ctx.surface_format.format,
-        .extent        = {.width = ctx.extent2D.width, .height = ctx.extent2D.height, .depth = 1},
+        .format        = surface_format.format,
+        .extent        = {.width = extent2D.width, .height = extent2D.height, .depth = 1},
         .mipLevels     = 1,
         .arrayLayers   = 1,
         .samples       = MSAA_SAMPLE_COUNT,
@@ -372,7 +410,7 @@ void Engine::startup()
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
 
-    vkCreateImage(ctx.device, &ci, nullptr, &ctx.msaa_color_image);
+    vkCreateImage(device, &ci, nullptr, &msaa_color_image);
   }
 
   {
@@ -380,7 +418,7 @@ void Engine::startup()
         .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .imageType     = VK_IMAGE_TYPE_2D,
         .format        = VK_FORMAT_D32_SFLOAT,
-        .extent        = {.width = ctx.extent2D.width, .height = ctx.extent2D.height, .depth = 1},
+        .extent        = {.width = extent2D.width, .height = extent2D.height, .depth = 1},
         .mipLevels     = 1,
         .arrayLayers   = 1,
         .samples       = MSAA_SAMPLE_COUNT,
@@ -390,7 +428,7 @@ void Engine::startup()
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
 
-    vkCreateImage(ctx.device, &ci, nullptr, &ctx.msaa_depth_image);
+    vkCreateImage(device, &ci, nullptr, &msaa_depth_image);
   }
 
   {
@@ -413,7 +451,7 @@ void Engine::startup()
         .unnormalizedCoordinates = VK_FALSE,
     };
 
-    vkCreateSampler(ctx.device, &ci, nullptr, &ctx.texture_sampler);
+    vkCreateSampler(device, &ci, nullptr, &texture_sampler);
   }
 
   // STATIC_GEOMETRY
@@ -421,7 +459,7 @@ void Engine::startup()
   {
     VkBufferCreateInfo ci = {
         .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size        = GpuStaticGeometry::MAX_MEMORY_SIZE,
+        .size        = GPU_DEVICE_LOCAL_MEMORY_POOL_SIZE,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
 
@@ -429,16 +467,16 @@ void Engine::startup()
     ci.usage |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
     ci.usage |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
 
-    vkCreateBuffer(ctx.device, &ci, nullptr, &gpu_static_geometry.buffer);
+    vkCreateBuffer(device, &ci, nullptr, &gpu_device_local_memory_buffer);
   }
 
   {
-    VkMemoryRequirements reqs{};
-    vkGetBufferMemoryRequirements(ctx.device, gpu_static_geometry.buffer, &reqs);
-    gpu_static_geometry.alignment = reqs.alignment;
+    VkMemoryRequirements reqs = {};
+    vkGetBufferMemoryRequirements(device, gpu_device_local_memory_buffer, &reqs);
+    gpu_device_local_memory_block.alignment = reqs.alignment;
 
-    VkPhysicalDeviceMemoryProperties properties{};
-    vkGetPhysicalDeviceMemoryProperties(ctx.physical_device, &properties);
+    VkPhysicalDeviceMemoryProperties properties = {};
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
 
     VkMemoryAllocateInfo allocate = {
         .sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -446,29 +484,29 @@ void Engine::startup()
         .memoryTypeIndex = find_memory_type_index(&properties, &reqs, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
     };
 
-    vkAllocateMemory(ctx.device, &allocate, nullptr, &gpu_static_geometry.memory);
-    vkBindBufferMemory(ctx.device, gpu_static_geometry.buffer, gpu_static_geometry.memory, 0);
+    vkAllocateMemory(device, &allocate, nullptr, &gpu_device_local_memory_block.memory);
+    vkBindBufferMemory(device, gpu_device_local_memory_buffer, gpu_device_local_memory_block.memory, 0);
   }
 
   // STATIC_GEOMETRY_TRANSFER
   {
     VkBufferCreateInfo ci = {
         .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size        = GpuStaticTransfer::MAX_MEMORY_SIZE,
+        .size        = GPU_HOST_VISIBLE_TRANSFER_SOURCE_MEMORY_POOL_SIZE,
         .usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
 
-    vkCreateBuffer(ctx.device, &ci, nullptr, &gpu_static_transfer.buffer);
+    vkCreateBuffer(device, &ci, nullptr, &gpu_host_visible_transfer_source_memory_buffer);
   }
 
   {
-    VkMemoryRequirements reqs{};
-    vkGetBufferMemoryRequirements(ctx.device, gpu_static_transfer.buffer, &reqs);
-    gpu_static_transfer.alignment = reqs.alignment;
+    VkMemoryRequirements reqs = {};
+    vkGetBufferMemoryRequirements(device, gpu_host_visible_transfer_source_memory_buffer, &reqs);
+    gpu_host_visible_transfer_source_memory_block.alignment = reqs.alignment;
 
     VkPhysicalDeviceMemoryProperties properties{};
-    vkGetPhysicalDeviceMemoryProperties(ctx.physical_device, &properties);
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
 
     VkMemoryAllocateInfo allocate = {
         .sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -477,8 +515,9 @@ void Engine::startup()
             &properties, &reqs, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
     };
 
-    vkAllocateMemory(ctx.device, &allocate, nullptr, &gpu_static_transfer.memory);
-    vkBindBufferMemory(ctx.device, gpu_static_transfer.buffer, gpu_static_transfer.memory, 0);
+    vkAllocateMemory(device, &allocate, nullptr, &gpu_host_visible_transfer_source_memory_block.memory);
+    vkBindBufferMemory(device, gpu_host_visible_transfer_source_memory_buffer,
+                       gpu_host_visible_transfer_source_memory_block.memory, 0);
   }
 
   // HOST VISIBLE
@@ -486,21 +525,21 @@ void Engine::startup()
   {
     VkBufferCreateInfo ci = {
         .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size        = GpuHostVisible::MAX_MEMORY_SIZE,
+        .size        = GPU_HOST_COHERENT_MEMORY_POOL_SIZE,
         .usage       = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
 
-    vkCreateBuffer(ctx.device, &ci, nullptr, &gpu_host_visible.buffer);
+    vkCreateBuffer(device, &ci, nullptr, &gpu_host_coherent_memory_buffer);
   }
 
   {
-    VkMemoryRequirements reqs{};
-    vkGetBufferMemoryRequirements(ctx.device, gpu_host_visible.buffer, &reqs);
-    gpu_host_visible.alignment = reqs.alignment;
+    VkMemoryRequirements reqs = {};
+    vkGetBufferMemoryRequirements(device, gpu_host_coherent_memory_buffer, &reqs);
+    gpu_host_coherent_memory_block.alignment = reqs.alignment;
 
-    VkPhysicalDeviceMemoryProperties properties{};
-    vkGetPhysicalDeviceMemoryProperties(ctx.physical_device, &properties);
+    VkPhysicalDeviceMemoryProperties properties = {};
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
 
     VkMemoryAllocateInfo allocate = {
         .sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -508,39 +547,45 @@ void Engine::startup()
         .memoryTypeIndex = find_memory_type_index(&properties, &reqs, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT),
     };
 
-    vkAllocateMemory(ctx.device, &allocate, nullptr, &gpu_host_visible.memory);
-    vkBindBufferMemory(ctx.device, gpu_host_visible.buffer, gpu_host_visible.memory, 0);
+    vkAllocateMemory(device, &allocate, nullptr, &gpu_host_coherent_memory_block.memory);
+    vkBindBufferMemory(device, gpu_host_coherent_memory_buffer, gpu_host_coherent_memory_block.memory, 0);
   }
 
   // IMAGES
   {
-    VkMemoryRequirements reqs{};
-    vkGetImageMemoryRequirements(ctx.device, ctx.depth_image, &reqs);
-    images.alignment = reqs.alignment;
+    VkMemoryRequirements reqs = {};
+    vkGetImageMemoryRequirements(device, depth_image, &reqs);
+    gpu_device_images_memory_block.alignment = reqs.alignment;
 
-    VkPhysicalDeviceMemoryProperties properties{};
-    vkGetPhysicalDeviceMemoryProperties(ctx.physical_device, &properties);
+    VkPhysicalDeviceMemoryProperties properties = {};
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
 
     VkMemoryAllocateInfo allocate = {
         .sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .allocationSize  = Images::MAX_MEMORY_SIZE,
+        .allocationSize  = GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE,
         .memoryTypeIndex = find_memory_type_index(&properties, &reqs, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
     };
 
-    vkAllocateMemory(ctx.device, &allocate, nullptr, &images.memory);
-    vkBindImageMemory(ctx.device, ctx.depth_image, images.memory, images.allocate(reqs.size));
+    vkAllocateMemory(device, &allocate, nullptr, &gpu_device_images_memory_block.memory);
+    vkBindImageMemory(device, depth_image, gpu_device_images_memory_block.memory,
+                      gpu_device_images_memory_block.stack_pointer);
+    gpu_device_images_memory_block.stack_pointer += align(reqs.size, reqs.alignment);
   }
 
   {
-    VkMemoryRequirements reqs{};
-    vkGetImageMemoryRequirements(ctx.device, ctx.msaa_color_image, &reqs);
-    vkBindImageMemory(ctx.device, ctx.msaa_color_image, images.memory, images.allocate(reqs.size));
+    VkMemoryRequirements reqs = {};
+    vkGetImageMemoryRequirements(device, msaa_color_image, &reqs);
+    vkBindImageMemory(device, msaa_color_image, gpu_device_images_memory_block.memory,
+                      gpu_device_images_memory_block.stack_pointer);
+    gpu_device_images_memory_block.stack_pointer += align(reqs.size, reqs.alignment);
   }
 
   {
-    VkMemoryRequirements reqs{};
-    vkGetImageMemoryRequirements(ctx.device, ctx.msaa_depth_image, &reqs);
-    vkBindImageMemory(ctx.device, ctx.msaa_depth_image, images.memory, images.allocate(reqs.size));
+    VkMemoryRequirements reqs = {};
+    vkGetImageMemoryRequirements(device, msaa_depth_image, &reqs);
+    vkBindImageMemory(device, msaa_depth_image, gpu_device_images_memory_block.memory,
+                      gpu_device_images_memory_block.stack_pointer);
+    gpu_device_images_memory_block.stack_pointer += align(reqs.size, reqs.alignment);
   }
 
   {
@@ -549,12 +594,12 @@ void Engine::startup()
     {
       VkCommandBufferAllocateInfo alloc = {
           .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-          .commandPool        = ctx.graphics_command_pool,
+          .commandPool        = graphics_command_pool,
           .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
           .commandBufferCount = 1,
       };
 
-      vkAllocateCommandBuffers(ctx.device, &alloc, &command_buffer);
+      vkAllocateCommandBuffers(device, &alloc, &command_buffer);
     }
 
     {
@@ -574,7 +619,7 @@ void Engine::startup()
           .newLayout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
           .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
           .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-          .image               = ctx.depth_image,
+          .image               = depth_image,
           .subresourceRange    = {.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT, .levelCount = 1, .layerCount = 1},
       };
 
@@ -591,11 +636,11 @@ void Engine::startup()
           .pCommandBuffers    = &command_buffer,
       };
 
-      vkQueueSubmit(ctx.graphics_queue, 1, &submit, VK_NULL_HANDLE);
+      vkQueueSubmit(graphics_queue, 1, &submit, VK_NULL_HANDLE);
     }
 
-    vkQueueWaitIdle(ctx.graphics_queue);
-    vkFreeCommandBuffers(ctx.device, ctx.graphics_command_pool, 1, &command_buffer);
+    vkQueueWaitIdle(graphics_queue);
+    vkFreeCommandBuffers(device, graphics_command_pool, 1, &command_buffer);
   }
 
   // image views can only be created when memory is bound to the image handle
@@ -615,14 +660,14 @@ void Engine::startup()
 
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = ctx.depth_image,
+        .image            = depth_image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D,
         .format           = VK_FORMAT_D32_SFLOAT,
         .components       = comp,
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(ctx.device, &ci, nullptr, &ctx.depth_image_view);
+    vkCreateImageView(device, &ci, nullptr, &depth_image_view);
   }
 
   {
@@ -641,14 +686,14 @@ void Engine::startup()
 
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = ctx.msaa_color_image,
+        .image            = msaa_color_image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D,
-        .format           = ctx.surface_format.format,
+        .format           = surface_format.format,
         .components       = comp,
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(ctx.device, &ci, nullptr, &ctx.msaa_color_image_view);
+    vkCreateImageView(device, &ci, nullptr, &msaa_color_image_view);
   }
 
   {
@@ -667,41 +712,55 @@ void Engine::startup()
 
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = ctx.msaa_depth_image,
+        .image            = msaa_depth_image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D,
         .format           = VK_FORMAT_D32_SFLOAT,
         .components       = comp,
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(ctx.device, &ci, nullptr, &ctx.msaa_depth_image_view);
+    vkCreateImageView(device, &ci, nullptr, &msaa_depth_image_view);
   }
 
-  images.images      = double_ended_stack.allocate_front<VkImage>(Images::MAX_COUNT);
-  images.image_views = double_ended_stack.allocate_front<VkImageView>(Images::MAX_COUNT);
-  images.add(ctx.depth_image, ctx.depth_image_view);
-  images.add(ctx.msaa_color_image, ctx.msaa_color_image_view);
-  images.add(ctx.msaa_depth_image, ctx.msaa_depth_image_view);
+  {
+    int offset = find_first_zeroed_bit_offset(image_usage_bitmap);
+    image_usage_bitmap |= (uint64_t(1) << offset);
+
+    images[offset]      = depth_image;
+    image_views[offset] = depth_image_view;
+
+    offset = find_first_zeroed_bit_offset(image_usage_bitmap);
+    image_usage_bitmap |= (uint64_t(1) << offset);
+
+    images[offset]      = msaa_color_image;
+    image_views[offset] = msaa_color_image_view;
+
+    offset = find_first_zeroed_bit_offset(image_usage_bitmap);
+    image_usage_bitmap |= (uint64_t(1) << offset);
+
+    images[offset]      = msaa_depth_image;
+    image_views[offset] = msaa_depth_image_view;
+  }
 
   // UBO HOST VISIBLE
   {
     VkBufferCreateInfo ci = {
         .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size        = UboHostVisible::MAX_MEMORY_SIZE,
+        .size        = GPU_HOST_COHERENT_UBO_MEMORY_POOL_SIZE,
         .usage       = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
 
-    vkCreateBuffer(ctx.device, &ci, nullptr, &ubo_host_visible.buffer);
+    vkCreateBuffer(device, &ci, nullptr, &gpu_host_coherent_ubo_memory_buffer);
   }
 
   {
-    VkMemoryRequirements reqs{};
-    vkGetBufferMemoryRequirements(ctx.device, ubo_host_visible.buffer, &reqs);
-    ubo_host_visible.alignment = reqs.alignment;
+    VkMemoryRequirements reqs = {};
+    vkGetBufferMemoryRequirements(device, gpu_host_coherent_ubo_memory_buffer, &reqs);
+    gpu_host_coherent_ubo_memory_block.alignment = reqs.alignment;
 
-    VkPhysicalDeviceMemoryProperties properties{};
-    vkGetPhysicalDeviceMemoryProperties(ctx.physical_device, &properties);
+    VkPhysicalDeviceMemoryProperties properties = {};
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
 
     VkMemoryAllocateInfo allocate = {
         .sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -710,101 +769,82 @@ void Engine::startup()
             &properties, &reqs, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
     };
 
-    vkAllocateMemory(ctx.device, &allocate, nullptr, &ubo_host_visible.memory);
-    vkBindBufferMemory(ctx.device, ubo_host_visible.buffer, ubo_host_visible.memory, 0);
+    vkAllocateMemory(device, &allocate, nullptr, &gpu_host_coherent_ubo_memory_block.memory);
+    vkBindBufferMemory(device, gpu_host_coherent_ubo_memory_buffer, gpu_host_coherent_ubo_memory_block.memory, 0);
   }
 
-  double_ended_stack.reset_back();
+  allocator.reset_back();
   setup_simple_rendering();
 }
 
 void Engine::teardown()
 {
-  GenericHandles& ctx = generic_handles;
-
-  vkDeviceWaitIdle(ctx.device);
+  vkDeviceWaitIdle(device);
 
   for (int i = 0; i < scheduled_pipelines_destruction_count; ++i)
-  {
-    vkDestroyPipeline(generic_handles.device, scheduled_pipelines_destruction[i].pipeline, nullptr);
-  }
+    vkDestroyPipeline(device, scheduled_pipelines_destruction[i].pipeline, nullptr);
 
-  vkDestroyRenderPass(ctx.device, simple_rendering.render_pass, nullptr);
+  vkDestroyRenderPass(device, simple_rendering.render_pass, nullptr);
 
-  {
-    VkDescriptorSetLayout layouts[] = {
-        simple_rendering.pbr_metallic_workflow_material_descriptor_set_layout,
-        simple_rendering.pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout,
-        simple_rendering.pbr_dynamic_lights_descriptor_set_layout,
-        simple_rendering.single_texture_in_frag_descriptor_set_layout,
-        simple_rendering.skinning_matrices_descriptor_set_layout,
-    };
-
-    for (VkDescriptorSetLayout layout : layouts)
-      vkDestroyDescriptorSetLayout(ctx.device, layout, nullptr);
-  }
+  vkDestroyDescriptorSetLayout(device, simple_rendering.pbr_metallic_workflow_material_descriptor_set_layout, nullptr);
+  vkDestroyDescriptorSetLayout(device, simple_rendering.pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout, nullptr);
+  vkDestroyDescriptorSetLayout(device, simple_rendering.pbr_dynamic_lights_descriptor_set_layout, nullptr);
+  vkDestroyDescriptorSetLayout(device, simple_rendering.single_texture_in_frag_descriptor_set_layout, nullptr);
+  vkDestroyDescriptorSetLayout(device, simple_rendering.skinning_matrices_descriptor_set_layout, nullptr);
 
   for (VkFramebuffer& framebuffer : simple_rendering.framebuffers)
-    vkDestroyFramebuffer(ctx.device, framebuffer, nullptr);
+    vkDestroyFramebuffer(device, framebuffer, nullptr);
 
   for (VkPipelineLayout& layout : simple_rendering.pipeline_layouts)
-    vkDestroyPipelineLayout(ctx.device, layout, nullptr);
+    vkDestroyPipelineLayout(device, layout, nullptr);
 
   for (VkPipeline& pipeline : simple_rendering.pipelines)
-    vkDestroyPipeline(ctx.device, pipeline, nullptr);
+    vkDestroyPipeline(device, pipeline, nullptr);
 
   for (VkFence& fence : simple_rendering.submition_fences)
-    vkDestroyFence(ctx.device, fence, nullptr);
+    vkDestroyFence(device, fence, nullptr);
 
-  for (uint32_t i = 0; i < images.loaded_count; ++i)
+  for (int i = 0; i < 64; ++i)
   {
-    vkDestroyImage(ctx.device, images.images[i], nullptr);
+    if (image_usage_bitmap & (uint64_t(1) << i))
+    {
+      vkDestroyImage(device, images[i], nullptr);
+      vkDestroyImageView(device, image_views[i], nullptr);
+    }
   }
 
-  for (uint32_t i = 0; i < images.loaded_count; ++i)
-  {
-    vkDestroyImageView(ctx.device, images.image_views[i], nullptr);
-  }
+  vkFreeMemory(device, gpu_device_local_memory_block.memory, nullptr);
+  vkFreeMemory(device, gpu_host_visible_transfer_source_memory_block.memory, nullptr);
+  vkFreeMemory(device, gpu_host_coherent_memory_block.memory, nullptr);
+  vkFreeMemory(device, gpu_device_images_memory_block.memory, nullptr);
+  vkFreeMemory(device, gpu_host_coherent_ubo_memory_block.memory, nullptr);
 
-  {
-    VkDeviceMemory memories[] = {ubo_host_visible.memory, images.memory, gpu_host_visible.memory,
-                                 gpu_static_transfer.memory, gpu_static_geometry.memory};
+  vkDestroyBuffer(device, gpu_device_local_memory_buffer, nullptr);
+  vkDestroyBuffer(device, gpu_host_visible_transfer_source_memory_buffer, nullptr);
+  vkDestroyBuffer(device, gpu_host_coherent_memory_buffer, nullptr);
+  vkDestroyBuffer(device, gpu_host_coherent_ubo_memory_buffer, nullptr);
 
-    for (VkDeviceMemory memory : memories)
-      vkFreeMemory(ctx.device, memory, nullptr);
-  }
+  vkDestroySampler(device, texture_sampler, nullptr);
+  vkDestroySemaphore(device, image_available, nullptr);
+  vkDestroySemaphore(device, render_finished, nullptr);
+  vkDestroyCommandPool(device, graphics_command_pool, nullptr);
+  vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
 
-  {
-    VkBuffer buffers[] = {ubo_host_visible.buffer, gpu_host_visible.buffer, gpu_static_transfer.buffer,
-                          gpu_static_geometry.buffer};
+  for (VkImageView swapchain_image_view : swapchain_image_views)
+    vkDestroyImageView(device, swapchain_image_view, nullptr);
 
-    for (VkBuffer buffer : buffers)
-      vkDestroyBuffer(ctx.device, buffer, nullptr);
-  }
-
-  vkDestroySampler(ctx.device, ctx.texture_sampler, nullptr);
-  vkDestroySemaphore(ctx.device, ctx.image_available, nullptr);
-  vkDestroySemaphore(ctx.device, ctx.render_finished, nullptr);
-  vkDestroyCommandPool(ctx.device, ctx.graphics_command_pool, nullptr);
-  vkDestroyDescriptorPool(ctx.device, ctx.descriptor_pool, nullptr);
-
-  for (VkImageView swapchain_image_view : ctx.swapchain_image_views)
-  {
-    vkDestroyImageView(ctx.device, swapchain_image_view, nullptr);
-  }
-
-  vkDestroySwapchainKHR(ctx.device, ctx.swapchain, nullptr);
-  vkDestroyDevice(ctx.device, nullptr);
-  vkDestroySurfaceKHR(ctx.instance, ctx.surface, nullptr);
-  SDL_DestroyWindow(ctx.window);
+  vkDestroySwapchainKHR(device, swapchain, nullptr);
+  vkDestroyDevice(device, nullptr);
+  vkDestroySurfaceKHR(instance, surface, nullptr);
+  SDL_DestroyWindow(window);
 
 #ifdef ENABLE_VK_VALIDATION
   using Fcn = PFN_vkDestroyDebugReportCallbackEXT;
-  auto fcn  = (Fcn)(vkGetInstanceProcAddr(ctx.instance, "vkDestroyDebugReportCallbackEXT"));
-  fcn(ctx.instance, ctx.debug_callback, nullptr);
+  auto fcn  = (Fcn)(vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT"));
+  fcn(instance, debug_callback, nullptr);
 #endif
 
-  vkDestroyInstance(ctx.instance, nullptr);
+  vkDestroyInstance(instance, nullptr);
 }
 
 int Engine::load_texture(const char* filepath)
@@ -854,9 +894,8 @@ int Engine::load_texture_hdr(const char* filename)
   float*         pixels     = stbi_loadf(filename, &x, &y, &real_format, 0);
   const VkFormat dst_format = VK_FORMAT_R32G32B32A32_SFLOAT;
 
-  GenericHandles& ctx            = generic_handles;
-  VkImage         staging_image  = VK_NULL_HANDLE;
-  VkDeviceMemory  staging_memory = VK_NULL_HANDLE;
+  VkImage        staging_image  = VK_NULL_HANDLE;
+  VkDeviceMemory staging_memory = VK_NULL_HANDLE;
 
   {
     VkImageCreateInfo ci = {
@@ -873,14 +912,14 @@ int Engine::load_texture_hdr(const char* filename)
         .initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED,
     };
 
-    vkCreateImage(ctx.device, &ci, nullptr, &staging_image);
+    vkCreateImage(device, &ci, nullptr, &staging_image);
   }
 
   VkMemoryRequirements reqs = {};
   {
     VkPhysicalDeviceMemoryProperties properties = {};
-    vkGetPhysicalDeviceMemoryProperties(ctx.physical_device, &properties);
-    vkGetImageMemoryRequirements(ctx.device, staging_image, &reqs);
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
+    vkGetImageMemoryRequirements(device, staging_image, &reqs);
 
     VkMemoryPropertyFlags type = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
@@ -890,18 +929,18 @@ int Engine::load_texture_hdr(const char* filename)
         .memoryTypeIndex = find_memory_type_index(&properties, &reqs, type),
     };
 
-    vkAllocateMemory(ctx.device, &allocate, nullptr, &staging_memory);
-    vkBindImageMemory(ctx.device, staging_image, staging_memory, 0);
+    vkAllocateMemory(device, &allocate, nullptr, &staging_memory);
+    vkBindImageMemory(device, staging_image, staging_memory, 0);
   }
 
   VkSubresourceLayout subresource_layout{};
   VkImageSubresource  image_subresource{};
 
   image_subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-  vkGetImageSubresourceLayout(generic_handles.device, staging_image, &image_subresource, &subresource_layout);
+  vkGetImageSubresourceLayout(device, staging_image, &image_subresource, &subresource_layout);
 
   float* mapped_data = nullptr;
-  vkMapMemory(ctx.device, staging_memory, 0, reqs.size, 0, (void**)&mapped_data);
+  vkMapMemory(device, staging_memory, 0, reqs.size, 0, (void**)&mapped_data);
 
   for (int i = 0; i < (x * y); ++i)
   {
@@ -912,12 +951,12 @@ int Engine::load_texture_hdr(const char* filename)
     mapped_data[i * 4 + 3] = 0.0f;
   }
 
-  vkUnmapMemory(ctx.device, staging_memory);
+  vkUnmapMemory(device, staging_memory);
 
-  const int resultIdx = images.loaded_count;
-  images.loaded_count += 1;
-  VkImage&     result_image = images.images[resultIdx];
-  VkImageView& result_view  = images.image_views[resultIdx];
+  int resultIdx = find_first_zeroed_bit_offset(image_usage_bitmap);
+  image_usage_bitmap |= (uint64_t(1) << resultIdx);
+  VkImage&     result_image = images[resultIdx];
+  VkImageView& result_view  = image_views[resultIdx];
 
   {
     VkImageCreateInfo ci = {
@@ -934,16 +973,18 @@ int Engine::load_texture_hdr(const char* filename)
         .initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED,
     };
 
-    vkCreateImage(ctx.device, &ci, nullptr, &result_image);
+    vkCreateImage(device, &ci, nullptr, &result_image);
   }
 
   VkMemoryRequirements result_image_reqs = {};
-  vkGetImageMemoryRequirements(ctx.device, result_image, &result_image_reqs);
+  vkGetImageMemoryRequirements(device, result_image, &result_image_reqs);
 
   {
     VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(ctx.device, result_image, &reqs);
-    vkBindImageMemory(ctx.device, result_image, images.memory, images.allocate(reqs.size));
+    vkGetImageMemoryRequirements(device, result_image, &reqs);
+    vkBindImageMemory(device, result_image, gpu_device_images_memory_block.memory,
+                      gpu_device_images_memory_block.stack_pointer);
+    gpu_device_images_memory_block.stack_pointer += align(reqs.size, gpu_device_images_memory_block.alignment);
   }
 
   {
@@ -963,7 +1004,7 @@ int Engine::load_texture_hdr(const char* filename)
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(ctx.device, &ci, nullptr, &result_view);
+    vkCreateImageView(device, &ci, nullptr, &result_view);
   }
 
   VkCommandBuffer command_buffer = VK_NULL_HANDLE;
@@ -971,12 +1012,12 @@ int Engine::load_texture_hdr(const char* filename)
   {
     VkCommandBufferAllocateInfo allocate = {
         .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool        = ctx.graphics_command_pool,
+        .commandPool        = graphics_command_pool,
         .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         .commandBufferCount = 1,
     };
 
-    vkAllocateCommandBuffers(ctx.device, &allocate, &command_buffer);
+    vkAllocateCommandBuffers(device, &allocate, &command_buffer);
   }
 
   {
@@ -1073,7 +1114,7 @@ int Engine::load_texture_hdr(const char* filename)
   VkFence image_upload_fence = VK_NULL_HANDLE;
   {
     VkFenceCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-    vkCreateFence(ctx.device, &ci, nullptr, &image_upload_fence);
+    vkCreateFence(device, &ci, nullptr, &image_upload_fence);
   }
 
   {
@@ -1083,13 +1124,13 @@ int Engine::load_texture_hdr(const char* filename)
         .pCommandBuffers    = &command_buffer,
     };
 
-    vkQueueSubmit(ctx.graphics_queue, 1, &submit, image_upload_fence);
+    vkQueueSubmit(graphics_queue, 1, &submit, image_upload_fence);
   }
 
-  vkWaitForFences(ctx.device, 1, &image_upload_fence, VK_TRUE, UINT64_MAX);
-  vkDestroyFence(ctx.device, image_upload_fence, nullptr);
-  vkFreeMemory(ctx.device, staging_memory, nullptr);
-  vkDestroyImage(ctx.device, staging_image, nullptr);
+  vkWaitForFences(device, 1, &image_upload_fence, VK_TRUE, UINT64_MAX);
+  vkDestroyFence(device, image_upload_fence, nullptr);
+  vkFreeMemory(device, staging_memory, nullptr);
+  vkDestroyImage(device, staging_image, nullptr);
 
   stbi_image_free(pixels);
 
@@ -1098,9 +1139,8 @@ int Engine::load_texture_hdr(const char* filename)
 
 int Engine::load_texture(SDL_Surface* surface)
 {
-  GenericHandles& ctx            = generic_handles;
-  VkImage         staging_image  = VK_NULL_HANDLE;
-  VkDeviceMemory  staging_memory = VK_NULL_HANDLE;
+  VkImage        staging_image  = VK_NULL_HANDLE;
+  VkDeviceMemory staging_memory = VK_NULL_HANDLE;
 
   {
     VkImageCreateInfo ci = {
@@ -1117,15 +1157,15 @@ int Engine::load_texture(SDL_Surface* surface)
         .initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED,
     };
 
-    vkCreateImage(ctx.device, &ci, nullptr, &staging_image);
+    vkCreateImage(device, &ci, nullptr, &staging_image);
   }
 
   {
     VkPhysicalDeviceMemoryProperties properties = {};
-    vkGetPhysicalDeviceMemoryProperties(ctx.physical_device, &properties);
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
 
     VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(ctx.device, staging_image, &reqs);
+    vkGetImageMemoryRequirements(device, staging_image, &reqs);
 
     VkMemoryPropertyFlags type = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
@@ -1135,15 +1175,15 @@ int Engine::load_texture(SDL_Surface* surface)
         .memoryTypeIndex = find_memory_type_index(&properties, &reqs, type),
     };
 
-    vkAllocateMemory(ctx.device, &allocate, nullptr, &staging_memory);
-    vkBindImageMemory(ctx.device, staging_image, staging_memory, 0);
+    vkAllocateMemory(device, &allocate, nullptr, &staging_memory);
+    vkBindImageMemory(device, staging_image, staging_memory, 0);
   }
 
   VkSubresourceLayout subresource_layout{};
   VkImageSubresource  image_subresource{};
 
   image_subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-  vkGetImageSubresourceLayout(generic_handles.device, staging_image, &image_subresource, &subresource_layout);
+  vkGetImageSubresourceLayout(device, staging_image, &image_subresource, &subresource_layout);
 
   uint32_t device_row_pitch = static_cast<uint32_t>(subresource_layout.rowPitch);
   uint32_t device_size      = static_cast<uint32_t>(subresource_layout.size);
@@ -1156,7 +1196,7 @@ int Engine::load_texture(SDL_Surface* surface)
   uint8_t* pixels           = reinterpret_cast<uint8_t*>(surface->pixels);
   void*    mapped_data      = nullptr;
 
-  vkMapMemory(ctx.device, staging_memory, 0, device_size, 0, &mapped_data);
+  vkMapMemory(device, staging_memory, 0, device_size, 0, &mapped_data);
 
   uint8_t* pixel_ptr  = pixels;
   uint8_t* mapped_ptr = reinterpret_cast<uint8_t*>(mapped_data);
@@ -1192,12 +1232,12 @@ int Engine::load_texture(SDL_Surface* surface)
     }
   }
 
-  vkUnmapMemory(ctx.device, staging_memory);
+  vkUnmapMemory(device, staging_memory);
 
-  const int resultIdx = images.loaded_count;
-  images.loaded_count += 1;
-  VkImage&     result_image = images.images[resultIdx];
-  VkImageView& result_view  = images.image_views[resultIdx];
+  int resultIdx = find_first_zeroed_bit_offset(image_usage_bitmap);
+  image_usage_bitmap |= (uint64_t(1) << resultIdx);
+  VkImage&     result_image = images[resultIdx];
+  VkImageView& result_view  = image_views[resultIdx];
 
   {
     VkImageCreateInfo ci = {
@@ -1214,13 +1254,15 @@ int Engine::load_texture(SDL_Surface* surface)
         .initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED,
     };
 
-    vkCreateImage(ctx.device, &ci, nullptr, &result_image);
+    vkCreateImage(device, &ci, nullptr, &result_image);
   }
 
   {
     VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(ctx.device, result_image, &reqs);
-    vkBindImageMemory(ctx.device, result_image, images.memory, images.allocate(reqs.size));
+    vkGetImageMemoryRequirements(device, result_image, &reqs);
+    vkBindImageMemory(device, result_image, gpu_device_images_memory_block.memory,
+                      gpu_device_images_memory_block.stack_pointer);
+    gpu_device_images_memory_block.stack_pointer += align(reqs.size, gpu_device_images_memory_block.alignment);
   }
 
   {
@@ -1240,7 +1282,7 @@ int Engine::load_texture(SDL_Surface* surface)
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(ctx.device, &ci, nullptr, &result_view);
+    vkCreateImageView(device, &ci, nullptr, &result_view);
   }
 
   VkCommandBuffer command_buffer = VK_NULL_HANDLE;
@@ -1248,12 +1290,12 @@ int Engine::load_texture(SDL_Surface* surface)
   {
     VkCommandBufferAllocateInfo allocate = {
         .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool        = ctx.graphics_command_pool,
+        .commandPool        = graphics_command_pool,
         .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         .commandBufferCount = 1,
     };
 
-    vkAllocateCommandBuffers(ctx.device, &allocate, &command_buffer);
+    vkAllocateCommandBuffers(device, &allocate, &command_buffer);
   }
 
   {
@@ -1351,7 +1393,7 @@ int Engine::load_texture(SDL_Surface* surface)
   VkFence image_upload_fence = VK_NULL_HANDLE;
   {
     VkFenceCreateInfo ci{.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-    vkCreateFence(ctx.device, &ci, nullptr, &image_upload_fence);
+    vkCreateFence(device, &ci, nullptr, &image_upload_fence);
   }
 
   {
@@ -1360,13 +1402,13 @@ int Engine::load_texture(SDL_Surface* surface)
         .commandBufferCount = 1,
         .pCommandBuffers    = &command_buffer,
     };
-    vkQueueSubmit(ctx.graphics_queue, 1, &submit, image_upload_fence);
+    vkQueueSubmit(graphics_queue, 1, &submit, image_upload_fence);
   }
 
-  vkWaitForFences(ctx.device, 1, &image_upload_fence, VK_TRUE, UINT64_MAX);
-  vkDestroyFence(ctx.device, image_upload_fence, nullptr);
-  vkFreeMemory(ctx.device, staging_memory, nullptr);
-  vkDestroyImage(ctx.device, staging_image, nullptr);
+  vkWaitForFences(device, 1, &image_upload_fence, VK_TRUE, UINT64_MAX);
+  vkDestroyFence(device, image_upload_fence, nullptr);
+  vkFreeMemory(device, staging_memory, nullptr);
+  vkDestroyImage(device, staging_image, nullptr);
 
   return resultIdx;
 }
@@ -1439,7 +1481,7 @@ VkShaderModule Engine::load_shader(const char* file_path)
   };
 
   VkShaderModule result = VK_NULL_HANDLE;
-  vkCreateShaderModule(generic_handles.device, &ci, nullptr, &result);
+  vkCreateShaderModule(device, &ci, nullptr, &result);
   SDL_free(buffer);
 
   return result;
@@ -1447,13 +1489,12 @@ VkShaderModule Engine::load_shader(const char* file_path)
 
 void Engine::setup_simple_rendering()
 {
-  GenericHandles&  ctx      = generic_handles;
   SimpleRendering& renderer = simple_rendering;
 
   {
     VkAttachmentDescription attachments[] = {
         {
-            .format         = ctx.surface_format.format,
+            .format         = surface_format.format,
             .samples        = VK_SAMPLE_COUNT_1_BIT,
             .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
             .storeOp        = VK_ATTACHMENT_STORE_OP_STORE,
@@ -1473,7 +1514,7 @@ void Engine::setup_simple_rendering()
             .finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         },
         {
-            .format         = ctx.surface_format.format,
+            .format         = surface_format.format,
             .samples        = MSAA_SAMPLE_COUNT,
             .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
             .storeOp        = VK_ATTACHMENT_STORE_OP_STORE,
@@ -1603,7 +1644,7 @@ void Engine::setup_simple_rendering()
         .pDependencies   = dependencies,
     };
 
-    vkCreateRenderPass(ctx.device, &ci, nullptr, &renderer.render_pass);
+    vkCreateRenderPass(device, &ci, nullptr, &renderer.render_pass);
   }
 
   // --------------------------------------------------------------- //
@@ -1630,8 +1671,7 @@ void Engine::setup_simple_rendering()
         .pBindings    = &binding,
     };
 
-    vkCreateDescriptorSetLayout(ctx.device, &ci, nullptr,
-                                &renderer.pbr_metallic_workflow_material_descriptor_set_layout);
+    vkCreateDescriptorSetLayout(device, &ci, nullptr, &renderer.pbr_metallic_workflow_material_descriptor_set_layout);
   }
 
   // --------------------------------------------------------------- //
@@ -1664,8 +1704,7 @@ void Engine::setup_simple_rendering()
         .pBindings    = bindings,
     };
 
-    vkCreateDescriptorSetLayout(ctx.device, &ci, nullptr,
-                                &renderer.pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout);
+    vkCreateDescriptorSetLayout(device, &ci, nullptr, &renderer.pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout);
   }
 
   // --------------------------------------------------------------- //
@@ -1685,7 +1724,7 @@ void Engine::setup_simple_rendering()
         .pBindings    = &binding,
     };
 
-    vkCreateDescriptorSetLayout(ctx.device, &ci, nullptr, &renderer.pbr_dynamic_lights_descriptor_set_layout);
+    vkCreateDescriptorSetLayout(device, &ci, nullptr, &renderer.pbr_dynamic_lights_descriptor_set_layout);
   }
 
   // --------------------------------------------------------------- //
@@ -1705,7 +1744,7 @@ void Engine::setup_simple_rendering()
         .pBindings    = &binding,
     };
 
-    vkCreateDescriptorSetLayout(ctx.device, &ci, nullptr, &renderer.single_texture_in_frag_descriptor_set_layout);
+    vkCreateDescriptorSetLayout(device, &ci, nullptr, &renderer.single_texture_in_frag_descriptor_set_layout);
   }
 
   // --------------------------------------------------------------- //
@@ -1725,7 +1764,7 @@ void Engine::setup_simple_rendering()
         .pBindings    = &binding,
     };
 
-    vkCreateDescriptorSetLayout(ctx.device, &ci, nullptr, &renderer.skinning_matrices_descriptor_set_layout);
+    vkCreateDescriptorSetLayout(device, &ci, nullptr, &renderer.skinning_matrices_descriptor_set_layout);
   }
 
   {
@@ -1747,7 +1786,7 @@ void Engine::setup_simple_rendering()
         .pPushConstantRanges    = ranges,
     };
 
-    vkCreatePipelineLayout(ctx.device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Pipeline::Skybox]);
+    vkCreatePipelineLayout(device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Pipeline::Skybox]);
   }
 
   {
@@ -1771,7 +1810,7 @@ void Engine::setup_simple_rendering()
         .pPushConstantRanges    = ranges,
     };
 
-    vkCreatePipelineLayout(ctx.device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Pipeline::Scene3D]);
+    vkCreatePipelineLayout(device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Pipeline::Scene3D]);
   }
 
   {
@@ -1795,7 +1834,7 @@ void Engine::setup_simple_rendering()
         .pPushConstantRanges    = ranges,
     };
 
-    vkCreatePipelineLayout(ctx.device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Pipeline::PbrWater]);
+    vkCreatePipelineLayout(device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Pipeline::PbrWater]);
   }
 
   {
@@ -1819,7 +1858,7 @@ void Engine::setup_simple_rendering()
         .pPushConstantRanges    = ranges,
     };
 
-    vkCreatePipelineLayout(ctx.device, &ci, nullptr,
+    vkCreatePipelineLayout(device, &ci, nullptr,
                            &renderer.pipeline_layouts[SimpleRendering::Pipeline::ColoredGeometry]);
   }
 
@@ -1844,7 +1883,7 @@ void Engine::setup_simple_rendering()
         .pPushConstantRanges    = ranges,
     };
 
-    vkCreatePipelineLayout(ctx.device, &ci, nullptr,
+    vkCreatePipelineLayout(device, &ci, nullptr,
                            &renderer.pipeline_layouts[SimpleRendering::Pipeline::ColoredGeometryTriangleStrip]);
   }
 
@@ -1874,7 +1913,7 @@ void Engine::setup_simple_rendering()
         .pPushConstantRanges    = ranges,
     };
 
-    vkCreatePipelineLayout(ctx.device, &ci, nullptr,
+    vkCreatePipelineLayout(device, &ci, nullptr,
                            &renderer.pipeline_layouts[SimpleRendering::Pipeline::ColoredGeometrySkinned]);
   }
 
@@ -1902,7 +1941,7 @@ void Engine::setup_simple_rendering()
         .pPushConstantRanges    = ranges,
     };
 
-    vkCreatePipelineLayout(ctx.device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Pipeline::GreenGui]);
+    vkCreatePipelineLayout(device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Pipeline::GreenGui]);
   }
 
   {
@@ -1929,7 +1968,7 @@ void Engine::setup_simple_rendering()
         .pPushConstantRanges    = ranges,
     };
 
-    vkCreatePipelineLayout(ctx.device, &ci, nullptr,
+    vkCreatePipelineLayout(device, &ci, nullptr,
                            &renderer.pipeline_layouts[SimpleRendering::Pipeline::GreenGuiWeaponSelectorBoxLeft]);
   }
 
@@ -1957,7 +1996,7 @@ void Engine::setup_simple_rendering()
         .pPushConstantRanges    = ranges,
     };
 
-    vkCreatePipelineLayout(ctx.device, &ci, nullptr,
+    vkCreatePipelineLayout(device, &ci, nullptr,
                            &renderer.pipeline_layouts[SimpleRendering::Pipeline::GreenGuiWeaponSelectorBoxRight]);
   }
 
@@ -1980,8 +2019,7 @@ void Engine::setup_simple_rendering()
         .pPushConstantRanges    = ranges,
     };
 
-    vkCreatePipelineLayout(ctx.device, &ci, nullptr,
-                           &renderer.pipeline_layouts[SimpleRendering::Pipeline::GreenGuiLines]);
+    vkCreatePipelineLayout(device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Pipeline::GreenGuiLines]);
   }
 
   {
@@ -2021,7 +2059,7 @@ void Engine::setup_simple_rendering()
         .pPushConstantRanges    = ranges,
     };
 
-    vkCreatePipelineLayout(ctx.device, &ci, nullptr,
+    vkCreatePipelineLayout(device, &ci, nullptr,
                            &renderer.pipeline_layouts[SimpleRendering::Pipeline::GreenGuiSdfFont]);
   }
 
@@ -2045,7 +2083,7 @@ void Engine::setup_simple_rendering()
         .pPushConstantRanges    = ranges,
     };
 
-    vkCreatePipelineLayout(ctx.device, &ci, nullptr,
+    vkCreatePipelineLayout(device, &ci, nullptr,
                            &renderer.pipeline_layouts[SimpleRendering::Pipeline::GreenGuiTriangle]);
   }
 
@@ -2069,7 +2107,7 @@ void Engine::setup_simple_rendering()
         .pPushConstantRanges    = ranges,
     };
 
-    vkCreatePipelineLayout(ctx.device, &ci, nullptr,
+    vkCreatePipelineLayout(device, &ci, nullptr,
                            &renderer.pipeline_layouts[SimpleRendering::Pipeline::GreenGuiRadarDots]);
   }
 
@@ -2092,7 +2130,7 @@ void Engine::setup_simple_rendering()
         .pPushConstantRanges    = ranges,
     };
 
-    vkCreatePipelineLayout(ctx.device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Pipeline::ImGui]);
+    vkCreatePipelineLayout(device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Pipeline::ImGui]);
   }
 
   pipeline_reload_simple_rendering_skybox_reload(*this);
@@ -2112,37 +2150,37 @@ void Engine::setup_simple_rendering()
 
   for (uint32_t i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
   {
-    VkImageView attachments[] = {ctx.swapchain_image_views[i], ctx.depth_image_view, ctx.msaa_color_image_view,
-                                 ctx.msaa_depth_image_view};
+    VkImageView attachments[] = {swapchain_image_views[i], depth_image_view, msaa_color_image_view,
+                                 msaa_depth_image_view};
 
     VkFramebufferCreateInfo ci = {
         .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
         .renderPass      = renderer.render_pass,
         .attachmentCount = SDL_arraysize(attachments),
         .pAttachments    = attachments,
-        .width           = ctx.extent2D.width,
-        .height          = ctx.extent2D.height,
+        .width           = extent2D.width,
+        .height          = extent2D.height,
         .layers          = 1,
     };
 
-    vkCreateFramebuffer(ctx.device, &ci, nullptr, &renderer.framebuffers[i]);
+    vkCreateFramebuffer(device, &ci, nullptr, &renderer.framebuffers[i]);
   }
 
   for (auto& submition_fence : renderer.submition_fences)
 
   {
     VkFenceCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, .flags = VK_FENCE_CREATE_SIGNALED_BIT};
-    vkCreateFence(ctx.device, &ci, nullptr, &submition_fence);
+    vkCreateFence(device, &ci, nullptr, &submition_fence);
   }
 
   {
     VkCommandBufferAllocateInfo alloc = {
         .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool        = ctx.graphics_command_pool,
+        .commandPool        = graphics_command_pool,
         .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         .commandBufferCount = SDL_arraysize(renderer.primary_command_buffers),
     };
 
-    vkAllocateCommandBuffers(ctx.device, &alloc, renderer.primary_command_buffers);
+    vkAllocateCommandBuffers(device, &alloc, renderer.primary_command_buffers);
   }
 }

@@ -73,13 +73,13 @@ void hermite_cubic_spline_interpolation(const float a_in[], const float b_in[], 
   }
 }
 
-void animate_entity(Entity& entity, EntityComponentSystem& ecs, gltf::RenderableModel& model, float current_time_sec)
+void animate_entity(Entity& entity, EntityComponentSystem& ecs, SceneGraph& scene_graph, float current_time_sec)
 {
   if (-1 == entity.animation_start_time)
     return;
 
   const float      animation_start_time = ecs.animation_start_times[entity.animation_start_time];
-  const Animation& animation            = model.scene_graph.animations.data[0];
+  const Animation& animation            = scene_graph.animations.data[0];
   const float      animation_time       = current_time_sec - animation_start_time;
 
   bool is_animation_still_ongoing = false;
@@ -190,6 +190,10 @@ void animate_entity(Entity& entity, EntityComponentSystem& ecs, gltf::Renderable
       }
     }
   }
+}
+
+void custom_robot_animate_entity(Entity& entity, EntityComponentSystem& ecs, SceneGraph& model, float current_time_sec)
+{
 }
 
 void vec3_set(float* vec, float x, float y, float z)
@@ -376,12 +380,22 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
     vec2 texcoord;
   };
 
-  VkDeviceSize host_vertex_offset = engine->gpu_static_transfer.allocate(total_vertex_count * sizeof(Vertex));
-  VkDeviceSize host_index_offset  = engine->gpu_static_transfer.allocate(total_index_count * sizeof(IndexType));
+  VkDeviceSize host_vertex_offset = 0;
+  VkDeviceSize host_index_offset  = 0;
 
   {
-    ScopedMemoryMap memory_map(engine->generic_handles.device, engine->gpu_static_transfer.memory, host_vertex_offset,
-                               total_vertex_count * sizeof(Vertex));
+    GpuMemoryBlock& block = engine->gpu_host_visible_transfer_source_memory_block;
+
+    host_vertex_offset = block.stack_pointer;
+    block.stack_pointer += align(total_vertex_count * sizeof(Vertex), block.alignment);
+
+    host_index_offset = block.stack_pointer;
+    block.stack_pointer += align(total_index_count * sizeof(IndexType), block.alignment);
+  }
+
+  {
+    ScopedMemoryMap memory_map(engine->device, engine->gpu_host_visible_transfer_source_memory_block.memory,
+                               host_vertex_offset, total_vertex_count * sizeof(Vertex));
 
     Vertex* vertices = memory_map.get<Vertex>();
     float   center[] = {0.5f * size[0], 0.5f * size[1]};
@@ -407,8 +421,8 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
   }
 
   {
-    ScopedMemoryMap memory_map(engine->generic_handles.device, engine->gpu_static_transfer.memory, host_index_offset,
-                               total_index_count * sizeof(IndexType));
+    ScopedMemoryMap memory_map(engine->device, engine->gpu_host_visible_transfer_source_memory_block.memory,
+                               host_index_offset, total_index_count * sizeof(IndexType));
 
     uint16_t* indices = memory_map.get<uint16_t>();
 
@@ -431,8 +445,18 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
     }
   }
 
-  VkDeviceSize device_vertex_offset = engine->gpu_static_geometry.allocate(total_vertex_count * sizeof(Vertex));
-  VkDeviceSize device_index_offset  = engine->gpu_static_geometry.allocate(total_index_count * sizeof(IndexType));
+  VkDeviceSize device_vertex_offset = 0;
+  VkDeviceSize device_index_offset  = 0;
+
+  {
+    GpuMemoryBlock& block = engine->gpu_device_local_memory_block;
+
+    device_vertex_offset = block.stack_pointer;
+    block.stack_pointer += align(total_vertex_count * sizeof(Vertex), block.alignment);
+
+    device_index_offset = block.stack_pointer;
+    block.stack_pointer += align(total_index_count * sizeof(IndexType), block.alignment);
+  }
 
   VrLevelLoadResult result = {
       .entrance_point       = {0.0f, -30.0f},
@@ -448,12 +472,12 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
 
     VkCommandBufferAllocateInfo allocate = {
         .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool        = engine->generic_handles.graphics_command_pool,
+        .commandPool        = engine->graphics_command_pool,
         .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         .commandBufferCount = 1,
     };
 
-    vkAllocateCommandBuffers(engine->generic_handles.device, &allocate, &cmd);
+    vkAllocateCommandBuffers(engine->device, &allocate, &cmd);
 
     VkCommandBufferBeginInfo begin = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -475,8 +499,8 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
         },
     };
 
-    vkCmdCopyBuffer(cmd, engine->gpu_static_transfer.buffer, engine->gpu_static_geometry.buffer, SDL_arraysize(copies),
-                    copies);
+    vkCmdCopyBuffer(cmd, engine->gpu_host_visible_transfer_source_memory_buffer, engine->gpu_device_local_memory_buffer,
+                    SDL_arraysize(copies), copies);
 
     VkBufferMemoryBarrier barriers[] = {
         {
@@ -485,7 +509,7 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
             .dstAccessMask       = VK_ACCESS_SHADER_READ_BIT,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer              = engine->gpu_static_geometry.buffer,
+            .buffer              = engine->gpu_device_local_memory_buffer,
             .offset              = device_vertex_offset,
             .size                = total_vertex_count * sizeof(Vertex),
         },
@@ -495,7 +519,7 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
             .dstAccessMask       = VK_ACCESS_SHADER_READ_BIT,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer              = engine->gpu_static_geometry.buffer,
+            .buffer              = engine->gpu_device_local_memory_buffer,
             .offset              = device_index_offset,
             .size                = total_index_count * sizeof(IndexType),
         },
@@ -509,7 +533,7 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
 
     {
       VkFenceCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-      vkCreateFence(engine->generic_handles.device, &ci, nullptr, &data_upload_fence);
+      vkCreateFence(engine->device, &ci, nullptr, &data_upload_fence);
     }
 
     {
@@ -519,16 +543,17 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
           .pCommandBuffers    = &cmd,
       };
 
-      vkQueueSubmit(engine->generic_handles.graphics_queue, 1, &submit, data_upload_fence);
+      vkQueueSubmit(engine->graphics_queue, 1, &submit, data_upload_fence);
     }
 
-    vkWaitForFences(engine->generic_handles.device, 1, &data_upload_fence, VK_TRUE, UINT64_MAX);
-    vkDestroyFence(engine->generic_handles.device, data_upload_fence, nullptr);
-    vkFreeCommandBuffers(engine->generic_handles.device, engine->generic_handles.graphics_command_pool, 1, &cmd);
+    vkWaitForFences(engine->device, 1, &data_upload_fence, VK_TRUE, UINT64_MAX);
+    vkDestroyFence(engine->device, data_upload_fence, nullptr);
+    vkFreeCommandBuffers(engine->device, engine->graphics_command_pool, 1, &cmd);
   }
 
-  engine->gpu_static_transfer.used_memory = 0;
-  engine->double_ended_stack.reset_back();
+  engine->gpu_host_visible_transfer_source_memory_block.stack_pointer = 0;
+  engine->allocator.reset_back();
+
   return result;
 }
 
@@ -572,14 +597,10 @@ GuiLineSizeCount count_lines(const ArrayView<GuiLine>& lines, const GuiLine::Col
 // game_generate_gui_lines.cc
 void generate_gui_lines(const GenerateGuiLinesCommand& cmd, GuiLine* dst, int* count);
 
-// game_generate_sdl_imgui_mappings.cc
-ArrayView<KeyMapping>    generate_sdl_imgui_keymap(Engine::DoubleEndedStack& allocator);
-ArrayView<CursorMapping> generate_sdl_imgui_cursormap(Engine::DoubleEndedStack& allocator);
-
 // game_recalculate_node_transforms.cc
-void recalculate_node_transforms(Entity entity, EntityComponentSystem& ecs, const gltf::RenderableModel& model,
+void recalculate_node_transforms(Entity entity, EntityComponentSystem& ecs, const SceneGraph& scene_graph,
                                  mat4x4 world_transform);
-void recalculate_skinning_matrices(Entity entity, EntityComponentSystem& ecs, const gltf::RenderableModel& model,
+void recalculate_skinning_matrices(Entity entity, EntityComponentSystem& ecs, const SceneGraph& scene_graph,
                                    mat4x4 world_transform);
 
 namespace {
@@ -684,9 +705,9 @@ void setup_node_parent_hierarchy(NodeParentHierarchy& dst, const ArrayView<Node>
       depth_first_node_parent_hierarchy(hierarchy, nodes.data, node_idx, static_cast<uint8_t>(child_idx));
 }
 
-void setup_node_parent_hierarchy(const Entity entity, EntityComponentSystem& ecs, const gltf::RenderableModel& model)
+void setup_node_parent_hierarchy(const Entity entity, EntityComponentSystem& ecs, const SceneGraph& scene_graph)
 {
-  setup_node_parent_hierarchy(ecs.node_parent_hierarchies[entity.node_parent_hierarchy], model.scene_graph.nodes);
+  setup_node_parent_hierarchy(ecs.node_parent_hierarchies[entity.node_parent_hierarchy], scene_graph.nodes);
 }
 
 void propagate_node_renderability_hierarchy(int node_idx, uint64_t& dst, const ArrayView<Node>& nodes)
@@ -703,11 +724,10 @@ void setup_node_renderability_hierarchy(uint64_t& dst, const Scene& scene, const
     propagate_node_renderability_hierarchy(scene_node_idx, dst, nodes);
 }
 
-void setup_node_renderability_hierarchy(const Entity entity, EntityComponentSystem& ecs,
-                                        const gltf::RenderableModel& model)
+void setup_node_renderability_hierarchy(const Entity entity, EntityComponentSystem& ecs, const SceneGraph& scene_graph)
 {
-  setup_node_renderability_hierarchy(ecs.node_renderabilities[entity.node_renderabilities], model.scene_graph.scenes[0],
-                                     model.scene_graph.nodes);
+  setup_node_renderability_hierarchy(ecs.node_renderabilities[entity.node_renderabilities], scene_graph.scenes[0],
+                                     scene_graph.nodes);
 }
 
 float ease_in_out_quart(float t)
@@ -809,10 +829,32 @@ void Game::startup(Engine& engine)
     SDL_FreeSurface(surface);
 
     {
-      ArrayView<KeyMapping> mappings = generate_sdl_imgui_keymap(engine.double_ended_stack);
+      KeyMapping mappings[] = {
+          {ImGuiKey_Tab, SDL_SCANCODE_TAB},
+          {ImGuiKey_LeftArrow, SDL_SCANCODE_LEFT},
+          {ImGuiKey_RightArrow, SDL_SCANCODE_RIGHT},
+          {ImGuiKey_UpArrow, SDL_SCANCODE_UP},
+          {ImGuiKey_DownArrow, SDL_SCANCODE_DOWN},
+          {ImGuiKey_PageUp, SDL_SCANCODE_PAGEUP},
+          {ImGuiKey_PageDown, SDL_SCANCODE_PAGEDOWN},
+          {ImGuiKey_Home, SDL_SCANCODE_HOME},
+          {ImGuiKey_End, SDL_SCANCODE_END},
+          {ImGuiKey_Insert, SDL_SCANCODE_INSERT},
+          {ImGuiKey_Delete, SDL_SCANCODE_DELETE},
+          {ImGuiKey_Backspace, SDL_SCANCODE_BACKSPACE},
+          {ImGuiKey_Space, SDL_SCANCODE_SPACE},
+          {ImGuiKey_Enter, SDL_SCANCODE_RETURN},
+          {ImGuiKey_Escape, SDL_SCANCODE_ESCAPE},
+          {ImGuiKey_A, SDL_SCANCODE_A},
+          {ImGuiKey_C, SDL_SCANCODE_C},
+          {ImGuiKey_V, SDL_SCANCODE_V},
+          {ImGuiKey_X, SDL_SCANCODE_X},
+          {ImGuiKey_Y, SDL_SCANCODE_Y},
+          {ImGuiKey_Z, SDL_SCANCODE_Z},
+      };
+
       for (KeyMapping mapping : mappings)
         io.KeyMap[mapping.imgui] = mapping.sdl;
-      engine.double_ended_stack.reset_back();
     }
 
     io.RenderDrawListsFn  = nullptr;
@@ -821,20 +863,33 @@ void Game::startup(Engine& engine)
     io.ClipboardUserData  = nullptr;
 
     {
-      ArrayView<CursorMapping> mappings = generate_sdl_imgui_cursormap(engine.double_ended_stack);
+      CursorMapping mappings[] = {
+          {ImGuiMouseCursor_Arrow, SDL_SYSTEM_CURSOR_ARROW},
+          {ImGuiMouseCursor_TextInput, SDL_SYSTEM_CURSOR_IBEAM},
+          {ImGuiMouseCursor_ResizeAll, SDL_SYSTEM_CURSOR_SIZEALL},
+          {ImGuiMouseCursor_ResizeNS, SDL_SYSTEM_CURSOR_SIZENS},
+          {ImGuiMouseCursor_ResizeEW, SDL_SYSTEM_CURSOR_SIZEWE},
+          {ImGuiMouseCursor_ResizeNESW, SDL_SYSTEM_CURSOR_SIZENESW},
+          {ImGuiMouseCursor_ResizeNWSE, SDL_SYSTEM_CURSOR_SIZENWSE},
+      };
+
       for (CursorMapping mapping : mappings)
         debug_gui.mousecursors[mapping.imgui] = SDL_CreateSystemCursor(mapping.sdl);
-      engine.double_ended_stack.reset_back();
     }
 
     for (int i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
     {
-      debug_gui.vertex_buffer_offsets[i] = engine.gpu_host_visible.allocate(DebugGui::VERTEX_BUFFER_CAPACITY_BYTES);
-      debug_gui.index_buffer_offsets[i]  = engine.gpu_host_visible.allocate(DebugGui::INDEX_BUFFER_CAPACITY_BYTES);
+      GpuMemoryBlock& block = engine.gpu_host_coherent_memory_block;
+
+      debug_gui.vertex_buffer_offsets[i] = block.stack_pointer;
+      block.stack_pointer += align(DebugGui::VERTEX_BUFFER_CAPACITY_BYTES, block.alignment);
+
+      debug_gui.index_buffer_offsets[i] = block.stack_pointer;
+      block.stack_pointer += align(DebugGui::INDEX_BUFFER_CAPACITY_BYTES, block.alignment);
     }
   }
 
-  helmet.loadGLB(engine, "../assets/DamagedHelmet.glb");
+  helmet = loadGLB(engine, "../assets/DamagedHelmet.glb");
   helmet_entity.reset();
   helmet_entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
   helmet_entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
@@ -843,7 +898,7 @@ void Game::startup(Engine& engine)
   setup_node_parent_hierarchy(helmet_entity, ecs, helmet);
   setup_node_renderability_hierarchy(helmet_entity, ecs, helmet);
 
-  robot.loadGLB(engine, "../assets/su-47.glb");
+  robot = loadGLB(engine, "../assets/VERY_SIMPLE_ROBOT.glb");
   robot_entity.reset();
   robot_entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
   robot_entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
@@ -852,7 +907,7 @@ void Game::startup(Engine& engine)
   setup_node_parent_hierarchy(robot_entity, ecs, robot);
   setup_node_renderability_hierarchy(robot_entity, ecs, robot);
 
-  monster.loadGLB(engine, "../assets/Monster.glb");
+  monster = loadGLB(engine, "../assets/Monster.glb");
   monster_entity.reset();
   monster_entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
   monster_entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
@@ -862,7 +917,7 @@ void Game::startup(Engine& engine)
   setup_node_parent_hierarchy(monster_entity, ecs, monster);
   setup_node_renderability_hierarchy(monster_entity, ecs, monster);
 
-  box.loadGLB(engine, "../assets/Box.glb");
+  box = loadGLB(engine, "../assets/Box.glb");
   for (Entity& entity : box_entities)
   {
     entity.reset();
@@ -873,7 +928,7 @@ void Game::startup(Engine& engine)
     setup_node_renderability_hierarchy(entity, ecs, box);
   }
 
-  animatedBox.loadGLB(engine, "../assets/BoxAnimated.glb");
+  animatedBox = loadGLB(engine, "../assets/BoxAnimated.glb");
   matrioshka_entity.reset();
   matrioshka_entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
   matrioshka_entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
@@ -882,7 +937,7 @@ void Game::startup(Engine& engine)
   setup_node_parent_hierarchy(matrioshka_entity, ecs, animatedBox);
   setup_node_renderability_hierarchy(matrioshka_entity, ecs, animatedBox);
 
-  riggedSimple.loadGLB(engine, "../assets/RiggedSimple.glb");
+  riggedSimple = loadGLB(engine, "../assets/RiggedSimple.glb");
   rigged_simple_entity.reset();
   rigged_simple_entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
   rigged_simple_entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
@@ -914,20 +969,42 @@ void Game::startup(Engine& engine)
   const VkDeviceSize light_sources_ubo_size     = sizeof(LightSources);
   const VkDeviceSize skinning_matrices_ubo_size = 64 * sizeof(mat4x4);
 
-  for (VkDeviceSize& offset : pbr_dynamic_lights_ubo_offsets)
-    offset = engine.ubo_host_visible.allocate(light_sources_ubo_size);
+  {
+    GpuMemoryBlock& block = engine.gpu_host_coherent_ubo_memory_block;
 
-  for (VkDeviceSize& offset : rig_skinning_matrices_ubo_offsets)
-    offset = engine.ubo_host_visible.allocate(skinning_matrices_ubo_size);
+    for (VkDeviceSize& offset : pbr_dynamic_lights_ubo_offsets)
+    {
+      offset = block.stack_pointer;
+      block.stack_pointer += align(light_sources_ubo_size, block.alignment);
+    }
 
-  for (VkDeviceSize& offset : fig_skinning_matrices_ubo_offsets)
-    offset = engine.ubo_host_visible.allocate(skinning_matrices_ubo_size);
+    for (VkDeviceSize& offset : rig_skinning_matrices_ubo_offsets)
+    {
+      offset = block.stack_pointer;
+      block.stack_pointer += align(skinning_matrices_ubo_size, block.alignment);
+    }
 
-  for (VkDeviceSize& offset : monster_skinning_matrices_ubo_offsets)
-    offset = engine.ubo_host_visible.allocate(skinning_matrices_ubo_size);
+    for (VkDeviceSize& offset : fig_skinning_matrices_ubo_offsets)
+    {
+      offset = block.stack_pointer;
+      block.stack_pointer += align(skinning_matrices_ubo_size, block.alignment);
+    }
 
-  for (VkDeviceSize& offset : green_gui_rulers_buffer_offsets)
-    offset = engine.gpu_host_visible.allocate(200 * sizeof(vec2));
+    for (VkDeviceSize& offset : monster_skinning_matrices_ubo_offsets)
+    {
+      offset = block.stack_pointer;
+      block.stack_pointer += align(skinning_matrices_ubo_size, block.alignment);
+    }
+  }
+
+  {
+    GpuMemoryBlock& block = engine.gpu_host_coherent_memory_block;
+    for (VkDeviceSize& offset : green_gui_rulers_buffer_offsets)
+    {
+      offset = block.stack_pointer;
+      block.stack_pointer += align(200 * sizeof(vec2), block.alignment);
+    }
+  }
 
   // ----------------------------------------------------------------------------------------------
   // PBR Metallic workflow material descriptor sets
@@ -936,14 +1013,14 @@ void Game::startup(Engine& engine)
   {
     VkDescriptorSetAllocateInfo allocate = {
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool     = engine.generic_handles.descriptor_pool,
+        .descriptorPool     = engine.descriptor_pool,
         .descriptorSetCount = 1,
         .pSetLayouts        = &engine.simple_rendering.pbr_metallic_workflow_material_descriptor_set_layout,
     };
 
-    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &helmet_pbr_material_dset);
-    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &robot_pbr_material_dset);
-    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &sandy_level_pbr_material_dset);
+    vkAllocateDescriptorSets(engine.device, &allocate, &helmet_pbr_material_dset);
+    vkAllocateDescriptorSets(engine.device, &allocate, &robot_pbr_material_dset);
+    vkAllocateDescriptorSets(engine.device, &allocate, &sandy_level_pbr_material_dset);
   }
 
   {
@@ -958,7 +1035,7 @@ void Game::startup(Engine& engine)
     VkDescriptorImageInfo images[5] = {};
     for (VkDescriptorImageInfo& image : images)
     {
-      image.sampler     = engine.generic_handles.texture_sampler;
+      image.sampler     = engine.texture_sampler;
       image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     }
 
@@ -971,13 +1048,11 @@ void Game::startup(Engine& engine)
         .pImageInfo      = images,
     };
 
-    fill_infos(helmet.scene_graph.materials[0], engine.images.image_views, images);
-    update.dstSet = helmet_pbr_material_dset,
-    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &update, 0, nullptr);
+    fill_infos(helmet.materials[0], engine.image_views, images);
+    update.dstSet = helmet_pbr_material_dset, vkUpdateDescriptorSets(engine.device, 1, &update, 0, nullptr);
 
-    fill_infos(robot.scene_graph.materials[0], engine.images.image_views, images);
-    update.dstSet = robot_pbr_material_dset,
-    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &update, 0, nullptr);
+    fill_infos(robot.materials[0], engine.image_views, images);
+    update.dstSet = robot_pbr_material_dset, vkUpdateDescriptorSets(engine.device, 1, &update, 0, nullptr);
 
     Material sand_material = {
         .albedo_texture_idx          = sand_albedo_idx,
@@ -986,9 +1061,10 @@ void Game::startup(Engine& engine)
         .AO_texture_idx              = sand_ambient_occlusion_idx,
         .normal_texture_idx          = sand_normal_idx,
     };
-    fill_infos(sand_material, engine.images.image_views, images);
+
+    fill_infos(sand_material, engine.image_views, images);
     update.dstSet = sandy_level_pbr_material_dset;
-    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &update, 0, nullptr);
+    vkUpdateDescriptorSets(engine.device, 1, &update, 0, nullptr);
   }
 
   // ----------------------------------------------------------------------------------------------
@@ -998,31 +1074,31 @@ void Game::startup(Engine& engine)
   {
     VkDescriptorSetAllocateInfo allocate = {
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool     = engine.generic_handles.descriptor_pool,
+        .descriptorPool     = engine.descriptor_pool,
         .descriptorSetCount = 1,
         .pSetLayouts        = &engine.simple_rendering.pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout,
     };
 
-    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &pbr_ibl_environment_dset);
+    vkAllocateDescriptorSets(engine.device, &allocate, &pbr_ibl_environment_dset);
   }
 
   {
     VkDescriptorImageInfo cubemap_images[] = {
         {
-            .sampler     = engine.generic_handles.texture_sampler,
-            .imageView   = engine.images.image_views[irradiance_cubemap_idx],
+            .sampler     = engine.texture_sampler,
+            .imageView   = engine.image_views[irradiance_cubemap_idx],
             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         },
         {
-            .sampler     = engine.generic_handles.texture_sampler,
-            .imageView   = engine.images.image_views[prefiltered_cubemap_idx],
+            .sampler     = engine.texture_sampler,
+            .imageView   = engine.image_views[prefiltered_cubemap_idx],
             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         },
     };
 
     VkDescriptorImageInfo brdf_lut_image = {
-        .sampler     = engine.generic_handles.texture_sampler,
-        .imageView   = engine.images.image_views[brdf_lookup_idx],
+        .sampler     = engine.texture_sampler,
+        .imageView   = engine.image_views[brdf_lookup_idx],
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
 
@@ -1047,7 +1123,7 @@ void Game::startup(Engine& engine)
         },
     };
 
-    vkUpdateDescriptorSets(engine.generic_handles.device, SDL_arraysize(writes), writes, 0, nullptr);
+    vkUpdateDescriptorSets(engine.device, SDL_arraysize(writes), writes, 0, nullptr);
   }
 
   // --------------------------------------------------------------- //
@@ -1057,17 +1133,17 @@ void Game::startup(Engine& engine)
   {
     VkDescriptorSetAllocateInfo allocate = {
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool     = engine.generic_handles.descriptor_pool,
+        .descriptorPool     = engine.descriptor_pool,
         .descriptorSetCount = 1,
         .pSetLayouts        = &engine.simple_rendering.pbr_dynamic_lights_descriptor_set_layout,
     };
 
-    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &pbr_dynamic_lights_dset);
+    vkAllocateDescriptorSets(engine.device, &allocate, &pbr_dynamic_lights_dset);
   }
 
   {
     VkDescriptorBufferInfo ubo = {
-        .buffer = engine.ubo_host_visible.buffer,
+        .buffer = engine.gpu_host_coherent_ubo_memory_buffer,
         .offset = 0, // those will be provided at command buffer recording time
         .range  = light_sources_ubo_size,
     };
@@ -1082,7 +1158,7 @@ void Game::startup(Engine& engine)
         .pBufferInfo     = &ubo,
     };
 
-    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
+    vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
   }
 
   // --------------------------------------------------------------- //
@@ -1092,20 +1168,20 @@ void Game::startup(Engine& engine)
   {
     VkDescriptorSetAllocateInfo allocate = {
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool     = engine.generic_handles.descriptor_pool,
+        .descriptorPool     = engine.descriptor_pool,
         .descriptorSetCount = 1,
         .pSetLayouts        = &engine.simple_rendering.single_texture_in_frag_descriptor_set_layout,
     };
 
-    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &skybox_cubemap_dset);
-    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &imgui_font_atlas_dset);
-    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &lucida_sans_sdf_dset);
-    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &pbr_water_material_dset);
+    vkAllocateDescriptorSets(engine.device, &allocate, &skybox_cubemap_dset);
+    vkAllocateDescriptorSets(engine.device, &allocate, &imgui_font_atlas_dset);
+    vkAllocateDescriptorSets(engine.device, &allocate, &lucida_sans_sdf_dset);
+    vkAllocateDescriptorSets(engine.device, &allocate, &pbr_water_material_dset);
   }
 
   {
     VkDescriptorImageInfo image = {
-        .sampler     = engine.generic_handles.texture_sampler,
+        .sampler     = engine.texture_sampler,
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
 
@@ -1118,21 +1194,21 @@ void Game::startup(Engine& engine)
         .pImageInfo      = &image,
     };
 
-    image.imageView = engine.images.image_views[debug_gui.font_texture_idx];
+    image.imageView = engine.image_views[debug_gui.font_texture_idx];
     write.dstSet    = imgui_font_atlas_dset;
-    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
+    vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
 
-    image.imageView = engine.images.image_views[environment_cubemap_idx];
+    image.imageView = engine.image_views[environment_cubemap_idx];
     write.dstSet    = skybox_cubemap_dset;
-    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
+    vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
 
-    image.imageView = engine.images.image_views[lucida_sans_sdf_image_idx];
+    image.imageView = engine.image_views[lucida_sans_sdf_image_idx];
     write.dstSet    = lucida_sans_sdf_dset;
-    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
+    vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
 
-    image.imageView = engine.images.image_views[water_normal_idx];
+    image.imageView = engine.image_views[water_normal_idx];
     write.dstSet    = pbr_water_material_dset;
-    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
+    vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
   }
 
   // --------------------------------------------------------------- //
@@ -1142,18 +1218,18 @@ void Game::startup(Engine& engine)
   {
     VkDescriptorSetAllocateInfo allocate = {
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool     = engine.generic_handles.descriptor_pool,
+        .descriptorPool     = engine.descriptor_pool,
         .descriptorSetCount = 1,
         .pSetLayouts        = &engine.simple_rendering.skinning_matrices_descriptor_set_layout,
     };
 
-    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &monster_skinning_matrices_dset);
-    vkAllocateDescriptorSets(engine.generic_handles.device, &allocate, &rig_skinning_matrices_dset);
+    vkAllocateDescriptorSets(engine.device, &allocate, &monster_skinning_matrices_dset);
+    vkAllocateDescriptorSets(engine.device, &allocate, &rig_skinning_matrices_dset);
   }
 
   {
     VkDescriptorBufferInfo ubo = {
-        .buffer = engine.ubo_host_visible.buffer,
+        .buffer = engine.gpu_host_coherent_ubo_memory_buffer,
         .offset = 0, // those will be provided at command buffer recording time
         .range  = skinning_matrices_ubo_size,
     };
@@ -1168,17 +1244,17 @@ void Game::startup(Engine& engine)
     };
 
     write.dstSet = monster_skinning_matrices_dset;
-    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
+    vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
 
     write.dstSet = rig_skinning_matrices_dset;
-    vkUpdateDescriptorSets(engine.generic_handles.device, 1, &write, 0, nullptr);
+    vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
   }
 
   vec3_set(robot_position, -2.0f, 3.0f, 3.0f);
   vec3_set(rigged_position, -2.0f, 3.0f, 3.0f);
 
-  float extent_width        = static_cast<float>(engine.generic_handles.extent2D.width);
-  float extent_height       = static_cast<float>(engine.generic_handles.extent2D.height);
+  float extent_width        = static_cast<float>(engine.extent2D.width);
+  float extent_height       = static_cast<float>(engine.extent2D.height);
   float aspect_ratio        = extent_width / extent_height;
   float fov                 = to_rad(90.0f);
   float near_clipping_plane = 0.1f;
@@ -1275,20 +1351,48 @@ void Game::startup(Engine& engine)
         },
     };
 
-    engine.gpu_static_transfer.used_memory = 0;
+    engine.gpu_host_visible_transfer_source_memory_block.stack_pointer = 0;
 
-    VkDeviceSize vertices_host_offset        = engine.gpu_static_transfer.allocate(sizeof(vertices));
-    green_gui_billboard_vertex_buffer_offset = engine.gpu_static_geometry.allocate(sizeof(vertices));
+    VkDeviceSize vertices_host_offset = 0;
+
     {
-      ScopedMemoryMap vertices_map(engine.generic_handles.device, engine.gpu_static_transfer.memory,
+      GpuMemoryBlock& block = engine.gpu_host_visible_transfer_source_memory_block;
+
+      vertices_host_offset = block.stack_pointer;
+      block.stack_pointer += align(sizeof(vertices), block.alignment);
+    }
+
+    {
+      GpuMemoryBlock& block = engine.gpu_device_local_memory_block;
+
+      green_gui_billboard_vertex_buffer_offset = block.stack_pointer;
+      block.stack_pointer += align(sizeof(vertices), block.alignment);
+    }
+
+    {
+      ScopedMemoryMap vertices_map(engine.device, engine.gpu_host_visible_transfer_source_memory_block.memory,
                                    vertices_host_offset, sizeof(vertices));
       SDL_memcpy(vertices_map.get<void>(), vertices, sizeof(vertices));
     }
 
-    VkDeviceSize cg_vertices_host_offset   = engine.gpu_static_transfer.allocate(sizeof(cg_vertices));
-    regular_billboard_vertex_buffer_offset = engine.gpu_static_geometry.allocate(sizeof(cg_vertices));
+    VkDeviceSize cg_vertices_host_offset = 0;
+
     {
-      ScopedMemoryMap vertices_map(engine.generic_handles.device, engine.gpu_static_transfer.memory,
+      GpuMemoryBlock& block = engine.gpu_host_visible_transfer_source_memory_block;
+
+      cg_vertices_host_offset = block.stack_pointer;
+      block.stack_pointer += align(sizeof(cg_vertices), block.alignment);
+    }
+
+    {
+      GpuMemoryBlock& block = engine.gpu_device_local_memory_block;
+
+      regular_billboard_vertex_buffer_offset = block.stack_pointer;
+      block.stack_pointer += align(sizeof(cg_vertices), block.alignment);
+    }
+
+    {
+      ScopedMemoryMap vertices_map(engine.device, engine.gpu_host_visible_transfer_source_memory_block.memory,
                                    cg_vertices_host_offset, sizeof(cg_vertices));
       SDL_memcpy(vertices_map.get<void>(), cg_vertices, sizeof(cg_vertices));
     }
@@ -1298,12 +1402,12 @@ void Game::startup(Engine& engine)
     {
       VkCommandBufferAllocateInfo allocate = {
           .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-          .commandPool        = engine.generic_handles.graphics_command_pool,
+          .commandPool        = engine.graphics_command_pool,
           .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
           .commandBufferCount = 1,
       };
 
-      vkAllocateCommandBuffers(engine.generic_handles.device, &allocate, &cmd);
+      vkAllocateCommandBuffers(engine.device, &allocate, &cmd);
     }
 
     {
@@ -1329,8 +1433,8 @@ void Game::startup(Engine& engine)
           },
       };
 
-      vkCmdCopyBuffer(cmd, engine.gpu_static_transfer.buffer, engine.gpu_static_geometry.buffer, SDL_arraysize(copies),
-                      copies);
+      vkCmdCopyBuffer(cmd, engine.gpu_host_visible_transfer_source_memory_buffer, engine.gpu_device_local_memory_buffer,
+                      SDL_arraysize(copies), copies);
     }
 
     {
@@ -1340,7 +1444,7 @@ void Game::startup(Engine& engine)
           .dstAccessMask       = VK_ACCESS_SHADER_READ_BIT,
           .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
           .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-          .buffer              = engine.gpu_static_geometry.buffer,
+          .buffer              = engine.gpu_device_local_memory_buffer,
           .offset              = green_gui_billboard_vertex_buffer_offset,
           .size                = static_cast<VkDeviceSize>(sizeof(vertices)),
       };
@@ -1354,7 +1458,7 @@ void Game::startup(Engine& engine)
     VkFence data_upload_fence = VK_NULL_HANDLE;
     {
       VkFenceCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-      vkCreateFence(engine.generic_handles.device, &ci, nullptr, &data_upload_fence);
+      vkCreateFence(engine.device, &ci, nullptr, &data_upload_fence);
     }
 
     {
@@ -1364,19 +1468,20 @@ void Game::startup(Engine& engine)
           .pCommandBuffers    = &cmd,
       };
 
-      vkQueueSubmit(engine.generic_handles.graphics_queue, 1, &submit, data_upload_fence);
+      vkQueueSubmit(engine.graphics_queue, 1, &submit, data_upload_fence);
     }
 
-    vkWaitForFences(engine.generic_handles.device, 1, &data_upload_fence, VK_TRUE, UINT64_MAX);
-    vkDestroyFence(engine.generic_handles.device, data_upload_fence, nullptr);
-    vkFreeCommandBuffers(engine.generic_handles.device, engine.generic_handles.graphics_command_pool, 1, &cmd);
-    engine.gpu_static_transfer.used_memory = 0;
+    vkWaitForFences(engine.device, 1, &data_upload_fence, VK_TRUE, UINT64_MAX);
+    vkDestroyFence(engine.device, data_upload_fence, nullptr);
+    vkFreeCommandBuffers(engine.device, engine.graphics_command_pool, 1, &cmd);
+    engine.gpu_host_visible_transfer_source_memory_block.stack_pointer = 0;
   }
 
   {
     SDL_RWops* ctx              = SDL_RWFromFile("../assets/lucida_sans_sdf.fnt", "r");
     int        fnt_file_size    = static_cast<int>(SDL_RWsize(ctx));
-    char*      fnt_file_content = engine.double_ended_stack.allocate_back<char>(fnt_file_size);
+    void*      allocation       = engine.allocator.allocate_back(fnt_file_size);
+    char*      fnt_file_content = reinterpret_cast<char*>(allocation);
     SDL_RWread(ctx, fnt_file_content, sizeof(char), static_cast<size_t>(fnt_file_size));
     SDL_RWclose(ctx);
 
@@ -1417,7 +1522,7 @@ void Game::startup(Engine& engine)
       cursor        = forward_right_after(cursor, '\n');
     }
 
-    engine.double_ended_stack.reset_back();
+    engine.allocator.reset_back();
   }
 
   DEBUG_VEC2[0] = 122.0f;
@@ -1443,9 +1548,9 @@ void Game::startup(Engine& engine)
     VkCommandPoolCreateInfo info = {
         .sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-        .queueFamilyIndex = engine.generic_handles.graphics_family_index,
+        .queueFamilyIndex = engine.graphics_family_index,
     };
-    vkCreateCommandPool(engine.generic_handles.device, &info, nullptr, &pool);
+    vkCreateCommandPool(engine.device, &info, nullptr, &pool);
   }
 
   for (unsigned i = 0; i < SDL_arraysize(js.worker_commands); ++i)
@@ -1456,7 +1561,7 @@ void Game::startup(Engine& engine)
         .level              = VK_COMMAND_BUFFER_LEVEL_SECONDARY,
         .commandBufferCount = 64 * 3,
     };
-    vkAllocateCommandBuffers(engine.generic_handles.device, &info, js.worker_commands[i].commands);
+    vkAllocateCommandBuffers(engine.device, &info, js.worker_commands[i].commands);
   }
 
   WorkerThreadData data = {engine, *this};
@@ -1468,7 +1573,7 @@ void Game::startup(Engine& engine)
 
 void Game::teardown(Engine& engine)
 {
-  vkDeviceWaitIdle(engine.generic_handles.device);
+  vkDeviceWaitIdle(engine.device);
 
   js.thread_end_requested = true;
   js.jobs_max             = 0;
@@ -1490,7 +1595,7 @@ void Game::teardown(Engine& engine)
   SDL_DestroyMutex(js.new_jobs_available_mutex);
 
   for (VkCommandPool pool : js.worker_pools)
-    vkDestroyCommandPool(engine.generic_handles.device, pool, nullptr);
+    vkDestroyCommandPool(engine.device, pool, nullptr);
 }
 
 void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
@@ -1658,7 +1763,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   }
 
   {
-    SDL_Window* window = engine.generic_handles.window;
+    SDL_Window* window = engine.window;
     int         w, h;
     SDL_GetWindowSize(window, &w, &h);
     io.DisplaySize = ImVec2((float)w, (float)h);
@@ -1897,7 +2002,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     schedule.frame_countdown -= 1;
     if (0 == schedule.frame_countdown)
     {
-      vkDestroyPipeline(engine.generic_handles.device, schedule.pipeline, nullptr);
+      vkDestroyPipeline(engine.device, schedule.pipeline, nullptr);
       engine.scheduled_pipelines_destruction_count -= 1;
 
       if (i != engine.scheduled_pipelines_destruction_count)
@@ -1914,18 +2019,28 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
   if (ImGui::CollapsingHeader("Memory"))
   {
-    auto calc_frac = [](VkDeviceSize part, VkDeviceSize max) { return ((float)part / (float)max); };
-    ImGui::Text("image memory (%uMB pool)", Engine::Images::MAX_MEMORY_SIZE_MB);
-    ImGui::ProgressBar(calc_frac(engine.images.used_memory, Engine::Images::MAX_MEMORY_SIZE));
-    ImGui::Text("device-visible memory (%uMB pool)", Engine::GpuStaticGeometry::MAX_MEMORY_SIZE_MB);
-    ImGui::ProgressBar(calc_frac(engine.gpu_static_geometry.used_memory, Engine::GpuStaticGeometry::MAX_MEMORY_SIZE));
-    ImGui::Text("host-visible memory (%uMB pool)", Engine::GpuHostVisible::MAX_MEMORY_SIZE_MB);
-    ImGui::ProgressBar(calc_frac(engine.gpu_static_geometry.used_memory, Engine::GpuStaticGeometry::MAX_MEMORY_SIZE));
-    ImGui::Text("UBO memory (%uMB pool)", Engine::UboHostVisible::MAX_MEMORY_SIZE_MB);
-    ImGui::ProgressBar(calc_frac(engine.ubo_host_visible.used_memory, Engine::UboHostVisible::MAX_MEMORY_SIZE));
-    ImGui::Text("double ended stack memory (%uMB pool)", Engine::DoubleEndedStack::MAX_MEMORY_SIZE_MB);
-    ImGui::ProgressBar(calc_frac(static_cast<VkDeviceSize>(engine.double_ended_stack.front),
-                                 Engine::DoubleEndedStack::MAX_MEMORY_SIZE));
+    auto bytes_as_mb = [](uint32_t in) { return in / (1024u * 1024u); };
+    auto calc_frac   = [](VkDeviceSize part, VkDeviceSize max) { return ((float)part / (float)max); };
+
+    ImGui::Text("image memory (%uMB pool)", bytes_as_mb(GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE));
+    ImGui::ProgressBar(
+        calc_frac(engine.gpu_device_images_memory_block.stack_pointer, GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE));
+
+    ImGui::Text("device-visible memory (%uMB pool)", bytes_as_mb(GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE));
+    ImGui::ProgressBar(
+        calc_frac(engine.gpu_device_local_memory_block.stack_pointer, GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE));
+
+    ImGui::Text("host-visible memory (%uMB pool)", bytes_as_mb(GPU_HOST_COHERENT_MEMORY_POOL_SIZE));
+    ImGui::ProgressBar(
+        calc_frac(engine.gpu_host_coherent_memory_block.stack_pointer, GPU_HOST_COHERENT_MEMORY_POOL_SIZE));
+
+    ImGui::Text("UBO memory (%uMB pool)", bytes_as_mb(GPU_HOST_COHERENT_UBO_MEMORY_POOL_SIZE));
+    ImGui::ProgressBar(
+        calc_frac(engine.gpu_host_coherent_ubo_memory_block.stack_pointer, GPU_HOST_COHERENT_UBO_MEMORY_POOL_SIZE));
+
+    ImGui::Text("double ended stack memory (%uMB pool)", bytes_as_mb(MEMORY_ALLOCATOR_POOL_SIZE));
+    ImGui::ProgressBar(
+        calc_frac(static_cast<VkDeviceSize>(engine.allocator.stack_pointer_front), MEMORY_ALLOCATOR_POOL_SIZE));
   }
 
   if (ImGui::RadioButton("debug flag 1", DEBUG_FLAG_1))
@@ -2094,13 +2209,14 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
     mat4x4 scale_matrix = {};
     mat4x4_identity(scale_matrix);
-    mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.5f, 0.5f, 0.5f);
+    mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.2f, 0.2f, 0.2f);
 
     mat4x4 tmp = {};
     mat4x4_mul(tmp, translation_matrix, rotation_matrix);
     mat4x4_mul(world_transform, tmp, scale_matrix);
   }
 
+  custom_robot_animate_entity(robot_entity, ecs, robot, current_time_sec);
   recalculate_node_transforms(robot_entity, ecs, robot, world_transform);
 
   {
@@ -2199,10 +2315,10 @@ void Game::render(Engine& engine)
   Engine::SimpleRendering& renderer = engine.simple_rendering;
 
   {
-    vkAcquireNextImageKHR(engine.generic_handles.device, engine.generic_handles.swapchain, UINT64_MAX,
-                          engine.generic_handles.image_available, VK_NULL_HANDLE, &image_index);
-    vkWaitForFences(engine.generic_handles.device, 1, &renderer.submition_fences[image_index], VK_TRUE, UINT64_MAX);
-    vkResetFences(engine.generic_handles.device, 1, &renderer.submition_fences[image_index]);
+    vkAcquireNextImageKHR(engine.device, engine.swapchain, UINT64_MAX, engine.image_available, VK_NULL_HANDLE,
+                          &image_index);
+    vkWaitForFences(engine.device, 1, &renderer.submition_fences[image_index], VK_TRUE, UINT64_MAX);
+    vkResetFences(engine.device, 1, &renderer.submition_fences[image_index]);
   }
 
   FunctionTimer timer(render_times, SDL_arraysize(render_times));
@@ -2234,13 +2350,13 @@ void Game::render(Engine& engine)
   SDL_CondBroadcast(js.new_jobs_available_cond);
   SDL_UnlockMutex(js.new_jobs_available_mutex);
 
-  update_ubo(engine.generic_handles.device, engine.ubo_host_visible.memory, sizeof(LightSources),
+  update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory, sizeof(LightSources),
              pbr_dynamic_lights_ubo_offsets[image_index], &pbr_light_sources_cache);
 
   //
   // rigged simple skinning matrices
   //
-  update_ubo(engine.generic_handles.device, engine.ubo_host_visible.memory,
+  update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory,
              SDL_arraysize(ecs.joint_matrices[0].joints) * sizeof(mat4x4),
              rig_skinning_matrices_ubo_offsets[image_index],
              ecs.joint_matrices[rigged_simple_entity.joint_matrices].joints);
@@ -2248,7 +2364,7 @@ void Game::render(Engine& engine)
   //
   // monster skinning matrices
   //
-  update_ubo(engine.generic_handles.device, engine.ubo_host_visible.memory,
+  update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory,
              SDL_arraysize(ecs.joint_matrices[0].joints) * sizeof(mat4x4),
              monster_skinning_matrices_ubo_offsets[image_index],
              ecs.joint_matrices[monster_entity.joint_matrices].joints);
@@ -2261,12 +2377,20 @@ void Game::render(Engine& engine)
     };
 
     ArrayView<GuiLine> r = {};
-    generate_gui_lines(cmd, nullptr, &r.count);
-    r.data = engine.double_ended_stack.allocate_back<GuiLine>(r.count);
-    generate_gui_lines(cmd, r.data, &r.count);
+    {
+      generate_gui_lines(cmd, nullptr, &r.count);
+      void* allocation = engine.allocator.allocate_back(r.count * sizeof(GuiLine));
+      r.data           = reinterpret_cast<GuiLine*>(allocation);
+      generate_gui_lines(cmd, r.data, &r.count);
+    }
 
-    float* pushed_lines_data    = engine.double_ended_stack.allocate_back<float>(4 * r.count);
-    int    pushed_lines_counter = 0;
+    float* pushed_lines_data = nullptr;
+    int pushed_lines_counter = 0;
+
+    {
+      void* allocation  = engine.allocator.allocate_back(4 * r.count * sizeof(float));
+      pushed_lines_data = reinterpret_cast<float*>(allocation);
+    }
 
     gui_green_lines_count  = count_lines(r, GuiLine::Color::Green);
     gui_red_lines_count    = count_lines(r, GuiLine::Color::Red);
@@ -2303,9 +2427,9 @@ void Game::render(Engine& engine)
       }
     }
 
-    update_ubo(engine.generic_handles.device, engine.gpu_host_visible.memory, r.count * 2 * sizeof(vec2),
+    update_ubo(engine.device, engine.gpu_host_coherent_memory_block.memory, r.count * 2 * sizeof(vec2),
                green_gui_rulers_buffer_offsets[image_index], pushed_lines_data);
-    engine.double_ended_stack.reset_back();
+    engine.allocator.reset_back();
   }
 
   ImDrawData* draw_data = ImGui::GetDrawData();
@@ -2318,7 +2442,7 @@ void Game::render(Engine& engine)
 
   if (0 < vertex_size)
   {
-    ScopedMemoryMap memory_map(engine.generic_handles.device, engine.gpu_host_visible.memory,
+    ScopedMemoryMap memory_map(engine.device, engine.gpu_host_coherent_memory_block.memory,
                                debug_gui.vertex_buffer_offsets[image_index], vertex_size);
 
     ImDrawVert* vtx_dst = memory_map.get<ImDrawVert>();
@@ -2332,7 +2456,7 @@ void Game::render(Engine& engine)
 
   if (0 < index_size)
   {
-    ScopedMemoryMap memory_map(engine.generic_handles.device, engine.gpu_host_visible.memory,
+    ScopedMemoryMap memory_map(engine.device, engine.gpu_host_coherent_memory_block.memory,
                                debug_gui.index_buffer_offsets[image_index], index_size);
 
     ImDrawIdx* idx_dst = memory_map.get<ImDrawIdx>();
@@ -2366,7 +2490,7 @@ void Game::render(Engine& engine)
         .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
         .renderPass      = engine.simple_rendering.render_pass,
         .framebuffer     = engine.simple_rendering.framebuffers[image_index],
-        .renderArea      = {.extent = engine.generic_handles.extent2D},
+        .renderArea      = {.extent = engine.extent2D},
         .clearValueCount = SDL_arraysize(clear_values),
         .pClearValues    = clear_values,
     };
@@ -2430,25 +2554,24 @@ void Game::render(Engine& engine)
   VkSubmitInfo submit = {
       .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
       .waitSemaphoreCount   = 1,
-      .pWaitSemaphores      = &engine.generic_handles.image_available,
+      .pWaitSemaphores      = &engine.image_available,
       .pWaitDstStageMask    = &wait_stage,
       .commandBufferCount   = 1,
       .pCommandBuffers      = &cmd,
       .signalSemaphoreCount = 1,
-      .pSignalSemaphores    = &engine.generic_handles.render_finished,
+      .pSignalSemaphores    = &engine.render_finished,
   };
 
-  vkQueueSubmit(engine.generic_handles.graphics_queue, 1, &submit,
-                engine.simple_rendering.submition_fences[image_index]);
+  vkQueueSubmit(engine.graphics_queue, 1, &submit, engine.simple_rendering.submition_fences[image_index]);
 
   VkPresentInfoKHR present = {
       .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
       .waitSemaphoreCount = 1,
-      .pWaitSemaphores    = &engine.generic_handles.render_finished,
+      .pWaitSemaphores    = &engine.render_finished,
       .swapchainCount     = 1,
-      .pSwapchains        = &engine.generic_handles.swapchain,
+      .pSwapchains        = &engine.swapchain,
       .pImageIndices      = &image_index,
   };
 
-  vkQueuePresentKHR(engine.generic_handles.graphics_queue, &present);
+  vkQueuePresentKHR(engine.graphics_queue, &present);
 }

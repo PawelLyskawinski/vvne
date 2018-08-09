@@ -1,9 +1,9 @@
 #include "render_jobs.hh"
 
 // game_render_entity.cc
-void render_pbr_entity(Entity entity, EntityComponentSystem& ecs, gltf::RenderableModel& model, Engine& engine,
+void render_pbr_entity(Entity entity, EntityComponentSystem& ecs, SceneGraph& scene_graph, Engine& engine,
                        RenderEntityParams& p);
-void render_entity(Entity entity, EntityComponentSystem& ecs, gltf::RenderableModel& model, Engine& engine,
+void render_entity(Entity entity, EntityComponentSystem& ecs, SceneGraph& scen_graph, Engine& engine,
                    RenderEntityParams& p);
 
 // game_generate_gui_lines.cc
@@ -82,11 +82,11 @@ int skybox_job(ThreadJobData tjd)
                      tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Skybox],
                      VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), &push);
 
-  const Node& node = tjd.game.box.scene_graph.nodes.data[1];
-  Mesh&       mesh = tjd.game.box.scene_graph.meshes.data[node.mesh];
+  const Node& node = tjd.game.box.nodes.data[1];
+  Mesh&       mesh = tjd.game.box.meshes.data[node.mesh];
 
-  vkCmdBindIndexBuffer(tjd.command, tjd.engine.gpu_static_geometry.buffer, mesh.indices_offset, mesh.indices_type);
-  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer, &mesh.vertices_offset);
+  vkCmdBindIndexBuffer(tjd.command, tjd.engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
+  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
   vkCmdDrawIndexed(tjd.command, mesh.indices_count, 1, 0, 0, 0);
 
   vkEndCommandBuffer(tjd.command);
@@ -327,10 +327,10 @@ int vr_scene(ThreadJobData tjd)
                           tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 0,
                           1, &tjd.game.sandy_level_pbr_material_dset, 0, nullptr);
 
-  vkCmdBindIndexBuffer(tjd.command, tjd.engine.gpu_static_geometry.buffer, tjd.game.vr_level_index_buffer_offset,
+  vkCmdBindIndexBuffer(tjd.command, tjd.engine.gpu_device_local_memory_buffer, tjd.game.vr_level_index_buffer_offset,
                        tjd.game.vr_level_index_type);
 
-  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer,
+  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.vr_level_vertex_buffer_offset);
 
   mat4x4 translation_matrix = {};
@@ -496,12 +496,11 @@ int radar(ThreadJobData tjd)
   vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
                     tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGui]);
 
-  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer,
+  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
   mat4x4 gui_projection = {};
-  mat4x4_ortho(gui_projection, 0, tjd.engine.generic_handles.extent2D.width, 0,
-               tjd.engine.generic_handles.extent2D.height, 0.0f, 1.0f);
+  mat4x4_ortho(gui_projection, 0, tjd.engine.extent2D.width, 0, tjd.engine.extent2D.height, 0.0f, 1.0f);
 
   const float rectangle_dimension_pixels = 100.0f;
   const float offset_from_edge           = 10.0f;
@@ -561,14 +560,14 @@ int robot_gui_lines(ThreadJobData tjd)
   vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
                     tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiLines]);
 
-  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_host_visible.buffer,
+  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_host_coherent_memory_buffer,
                          &tjd.game.green_gui_rulers_buffer_offsets[tjd.game.image_index]);
 
   uint32_t offset = 0;
 
   // ------ GREEN ------
   {
-    VkRect2D scissor{.extent = tjd.engine.generic_handles.extent2D};
+    VkRect2D scissor{.extent = tjd.engine.extent2D};
     vkCmdSetScissor(tjd.command, 0, 1, &scissor);
 
     const float             line_widths[] = {7.0f, 5.0f, 3.0f, 1.0f};
@@ -594,10 +593,10 @@ int robot_gui_lines(ThreadJobData tjd)
   // ------ RED ------
   {
     VkRect2D scissor{};
-    scissor.extent.width  = line_to_pixel_length(1.50f, tjd.engine.generic_handles.extent2D.width);
-    scissor.extent.height = line_to_pixel_length(1.02f, tjd.engine.generic_handles.extent2D.height);
-    scissor.offset.x      = (tjd.engine.generic_handles.extent2D.width / 2) - (scissor.extent.width / 2);
-    scissor.offset.y      = line_to_pixel_length(0.29f, tjd.engine.generic_handles.extent2D.height); // 118
+    scissor.extent.width  = line_to_pixel_length(1.50f, tjd.engine.extent2D.width);
+    scissor.extent.height = line_to_pixel_length(1.02f, tjd.engine.extent2D.height);
+    scissor.offset.x      = (tjd.engine.extent2D.width / 2) - (scissor.extent.width / 2);
+    scissor.offset.y      = line_to_pixel_length(0.29f, tjd.engine.extent2D.height); // 118
     vkCmdSetScissor(tjd.command, 0, 1, &scissor);
 
     const float             line_widths[] = {7.0f, 5.0f, 3.0f, 1.0f};
@@ -623,10 +622,10 @@ int robot_gui_lines(ThreadJobData tjd)
   // ------ YELLOW ------
   {
     VkRect2D scissor      = {};
-    scissor.extent.width  = line_to_pixel_length(0.5f, tjd.engine.generic_handles.extent2D.width);
-    scissor.extent.height = line_to_pixel_length(1.3f, tjd.engine.generic_handles.extent2D.height);
-    scissor.offset.x      = (tjd.engine.generic_handles.extent2D.width / 2) - (scissor.extent.width / 2);
-    scissor.offset.y      = line_to_pixel_length(0.2f, tjd.engine.generic_handles.extent2D.height);
+    scissor.extent.width  = line_to_pixel_length(0.5f, tjd.engine.extent2D.width);
+    scissor.extent.height = line_to_pixel_length(1.3f, tjd.engine.extent2D.height);
+    scissor.offset.x      = (tjd.engine.extent2D.width / 2) - (scissor.extent.width / 2);
+    scissor.offset.y      = line_to_pixel_length(0.2f, tjd.engine.extent2D.height);
     vkCmdSetScissor(tjd.command, 0, 1, &scissor);
 
     const float             line_widths[] = {7.0f, 5.0f, 3.0f, 1.0f};
@@ -684,7 +683,7 @@ int robot_gui_speed_meter_text(ThreadJobData tjd)
       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont], 0, 1,
       &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
 
-  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer,
+  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
   struct VertexPushConstant
@@ -704,8 +703,7 @@ int robot_gui_speed_meter_text(ThreadJobData tjd)
 
   {
     mat4x4 gui_projection = {};
-    mat4x4_ortho(gui_projection, 0, tjd.engine.generic_handles.extent2D.width, 0,
-                 tjd.engine.generic_handles.extent2D.height, 0.0f, 1.0f);
+    mat4x4_ortho(gui_projection, 0, tjd.engine.extent2D.width, 0, tjd.engine.extent2D.height, 0.0f, 1.0f);
 
     float speed     = vec3_len(tjd.game.player_velocity) * 1500.0f;
     int   speed_int = static_cast<int>(speed);
@@ -763,9 +761,9 @@ int robot_gui_speed_meter_text(ThreadJobData tjd)
           .position =
               {
                   line_to_pixel_length(0.48f,
-                                       tjd.engine.generic_handles.extent2D.width), // 0.65f
+                                       tjd.engine.extent2D.width), // 0.65f
                   line_to_pixel_length(0.80f,
-                                       tjd.engine.generic_handles.extent2D.height), // 0.42f
+                                       tjd.engine.extent2D.height), // 0.42f
                   -1.0f,
               },
           .cursor = cursor,
@@ -778,7 +776,7 @@ int robot_gui_speed_meter_text(ThreadJobData tjd)
       mat4x4_mul(vpc.mvp, gui_projection, r.transform);
       cursor += r.cursor_movement;
 
-      VkRect2D scissor = {.extent = tjd.engine.generic_handles.extent2D};
+      VkRect2D scissor = {.extent = tjd.engine.extent2D};
       vkCmdSetScissor(tjd.command, 0, 1, &scissor);
 
       vkCmdPushConstants(
@@ -882,7 +880,7 @@ int height_ruler_text(ThreadJobData tjd)
       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont], 0, 1,
       &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
 
-  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer,
+  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
   struct VertexPushConstant
@@ -910,7 +908,7 @@ int height_ruler_text(ThreadJobData tjd)
         .player_y_location_meters = -(2.0f - tjd.game.player_position[1]),
         .camera_x_pitch_radians   = tjd.game.camera_angle,
         .camera_y_pitch_radians   = tjd.game.camera_updown_angle,
-        .screen_extent2D          = tjd.engine.generic_handles.extent2D,
+        .screen_extent2D          = tjd.engine.extent2D,
     };
 
     generate_gui_height_ruler_text(cmd, nullptr, &scheduled_text_data.count);
@@ -922,8 +920,7 @@ int height_ruler_text(ThreadJobData tjd)
   for (GuiHeightRulerText& text : scheduled_text_data)
   {
     mat4x4 gui_projection = {};
-    mat4x4_ortho(gui_projection, 0, tjd.engine.generic_handles.extent2D.width, 0,
-                 tjd.engine.generic_handles.extent2D.height, 0.0f, 1.0f);
+    mat4x4_ortho(gui_projection, 0, tjd.engine.extent2D.width, 0, tjd.engine.extent2D.height, 0.0f, 1.0f);
 
     float cursor = 0.0f;
 
@@ -949,10 +946,10 @@ int height_ruler_text(ThreadJobData tjd)
       cursor += r.cursor_movement;
 
       VkRect2D scissor{};
-      scissor.extent.width  = line_to_pixel_length(0.75f, tjd.engine.generic_handles.extent2D.width);
-      scissor.extent.height = line_to_pixel_length(1.02f, tjd.engine.generic_handles.extent2D.height);
-      scissor.offset.x      = (tjd.engine.generic_handles.extent2D.width / 2) - (scissor.extent.width / 2);
-      scissor.offset.y      = line_to_pixel_length(0.29f, tjd.engine.generic_handles.extent2D.height); // 118
+      scissor.extent.width  = line_to_pixel_length(0.75f, tjd.engine.extent2D.width);
+      scissor.extent.height = line_to_pixel_length(1.02f, tjd.engine.extent2D.height);
+      scissor.offset.x      = (tjd.engine.extent2D.width / 2) - (scissor.extent.width / 2);
+      scissor.offset.y      = line_to_pixel_length(0.29f, tjd.engine.extent2D.height);
       vkCmdSetScissor(tjd.command, 0, 1, &scissor);
 
       fpc.color[0] = 1.0f;
@@ -1006,7 +1003,7 @@ int tilt_ruler_text(ThreadJobData tjd)
       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont], 0, 1,
       &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
 
-  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer,
+  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
   struct VertexPushConstant
@@ -1034,7 +1031,7 @@ int tilt_ruler_text(ThreadJobData tjd)
         .player_y_location_meters = -(2.0f - tjd.game.player_position[1]),
         .camera_x_pitch_radians   = tjd.game.camera_angle,
         .camera_y_pitch_radians   = tjd.game.camera_updown_angle,
-        .screen_extent2D          = tjd.engine.generic_handles.extent2D,
+        .screen_extent2D          = tjd.engine.extent2D,
     };
 
     generate_gui_tilt_ruler_text(cmd, nullptr, &scheduled_text_data.count);
@@ -1046,8 +1043,7 @@ int tilt_ruler_text(ThreadJobData tjd)
   for (GuiHeightRulerText& text : scheduled_text_data)
   {
     mat4x4 gui_projection = {};
-    mat4x4_ortho(gui_projection, 0, tjd.engine.generic_handles.extent2D.width, 0,
-                 tjd.engine.generic_handles.extent2D.height, 0.0f, 1.0f);
+    mat4x4_ortho(gui_projection, 0, tjd.engine.extent2D.width, 0, tjd.engine.extent2D.height, 0.0f, 1.0f);
 
     float cursor = 0.0f;
 
@@ -1073,10 +1069,10 @@ int tilt_ruler_text(ThreadJobData tjd)
       cursor += r.cursor_movement;
 
       VkRect2D scissor{};
-      scissor.extent.width  = line_to_pixel_length(0.5f, tjd.engine.generic_handles.extent2D.width);
-      scissor.extent.height = line_to_pixel_length(1.3f, tjd.engine.generic_handles.extent2D.height);
-      scissor.offset.x      = (tjd.engine.generic_handles.extent2D.width / 2) - (scissor.extent.width / 2);
-      scissor.offset.y      = line_to_pixel_length(0.2f, tjd.engine.generic_handles.extent2D.height);
+      scissor.extent.width  = line_to_pixel_length(0.5f, tjd.engine.extent2D.width);
+      scissor.extent.height = line_to_pixel_length(1.3f, tjd.engine.extent2D.height);
+      scissor.offset.x      = (tjd.engine.extent2D.width / 2) - (scissor.extent.width / 2);
+      scissor.offset.y      = line_to_pixel_length(0.2f, tjd.engine.extent2D.height);
       vkCmdSetScissor(tjd.command, 0, 1, &scissor);
 
       vkCmdPushConstants(
@@ -1130,7 +1126,7 @@ int compass_text(ThreadJobData tjd)
       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont], 0, 1,
       &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
 
-  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer,
+  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
   struct VertexPushConstant
@@ -1170,8 +1166,7 @@ int compass_text(ThreadJobData tjd)
   const char* right_text  = directions[right_direction_iter];
 
   mat4x4 gui_projection = {};
-  mat4x4_ortho(gui_projection, 0, tjd.engine.generic_handles.extent2D.width, 0,
-               tjd.engine.generic_handles.extent2D.height, 0.0f, 1.0f);
+  mat4x4_ortho(gui_projection, 0, tjd.engine.extent2D.width, 0, tjd.engine.extent2D.height, 0.0f, 1.0f);
   float cursor = 0.0f;
 
   //////////////////////////////////////////////////////////////////////////////
@@ -1197,9 +1192,8 @@ int compass_text(ThreadJobData tjd)
         .scaling               = 300.0f,
         .position =
             {
-                line_to_pixel_length(1.0f - angle_mod + (0.5f * direction_increment),
-                                     tjd.engine.generic_handles.extent2D.width),
-                line_to_pixel_length(1.335f, tjd.engine.generic_handles.extent2D.height),
+                line_to_pixel_length(1.0f - angle_mod + (0.5f * direction_increment), tjd.engine.extent2D.width),
+                line_to_pixel_length(1.335f, tjd.engine.extent2D.height),
                 -1.0f,
             },
         .cursor = cursor,
@@ -1212,7 +1206,7 @@ int compass_text(ThreadJobData tjd)
     mat4x4_mul(vpc.mvp, gui_projection, r.transform);
     cursor += r.cursor_movement;
 
-    VkRect2D scissor = {.extent = tjd.engine.generic_handles.extent2D};
+    VkRect2D scissor = {.extent = tjd.engine.extent2D};
     vkCmdSetScissor(tjd.command, 0, 1, &scissor);
 
     vkCmdPushConstants(tjd.command,
@@ -1255,8 +1249,8 @@ int compass_text(ThreadJobData tjd)
         .scaling               = 200.0f, // tjd.game.DEBUG_VEC2[0],
         .position =
             {
-                line_to_pixel_length(0.8f, tjd.engine.generic_handles.extent2D.width),    // 0.65f
-                line_to_pixel_length(1.345f, tjd.engine.generic_handles.extent2D.height), // 0.42f
+                line_to_pixel_length(0.8f, tjd.engine.extent2D.width),    // 0.65f
+                line_to_pixel_length(1.345f, tjd.engine.extent2D.height), // 0.42f
                 -1.0f,
             },
         .cursor = cursor,
@@ -1269,7 +1263,7 @@ int compass_text(ThreadJobData tjd)
     mat4x4_mul(vpc.mvp, gui_projection, r.transform);
     cursor += r.cursor_movement;
 
-    VkRect2D scissor = {.extent = tjd.engine.generic_handles.extent2D};
+    VkRect2D scissor = {.extent = tjd.engine.extent2D};
     vkCmdSetScissor(tjd.command, 0, 1, &scissor);
 
     vkCmdPushConstants(tjd.command,
@@ -1312,8 +1306,8 @@ int compass_text(ThreadJobData tjd)
         .scaling               = 200.0f, // tjd.game.DEBUG_VEC2[0],
         .position =
             {
-                line_to_pixel_length(1.2f, tjd.engine.generic_handles.extent2D.width),    // 0.65f
-                line_to_pixel_length(1.345f, tjd.engine.generic_handles.extent2D.height), // 0.42f
+                line_to_pixel_length(1.2f, tjd.engine.extent2D.width),    // 0.65f
+                line_to_pixel_length(1.345f, tjd.engine.extent2D.height), // 0.42f
                 -1.0f,
             },
         .cursor = cursor,
@@ -1326,7 +1320,7 @@ int compass_text(ThreadJobData tjd)
     mat4x4_mul(vpc.mvp, gui_projection, r.transform);
     cursor += r.cursor_movement;
 
-    VkRect2D scissor = {.extent = tjd.engine.generic_handles.extent2D};
+    VkRect2D scissor = {.extent = tjd.engine.extent2D};
     vkCmdSetScissor(tjd.command, 0, 1, &scissor);
 
     vkCmdPushConstants(tjd.command,
@@ -1375,12 +1369,11 @@ int radar_dots(ThreadJobData tjd)
                     tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiRadarDots]);
 
   int   rectangle_dim           = 100;
-  float vertical_length         = pixels_to_line_length(rectangle_dim, tjd.engine.generic_handles.extent2D.width);
-  float offset_from_screen_edge = pixels_to_line_length(rectangle_dim / 10, tjd.engine.generic_handles.extent2D.width);
+  float vertical_length         = pixels_to_line_length(rectangle_dim, tjd.engine.extent2D.width);
+  float offset_from_screen_edge = pixels_to_line_length(rectangle_dim / 10, tjd.engine.extent2D.width);
 
-  const float horizontal_length = pixels_to_line_length(rectangle_dim, tjd.engine.generic_handles.extent2D.height);
-  const float offset_from_top_edge =
-      pixels_to_line_length(rectangle_dim / 10, tjd.engine.generic_handles.extent2D.height);
+  const float horizontal_length    = pixels_to_line_length(rectangle_dim, tjd.engine.extent2D.height);
+  const float offset_from_top_edge = pixels_to_line_length(rectangle_dim / 10, tjd.engine.extent2D.height);
 
   const vec2 center_radar_position = {
       -1.0f + offset_from_screen_edge + vertical_length,
@@ -1449,11 +1442,9 @@ int weapon_selectors_left(ThreadJobData tjd)
   }
 
   mat4x4 gui_projection = {};
-  mat4x4_ortho(gui_projection, 0, tjd.engine.generic_handles.extent2D.width, 0,
-               tjd.engine.generic_handles.extent2D.height, 0.0f, 1.0f);
+  mat4x4_ortho(gui_projection, 0, tjd.engine.extent2D.width, 0, tjd.engine.extent2D.height, 0.0f, 1.0f);
 
-  vec2 screen_extent = {(float)tjd.engine.generic_handles.extent2D.width,
-                        (float)tjd.engine.generic_handles.extent2D.height};
+  vec2 screen_extent = {(float)tjd.engine.extent2D.width, (float)tjd.engine.extent2D.height};
 
   vec2 box_size                = {120.0f, 25.0f};
   vec2 offset_from_bottom_left = {25.0f, 25.0f};
@@ -1486,7 +1477,7 @@ int weapon_selectors_left(ThreadJobData tjd)
         tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
         tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiWeaponSelectorBoxLeft]);
 
-    vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer,
+    vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                            &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
     vkCmdPushConstants(
@@ -1514,7 +1505,7 @@ int weapon_selectors_left(ThreadJobData tjd)
         tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont], 0, 1,
         &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
 
-    vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer,
+    vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                            &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
     struct VertexPushConstant
@@ -1565,7 +1556,7 @@ int weapon_selectors_left(ThreadJobData tjd)
       mat4x4_mul(vpc.mvp, gui_projection, r.transform);
       cursor += r.cursor_movement;
 
-      VkRect2D scissor = {.extent = tjd.engine.generic_handles.extent2D};
+      VkRect2D scissor = {.extent = tjd.engine.extent2D};
       vkCmdSetScissor(tjd.command, 0, 1, &scissor);
 
       vkCmdPushConstants(
@@ -1612,11 +1603,9 @@ int weapon_selectors_right(ThreadJobData tjd)
   }
 
   mat4x4 gui_projection = {};
-  mat4x4_ortho(gui_projection, 0, tjd.engine.generic_handles.extent2D.width, 0,
-               tjd.engine.generic_handles.extent2D.height, 0.0f, 1.0f);
+  mat4x4_ortho(gui_projection, 0, tjd.engine.extent2D.width, 0, tjd.engine.extent2D.height, 0.0f, 1.0f);
 
-  vec2 screen_extent = {(float)tjd.engine.generic_handles.extent2D.width,
-                        (float)tjd.engine.generic_handles.extent2D.height};
+  vec2 screen_extent = {(float)tjd.engine.extent2D.width, (float)tjd.engine.extent2D.height};
 
   vec2 box_size                 = {120.0f, 25.0f};
   vec2 offset_from_bottom_right = {25.0f, 25.0f};
@@ -1649,7 +1638,7 @@ int weapon_selectors_right(ThreadJobData tjd)
         tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
         tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiWeaponSelectorBoxRight]);
 
-    vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer,
+    vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                            &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
     vkCmdPushConstants(
@@ -1677,7 +1666,7 @@ int weapon_selectors_right(ThreadJobData tjd)
         tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont], 0, 1,
         &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
 
-    vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer,
+    vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                            &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
     struct VertexPushConstant
@@ -1728,7 +1717,7 @@ int weapon_selectors_right(ThreadJobData tjd)
       mat4x4_mul(vpc.mvp, gui_projection, r.transform);
       cursor += r.cursor_movement;
 
-      VkRect2D scissor = {.extent = tjd.engine.generic_handles.extent2D};
+      VkRect2D scissor = {.extent = tjd.engine.extent2D};
       vkCmdSetScissor(tjd.command, 0, 1, &scissor);
 
       vkCmdPushConstants(
@@ -1782,7 +1771,7 @@ int hello_world_text(ThreadJobData tjd)
       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont], 0, 1,
       &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
 
-  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer,
+  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
   struct VertexPushConstant
@@ -1807,8 +1796,8 @@ int hello_world_text(ThreadJobData tjd)
     mat4x4 gui_projection = {};
 
     {
-      float extent_width        = static_cast<float>(tjd.engine.generic_handles.extent2D.width);
-      float extent_height       = static_cast<float>(tjd.engine.generic_handles.extent2D.height);
+      float extent_width        = static_cast<float>(tjd.engine.extent2D.width);
+      float extent_height       = static_cast<float>(tjd.engine.extent2D.height);
       float aspect_ratio        = extent_width / extent_height;
       float fov                 = to_rad(90.0f);
       float near_clipping_plane = 0.001f;
@@ -1855,7 +1844,7 @@ int hello_world_text(ThreadJobData tjd)
       mat4x4_mul(vpc.mvp, projection_view, r.transform);
       cursor += r.cursor_movement;
 
-      VkRect2D scissor = {.extent = tjd.engine.generic_handles.extent2D};
+      VkRect2D scissor = {.extent = tjd.engine.extent2D};
       vkCmdSetScissor(tjd.command, 0, 1, &scissor);
 
       vkCmdPushConstants(
@@ -1919,10 +1908,10 @@ int imgui(ThreadJobData tjd)
                             tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ImGui], 0,
                             1, &tjd.game.imgui_font_atlas_dset, 0, nullptr);
 
-    vkCmdBindIndexBuffer(tjd.command, tjd.engine.gpu_host_visible.buffer,
+    vkCmdBindIndexBuffer(tjd.command, tjd.engine.gpu_host_coherent_memory_buffer,
                          tjd.game.debug_gui.index_buffer_offsets[tjd.game.image_index], VK_INDEX_TYPE_UINT16);
 
-    vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_host_visible.buffer,
+    vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_host_coherent_memory_buffer,
                            &tjd.game.debug_gui.vertex_buffer_offsets[tjd.game.image_index]);
 
     {
@@ -2013,7 +2002,7 @@ int water(ThreadJobData tjd)
   vkCmdBindPipeline(tjd.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
                     tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::PbrWater]);
 
-  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_static_geometry.buffer,
+  vkCmdBindVertexBuffers(tjd.command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.regular_billboard_vertex_buffer_offset);
 
   mat4x4 rotation_matrix = {};
@@ -2029,10 +2018,9 @@ int water(ThreadJobData tjd)
     for (int y = 0; y < 3; ++y)
     {
       mat4x4 translation_matrix = {};
-      mat4x4_translate(translation_matrix,
-              20.0f * x - 20.0f,
-              4.5f,// + 0.02f * SDL_sinf(tjd.game.current_time_sec),
-              20.0f * y - 20.0f);
+      mat4x4_translate(translation_matrix, 20.0f * x - 20.0f,
+                       4.5f, // + 0.02f * SDL_sinf(tjd.game.current_time_sec),
+                       20.0f * y - 20.0f);
 
       mat4x4 tmp = {};
       mat4x4_mul(tmp, translation_matrix, rotation_matrix);

@@ -6,140 +6,108 @@
 #define SWAPCHAIN_IMAGES_COUNT 2
 #define MSAA_SAMPLE_COUNT VK_SAMPLE_COUNT_8_BIT
 
+VkDeviceSize align(VkDeviceSize unaligned, VkDeviceSize alignment);
+int          find_first_zeroed_bit_offset(uint64_t bitmap);
+
 struct ScheduledPipelineDestruction
 {
   int        frame_countdown;
   VkPipeline pipeline;
 };
 
+struct GpuMemoryBlock
+{
+  VkDeviceMemory memory;
+  VkDeviceSize   alignment;
+  VkDeviceSize   stack_pointer;
+};
+
+#define GPU_DEVICE_LOCAL_MEMORY_POOL_SIZE (5 * 1024 * 1024)
+#define GPU_HOST_VISIBLE_TRANSFER_SOURCE_MEMORY_POOL_SIZE (5 * 1024 * 1024)
+#define GPU_HOST_COHERENT_MEMORY_POOL_SIZE (1 * 1024 * 1024)
+#define GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE (500 * 1024 * 1024)
+#define GPU_HOST_COHERENT_UBO_MEMORY_POOL_SIZE (1 * 1024 * 1024)
+#define MEMORY_ALLOCATOR_POOL_SIZE (5 * 1024 * 1024)
+
+struct DoubleEndedStack
+{
+  void* allocate_front(uint64_t size);
+  void* allocate_back(uint64_t size);
+  void  reset_back();
+
+  uint8_t  memory[MEMORY_ALLOCATOR_POOL_SIZE];
+  uint64_t stack_pointer_front;
+  uint64_t stack_pointer_back;
+};
+
 struct Engine
 {
-  struct GenericHandles
-  {
-    VkInstance                 instance;
-    VkDebugReportCallbackEXT   debug_callback;
-    SDL_Window*                window;
-    VkPhysicalDevice           physical_device;
-    VkPhysicalDeviceProperties physical_device_properties;
-    VkSurfaceKHR               surface;
-    VkSurfaceCapabilitiesKHR   surface_capabilities;
-    VkExtent2D                 extent2D;
-    uint32_t                   graphics_family_index;
-    VkDevice                   device;
-    VkQueue                    graphics_queue;
-    VkSurfaceFormatKHR         surface_format;
-    VkPresentModeKHR           present_mode;
-    VkSwapchainKHR             swapchain;
-    VkImage                    swapchain_images[SWAPCHAIN_IMAGES_COUNT];
-    VkImageView                swapchain_image_views[SWAPCHAIN_IMAGES_COUNT];
-    VkCommandPool              graphics_command_pool;
-    VkDescriptorPool           descriptor_pool;
-    VkImage                    depth_image;
-    VkImageView                depth_image_view;
-    VkImage                    msaa_color_image;
-    VkImageView                msaa_color_image_view;
-    VkImage                    msaa_depth_image;
-    VkImageView                msaa_depth_image_view;
-    VkSemaphore                image_available;
-    VkSemaphore                render_finished;
-    VkSampler                  texture_sampler;
-  } generic_handles;
+  VkInstance                 instance;
+  VkDebugReportCallbackEXT   debug_callback;
+  SDL_Window*                window;
+  VkPhysicalDevice           physical_device;
+  VkPhysicalDeviceProperties physical_device_properties;
+  VkSurfaceKHR               surface;
+  VkSurfaceCapabilitiesKHR   surface_capabilities;
+  VkExtent2D                 extent2D;
+  uint32_t                   graphics_family_index;
+  VkDevice                   device;
+  VkQueue                    graphics_queue;
+  VkSurfaceFormatKHR         surface_format;
+  VkPresentModeKHR           present_mode;
+  VkSwapchainKHR             swapchain;
+  VkImage                    swapchain_images[SWAPCHAIN_IMAGES_COUNT];
+  VkImageView                swapchain_image_views[SWAPCHAIN_IMAGES_COUNT];
+  VkCommandPool              graphics_command_pool;
+  VkDescriptorPool           descriptor_pool;
+  VkImage                    depth_image;
+  VkImageView                depth_image_view;
+  VkImage                    msaa_color_image;
+  VkImageView                msaa_color_image_view;
+  VkImage                    msaa_depth_image;
+  VkImageView                msaa_depth_image_view;
+  VkSemaphore                image_available;
+  VkSemaphore                render_finished;
+  VkSampler                  texture_sampler;
 
-  struct MemoryWithAlignment
-  {
-    VkDeviceSize allocate(VkDeviceSize size)
-    {
-      VkDeviceSize offset = used_memory;
-      last_allocation     = (size % alignment) ? size + (alignment - (size % alignment)) : size;
-      used_memory += last_allocation;
-      return offset;
-    }
+  //
+  // Used for vertex / index data which will be reused all the time
+  //
+  GpuMemoryBlock gpu_device_local_memory_block;
+  VkBuffer       gpu_device_local_memory_buffer;
 
-    void pop()
-    {
-      used_memory -= last_allocation;
-    }
+  //
+  // Used for data transfers to device local memory
+  //
+  GpuMemoryBlock gpu_host_visible_transfer_source_memory_block;
+  VkBuffer       gpu_host_visible_transfer_source_memory_buffer;
 
-    VkDeviceMemory memory;
-    VkDeviceSize   alignment;
-    VkDeviceSize   used_memory;
-    VkDeviceSize   last_allocation;
-  };
+  //
+  // Used for dynamic vertex/index data updates (for example imgui, dynamic draws)
+  //
+  GpuMemoryBlock gpu_host_coherent_memory_block;
+  VkBuffer       gpu_host_coherent_memory_buffer;
 
-  struct GpuStaticGeometry : public MemoryWithAlignment
-  {
-    enum
-    {
-      MAX_MEMORY_SIZE_MB    = 5,
-      MAX_MEMORY_SIZE_KB    = MAX_MEMORY_SIZE_MB * 1024,
-      MAX_MEMORY_SIZE_BYTES = MAX_MEMORY_SIZE_KB * 1024,
-      MAX_MEMORY_SIZE       = MAX_MEMORY_SIZE_BYTES
-    };
+  //
+  // Image memory with images in use list
+  //
+  GpuMemoryBlock gpu_device_images_memory_block;
+  VkImage        images[64];
+  VkImageView    image_views[64];
+  uint64_t       image_usage_bitmap;
 
-    VkBuffer buffer;
-  } gpu_static_geometry;
+  //
+  // Used for universal buffer objects
+  //
+  GpuMemoryBlock gpu_host_coherent_ubo_memory_block;
+  VkBuffer       gpu_host_coherent_ubo_memory_buffer;
 
-  struct GpuStaticTransfer : public MemoryWithAlignment
-  {
-    enum
-    {
-      MAX_MEMORY_SIZE_MB    = 5,
-      MAX_MEMORY_SIZE_KB    = MAX_MEMORY_SIZE_MB * 1024,
-      MAX_MEMORY_SIZE_BYTES = MAX_MEMORY_SIZE_KB * 1024,
-      MAX_MEMORY_SIZE       = MAX_MEMORY_SIZE_BYTES
-    };
-
-    VkBuffer buffer;
-  } gpu_static_transfer;
-
-  struct GpuHostVisible : public MemoryWithAlignment
-  {
-    enum
-    {
-      MAX_MEMORY_SIZE_MB    = 1,
-      MAX_MEMORY_SIZE_KB    = MAX_MEMORY_SIZE_MB * 1024,
-      MAX_MEMORY_SIZE_BYTES = MAX_MEMORY_SIZE_KB * 1024,
-      MAX_MEMORY_SIZE       = MAX_MEMORY_SIZE_BYTES
-    };
-
-    VkBuffer buffer;
-  } gpu_host_visible;
-
-  struct Images : public MemoryWithAlignment
-  {
-    enum
-    {
-      MAX_COUNT             = 128,
-      MAX_MEMORY_SIZE_MB    = 500,
-      MAX_MEMORY_SIZE_KB    = MAX_MEMORY_SIZE_MB * 1024,
-      MAX_MEMORY_SIZE_BYTES = MAX_MEMORY_SIZE_KB * 1024,
-      MAX_MEMORY_SIZE       = MAX_MEMORY_SIZE_BYTES
-    };
-
-    void add(VkImage image, VkImageView image_view)
-    {
-      images[loaded_count]      = image;
-      image_views[loaded_count] = image_view;
-      loaded_count += 1;
-    }
-
-    VkImage*     images;
-    VkImageView* image_views;
-    uint32_t     loaded_count;
-  } images;
-
-  struct UboHostVisible : MemoryWithAlignment
-  {
-    enum
-    {
-      MAX_MEMORY_SIZE_MB    = 1,
-      MAX_MEMORY_SIZE_KB    = MAX_MEMORY_SIZE_MB * 1024,
-      MAX_MEMORY_SIZE_BYTES = MAX_MEMORY_SIZE_KB * 1024,
-      MAX_MEMORY_SIZE       = MAX_MEMORY_SIZE_BYTES
-    };
-
-    VkBuffer buffer;
-  } ubo_host_visible;
+  //
+  // General purpose allocator for application resources.
+  // front : permanent allocations
+  // back  : temporary allocations
+  //
+  DoubleEndedStack allocator;
 
   struct SimpleRendering
   {
@@ -193,50 +161,6 @@ struct Engine
     VkCommandBuffer  primary_command_buffers[SWAPCHAIN_IMAGES_COUNT];
     VkFence          submition_fences[SWAPCHAIN_IMAGES_COUNT];
   } simple_rendering;
-
-  struct DoubleEndedStack
-  {
-    enum
-    {
-      MAX_MEMORY_SIZE_MB    = 5,
-      MAX_MEMORY_SIZE_KB    = MAX_MEMORY_SIZE_MB * 1024,
-      MAX_MEMORY_SIZE_BYTES = MAX_MEMORY_SIZE_KB * 1024,
-      MAX_MEMORY_SIZE       = MAX_MEMORY_SIZE_BYTES
-    };
-
-    int calculate_64bit_alignment_padding(int value)
-    {
-      return (value % 8) ? 8 - (value % 8) : 0;
-    }
-
-    template <typename T> T* allocate_front(int count = 1)
-    {
-      T*  result         = reinterpret_cast<T*>(&memory[front]);
-      int size           = count * sizeof(T);
-      int padding        = calculate_64bit_alignment_padding(size);
-      int corrected_size = size + padding;
-      front += corrected_size;
-      return result;
-    }
-
-    template <typename T> T* allocate_back(int count = 1)
-    {
-      int size           = count * sizeof(T);
-      int padding        = calculate_64bit_alignment_padding(size);
-      int corrected_size = size + padding;
-      back += corrected_size;
-      return reinterpret_cast<T*>(&memory[MAX_MEMORY_SIZE - back]);
-    }
-
-    void reset_back()
-    {
-      back = 0;
-    }
-
-    uint8_t memory[MAX_MEMORY_SIZE];
-    int     front;
-    int     back;
-  } double_ended_stack;
 
   void startup();
   void teardown();

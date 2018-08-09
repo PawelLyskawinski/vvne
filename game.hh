@@ -284,12 +284,12 @@ struct Game
   LightSources pbr_light_sources_cache;
 
   // models
-  gltf::RenderableModel helmet;
-  gltf::RenderableModel box;
-  gltf::RenderableModel animatedBox;
-  gltf::RenderableModel riggedSimple;
-  gltf::RenderableModel monster;
-  gltf::RenderableModel robot;
+  SceneGraph helmet;
+  SceneGraph box;
+  SceneGraph animatedBox;
+  SceneGraph riggedSimple;
+  SceneGraph monster;
+  SceneGraph robot;
 
   // textures
   int environment_cubemap_idx;

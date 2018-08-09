@@ -222,16 +222,14 @@ struct Seeker
 
 } // namespace
 
-namespace gltf {
-
-void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
+SceneGraph loadGLB(Engine& engine, const char* path)
 {
   uint64_t start = SDL_GetPerformanceCounter();
 
-  Engine::DoubleEndedStack& stack            = engine.double_ended_stack;
-  SDL_RWops*                ctx              = SDL_RWFromFile(path, "rb");
-  int                       glb_file_size    = static_cast<int>(SDL_RWsize(ctx));
-  uint8_t*                  glb_file_content = stack.allocate_back<uint8_t>(glb_file_size);
+  SDL_RWops* ctx              = SDL_RWFromFile(path, "rb");
+  uint64_t   glb_file_size    = static_cast<uint64_t>(SDL_RWsize(ctx));
+  void*      glb_allocation   = engine.allocator.allocate_back(glb_file_size);
+  uint8_t*   glb_file_content = reinterpret_cast<uint8_t*>(glb_allocation);
 
   SDL_RWread(ctx, glb_file_content, sizeof(char), static_cast<size_t>(glb_file_size));
   SDL_RWclose(ctx);
@@ -244,12 +242,12 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
   const uint8_t* binary_data      = &glb_file_content[offset_to_binary + offset_to_chunk_data];
 
   auto load_texture = [&engine, binary_data](Seeker buffer_view) -> int {
-    int offset      = buffer_view.integer("byteOffset");
-    int length      = buffer_view.integer("byteLength");
-    int x           = 0;
-    int y           = 0;
-    int real_format = 0;
-    SDL_PixelFormat format  = {.format = SDL_PIXELFORMAT_RGBA32, .BitsPerPixel = 32, .BytesPerPixel = (32 + 7) / 8};
+    int             offset      = buffer_view.integer("byteOffset");
+    int             length      = buffer_view.integer("byteLength");
+    int             x           = 0;
+    int             y           = 0;
+    int             real_format = 0;
+    SDL_PixelFormat format      = {.format = SDL_PIXELFORMAT_RGBA32, .BitsPerPixel = 32, .BytesPerPixel = (32 + 7) / 8};
     stbi_uc*        pixels  = stbi_load_from_memory(&binary_data[offset], length, &x, &y, &real_format, STBI_rgb_alpha);
     SDL_Surface     surface = {.format = &format, .w = x, .h = y, .pitch = 4 * x, .pixels = pixels};
     int             result  = engine.load_texture(&surface);
@@ -260,28 +258,44 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
   const Seeker document     = Seeker{json_data, json_chunk_length};
   const Seeker buffer_views = document.node("bufferViews");
 
-  scene_graph.materials.count = document.node("materials").elements_count();
-  scene_graph.materials.data  = engine.double_ended_stack.allocate_front<Material>(scene_graph.materials.count);
+  SceneGraph scene_graph = {};
 
-  scene_graph.meshes.count = document.node("meshes").elements_count();
-  scene_graph.meshes.data  = engine.double_ended_stack.allocate_front<Mesh>(scene_graph.meshes.count);
+  {
+    scene_graph.materials.count = document.node("materials").elements_count();
+    void* allocation            = engine.allocator.allocate_front(scene_graph.materials.count * sizeof(Material));
+    scene_graph.materials.data  = reinterpret_cast<Material*>(allocation);
+  }
 
-  scene_graph.nodes.count = document.node("nodes").elements_count();
-  scene_graph.nodes.data  = engine.double_ended_stack.allocate_front<Node>(scene_graph.nodes.count);
+  {
+    scene_graph.meshes.count = document.node("meshes").elements_count();
+    void* allocation         = engine.allocator.allocate_front(scene_graph.meshes.count * sizeof(Mesh));
+    scene_graph.meshes.data  = reinterpret_cast<Mesh*>(allocation);
+  }
 
-  scene_graph.scenes.count = document.node("scenes").elements_count();
-  scene_graph.scenes.data  = engine.double_ended_stack.allocate_front<Scene>(scene_graph.scenes.count);
+  {
+    scene_graph.nodes.count = document.node("nodes").elements_count();
+    void* allocation        = engine.allocator.allocate_front(scene_graph.nodes.count * sizeof(Node));
+    scene_graph.nodes.data  = reinterpret_cast<Node*>(allocation);
+  }
+
+  {
+    scene_graph.scenes.count = document.node("scenes").elements_count();
+    void* allocation         = engine.allocator.allocate_front(scene_graph.scenes.count * sizeof(Scene));
+    scene_graph.scenes.data  = reinterpret_cast<Scene*>(allocation);
+  }
 
   if (document.has("animations"))
   {
     scene_graph.animations.count = document.node("animations").elements_count();
-    scene_graph.animations.data  = engine.double_ended_stack.allocate_front<Animation>(scene_graph.animations.count);
+    void* allocation             = engine.allocator.allocate_front(scene_graph.animations.count * sizeof(Animation));
+    scene_graph.animations.data  = reinterpret_cast<Animation*>(allocation);
   }
 
   if (document.has("skins"))
   {
     scene_graph.skins.count = document.node("skins").elements_count();
-    scene_graph.skins.data  = engine.double_ended_stack.allocate_front<Skin>(scene_graph.skins.count);
+    void* allocation        = engine.allocator.allocate_front(scene_graph.skins.count * sizeof(Skin));
+    scene_graph.skins.data  = reinterpret_cast<Skin*>(allocation);
   }
 
   // ---------------------------------------------------------------------------
@@ -374,7 +388,8 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
     const int required_index_space  = mesh.indices_count * (is_index_type_uint16 ? sizeof(uint16_t) : sizeof(uint32_t));
     const int required_vertex_space = position_count * (is_skinning_used ? sizeof(SkinnedVertex) : sizeof(Vertex));
     const int total_upload_buffer_size = required_index_space + required_vertex_space;
-    uint8_t*  upload_buffer            = engine.double_ended_stack.allocate_back<uint8_t>(total_upload_buffer_size);
+    void*     upload_buffer_allocation = engine.allocator.allocate_back(total_upload_buffer_size);
+    uint8_t*  upload_buffer            = reinterpret_cast<uint8_t*>(upload_buffer_allocation);
     const int index_buffer_glb_offset =
         buffer_views.idx(index_buffer_view).integer("byteOffset") + index_accessor.integer("byteOffset");
 
@@ -514,31 +529,43 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
       }
     }
 
-    VkDeviceSize host_buffer_offset =
-        engine.gpu_static_transfer.allocate(static_cast<VkDeviceSize>(total_upload_buffer_size));
+    VkDeviceSize host_buffer_offset = 0;
+
+    {
+      GpuMemoryBlock& block = engine.gpu_host_visible_transfer_source_memory_block;
+      host_buffer_offset    = block.stack_pointer;
+      block.stack_pointer += align(static_cast<VkDeviceSize>(total_upload_buffer_size), block.alignment);
+    }
 
     {
       uint8_t* mapped_gpu_memory = nullptr;
-      vkMapMemory(engine.generic_handles.device, engine.gpu_static_transfer.memory, host_buffer_offset,
+      vkMapMemory(engine.device, engine.gpu_host_visible_transfer_source_memory_block.memory, host_buffer_offset,
                   total_upload_buffer_size, 0, (void**)&mapped_gpu_memory);
       SDL_memcpy(mapped_gpu_memory, upload_buffer, static_cast<size_t>(total_upload_buffer_size));
-      vkUnmapMemory(engine.generic_handles.device, engine.gpu_static_transfer.memory);
+      vkUnmapMemory(engine.device, engine.gpu_host_visible_transfer_source_memory_block.memory);
     }
 
-    mesh.indices_offset  = engine.gpu_static_geometry.allocate(static_cast<VkDeviceSize>(required_index_space));
-    mesh.vertices_offset = engine.gpu_static_geometry.allocate(static_cast<VkDeviceSize>(required_vertex_space));
+    {
+      GpuMemoryBlock& block = engine.gpu_device_local_memory_block;
+
+      mesh.indices_offset = block.stack_pointer;
+      block.stack_pointer += align(static_cast<VkDeviceSize>(required_index_space), block.alignment);
+
+      mesh.vertices_offset = block.stack_pointer;
+      block.stack_pointer += align(static_cast<VkDeviceSize>(required_vertex_space), block.alignment);
+    }
 
     VkCommandBuffer cmd = VK_NULL_HANDLE;
 
     {
       VkCommandBufferAllocateInfo allocate = {
           .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-          .commandPool        = engine.generic_handles.graphics_command_pool,
+          .commandPool        = engine.graphics_command_pool,
           .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
           .commandBufferCount = 1,
       };
 
-      vkAllocateCommandBuffers(engine.generic_handles.device, &allocate, &cmd);
+      vkAllocateCommandBuffers(engine.device, &allocate, &cmd);
     }
 
     {
@@ -564,8 +591,8 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
           },
       };
 
-      vkCmdCopyBuffer(cmd, engine.gpu_static_transfer.buffer, engine.gpu_static_geometry.buffer, SDL_arraysize(copies),
-                      copies);
+      vkCmdCopyBuffer(cmd, engine.gpu_host_visible_transfer_source_memory_buffer, engine.gpu_device_local_memory_buffer,
+                      SDL_arraysize(copies), copies);
     }
 
     {
@@ -576,7 +603,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
               .dstAccessMask       = VK_ACCESS_SHADER_READ_BIT,
               .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
               .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-              .buffer              = engine.gpu_static_geometry.buffer,
+              .buffer              = engine.gpu_device_local_memory_buffer,
               .offset              = mesh.indices_offset,
               .size                = static_cast<VkDeviceSize>(required_index_space),
           },
@@ -586,7 +613,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
               .dstAccessMask       = VK_ACCESS_SHADER_READ_BIT,
               .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
               .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-              .buffer              = engine.gpu_static_geometry.buffer,
+              .buffer              = engine.gpu_device_local_memory_buffer,
               .offset              = mesh.vertices_offset,
               .size                = static_cast<VkDeviceSize>(required_vertex_space),
           },
@@ -601,7 +628,7 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
     VkFence data_upload_fence = VK_NULL_HANDLE;
     {
       VkFenceCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-      vkCreateFence(engine.generic_handles.device, &ci, nullptr, &data_upload_fence);
+      vkCreateFence(engine.device, &ci, nullptr, &data_upload_fence);
     }
 
     {
@@ -611,13 +638,14 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
           .pCommandBuffers    = &cmd,
       };
 
-      vkQueueSubmit(engine.generic_handles.graphics_queue, 1, &submit, data_upload_fence);
+      vkQueueSubmit(engine.graphics_queue, 1, &submit, data_upload_fence);
     }
 
-    vkWaitForFences(engine.generic_handles.device, 1, &data_upload_fence, VK_TRUE, UINT64_MAX);
-    vkDestroyFence(engine.generic_handles.device, data_upload_fence, nullptr);
-    vkFreeCommandBuffers(engine.generic_handles.device, engine.generic_handles.graphics_command_pool, 1, &cmd);
-    engine.gpu_static_transfer.pop();
+    vkWaitForFences(engine.device, 1, &data_upload_fence, VK_TRUE, UINT64_MAX);
+    vkDestroyFence(engine.device, data_upload_fence, nullptr);
+    vkFreeCommandBuffers(engine.device, engine.graphics_command_pool, 1, &cmd);
+
+    engine.gpu_host_visible_transfer_source_memory_block.stack_pointer = 0;
   }
 
   // ---------------------------------------------------------------------------
@@ -633,7 +661,8 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
     {
       node.set(Node::Property::Children);
       node.children.count = node_json.node("children").elements_count();
-      node.children.data  = engine.double_ended_stack.allocate_front<int>(node.children.count);
+      void* allocation    = engine.allocator.allocate_front(node.children.count * sizeof(int));
+      node.children.data  = reinterpret_cast<int*>(allocation);
 
       for (int child_idx = 0; child_idx < node.children.count; ++child_idx)
       {
@@ -710,7 +739,8 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
     Seeker nodes_json = scene_json.node("nodes");
 
     scene.nodes.count = nodes_json.elements_count();
-    scene.nodes.data  = engine.double_ended_stack.allocate_front<int>(scene.nodes.count);
+    void* allocation  = engine.allocator.allocate_front(scene.nodes.count * sizeof(int));
+    scene.nodes.data  = reinterpret_cast<int*>(allocation);
 
     for (int node_idx = 0; node_idx < scene.nodes.count; ++node_idx)
     {
@@ -733,11 +763,17 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
 
     Animation& current_animation = scene_graph.animations.data[animation_idx];
 
-    current_animation.channels.count = channels_count;
-    current_animation.channels.data  = engine.double_ended_stack.allocate_front<AnimationChannel>(channels_count);
+    {
+      current_animation.channels.count = channels_count;
+      void* allocation                 = engine.allocator.allocate_front(channels_count * sizeof(AnimationChannel));
+      current_animation.channels.data  = reinterpret_cast<AnimationChannel*>(allocation);
+    }
 
-    current_animation.samplers.count = samplers_count;
-    current_animation.samplers.data  = engine.double_ended_stack.allocate_front<AnimationSampler>(samplers_count);
+    {
+      current_animation.samplers.count = samplers_count;
+      void* allocation                 = engine.allocator.allocate_front(samplers_count * sizeof(AnimationSampler));
+      current_animation.samplers.data  = reinterpret_cast<AnimationSampler*>(allocation);
+    }
 
     for (int channel_idx = 0; channel_idx < channels_count; ++channel_idx)
     {
@@ -840,9 +876,16 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
         SDL_assert(false);
       }
 
-      current_sampler.times = engine.double_ended_stack.allocate_front<float>(input_elements);
-      current_sampler.values =
-          engine.double_ended_stack.allocate_front<float>(static_cast<unsigned>(output_type) * output_elements);
+      {
+        void* allocation      = engine.allocator.allocate_front(input_elements * sizeof(float));
+        current_sampler.times = reinterpret_cast<float*>(allocation);
+      }
+
+      {
+        void* allocation =
+            engine.allocator.allocate_front(static_cast<unsigned>(output_type) * output_elements * sizeof(float));
+        current_sampler.values = reinterpret_cast<float*>(allocation);
+      }
 
       {
         const int input_view_glb_offset     = input_buffer_view.integer("byteOffset");
@@ -897,8 +940,12 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
     skin.skeleton = skin_json.integer("skeleton");
 
     Seeker joints_json = skin_json.node("joints");
-    skin.joints.count  = joints_json.elements_count();
-    skin.joints.data   = engine.double_ended_stack.allocate_front<int>(skin.joints.count);
+
+    {
+      skin.joints.count = joints_json.elements_count();
+      void* allocation  = engine.allocator.allocate_front(skin.joints.count * sizeof(int));
+      skin.joints.data  = reinterpret_cast<int*>(allocation);
+    }
 
     for (int i = 0; i < skin.joints.count; ++i)
     {
@@ -908,9 +955,11 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
     int    inverse_bind_matrices_accessor_idx = skin_json.integer("inverseBindMatrices");
     Seeker accessor                           = accessors.idx(inverse_bind_matrices_accessor_idx);
 
-    skin.inverse_bind_matrices.count = accessor.integer("count");
-    skin.inverse_bind_matrices.data =
-        engine.double_ended_stack.allocate_front<mat4x4>(skin.inverse_bind_matrices.count);
+    {
+      skin.inverse_bind_matrices.count = accessor.integer("count");
+      void* allocation = engine.allocator.allocate_front(skin.inverse_bind_matrices.count * sizeof(mat4x4));
+      skin.inverse_bind_matrices.data = reinterpret_cast<mat4x4*>(allocation);
+    }
 
     Seeker buffer_view = buffer_views.idx(accessor.integer("bufferView"));
 
@@ -925,11 +974,11 @@ void RenderableModel::loadGLB(Engine& engine, const char* path) noexcept
     }
   }
 
-  stack.reset_back();
+  engine.allocator.reset_back();
 
   uint64_t duration_ticks = SDL_GetPerformanceCounter() - start;
   float    elapsed_ms     = 1000.0f * ((float)duration_ticks / (float)SDL_GetPerformanceFrequency());
   SDL_Log("parsing GLB took: %.4f ms", elapsed_ms);
-}
 
-} // namespace gltf
+  return scene_graph;
+}

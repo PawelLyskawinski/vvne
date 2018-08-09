@@ -40,8 +40,7 @@ void generate_cubemap_views(mat4x4 views[6])
 
 int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_filepath, int desired_size[2])
 {
-  Engine::GenericHandles& egh            = engine->generic_handles;
-  const VkFormat          surface_format = engine->generic_handles.surface_format.format;
+  const VkFormat surface_format = engine->surface_format.format;
 
   //////////////////////////////////////////////////////////////////////////////
   // Result cubemap image handle creation
@@ -69,13 +68,17 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
         .initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED,
     };
 
-    vkCreateImage(egh.device, &ci, nullptr, &cubemap_image);
+    vkCreateImage(engine->device, &ci, nullptr, &cubemap_image);
   }
 
   {
     VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(egh.device, cubemap_image, &reqs);
-    vkBindImageMemory(egh.device, cubemap_image, engine->images.memory, engine->images.allocate(reqs.size));
+    vkGetImageMemoryRequirements(engine->device, cubemap_image, &reqs);
+    vkBindImageMemory(engine->device, cubemap_image, engine->gpu_device_images_memory_block.memory,
+                      engine->gpu_device_images_memory_block.stack_pointer);
+
+    engine->gpu_device_images_memory_block.stack_pointer +=
+        align(reqs.size, engine->gpu_device_images_memory_block.alignment);
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -100,7 +103,7 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(egh.device, &ci, nullptr, &cubemap_image_view);
+    vkCreateImageView(engine->device, &ci, nullptr, &cubemap_image_view);
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -126,14 +129,16 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(egh.device, &ci, nullptr, &cubemap_image_side_views[i]);
+    vkCreateImageView(engine->device, &ci, nullptr, &cubemap_image_side_views[i]);
   }
 
   //////////////////////////////////////////////////////////////////////////////
   // Push image and image view handles to engine list
   //////////////////////////////////////////////////////////////////////////////
-  int result_idx = engine->images.loaded_count;
-  engine->images.add(cubemap_image, cubemap_image_view);
+  int result_idx = find_first_zeroed_bit_offset(engine->image_usage_bitmap);
+  engine->image_usage_bitmap |= (uint64_t(1) << result_idx);
+  engine->images[result_idx]      = cubemap_image;
+  engine->image_views[result_idx] = cubemap_image_view;
 
   //////////////////////////////////////////////////////////////////////////////
   // Load 2D equirectangular image from file
@@ -189,7 +194,7 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
         .pSubpasses      = subpasses,
     };
 
-    vkCreateRenderPass(egh.device, &ci, nullptr, &render_pass);
+    vkCreateRenderPass(engine->device, &ci, nullptr, &render_pass);
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -211,7 +216,7 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
         .pBindings    = &binding,
     };
 
-    vkCreateDescriptorSetLayout(egh.device, &ci, nullptr, &descriptor_set_layout);
+    vkCreateDescriptorSetLayout(engine->device, &ci, nullptr, &descriptor_set_layout);
   }
 
   VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
@@ -219,18 +224,18 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
   {
     VkDescriptorSetAllocateInfo info = {
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool     = egh.descriptor_pool,
+        .descriptorPool     = engine->descriptor_pool,
         .descriptorSetCount = 1,
         .pSetLayouts        = &descriptor_set_layout,
     };
 
-    vkAllocateDescriptorSets(egh.device, &info, &descriptor_set);
+    vkAllocateDescriptorSets(engine->device, &info, &descriptor_set);
   }
 
   {
     VkDescriptorImageInfo image = {
-        .sampler     = egh.texture_sampler,
-        .imageView   = engine->images.image_views[plain_texture_idx],
+        .sampler     = engine->texture_sampler,
+        .imageView   = engine->image_views[plain_texture_idx],
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
 
@@ -244,7 +249,7 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
         .pImageInfo      = &image,
     };
 
-    vkUpdateDescriptorSets(egh.device, 1, &write, 0, nullptr);
+    vkUpdateDescriptorSets(engine->device, 1, &write, 0, nullptr);
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -267,7 +272,7 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
         .pPushConstantRanges    = &range,
     };
 
-    vkCreatePipelineLayout(egh.device, &ci, nullptr, &pipeline_layout);
+    vkCreatePipelineLayout(engine->device, &ci, nullptr, &pipeline_layout);
   }
 
   VkPipeline pipelines[6];
@@ -419,11 +424,11 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
           .basePipelineIndex   = -1,
       };
 
-      vkCreateGraphicsPipelines(egh.device, VK_NULL_HANDLE, 1, &ci, nullptr, &pipelines[i]);
+      vkCreateGraphicsPipelines(engine->device, VK_NULL_HANDLE, 1, &ci, nullptr, &pipelines[i]);
     }
 
     for (auto& shader_stage : shader_stages)
-      vkDestroyShaderModule(egh.device, shader_stage.module, nullptr);
+      vkDestroyShaderModule(engine->device, shader_stage.module, nullptr);
   }
 
   VkFramebuffer framebuffer = VK_NULL_HANDLE;
@@ -439,7 +444,7 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
         .layers          = 1,
     };
 
-    vkCreateFramebuffer(egh.device, &ci, nullptr, &framebuffer);
+    vkCreateFramebuffer(engine->device, &ci, nullptr, &framebuffer);
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -452,12 +457,12 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
     {
       VkCommandBufferAllocateInfo allocate = {
           .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-          .commandPool        = egh.graphics_command_pool,
+          .commandPool        = engine->graphics_command_pool,
           .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
           .commandBufferCount = 1,
       };
 
-      vkAllocateCommandBuffers(egh.device, &allocate, &cmd);
+      vkAllocateCommandBuffers(engine->device, &allocate, &cmd);
     }
 
     {
@@ -513,11 +518,11 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
       vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[i]);
       vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
 
-      const Node& node = game->box.scene_graph.nodes.data[1];
-      Mesh&       mesh = game->box.scene_graph.meshes.data[node.mesh];
+      const Node& node = game->box.nodes.data[1];
+      Mesh&       mesh = game->box.meshes.data[node.mesh];
 
-      vkCmdBindIndexBuffer(cmd, engine->gpu_static_geometry.buffer, mesh.indices_offset, mesh.indices_type);
-      vkCmdBindVertexBuffers(cmd, 0, 1, &engine->gpu_static_geometry.buffer, &mesh.vertices_offset);
+      vkCmdBindIndexBuffer(cmd, engine->gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
+      vkCmdBindVertexBuffers(cmd, 0, 1, &engine->gpu_device_local_memory_buffer, &mesh.vertices_offset);
       vkCmdDrawIndexed(cmd, mesh.indices_count, 1, 0, 0, 0);
 
       if (5 != i)
@@ -530,7 +535,7 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
     VkFence image_generation_fence = VK_NULL_HANDLE;
     {
       VkFenceCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-      vkCreateFence(egh.device, &ci, nullptr, &image_generation_fence);
+      vkCreateFence(engine->device, &ci, nullptr, &image_generation_fence);
     }
 
     {
@@ -540,41 +545,39 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
           .pCommandBuffers    = &cmd,
       };
 
-      vkQueueSubmit(egh.graphics_queue, 1, &submit, image_generation_fence);
+      vkQueueSubmit(engine->graphics_queue, 1, &submit, image_generation_fence);
     }
 
-    vkWaitForFences(egh.device, 1, &image_generation_fence, VK_TRUE, UINT64_MAX);
-    vkDestroyFence(egh.device, image_generation_fence, nullptr);
+    vkWaitForFences(engine->device, 1, &image_generation_fence, VK_TRUE, UINT64_MAX);
+    vkDestroyFence(engine->device, image_generation_fence, nullptr);
   }
 
   // @todo: this is a leaked resource. We should destroy this at this point, but the pool must be correctly configured
   // vkFreeDescriptorSets(egh.device, egh.descriptor_pool, 1, &operation.descriptor_set);
 
-  vkDestroyFramebuffer(egh.device, framebuffer, nullptr);
+  vkDestroyFramebuffer(engine->device, framebuffer, nullptr);
 
   for (VkImageView& image_view : cubemap_image_side_views)
-    vkDestroyImageView(egh.device, image_view, nullptr);
+    vkDestroyImageView(engine->device, image_view, nullptr);
 
   for (VkPipeline& pipeline : pipelines)
-    vkDestroyPipeline(egh.device, pipeline, nullptr);
+    vkDestroyPipeline(engine->device, pipeline, nullptr);
 
-  vkDestroyPipelineLayout(egh.device, pipeline_layout, nullptr);
-  vkDestroyDescriptorSetLayout(egh.device, descriptor_set_layout, nullptr);
-  vkDestroyRenderPass(egh.device, render_pass, nullptr);
+  vkDestroyPipelineLayout(engine->device, pipeline_layout, nullptr);
+  vkDestroyDescriptorSetLayout(engine->device, descriptor_set_layout, nullptr);
+  vkDestroyRenderPass(engine->device, render_pass, nullptr);
 
   // original equirectangular image is no longer needed
-  vkDestroyImage(egh.device, engine->images.images[plain_texture_idx], nullptr);
-  vkDestroyImageView(egh.device, engine->images.image_views[plain_texture_idx], nullptr);
-  engine->images.pop();
-  engine->images.loaded_count -= 1;
+  vkDestroyImage(engine->device, engine->images[plain_texture_idx], nullptr);
+  vkDestroyImageView(engine->device, engine->image_views[plain_texture_idx], nullptr);
+  engine->image_usage_bitmap &= ~(uint64_t(1) << plain_texture_idx);
 
   return result_idx;
 }
 
 int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cubemap_idx, int desired_size[2])
 {
-  Engine::GenericHandles& egh            = engine->generic_handles;
-  const VkFormat          surface_format = engine->generic_handles.surface_format.format;
+  const VkFormat surface_format = engine->surface_format.format;
 
   //////////////////////////////////////////////////////////////////////////////
   // Result cubemap image handle creation
@@ -602,13 +605,17 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
         .initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED,
     };
 
-    vkCreateImage(egh.device, &ci, nullptr, &cubemap_image);
+    vkCreateImage(engine->device, &ci, nullptr, &cubemap_image);
   }
 
   {
     VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(egh.device, cubemap_image, &reqs);
-    vkBindImageMemory(egh.device, cubemap_image, engine->images.memory, engine->images.allocate(reqs.size));
+    vkGetImageMemoryRequirements(engine->device, cubemap_image, &reqs);
+    vkBindImageMemory(engine->device, cubemap_image, engine->gpu_device_images_memory_block.memory,
+                      engine->gpu_device_images_memory_block.stack_pointer);
+
+    engine->gpu_device_images_memory_block.stack_pointer +=
+        align(reqs.size, engine->gpu_device_images_memory_block.alignment);
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -633,7 +640,7 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(egh.device, &ci, nullptr, &cubemap_image_view);
+    vkCreateImageView(engine->device, &ci, nullptr, &cubemap_image_view);
   }
 
   VkImageView cubemap_image_side_views[6];
@@ -656,11 +663,13 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(egh.device, &ci, nullptr, &cubemap_image_side_views[i]);
+    vkCreateImageView(engine->device, &ci, nullptr, &cubemap_image_side_views[i]);
   }
 
-  int result_idx = engine->images.loaded_count;
-  engine->images.add(cubemap_image, cubemap_image_view);
+  int result_idx = find_first_zeroed_bit_offset(engine->image_usage_bitmap);
+  engine->image_usage_bitmap |= (uint64_t(1) << result_idx);
+  engine->images[result_idx]      = cubemap_image;
+  engine->image_views[result_idx] = cubemap_image_view;
 
   VkRenderPass render_pass = VK_NULL_HANDLE;
 
@@ -701,7 +710,7 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
         .pSubpasses      = subpasses,
     };
 
-    vkCreateRenderPass(egh.device, &ci, nullptr, &render_pass);
+    vkCreateRenderPass(engine->device, &ci, nullptr, &render_pass);
   }
 
   VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
@@ -720,7 +729,7 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
         .pBindings    = &binding,
     };
 
-    vkCreateDescriptorSetLayout(egh.device, &ci, nullptr, &descriptor_set_layout);
+    vkCreateDescriptorSetLayout(engine->device, &ci, nullptr, &descriptor_set_layout);
   }
 
   VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
@@ -728,18 +737,18 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
   {
     VkDescriptorSetAllocateInfo info = {
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool     = egh.descriptor_pool,
+        .descriptorPool     = engine->descriptor_pool,
         .descriptorSetCount = 1,
         .pSetLayouts        = &descriptor_set_layout,
     };
 
-    vkAllocateDescriptorSets(egh.device, &info, &descriptor_set);
+    vkAllocateDescriptorSets(engine->device, &info, &descriptor_set);
   }
 
   {
     VkDescriptorImageInfo image = {
-        .sampler     = egh.texture_sampler,
-        .imageView   = engine->images.image_views[environment_cubemap_idx],
+        .sampler     = engine->texture_sampler,
+        .imageView   = engine->image_views[environment_cubemap_idx],
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
 
@@ -753,7 +762,7 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
         .pImageInfo      = &image,
     };
 
-    vkUpdateDescriptorSets(egh.device, 1, &write, 0, nullptr);
+    vkUpdateDescriptorSets(engine->device, 1, &write, 0, nullptr);
   }
 
   VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
@@ -773,7 +782,7 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
         .pPushConstantRanges    = &range,
     };
 
-    vkCreatePipelineLayout(egh.device, &ci, nullptr, &pipeline_layout);
+    vkCreatePipelineLayout(engine->device, &ci, nullptr, &pipeline_layout);
   }
 
   VkPipeline pipelines[6];
@@ -928,11 +937,11 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
           .basePipelineIndex   = -1,
       };
 
-      vkCreateGraphicsPipelines(egh.device, VK_NULL_HANDLE, 1, &ci, nullptr, &pipelines[i]);
+      vkCreateGraphicsPipelines(engine->device, VK_NULL_HANDLE, 1, &ci, nullptr, &pipelines[i]);
     }
 
     for (auto& shader_stage : shader_stages)
-      vkDestroyShaderModule(egh.device, shader_stage.module, nullptr);
+      vkDestroyShaderModule(engine->device, shader_stage.module, nullptr);
   }
 
   VkFramebuffer framebuffer = VK_NULL_HANDLE;
@@ -948,7 +957,7 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
         .layers          = 1,
     };
 
-    vkCreateFramebuffer(egh.device, &ci, nullptr, &framebuffer);
+    vkCreateFramebuffer(engine->device, &ci, nullptr, &framebuffer);
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -960,12 +969,12 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
     {
       VkCommandBufferAllocateInfo allocate = {
           .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-          .commandPool        = egh.graphics_command_pool,
+          .commandPool        = engine->graphics_command_pool,
           .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
           .commandBufferCount = 1,
       };
 
-      vkAllocateCommandBuffers(egh.device, &allocate, &cmd);
+      vkAllocateCommandBuffers(engine->device, &allocate, &cmd);
     }
 
     {
@@ -1020,11 +1029,11 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
       vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set, 0, nullptr);
       vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
 
-      const Node& node = game->box.scene_graph.nodes.data[1];
-      Mesh&       mesh = game->box.scene_graph.meshes.data[node.mesh];
+      const Node& node = game->box.nodes.data[1];
+      Mesh&       mesh = game->box.meshes.data[node.mesh];
 
-      vkCmdBindIndexBuffer(cmd, engine->gpu_static_geometry.buffer, mesh.indices_offset, mesh.indices_type);
-      vkCmdBindVertexBuffers(cmd, 0, 1, &engine->gpu_static_geometry.buffer, &mesh.vertices_offset);
+      vkCmdBindIndexBuffer(cmd, engine->gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
+      vkCmdBindVertexBuffers(cmd, 0, 1, &engine->gpu_device_local_memory_buffer, &mesh.vertices_offset);
       vkCmdDrawIndexed(cmd, mesh.indices_count, 1, 0, 0, 0);
 
       if (5 != i)
@@ -1037,7 +1046,7 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
     VkFence image_generation_fence = VK_NULL_HANDLE;
     {
       VkFenceCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-      vkCreateFence(egh.device, &ci, nullptr, &image_generation_fence);
+      vkCreateFence(engine->device, &ci, nullptr, &image_generation_fence);
     }
 
     {
@@ -1047,35 +1056,34 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
           .pCommandBuffers    = &cmd,
       };
 
-      vkQueueSubmit(egh.graphics_queue, 1, &submit, image_generation_fence);
+      vkQueueSubmit(engine->graphics_queue, 1, &submit, image_generation_fence);
     }
 
-    vkWaitForFences(egh.device, 1, &image_generation_fence, VK_TRUE, UINT64_MAX);
-    vkDestroyFence(egh.device, image_generation_fence, nullptr);
+    vkWaitForFences(engine->device, 1, &image_generation_fence, VK_TRUE, UINT64_MAX);
+    vkDestroyFence(engine->device, image_generation_fence, nullptr);
   }
 
   // todo: this is a leaked resource. We should destroy this at this point, but the pool must be correctly configured
   // vkFreeDescriptorSets(egh.device, egh.descriptor_pool, 1, &operation.descriptor_set);
 
-  vkDestroyFramebuffer(egh.device, framebuffer, nullptr);
+  vkDestroyFramebuffer(engine->device, framebuffer, nullptr);
 
   for (VkImageView& image_view : cubemap_image_side_views)
-    vkDestroyImageView(egh.device, image_view, nullptr);
+    vkDestroyImageView(engine->device, image_view, nullptr);
 
   for (VkPipeline& pipeline : pipelines)
-    vkDestroyPipeline(egh.device, pipeline, nullptr);
+    vkDestroyPipeline(engine->device, pipeline, nullptr);
 
-  vkDestroyPipelineLayout(egh.device, pipeline_layout, nullptr);
-  vkDestroyDescriptorSetLayout(egh.device, descriptor_set_layout, nullptr);
-  vkDestroyRenderPass(egh.device, render_pass, nullptr);
+  vkDestroyPipelineLayout(engine->device, pipeline_layout, nullptr);
+  vkDestroyDescriptorSetLayout(engine->device, descriptor_set_layout, nullptr);
+  vkDestroyRenderPass(engine->device, render_pass, nullptr);
 
   return result_idx;
 }
 
 int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cubemap_idx, int desired_size[2])
 {
-  Engine::GenericHandles& egh            = engine->generic_handles;
-  const VkFormat          surface_format = engine->generic_handles.surface_format.format;
+  const VkFormat surface_format = engine->surface_format.format;
 
   constexpr int CUBE_SIDES         = 6;
   constexpr int DESIRED_MIP_LEVELS = 5;
@@ -1106,13 +1114,17 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
         .initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED,
     };
 
-    vkCreateImage(egh.device, &ci, nullptr, &cubemap_image);
+    vkCreateImage(engine->device, &ci, nullptr, &cubemap_image);
   }
 
   {
     VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(egh.device, cubemap_image, &reqs);
-    vkBindImageMemory(egh.device, cubemap_image, engine->images.memory, engine->images.allocate(reqs.size));
+    vkGetImageMemoryRequirements(engine->device, cubemap_image, &reqs);
+    vkBindImageMemory(engine->device, cubemap_image, engine->gpu_device_images_memory_block.memory,
+                      engine->gpu_device_images_memory_block.stack_pointer);
+
+    engine->gpu_device_images_memory_block.stack_pointer +=
+        align(reqs.size, engine->gpu_device_images_memory_block.alignment);
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -1137,7 +1149,7 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(egh.device, &ci, nullptr, &cubemap_image_view);
+    vkCreateImageView(engine->device, &ci, nullptr, &cubemap_image_view);
   }
 
   VkImageView cubemap_image_side_views[CUBE_SIDES * DESIRED_MIP_LEVELS];
@@ -1162,12 +1174,14 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
           .subresourceRange = sr,
       };
 
-      vkCreateImageView(egh.device, &ci, nullptr, &cubemap_image_side_views[CUBE_SIDES * mip_level + cube_side]);
+      vkCreateImageView(engine->device, &ci, nullptr, &cubemap_image_side_views[CUBE_SIDES * mip_level + cube_side]);
     }
   }
 
-  int result_idx = engine->images.loaded_count;
-  engine->images.add(cubemap_image, cubemap_image_view);
+  int result_idx = find_first_zeroed_bit_offset(engine->image_usage_bitmap);
+  engine->image_usage_bitmap |= (uint64_t(1) << result_idx);
+  engine->images[result_idx]      = cubemap_image;
+  engine->image_views[result_idx] = cubemap_image_view;
 
   VkRenderPass render_pass = VK_NULL_HANDLE;
 
@@ -1208,7 +1222,7 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
         .pSubpasses      = subpasses,
     };
 
-    vkCreateRenderPass(egh.device, &ci, nullptr, &render_pass);
+    vkCreateRenderPass(engine->device, &ci, nullptr, &render_pass);
   }
 
   VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
@@ -1227,7 +1241,7 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
         .pBindings    = &binding,
     };
 
-    vkCreateDescriptorSetLayout(egh.device, &ci, nullptr, &descriptor_set_layout);
+    vkCreateDescriptorSetLayout(engine->device, &ci, nullptr, &descriptor_set_layout);
   }
 
   VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
@@ -1235,18 +1249,18 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
   {
     VkDescriptorSetAllocateInfo info = {
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool     = egh.descriptor_pool,
+        .descriptorPool     = engine->descriptor_pool,
         .descriptorSetCount = 1,
         .pSetLayouts        = &descriptor_set_layout,
     };
 
-    vkAllocateDescriptorSets(egh.device, &info, &descriptor_set);
+    vkAllocateDescriptorSets(engine->device, &info, &descriptor_set);
   }
 
   {
     VkDescriptorImageInfo image = {
-        .sampler     = egh.texture_sampler,
-        .imageView   = engine->images.image_views[environment_cubemap_idx],
+        .sampler     = engine->texture_sampler,
+        .imageView   = engine->image_views[environment_cubemap_idx],
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
 
@@ -1260,7 +1274,7 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
         .pImageInfo      = &image,
     };
 
-    vkUpdateDescriptorSets(egh.device, 1, &write, 0, nullptr);
+    vkUpdateDescriptorSets(engine->device, 1, &write, 0, nullptr);
   }
 
   VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
@@ -1287,7 +1301,7 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
         .pPushConstantRanges    = ranges,
     };
 
-    vkCreatePipelineLayout(egh.device, &ci, nullptr, &pipeline_layout);
+    vkCreatePipelineLayout(engine->device, &ci, nullptr, &pipeline_layout);
   }
 
   VkPipeline pipelines[CUBE_SIDES * DESIRED_MIP_LEVELS];
@@ -1448,13 +1462,13 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
             .basePipelineIndex   = -1,
         };
 
-        vkCreateGraphicsPipelines(egh.device, VK_NULL_HANDLE, 1, &ci, nullptr,
+        vkCreateGraphicsPipelines(engine->device, VK_NULL_HANDLE, 1, &ci, nullptr,
                                   &pipelines[CUBE_SIDES * mip_level + cube_side]);
       }
     }
 
     for (auto& shader_stage : shader_stages)
-      vkDestroyShaderModule(egh.device, shader_stage.module, nullptr);
+      vkDestroyShaderModule(engine->device, shader_stage.module, nullptr);
   }
 
   VkFramebuffer framebuffers[DESIRED_MIP_LEVELS];
@@ -1471,7 +1485,7 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
         .layers          = 1,
     };
 
-    vkCreateFramebuffer(egh.device, &ci, nullptr, &framebuffers[mip_level]);
+    vkCreateFramebuffer(engine->device, &ci, nullptr, &framebuffers[mip_level]);
   }
 
   // -------------------------------------------------------------------------------------
@@ -1481,12 +1495,12 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
     {
       VkCommandBufferAllocateInfo allocate = {
           .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-          .commandPool        = egh.graphics_command_pool,
+          .commandPool        = engine->graphics_command_pool,
           .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
           .commandBufferCount = 1,
       };
 
-      vkAllocateCommandBuffers(egh.device, &allocate, &cmd);
+      vkAllocateCommandBuffers(engine->device, &allocate, &cmd);
     }
 
     {
@@ -1547,11 +1561,11 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
         vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(float),
                            &roughness);
 
-        const Node& node = game->box.scene_graph.nodes.data[1];
-        Mesh&       mesh = game->box.scene_graph.meshes.data[node.mesh];
+        const Node& node = game->box.nodes.data[1];
+        Mesh&       mesh = game->box.meshes.data[node.mesh];
 
-        vkCmdBindIndexBuffer(cmd, engine->gpu_static_geometry.buffer, mesh.indices_offset, mesh.indices_type);
-        vkCmdBindVertexBuffers(cmd, 0, 1, &engine->gpu_static_geometry.buffer, &mesh.vertices_offset);
+        vkCmdBindIndexBuffer(cmd, engine->gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
+        vkCmdBindVertexBuffers(cmd, 0, 1, &engine->gpu_device_local_memory_buffer, &mesh.vertices_offset);
         vkCmdDrawIndexed(cmd, mesh.indices_count, 1, 0, 0, 0);
 
         if (5 != cube_side)
@@ -1565,7 +1579,7 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
     VkFence image_generation_fence = VK_NULL_HANDLE;
     {
       VkFenceCreateInfo ci{.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-      vkCreateFence(egh.device, &ci, nullptr, &image_generation_fence);
+      vkCreateFence(engine->device, &ci, nullptr, &image_generation_fence);
     }
 
     {
@@ -1575,28 +1589,28 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
           .pCommandBuffers    = &cmd,
       };
 
-      vkQueueSubmit(egh.graphics_queue, 1, &submit, image_generation_fence);
+      vkQueueSubmit(engine->graphics_queue, 1, &submit, image_generation_fence);
     }
 
-    vkWaitForFences(egh.device, 1, &image_generation_fence, VK_TRUE, UINT64_MAX);
-    vkDestroyFence(egh.device, image_generation_fence, nullptr);
+    vkWaitForFences(engine->device, 1, &image_generation_fence, VK_TRUE, UINT64_MAX);
+    vkDestroyFence(engine->device, image_generation_fence, nullptr);
   }
 
   // todo: this is a leaked resource. We should destroy this at this point, but the pool must be correctly configured
   // vkFreeDescriptorSets(egh.device, egh.descriptor_pool, 1, &operation.descriptor_set);
 
   for (VkFramebuffer& framebuffer : framebuffers)
-    vkDestroyFramebuffer(egh.device, framebuffer, nullptr);
+    vkDestroyFramebuffer(engine->device, framebuffer, nullptr);
 
   for (VkImageView& image_view : cubemap_image_side_views)
-    vkDestroyImageView(egh.device, image_view, nullptr);
+    vkDestroyImageView(engine->device, image_view, nullptr);
 
   for (VkPipeline& pipeline : pipelines)
-    vkDestroyPipeline(egh.device, pipeline, nullptr);
+    vkDestroyPipeline(engine->device, pipeline, nullptr);
 
-  vkDestroyPipelineLayout(egh.device, pipeline_layout, nullptr);
-  vkDestroyDescriptorSetLayout(egh.device, descriptor_set_layout, nullptr);
-  vkDestroyRenderPass(egh.device, render_pass, nullptr);
+  vkDestroyPipelineLayout(engine->device, pipeline_layout, nullptr);
+  vkDestroyDescriptorSetLayout(engine->device, descriptor_set_layout, nullptr);
+  vkDestroyRenderPass(engine->device, render_pass, nullptr);
 
   return result_idx;
 }
@@ -1622,14 +1636,17 @@ int generate_brdf_lookup(Engine* engine, int size)
         .tiling      = VK_IMAGE_TILING_OPTIMAL,
         .usage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
     };
-    vkCreateImage(engine->generic_handles.device, &info, nullptr, &brdf_image);
+    vkCreateImage(engine->device, &info, nullptr, &brdf_image);
   }
 
   {
     VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(engine->generic_handles.device, brdf_image, &reqs);
-    vkBindImageMemory(engine->generic_handles.device, brdf_image, engine->images.memory,
-                      engine->images.allocate(reqs.size));
+    vkGetImageMemoryRequirements(engine->device, brdf_image, &reqs);
+    vkBindImageMemory(engine->device, brdf_image, engine->gpu_device_images_memory_block.memory,
+                      engine->gpu_device_images_memory_block.stack_pointer);
+
+    engine->gpu_device_images_memory_block.stack_pointer +=
+        align(reqs.size, engine->gpu_device_images_memory_block.alignment);
   }
 
   VkImageView brdf_image_view = VK_NULL_HANDLE;
@@ -1651,11 +1668,13 @@ int generate_brdf_lookup(Engine* engine, int size)
         .subresourceRange = range,
     };
 
-    vkCreateImageView(engine->generic_handles.device, &info, nullptr, &brdf_image_view);
+    vkCreateImageView(engine->device, &info, nullptr, &brdf_image_view);
   }
 
-  int result_idx = engine->images.loaded_count;
-  engine->images.add(brdf_image, brdf_image_view);
+  int result_idx = find_first_zeroed_bit_offset(engine->image_usage_bitmap);
+  engine->image_usage_bitmap |= (uint64_t(1) << result_idx);
+  engine->images[result_idx]      = brdf_image;
+  engine->image_views[result_idx] = brdf_image_view;
 
   VkRenderPass render_pass = VK_NULL_HANDLE;
 
@@ -1713,7 +1732,7 @@ int generate_brdf_lookup(Engine* engine, int size)
         .pDependencies   = dependencies,
     };
 
-    vkCreateRenderPass(engine->generic_handles.device, &create, nullptr, &render_pass);
+    vkCreateRenderPass(engine->device, &create, nullptr, &render_pass);
   }
 
   VkFramebuffer framebuffer = VK_NULL_HANDLE;
@@ -1729,14 +1748,14 @@ int generate_brdf_lookup(Engine* engine, int size)
         .layers          = 1,
     };
 
-    vkCreateFramebuffer(engine->generic_handles.device, &create, nullptr, &framebuffer);
+    vkCreateFramebuffer(engine->device, &create, nullptr, &framebuffer);
   }
 
   VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
 
   {
     VkPipelineLayoutCreateInfo create = {.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-    vkCreatePipelineLayout(engine->generic_handles.device, &create, nullptr, &pipeline_layout);
+    vkCreatePipelineLayout(engine->device, &create, nullptr, &pipeline_layout);
   }
 
   VkPipeline pipeline = VK_NULL_HANDLE;
@@ -1835,9 +1854,9 @@ int generate_brdf_lookup(Engine* engine, int size)
         .renderPass          = render_pass,
     };
 
-    vkCreateGraphicsPipelines(engine->generic_handles.device, VK_NULL_HANDLE, 1, &create, nullptr, &pipeline);
+    vkCreateGraphicsPipelines(engine->device, VK_NULL_HANDLE, 1, &create, nullptr, &pipeline);
     for (auto& shader_stage : shader_stages)
-      vkDestroyShaderModule(engine->generic_handles.device, shader_stage.module, nullptr);
+      vkDestroyShaderModule(engine->device, shader_stage.module, nullptr);
   }
 
   {
@@ -1846,12 +1865,12 @@ int generate_brdf_lookup(Engine* engine, int size)
     {
       VkCommandBufferAllocateInfo allocate = {
           .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-          .commandPool        = engine->generic_handles.graphics_command_pool,
+          .commandPool        = engine->graphics_command_pool,
           .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
           .commandBufferCount = 1,
       };
 
-      vkAllocateCommandBuffers(engine->generic_handles.device, &allocate, &cmd);
+      vkAllocateCommandBuffers(engine->device, &allocate, &cmd);
     }
 
     {
@@ -1909,7 +1928,7 @@ int generate_brdf_lookup(Engine* engine, int size)
     VkFence image_generation_fence = VK_NULL_HANDLE;
     {
       VkFenceCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-      vkCreateFence(engine->generic_handles.device, &ci, nullptr, &image_generation_fence);
+      vkCreateFence(engine->device, &ci, nullptr, &image_generation_fence);
     }
 
     {
@@ -1919,17 +1938,17 @@ int generate_brdf_lookup(Engine* engine, int size)
           .pCommandBuffers    = &cmd,
       };
 
-      vkQueueSubmit(engine->generic_handles.graphics_queue, 1, &submit, image_generation_fence);
+      vkQueueSubmit(engine->graphics_queue, 1, &submit, image_generation_fence);
     }
 
-    vkWaitForFences(engine->generic_handles.device, 1, &image_generation_fence, VK_TRUE, UINT64_MAX);
-    vkDestroyFence(engine->generic_handles.device, image_generation_fence, nullptr);
+    vkWaitForFences(engine->device, 1, &image_generation_fence, VK_TRUE, UINT64_MAX);
+    vkDestroyFence(engine->device, image_generation_fence, nullptr);
   }
 
-  vkDestroyPipeline(engine->generic_handles.device, pipeline, nullptr);
-  vkDestroyPipelineLayout(engine->generic_handles.device, pipeline_layout, nullptr);
-  vkDestroyFramebuffer(engine->generic_handles.device, framebuffer, nullptr);
-  vkDestroyRenderPass(engine->generic_handles.device, render_pass, nullptr);
+  vkDestroyPipeline(engine->device, pipeline, nullptr);
+  vkDestroyPipelineLayout(engine->device, pipeline_layout, nullptr);
+  vkDestroyFramebuffer(engine->device, framebuffer, nullptr);
+  vkDestroyRenderPass(engine->device, render_pass, nullptr);
 
   return result_idx;
 }

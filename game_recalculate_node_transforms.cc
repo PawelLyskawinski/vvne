@@ -23,23 +23,23 @@ void depth_first_node_transform(mat4x4* transforms, Node* nodes, const int paren
 
 } // namespace
 
-void recalculate_node_transforms(const Entity entity, EntityComponentSystem& ecs, const gltf::RenderableModel& model,
+void recalculate_node_transforms(const Entity entity, EntityComponentSystem& ecs, const SceneGraph& scene_graph,
                                  mat4x4 world_transform)
 {
   const uint8_t*         node_parent_hierarchy = ecs.node_parent_hierarchies[entity.node_parent_hierarchy].hierarchy;
-  const ArrayView<Node>& nodes                 = model.scene_graph.nodes;
+  const ArrayView<Node>& nodes                 = scene_graph.nodes;
 
   mat4x4 transforms[64] = {};
 
-  for (int i = 0; i < model.scene_graph.nodes.count; ++i)
+  for (int i = 0; i < nodes.count; ++i)
     mat4x4_identity(transforms[i]);
 
-  for (int node_idx : model.scene_graph.scenes[0].nodes)
+  for (int node_idx : scene_graph.scenes[0].nodes)
     mat4x4_dup(transforms[node_idx], world_transform);
 
-  if (not model.scene_graph.skins.empty())
+  if (not scene_graph.skins.empty())
   {
-    int skeleton_node_idx   = model.scene_graph.skins[0].skeleton;
+    int skeleton_node_idx   = scene_graph.skins[0].skeleton;
     int skeleton_parent_idx = node_parent_hierarchy[skeleton_node_idx];
     mat4x4_dup(transforms[skeleton_parent_idx], world_transform);
   }
@@ -137,10 +137,10 @@ void recalculate_node_transforms(const Entity entity, EntityComponentSystem& ecs
   SDL_memcpy(ecs.node_transforms[entity.node_transforms].transforms, transforms, sizeof(transforms));
 }
 
-void recalculate_skinning_matrices(const Entity entity, EntityComponentSystem& ecs, const gltf::RenderableModel& model,
+void recalculate_skinning_matrices(const Entity entity, EntityComponentSystem& ecs, const SceneGraph& scene_graph,
                                    mat4x4 world_transform)
 {
-  Skin skin = model.scene_graph.skins[0];
+  Skin skin = scene_graph.skins[0];
 
   mat4x4 inverted_world_transform = {};
   mat4x4_invert(inverted_world_transform, world_transform);

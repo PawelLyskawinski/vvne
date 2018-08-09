@@ -161,12 +161,5 @@ struct SceneGraph
   ArrayView<Skin>      skins;
 };
 
-namespace gltf {
+SceneGraph loadGLB(Engine& engine, const char* path);
 
-struct RenderableModel
-{
-  SceneGraph scene_graph;
-  void       loadGLB(Engine& engine, const char* path) noexcept;
-};
-
-} // namespace gltf

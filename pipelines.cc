@@ -104,8 +104,8 @@ void pipeline_reload_simple_rendering_skybox_reload(Engine& engine)
       {
           .x        = 0.0f,
           .y        = 0.0f,
-          .width    = static_cast<float>(engine.generic_handles.extent2D.width),
-          .height   = static_cast<float>(engine.generic_handles.extent2D.height),
+          .width    = static_cast<float>(engine.extent2D.width),
+          .height   = static_cast<float>(engine.extent2D.height),
           .minDepth = 0.0f,
           .maxDepth = 1.0f,
       },
@@ -114,7 +114,7 @@ void pipeline_reload_simple_rendering_skybox_reload(Engine& engine)
   VkRect2D scissors[] = {
       {
           .offset = {0, 0},
-          .extent = engine.generic_handles.extent2D,
+          .extent = engine.extent2D,
       },
   };
 
@@ -205,11 +205,11 @@ void pipeline_reload_simple_rendering_skybox_reload(Engine& engine)
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.generic_handles.device, VK_NULL_HANDLE, 1, &ci, nullptr,
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
                             &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::Skybox]);
 
   for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.generic_handles.device, shader_stage.module, nullptr);
+    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
 }
 
 void pipeline_reload_simple_rendering_scene3d_reload(Engine& engine)
@@ -280,8 +280,8 @@ void pipeline_reload_simple_rendering_scene3d_reload(Engine& engine)
       {
           .x        = 0.0f,
           .y        = 0.0f,
-          .width    = static_cast<float>(engine.generic_handles.extent2D.width),
-          .height   = static_cast<float>(engine.generic_handles.extent2D.height),
+          .width    = static_cast<float>(engine.extent2D.width),
+          .height   = static_cast<float>(engine.extent2D.height),
           .minDepth = 0.0f,
           .maxDepth = 1.0f,
       },
@@ -290,7 +290,7 @@ void pipeline_reload_simple_rendering_scene3d_reload(Engine& engine)
   VkRect2D scissors[] = {
       {
           .offset = {0, 0},
-          .extent = engine.generic_handles.extent2D,
+          .extent = engine.extent2D,
       },
   };
 
@@ -381,11 +381,11 @@ void pipeline_reload_simple_rendering_scene3d_reload(Engine& engine)
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.generic_handles.device, VK_NULL_HANDLE, 1, &ci, nullptr,
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
                             &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::Scene3D]);
 
   for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.generic_handles.device, shader_stage.module, nullptr);
+    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
 }
 
 void pipeline_reload_simple_rendering_coloredgeometry_reload(Engine& engine)
@@ -443,8 +443,8 @@ void pipeline_reload_simple_rendering_coloredgeometry_reload(Engine& engine)
       {
           .x        = 0.0f,
           .y        = 0.0f,
-          .width    = static_cast<float>(engine.generic_handles.extent2D.width),
-          .height   = static_cast<float>(engine.generic_handles.extent2D.height),
+          .width    = static_cast<float>(engine.extent2D.width),
+          .height   = static_cast<float>(engine.extent2D.height),
           .minDepth = 0.0f,
           .maxDepth = 1.0f,
       },
@@ -453,7 +453,7 @@ void pipeline_reload_simple_rendering_coloredgeometry_reload(Engine& engine)
   VkRect2D scissors[] = {
       {
           .offset = {0, 0},
-          .extent = engine.generic_handles.extent2D,
+          .extent = engine.extent2D,
       },
   };
 
@@ -544,11 +544,11 @@ void pipeline_reload_simple_rendering_coloredgeometry_reload(Engine& engine)
       .basePipelineIndex  = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.generic_handles.device, VK_NULL_HANDLE, 1, &ci, nullptr,
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
                             &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometry]);
 
   for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.generic_handles.device, shader_stage.module, nullptr);
+    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
 }
 
 void pipeline_reload_simple_rendering_coloredgeometry_triangle_strip_reload(Engine& engine)
@@ -607,8 +607,8 @@ void pipeline_reload_simple_rendering_coloredgeometry_triangle_strip_reload(Engi
       {
           .x        = 0.0f,
           .y        = 0.0f,
-          .width    = static_cast<float>(engine.generic_handles.extent2D.width),
-          .height   = static_cast<float>(engine.generic_handles.extent2D.height),
+          .width    = static_cast<float>(engine.extent2D.width),
+          .height   = static_cast<float>(engine.extent2D.height),
           .minDepth = 0.0f,
           .maxDepth = 1.0f,
       },
@@ -617,7 +617,7 @@ void pipeline_reload_simple_rendering_coloredgeometry_triangle_strip_reload(Engi
   VkRect2D scissors[] = {
       {
           .offset = {0, 0},
-          .extent = engine.generic_handles.extent2D,
+          .extent = engine.extent2D,
       },
   };
 
@@ -710,11 +710,11 @@ void pipeline_reload_simple_rendering_coloredgeometry_triangle_strip_reload(Engi
   };
 
   vkCreateGraphicsPipelines(
-      engine.generic_handles.device, VK_NULL_HANDLE, 1, &ci, nullptr,
+      engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
       &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometryTriangleStrip]);
 
   for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.generic_handles.device, shader_stage.module, nullptr);
+    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
 }
 
 void pipeline_reload_simple_rendering_coloredgeometryskinned_reload(Engine& engine)
@@ -797,8 +797,8 @@ void pipeline_reload_simple_rendering_coloredgeometryskinned_reload(Engine& engi
       {
           .x        = 0.0f,
           .y        = 0.0f,
-          .width    = static_cast<float>(engine.generic_handles.extent2D.width),
-          .height   = static_cast<float>(engine.generic_handles.extent2D.height),
+          .width    = static_cast<float>(engine.extent2D.width),
+          .height   = static_cast<float>(engine.extent2D.height),
           .minDepth = 0.0f,
           .maxDepth = 1.0f,
       },
@@ -807,7 +807,7 @@ void pipeline_reload_simple_rendering_coloredgeometryskinned_reload(Engine& engi
   VkRect2D scissors[] = {
       {
           .offset = {0, 0},
-          .extent = engine.generic_handles.extent2D,
+          .extent = engine.extent2D,
       },
   };
 
@@ -899,11 +899,11 @@ void pipeline_reload_simple_rendering_coloredgeometryskinned_reload(Engine& engi
   };
 
   vkCreateGraphicsPipelines(
-      engine.generic_handles.device, VK_NULL_HANDLE, 1, &ci, nullptr,
+      engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
       &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned]);
 
   for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.generic_handles.device, shader_stage.module, nullptr);
+    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
 }
 
 void pipeline_reload_simple_rendering_imgui_reload(Engine& engine)
@@ -973,8 +973,8 @@ void pipeline_reload_simple_rendering_imgui_reload(Engine& engine)
       {
           .x        = 0.0f,
           .y        = 0.0f,
-          .width    = static_cast<float>(engine.generic_handles.extent2D.width),
-          .height   = static_cast<float>(engine.generic_handles.extent2D.height),
+          .width    = static_cast<float>(engine.extent2D.width),
+          .height   = static_cast<float>(engine.extent2D.height),
           .minDepth = 0.0f,
           .maxDepth = 1.0f,
       },
@@ -983,7 +983,7 @@ void pipeline_reload_simple_rendering_imgui_reload(Engine& engine)
   VkRect2D scissors[] = {
       {
           .offset = {0, 0},
-          .extent = engine.generic_handles.extent2D,
+          .extent = engine.extent2D,
       },
   };
 
@@ -1071,11 +1071,11 @@ void pipeline_reload_simple_rendering_imgui_reload(Engine& engine)
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.generic_handles.device, VK_NULL_HANDLE, 1, &ci, nullptr,
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
                             &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ImGui]);
 
   for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.generic_handles.device, shader_stage.module, nullptr);
+    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
 }
 
 void pipeline_reload_simple_rendering_green_gui_reload(Engine& engine)
@@ -1139,8 +1139,8 @@ void pipeline_reload_simple_rendering_green_gui_reload(Engine& engine)
       {
           .x        = 0.0f,
           .y        = 0.0f,
-          .width    = static_cast<float>(engine.generic_handles.extent2D.width),
-          .height   = static_cast<float>(engine.generic_handles.extent2D.height),
+          .width    = static_cast<float>(engine.extent2D.width),
+          .height   = static_cast<float>(engine.extent2D.height),
           .minDepth = 0.0f,
           .maxDepth = 1.0f,
       },
@@ -1149,7 +1149,7 @@ void pipeline_reload_simple_rendering_green_gui_reload(Engine& engine)
   VkRect2D scissors[] = {
       {
           .offset = {0, 0},
-          .extent = engine.generic_handles.extent2D,
+          .extent = engine.extent2D,
       },
   };
 
@@ -1240,11 +1240,11 @@ void pipeline_reload_simple_rendering_green_gui_reload(Engine& engine)
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.generic_handles.device, VK_NULL_HANDLE, 1, &ci, nullptr,
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
                             &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGui]);
 
   for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.generic_handles.device, shader_stage.module, nullptr);
+    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
 }
 
 void pipeline_reload_simple_rendering_green_gui_weapon_selector_box_left_reload(Engine& engine)
@@ -1309,8 +1309,8 @@ void pipeline_reload_simple_rendering_green_gui_weapon_selector_box_left_reload(
       {
           .x        = 0.0f,
           .y        = 0.0f,
-          .width    = static_cast<float>(engine.generic_handles.extent2D.width),
-          .height   = static_cast<float>(engine.generic_handles.extent2D.height),
+          .width    = static_cast<float>(engine.extent2D.width),
+          .height   = static_cast<float>(engine.extent2D.height),
           .minDepth = 0.0f,
           .maxDepth = 1.0f,
       },
@@ -1319,7 +1319,7 @@ void pipeline_reload_simple_rendering_green_gui_weapon_selector_box_left_reload(
   VkRect2D scissors[] = {
       {
           .offset = {0, 0},
-          .extent = engine.generic_handles.extent2D,
+          .extent = engine.extent2D,
       },
   };
 
@@ -1412,11 +1412,11 @@ void pipeline_reload_simple_rendering_green_gui_weapon_selector_box_left_reload(
   };
 
   vkCreateGraphicsPipelines(
-      engine.generic_handles.device, VK_NULL_HANDLE, 1, &ci, nullptr,
+      engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
       &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiWeaponSelectorBoxLeft]);
 
   for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.generic_handles.device, shader_stage.module, nullptr);
+    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
 }
 
 void pipeline_reload_simple_rendering_green_gui_weapon_selector_box_right_reload(Engine& engine)
@@ -1481,8 +1481,8 @@ void pipeline_reload_simple_rendering_green_gui_weapon_selector_box_right_reload
       {
           .x        = 0.0f,
           .y        = 0.0f,
-          .width    = static_cast<float>(engine.generic_handles.extent2D.width),
-          .height   = static_cast<float>(engine.generic_handles.extent2D.height),
+          .width    = static_cast<float>(engine.extent2D.width),
+          .height   = static_cast<float>(engine.extent2D.height),
           .minDepth = 0.0f,
           .maxDepth = 1.0f,
       },
@@ -1491,7 +1491,7 @@ void pipeline_reload_simple_rendering_green_gui_weapon_selector_box_right_reload
   VkRect2D scissors[] = {
       {
           .offset = {0, 0},
-          .extent = engine.generic_handles.extent2D,
+          .extent = engine.extent2D,
       },
   };
 
@@ -1584,11 +1584,11 @@ void pipeline_reload_simple_rendering_green_gui_weapon_selector_box_right_reload
   };
 
   vkCreateGraphicsPipelines(
-      engine.generic_handles.device, VK_NULL_HANDLE, 1, &ci, nullptr,
+      engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
       &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiWeaponSelectorBoxRight]);
 
   for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.generic_handles.device, shader_stage.module, nullptr);
+    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
 }
 
 void pipeline_reload_simple_rendering_green_gui_lines_reload(Engine& engine)
@@ -1646,8 +1646,8 @@ void pipeline_reload_simple_rendering_green_gui_lines_reload(Engine& engine)
       {
           .x        = 0.0f,
           .y        = 0.0f,
-          .width    = static_cast<float>(engine.generic_handles.extent2D.width),
-          .height   = static_cast<float>(engine.generic_handles.extent2D.height),
+          .width    = static_cast<float>(engine.extent2D.width),
+          .height   = static_cast<float>(engine.extent2D.height),
           .minDepth = 0.0f,
           .maxDepth = 1.0f,
       },
@@ -1656,7 +1656,7 @@ void pipeline_reload_simple_rendering_green_gui_lines_reload(Engine& engine)
   VkRect2D scissors[] = {
       {
           .offset = {0, 0},
-          .extent = engine.generic_handles.extent2D,
+          .extent = engine.extent2D,
       },
   };
 
@@ -1756,11 +1756,11 @@ void pipeline_reload_simple_rendering_green_gui_lines_reload(Engine& engine)
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.generic_handles.device, VK_NULL_HANDLE, 1, &ci, nullptr,
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
                             &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiLines]);
 
   for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.generic_handles.device, shader_stage.module, nullptr);
+    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
 }
 
 void pipeline_reload_simple_rendering_green_gui_sdf_reload(Engine& engine)
@@ -1824,8 +1824,8 @@ void pipeline_reload_simple_rendering_green_gui_sdf_reload(Engine& engine)
       {
           .x        = 0.0f,
           .y        = 0.0f,
-          .width    = static_cast<float>(engine.generic_handles.extent2D.width),
-          .height   = static_cast<float>(engine.generic_handles.extent2D.height),
+          .width    = static_cast<float>(engine.extent2D.width),
+          .height   = static_cast<float>(engine.extent2D.height),
           .minDepth = 0.0f,
           .maxDepth = 1.0f,
       },
@@ -1834,7 +1834,7 @@ void pipeline_reload_simple_rendering_green_gui_sdf_reload(Engine& engine)
   VkRect2D scissors[] = {
       {
           .offset = {0, 0},
-          .extent = engine.generic_handles.extent2D,
+          .extent = engine.extent2D,
       },
   };
 
@@ -1936,11 +1936,11 @@ void pipeline_reload_simple_rendering_green_gui_sdf_reload(Engine& engine)
       .basePipelineIndex  = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.generic_handles.device, VK_NULL_HANDLE, 1, &ci, nullptr,
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
                             &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont]);
 
   for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.generic_handles.device, shader_stage.module, nullptr);
+    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
 }
 
 void pipeline_reload_simple_rendering_green_gui_triangle_reload(Engine& engine)
@@ -1978,8 +1978,8 @@ void pipeline_reload_simple_rendering_green_gui_triangle_reload(Engine& engine)
       {
           .x        = 0.0f,
           .y        = 0.0f,
-          .width    = static_cast<float>(engine.generic_handles.extent2D.width),
-          .height   = static_cast<float>(engine.generic_handles.extent2D.height),
+          .width    = static_cast<float>(engine.extent2D.width),
+          .height   = static_cast<float>(engine.extent2D.height),
           .minDepth = 0.0f,
           .maxDepth = 1.0f,
       },
@@ -1988,7 +1988,7 @@ void pipeline_reload_simple_rendering_green_gui_triangle_reload(Engine& engine)
   VkRect2D scissors[] = {
       {
           .offset = {0, 0},
-          .extent = engine.generic_handles.extent2D,
+          .extent = engine.extent2D,
       },
   };
 
@@ -2069,11 +2069,11 @@ void pipeline_reload_simple_rendering_green_gui_triangle_reload(Engine& engine)
       .basePipelineIndex  = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.generic_handles.device, VK_NULL_HANDLE, 1, &ci, nullptr,
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
                             &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiTriangle]);
 
   for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.generic_handles.device, shader_stage.module, nullptr);
+    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
 }
 
 void pipeline_reload_simple_rendering_green_gui_radar_dots_reload(Engine& engine)
@@ -2111,8 +2111,8 @@ void pipeline_reload_simple_rendering_green_gui_radar_dots_reload(Engine& engine
       {
           .x        = 0.0f,
           .y        = 0.0f,
-          .width    = static_cast<float>(engine.generic_handles.extent2D.width),
-          .height   = static_cast<float>(engine.generic_handles.extent2D.height),
+          .width    = static_cast<float>(engine.extent2D.width),
+          .height   = static_cast<float>(engine.extent2D.height),
           .minDepth = 0.0f,
           .maxDepth = 1.0f,
       },
@@ -2121,7 +2121,7 @@ void pipeline_reload_simple_rendering_green_gui_radar_dots_reload(Engine& engine
   VkRect2D scissors[] = {
       {
           .offset = {0, 0},
-          .extent = engine.generic_handles.extent2D,
+          .extent = engine.extent2D,
       },
   };
 
@@ -2209,11 +2209,11 @@ void pipeline_reload_simple_rendering_green_gui_radar_dots_reload(Engine& engine
       .basePipelineIndex  = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.generic_handles.device, VK_NULL_HANDLE, 1, &ci, nullptr,
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
                             &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiRadarDots]);
 
   for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.generic_handles.device, shader_stage.module, nullptr);
+    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
 }
 
 void pipeline_reload_simple_rendering_pbr_water_reload(Engine& engine)
@@ -2284,8 +2284,8 @@ void pipeline_reload_simple_rendering_pbr_water_reload(Engine& engine)
       {
           .x        = 0.0f,
           .y        = 0.0f,
-          .width    = static_cast<float>(engine.generic_handles.extent2D.width),
-          .height   = static_cast<float>(engine.generic_handles.extent2D.height),
+          .width    = static_cast<float>(engine.extent2D.width),
+          .height   = static_cast<float>(engine.extent2D.height),
           .minDepth = 0.0f,
           .maxDepth = 1.0f,
       },
@@ -2294,7 +2294,7 @@ void pipeline_reload_simple_rendering_pbr_water_reload(Engine& engine)
   VkRect2D scissors[] = {
       {
           .offset = {0, 0},
-          .extent = engine.generic_handles.extent2D,
+          .extent = engine.extent2D,
       },
   };
 
@@ -2385,9 +2385,9 @@ void pipeline_reload_simple_rendering_pbr_water_reload(Engine& engine)
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.generic_handles.device, VK_NULL_HANDLE, 1, &ci, nullptr,
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
                             &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::PbrWater]);
 
   for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.generic_handles.device, shader_stage.module, nullptr);
+    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
 }

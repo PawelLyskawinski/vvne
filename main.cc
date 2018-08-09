@@ -34,7 +34,7 @@ int main(int argc, char* argv[])
   const float desired_frame_duration_ms = (1000.0f / static_cast<float>(desired_frames_per_sec));
   float       elapsed_ms                = desired_frame_duration_ms;
 
-  SDL_ShowWindow(engine->generic_handles.window);
+  SDL_ShowWindow(engine->window);
   while (!SDL_QuitRequested())
   {
     uint64_t start_of_frame_ticks  = SDL_GetPerformanceCounter();
@@ -51,7 +51,7 @@ int main(int argc, char* argv[])
     if (elapsed_ms < desired_frame_duration_ms)
       SDL_Delay((uint32_t)SDL_fabsf(desired_frame_duration_ms - elapsed_ms));
   }
-  SDL_HideWindow(engine->generic_handles.window);
+  SDL_HideWindow(engine->window);
 
   game->teardown(*engine);
   engine->teardown();
