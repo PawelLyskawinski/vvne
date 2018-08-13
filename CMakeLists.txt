@@ -37,6 +37,7 @@ add_executable(${PROJECT_NAME}
         cubemap.cc
         pipelines.cc
         render_jobs.cc
+        update_jobs.cc
         thirdparty/imgui.cpp
         thirdparty/imgui_draw.cpp
         thirdparty/sha256.cpp

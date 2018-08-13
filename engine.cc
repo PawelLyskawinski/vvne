@@ -19,8 +19,8 @@
 #include <stb_image.h>
 #pragma GCC diagnostic pop
 
-#define INITIAL_WINDOW_WIDTH 900
-#define INITIAL_WINDOW_HEIGHT 600
+#define INITIAL_WINDOW_WIDTH 1200
+#define INITIAL_WINDOW_HEIGHT 900
 
 VkBool32
 #ifndef __linux__

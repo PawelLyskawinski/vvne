@@ -19,9 +19,7 @@ Current preview (still a veeeery long road ahead)
 - Multithreaded rendering / job system
 
 ### TODO - engine
-- Jobified update function
 - DXT texture compression
-- fix incomplete model rendering (occasional cases)
 
 ### TODO - game
 - movable tilt lines under strafe movement (gui)

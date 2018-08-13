@@ -2,6 +2,7 @@
 #include "cubemap.hh"
 #include "pipelines.hh"
 #include "render_jobs.hh"
+#include "update_jobs.hh"
 #include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_clipboard.h>
 #include <SDL2/SDL_events.h>
@@ -25,175 +26,6 @@ constexpr float to_deg(float rad) noexcept
 float clamp(float val, float min, float max)
 {
   return (val < min) ? min : (val > max) ? max : val;
-}
-
-int find_first_higher(const float times[], float current)
-{
-  int iter = 0;
-  while (current > times[iter])
-    iter += 1;
-  return iter;
-}
-
-void lerp(const float a[], const float b[], float result[], int dim, float t)
-{
-  for (int i = 0; i < dim; ++i)
-  {
-    float difference = b[i] - a[i];
-    float progressed = difference * t;
-    result[i]        = a[i] + progressed;
-  }
-}
-
-//
-// https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#appendix-c-spline-interpolation
-//
-void hermite_cubic_spline_interpolation(const float a_in[], const float b_in[], float result[], int dim, float t,
-                                        float total_duration)
-{
-  const float* a_spline_vertex = &a_in[dim];
-  const float* a_out_tangent   = &a_in[2 * dim];
-
-  const float* b_in_tangent    = &b_in[0];
-  const float* b_spline_vertex = &b_in[dim];
-
-  for (int i = 0; i < dim; ++i)
-  {
-    float P[2] = {a_spline_vertex[i], b_spline_vertex[i]};
-    float M[2] = {a_out_tangent[i], b_in_tangent[i]};
-
-    for (float& m : M)
-      m *= total_duration;
-
-    float a   = (2.0f * P[0]) + M[0] + (-2.0f * P[1]) + M[1];
-    float b   = (-3.0f * P[0]) - (2.0f * M[0]) + (3.0f * P[1]) - M[1];
-    float c   = M[0];
-    float d   = P[0];
-    result[i] = (a * t * t * t) + (b * t * t) + (c * t) + (d);
-  }
-}
-
-void animate_entity(Entity& entity, EntityComponentSystem& ecs, SceneGraph& scene_graph, float current_time_sec)
-{
-  if (-1 == entity.animation_start_time)
-    return;
-
-  const float      animation_start_time = ecs.animation_start_times[entity.animation_start_time];
-  const Animation& animation            = scene_graph.animations.data[0];
-  const float      animation_time       = current_time_sec - animation_start_time;
-
-  bool is_animation_still_ongoing = false;
-  for (const AnimationChannel& channel : animation.channels)
-  {
-    const AnimationSampler& sampler = animation.samplers[channel.sampler_idx];
-    if (sampler.time_frame[1] > animation_time)
-    {
-      is_animation_still_ongoing = true;
-      break;
-    }
-  }
-
-  if (not is_animation_still_ongoing)
-  {
-    ecs.animation_start_times_usage.free(entity.animation_start_time);
-    ecs.animation_rotations_usage.free(entity.animation_rotation);
-    ecs.animation_translations_usage.free(entity.animation_translation);
-
-    entity.animation_start_time  = -1;
-    entity.animation_rotation    = -1;
-    entity.animation_translation = -1;
-
-    return;
-  }
-
-  for (const AnimationChannel& channel : animation.channels)
-  {
-    const AnimationSampler& sampler = animation.samplers[channel.sampler_idx];
-    if ((sampler.time_frame[1] > animation_time) and (sampler.time_frame[0] < animation_time))
-    {
-      int   keyframe_upper         = find_first_higher(sampler.times, animation_time);
-      int   keyframe_lower         = keyframe_upper - 1;
-      float time_between_keyframes = sampler.times[keyframe_upper] - sampler.times[keyframe_lower];
-      float keyframe_uniform_time  = (animation_time - sampler.times[keyframe_lower]) / time_between_keyframes;
-
-      if (AnimationChannel::Path::Rotation == channel.target_path)
-      {
-        AnimationRotation* rotation_component = nullptr;
-
-        if (-1 == entity.animation_rotation)
-        {
-          entity.animation_rotation = ecs.animation_rotations_usage.allocate();
-          rotation_component        = &ecs.animation_rotations[entity.animation_rotation];
-          SDL_memset(rotation_component, 0, sizeof(AnimationRotation));
-        }
-        else
-        {
-          rotation_component = &ecs.animation_rotations[entity.animation_rotation];
-        }
-
-        rotation_component->applicability |= (1ULL << channel.target_node_idx);
-
-        float* animation_rotation = rotation_component->rotations[channel.target_node_idx];
-
-        if (AnimationSampler::Interpolation::Linear == sampler.interpolation)
-        {
-          float* a = &sampler.values[4 * keyframe_lower];
-          float* b = &sampler.values[4 * keyframe_upper];
-          float* c = animation_rotation;
-          lerp(a, b, c, 4, keyframe_uniform_time);
-          vec4_norm(c, c);
-        }
-        else if (AnimationSampler::Interpolation::CubicSpline == sampler.interpolation)
-        {
-          float* a = &sampler.values[3 * 4 * keyframe_lower];
-          float* b = &sampler.values[3 * 4 * keyframe_upper];
-          float* c = animation_rotation;
-          hermite_cubic_spline_interpolation(a, b, c, 4, keyframe_uniform_time,
-                                             sampler.time_frame[1] - sampler.time_frame[0]);
-          vec4_norm(c, c);
-        }
-      }
-      else if (AnimationChannel::Path::Translation == channel.target_path)
-      {
-        AnimationTranslation* translation_component = nullptr;
-
-        if (-1 == entity.animation_translation)
-        {
-          entity.animation_translation = ecs.animation_translations_usage.allocate();
-          translation_component        = &ecs.animation_translations[entity.animation_translation];
-          SDL_memset(translation_component, 0, sizeof(AnimationTranslation));
-        }
-        else
-        {
-          translation_component = &ecs.animation_translations[entity.animation_translation];
-        }
-
-        translation_component->applicability |= (1ULL << channel.target_node_idx);
-
-        float* animation_translation = translation_component->animations[channel.target_node_idx];
-
-        if (AnimationSampler::Interpolation::Linear == sampler.interpolation)
-        {
-          float* a = &sampler.values[3 * keyframe_lower];
-          float* b = &sampler.values[3 * keyframe_upper];
-          float* c = animation_translation;
-          lerp(a, b, c, 3, keyframe_uniform_time);
-        }
-        else if (AnimationSampler::Interpolation::CubicSpline == sampler.interpolation)
-        {
-          float* a = &sampler.values[3 * 3 * keyframe_lower];
-          float* b = &sampler.values[3 * 3 * keyframe_upper];
-          float* c = animation_translation;
-          hermite_cubic_spline_interpolation(a, b, c, 3, keyframe_uniform_time,
-                                             sampler.time_frame[1] - sampler.time_frame[0]);
-        }
-      }
-    }
-  }
-}
-
-void custom_robot_animate_entity(Entity& entity, EntityComponentSystem& ecs, SceneGraph& model, float current_time_sec)
-{
 }
 
 void vec3_set(float* vec, float x, float y, float z)
@@ -249,56 +81,6 @@ public:
 private:
   const uint64_t start_ticks;
   PushBuffer     storage;
-};
-
-class Quaternion
-{
-public:
-  Quaternion()
-      : orientation{0.0f, 0.0f, 0.0f, 1.0f}
-  {
-  }
-
-  Quaternion& rotateX(float rads)
-  {
-    vec3 axis = {1.0, 0.0, 0.0};
-    rotate(axis, rads);
-    return *this;
-  }
-
-  Quaternion& rotateY(float rads)
-  {
-    vec3 axis = {0.0, 1.0, 0.0};
-    rotate(axis, rads);
-    return *this;
-  }
-
-  Quaternion& rotateZ(float rads)
-  {
-    vec3 axis = {0.0, 0.0, 1.0};
-    rotate(axis, rads);
-    return *this;
-  }
-
-  Quaternion operator*(Quaternion& rhs)
-  {
-    Quaternion result;
-    quat_mul(result.orientation, orientation, rhs.orientation);
-    return result;
-  }
-
-  float* data()
-  {
-    return orientation;
-  }
-
-private:
-  void rotate(vec3 axis, float rads)
-  {
-    quat_rotate(orientation, rads, axis);
-  }
-
-  quat orientation;
 };
 
 float avg(const float* values, int n)
@@ -872,7 +654,7 @@ void Game::startup(Engine& engine)
   setup_node_parent_hierarchy(helmet_entity, ecs, helmet);
   setup_node_renderability_hierarchy(helmet_entity, ecs, helmet);
 
-  robot = loadGLB(engine, "../assets/VERY_SIMPLE_ROBOT.glb");
+  robot = loadGLB(engine, "../assets/su-47.glb");
   robot_entity.reset();
   robot_entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
   robot_entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
@@ -2123,8 +1905,6 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
           ImGui::SameLine(0.0f, 0.1f);
         }
 
-        // IMGUI_API bool          ColorButton(const char* desc_id, const ImVec4& col, ImGuiColorEditFlags flags = 0,
-        // ImVec2 size = ImVec2(0,0));  // display a colored square/button, hover for details, return true when pressed.
         ImGui::ColorButton(stat.name, ImVec4((float)i / (float)profile_data_count, 0.1f, 0.1, 1.0f), 0,
                            ImVec2(100.0f * 1000.0f * scaled_duration, 0));
         if (ImGui::IsItemHovered())
@@ -2138,154 +1918,24 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   }
   ImGui::End();
 
-  mat4x4 world_transform = {};
+  js.jobs_max            = 0;
+  js.jobs[js.jobs_max++] = {"moving lights update", update::moving_lights_job};
+  js.jobs[js.jobs_max++] = {"helmet update", update::helmet_job};
+  js.jobs[js.jobs_max++] = {"robot update", update::robot_job};
+  js.jobs[js.jobs_max++] = {"monster update", update::monster_job};
+  js.jobs[js.jobs_max++] = {"rigged simple update", update::rigged_simple_job};
+  js.jobs[js.jobs_max++] = {"matrioshka update", update::matrioshka_job};
 
-  {
-    Quaternion orientation;
-    orientation.rotateX(to_rad(180.0));
-
-    mat4x4 translation_matrix = {};
-    mat4x4_translate(translation_matrix, vr_level_goal[0], 3.0f, vr_level_goal[1]);
-
-    mat4x4 rotation_matrix = {};
-    mat4x4_from_quat(rotation_matrix, orientation.data());
-
-    mat4x4 scale_matrix = {};
-    mat4x4_identity(scale_matrix);
-    mat4x4_scale_aniso(scale_matrix, scale_matrix, 1.6f, 1.6f, 1.6f);
-
-    mat4x4 tmp = {};
-    mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-    mat4x4_mul(world_transform, tmp, scale_matrix);
-  }
-
-  recalculate_node_transforms(helmet_entity, ecs, helmet, world_transform);
-
-  {
-    Quaternion orientation;
-
-    {
-      Quaternion standing_pose;
-      standing_pose.rotateX(to_rad(180.0));
-
-      Quaternion rotate_back;
-      rotate_back.rotateY(player_position[0] < camera_position[0] ? to_rad(180.0f) : to_rad(0.0f));
-
-      float      x_delta = player_position[0] - camera_position[0];
-      float      z_delta = player_position[2] - camera_position[2];
-      Quaternion camera;
-      camera.rotateY(static_cast<float>(SDL_atan(z_delta / x_delta)));
-
-      orientation = standing_pose * rotate_back * camera;
-    }
-
-    mat4x4 translation_matrix = {};
-    mat4x4_translate(translation_matrix, player_position[0], player_position[1] - 1.0f, player_position[2]);
-
-    mat4x4 rotation_matrix = {};
-    mat4x4_from_quat(rotation_matrix, orientation.data());
-
-    mat4x4 scale_matrix = {};
-    mat4x4_identity(scale_matrix);
-    mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.2f, 0.2f, 0.2f);
-
-    mat4x4 tmp = {};
-    mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-    mat4x4_mul(world_transform, tmp, scale_matrix);
-  }
-
-  custom_robot_animate_entity(robot_entity, ecs, robot, current_time_sec);
-  recalculate_node_transforms(robot_entity, ecs, robot, world_transform);
-
-  {
-    Quaternion orientation;
-    orientation.rotateX(to_rad(45.0f));
-
-    mat4x4 translation_matrix = {};
-    mat4x4_translate(translation_matrix, -2.0f, 5.5f, 0.5f);
-
-    mat4x4 rotation_matrix = {};
-    mat4x4_from_quat(rotation_matrix, orientation.data());
-
-    mat4x4 scale_matrix = {};
-    mat4x4_identity(scale_matrix);
-    float factor = 0.025f;
-    mat4x4_scale_aniso(scale_matrix, scale_matrix, factor, factor, factor);
-
-    mat4x4 tmp = {};
-    mat4x4_mul(tmp, rotation_matrix, translation_matrix);
-    mat4x4_mul(world_transform, tmp, scale_matrix);
-  }
-
-  animate_entity(monster_entity, ecs, monster, current_time_sec);
-  recalculate_node_transforms(monster_entity, ecs, monster, world_transform);
-  recalculate_skinning_matrices(monster_entity, ecs, monster, world_transform);
-
-  {
-    Quaternion orientation;
-    orientation.rotateX(to_rad(45.0f));
-
-    mat4x4 translation_matrix = {};
-    mat4x4_translate(translation_matrix, rigged_position[0], rigged_position[1], rigged_position[2]);
-
-    mat4x4 rotation_matrix = {};
-    mat4x4_from_quat(rotation_matrix, orientation.data());
-
-    mat4x4 scale_matrix = {};
-    mat4x4_identity(scale_matrix);
-    mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.5f, 0.5f, 0.5f);
-
-    mat4x4 tmp = {};
-    mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-    mat4x4_mul(world_transform, tmp, scale_matrix);
-  }
-
-  animate_entity(rigged_simple_entity, ecs, riggedSimple, current_time_sec);
-  recalculate_node_transforms(rigged_simple_entity, ecs, riggedSimple, world_transform);
-  recalculate_skinning_matrices(rigged_simple_entity, ecs, riggedSimple, world_transform);
-
-  for (int i = 0; i < pbr_light_sources_cache.count; ++i)
-  {
-    Quaternion orientation = Quaternion().rotateZ(to_rad(100.0f * current_time_sec)) *
-                             Quaternion().rotateY(to_rad(280.0f * current_time_sec)) *
-                             Quaternion().rotateX(to_rad(60.0f * current_time_sec));
-
-    float* position = pbr_light_sources_cache.positions[i];
-
-    mat4x4 translation_matrix = {};
-    mat4x4_translate(translation_matrix, position[0], position[1], position[2]);
-
-    mat4x4 rotation_matrix = {};
-    mat4x4_from_quat(rotation_matrix, orientation.data());
-
-    mat4x4 scale_matrix = {};
-    mat4x4_identity(scale_matrix);
-    mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.05f, 0.05f, 0.05f);
-
-    mat4x4 tmp = {};
-    mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-    mat4x4_mul(world_transform, tmp, scale_matrix);
-
-    recalculate_node_transforms(box_entities[i], ecs, box, world_transform);
-  }
-
-  {
-    Quaternion orientation = Quaternion().rotateZ(to_rad(90.0f * current_time_sec / 90.0f)) *
-                             Quaternion().rotateY(to_rad(140.0f * current_time_sec / 30.0f)) *
-                             Quaternion().rotateX(to_rad(90.0f * current_time_sec / 20.0f));
-
-    mat4x4 translation_matrix = {};
-    mat4x4_translate(translation_matrix, robot_position[0], robot_position[1], robot_position[2]);
-
-    mat4x4 rotation_matrix = {};
-    mat4x4_from_quat(rotation_matrix, orientation.data());
-    mat4x4_mul(world_transform, translation_matrix, rotation_matrix);
-  }
-
-  animate_entity(matrioshka_entity, ecs, animatedBox, current_time_sec);
-  recalculate_node_transforms(matrioshka_entity, ecs, animatedBox, world_transform);
+  SDL_AtomicSet(&js.profile_data_count, 0);
+  SDL_LockMutex(js.new_jobs_available_mutex);
+  SDL_CondBroadcast(js.new_jobs_available_cond);
+  SDL_UnlockMutex(js.new_jobs_available_mutex);
 
   ImGui::Render();
+
+  SDL_SemWait(js.all_threads_idle_signal);
+  SDL_AtomicSet(&js.threads_finished_work, 0);
+  SDL_AtomicSet(&js.jobs_taken, 0);
 }
 
 void Game::render(Engine& engine)
@@ -2329,7 +1979,6 @@ void Game::render(Engine& engine)
   js.jobs[js.jobs_max++] = {"weapon selectors - right", render::weapon_selectors_right};
   js.jobs[js.jobs_max++] = {"water", render::water};
 
-  SDL_AtomicSet(&js.profile_data_count, 0);
   SDL_LockMutex(js.new_jobs_available_mutex);
   SDL_CondBroadcast(js.new_jobs_available_cond);
   SDL_UnlockMutex(js.new_jobs_available_mutex);
