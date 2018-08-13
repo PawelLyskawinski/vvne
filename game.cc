@@ -619,57 +619,31 @@ void worker_function(WorkerThreadData td)
   if ((SDL_arraysize(job_system.worker_threads) - 1) == threadId)
     SDL_SemPost(job_system.all_threads_idle_signal);
 
-  VkCommandBuffer* all_commands                 = td.game.js.worker_commands[threadId].commands;
-  VkCommandBuffer* just_recorded_commands       = &all_commands[0];
-  VkCommandBuffer* recorded_last_frame_commands = &all_commands[64];
-  VkCommandBuffer* ready_to_reset_commands      = &all_commands[128];
-  int              just_recorded_count          = 0;
-  int              recorded_last_frame_count    = 0;
-  int              ready_to_reset_count         = 0;
-
   LinearAllocator allocator(1024);
 
   SDL_LockMutex(job_system.new_jobs_available_mutex);
   while (not job_system.thread_end_requested)
   {
-    //
-    // As a proof of concept this signal will always be broadcasted on next render frame.
-    //
     SDL_CondWait(job_system.new_jobs_available_cond, job_system.new_jobs_available_mutex);
     SDL_UnlockMutex(job_system.new_jobs_available_mutex);
-
-    for (int i = 0; i < ready_to_reset_count; ++i)
-      vkResetCommandBuffer(ready_to_reset_commands[i], 0);
-
-    ready_to_reset_count      = recorded_last_frame_count;
-    recorded_last_frame_count = just_recorded_count;
-    just_recorded_count       = 0;
-
-    VkCommandBuffer* tmp         = ready_to_reset_commands;
-    ready_to_reset_commands      = recorded_last_frame_commands;
-    recorded_last_frame_commands = just_recorded_commands;
-    just_recorded_commands       = tmp;
 
     int job_idx = SDL_AtomicIncRef(&td.game.js.jobs_taken);
 
     while (job_idx < job_system.jobs_max)
     {
-      ThreadJobData tjd = {just_recorded_commands[just_recorded_count], td.engine, td.game, allocator};
       const Job&    job = job_system.jobs[job_idx];
+      ThreadJobData tjd = {threadId, td.engine, td.game, allocator};
 
       ThreadJobStatistic& stat = job_system.profile_data[SDL_AtomicIncRef(&job_system.profile_data_count)];
       stat.threadId            = threadId;
       stat.name                = job.name;
 
       uint64_t ticks_start = SDL_GetPerformanceCounter();
-      int      job_result  = job_system.jobs[job_idx].fcn(tjd);
-      stat.duration_sec    = static_cast<float>(SDL_GetPerformanceCounter() - ticks_start) /
+      job_system.jobs[job_idx].fcn(tjd);
+      stat.duration_sec = static_cast<float>(SDL_GetPerformanceCounter() - ticks_start) /
                           static_cast<float>(SDL_GetPerformanceFrequency());
 
-      if (-1 != job_result)
-        just_recorded_count += 1;
       allocator.reset();
-
       job_idx = SDL_AtomicIncRef(&td.game.js.jobs_taken);
     }
 
@@ -1553,15 +1527,19 @@ void Game::startup(Engine& engine)
     vkCreateCommandPool(engine.device, &info, nullptr, &pool);
   }
 
-  for (unsigned i = 0; i < SDL_arraysize(js.worker_commands); ++i)
+  for (int swapchain_image = 0; swapchain_image < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image)
   {
-    VkCommandBufferAllocateInfo info = {
-        .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool        = js.worker_pools[i],
-        .level              = VK_COMMAND_BUFFER_LEVEL_SECONDARY,
-        .commandBufferCount = 64 * 3,
-    };
-    vkAllocateCommandBuffers(engine.device, &info, js.worker_commands[i].commands);
+    for (int worker_thread = 0; worker_thread < WORKER_THREADS_COUNT; ++worker_thread)
+    {
+      VkCommandBufferAllocateInfo info = {
+          .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+          .commandPool        = js.worker_pools[worker_thread],
+          .level              = VK_COMMAND_BUFFER_LEVEL_SECONDARY,
+          .commandBufferCount = 64,
+      };
+
+      vkAllocateCommandBuffers(engine.device, &info, js.commands[swapchain_image][worker_thread]);
+    }
   }
 
   WorkerThreadData data = {engine, *this};
@@ -2314,11 +2292,17 @@ void Game::render(Engine& engine)
 {
   Engine::SimpleRendering& renderer = engine.simple_rendering;
 
+  vkAcquireNextImageKHR(engine.device, engine.swapchain, UINT64_MAX, engine.image_available, VK_NULL_HANDLE,
+                        &image_index);
+  vkWaitForFences(engine.device, 1, &renderer.submition_fences[image_index], VK_TRUE, UINT64_MAX);
+  vkResetFences(engine.device, 1, &renderer.submition_fences[image_index]);
+
+  for (int worker_thread = 0; worker_thread < WORKER_THREADS_COUNT; ++worker_thread)
   {
-    vkAcquireNextImageKHR(engine.device, engine.swapchain, UINT64_MAX, engine.image_available, VK_NULL_HANDLE,
-                          &image_index);
-    vkWaitForFences(engine.device, 1, &renderer.submition_fences[image_index], VK_TRUE, UINT64_MAX);
-    vkResetFences(engine.device, 1, &renderer.submition_fences[image_index]);
+    int count = js.submited_command_count[image_index][worker_thread];
+    for (int i = 0; i < count; ++i)
+      vkResetCommandBuffer(js.commands[image_index][worker_thread][i], 0);
+    js.submited_command_count[image_index][worker_thread] = 0;
   }
 
   FunctionTimer timer(render_times, SDL_arraysize(render_times));
@@ -2384,8 +2368,8 @@ void Game::render(Engine& engine)
       generate_gui_lines(cmd, r.data, &r.count);
     }
 
-    float* pushed_lines_data = nullptr;
-    int pushed_lines_counter = 0;
+    float* pushed_lines_data    = nullptr;
+    int    pushed_lines_counter = 0;
 
     {
       void* allocation  = engine.allocator.allocate_back(4 * r.count * sizeof(float));

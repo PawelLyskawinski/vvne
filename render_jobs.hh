@@ -4,26 +4,26 @@
 
 namespace render {
 
-int skybox_job(ThreadJobData tjd);
-int robot_job(ThreadJobData tjd);
-int helmet_job(ThreadJobData tjd);
-int point_light_boxes(ThreadJobData tjd);
-int matrioshka_box(ThreadJobData tjd);
-int vr_scene(ThreadJobData tjd);
-int simple_rigged(ThreadJobData tjd);
-int monster_rigged(ThreadJobData tjd);
-int radar(ThreadJobData tjd);
-int robot_gui_lines(ThreadJobData tjd);
-int robot_gui_speed_meter_text(ThreadJobData tjd);
-int robot_gui_speed_meter_triangle(ThreadJobData tjd);
-int height_ruler_text(ThreadJobData tjd);
-int tilt_ruler_text(ThreadJobData tjd);
-int compass_text(ThreadJobData tjd);
-int radar_dots(ThreadJobData tjd);
-int weapon_selectors_left(ThreadJobData tjd);
-int weapon_selectors_right(ThreadJobData tjd);
-int hello_world_text(ThreadJobData tjd);
-int imgui(ThreadJobData tjd);
-int water(ThreadJobData tjd);
+void skybox_job(ThreadJobData tjd);
+void robot_job(ThreadJobData tjd);
+void helmet_job(ThreadJobData tjd);
+void point_light_boxes(ThreadJobData tjd);
+void matrioshka_box(ThreadJobData tjd);
+void vr_scene(ThreadJobData tjd);
+void simple_rigged(ThreadJobData tjd);
+void monster_rigged(ThreadJobData tjd);
+void radar(ThreadJobData tjd);
+void robot_gui_lines(ThreadJobData tjd);
+void robot_gui_speed_meter_text(ThreadJobData tjd);
+void robot_gui_speed_meter_triangle(ThreadJobData tjd);
+void height_ruler_text(ThreadJobData tjd);
+void tilt_ruler_text(ThreadJobData tjd);
+void compass_text(ThreadJobData tjd);
+void radar_dots(ThreadJobData tjd);
+void weapon_selectors_left(ThreadJobData tjd);
+void weapon_selectors_right(ThreadJobData tjd);
+void hello_world_text(ThreadJobData tjd);
+void imgui(ThreadJobData tjd);
+void water(ThreadJobData tjd);
 
 } // namespace render

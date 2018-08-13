@@ -9,6 +9,8 @@
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_thread.h>
 
+#define WORKER_THREADS_COUNT 3
+
 class LinearAllocator
 {
 public:
@@ -143,7 +145,7 @@ struct Game;
 
 struct ThreadJobData
 {
-  VkCommandBuffer  command;
+  int              thread_id;
   Engine&          engine;
   Game&            game;
   LinearAllocator& allocator;
@@ -151,7 +153,7 @@ struct ThreadJobData
 
 struct Job
 {
-  using Fcn = int (*)(ThreadJobData tjd);
+  using Fcn = void (*)(ThreadJobData tjd);
   const char* name;
   Fcn         fcn;
 };
@@ -180,13 +182,10 @@ struct JobSystem
   SDL_atomic_t threads_finished_work;
 
   // Worker thread resources
-  SDL_Thread*   worker_threads[3];
-  VkCommandPool worker_pools[3];
-
-  struct WorkerCommands
-  {
-    VkCommandBuffer commands[64 * 3];
-  } worker_commands[3];
+  SDL_Thread*     worker_threads[WORKER_THREADS_COUNT];
+  VkCommandPool   worker_pools[WORKER_THREADS_COUNT];
+  VkCommandBuffer commands[SWAPCHAIN_IMAGES_COUNT][WORKER_THREADS_COUNT][64];
+  int             submited_command_count[SWAPCHAIN_IMAGES_COUNT][WORKER_THREADS_COUNT];
 
   // profiling data
   ThreadJobStatistic profile_data[64];
