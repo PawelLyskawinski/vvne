@@ -174,6 +174,30 @@ void animate_entity(Entity& entity, EntityComponentSystem& ecs, SceneGraph& scen
   }
 }
 
+void multiply_quaternions(quat result, quat lhs, quat rhs)
+{
+  quat_mul(result, lhs, rhs);
+}
+
+template <typename... Args> void multiply_quaternions(quat result, quat lhs, quat rhs, Args... args)
+{
+  quat tmp = {};
+  quat_mul(tmp, lhs, rhs);
+  multiply_quaternions(result, tmp, args...);
+}
+
+void multiply_matrices(mat4x4 result, mat4x4 lhs, mat4x4 rhs)
+{
+  mat4x4_mul(result, lhs, rhs);
+}
+
+template <typename... Args> void multiply_matrices(mat4x4 result, mat4x4 lhs, mat4x4 rhs, Args... args)
+{
+  mat4x4 tmp = {};
+  mat4x4_mul(tmp, lhs, rhs);
+  multiply_matrices(result, tmp, args...);
+}
+
 } // namespace
 
 // game_recalculate_node_transforms.cc
@@ -186,7 +210,6 @@ namespace update {
 
 void helmet_job(ThreadJobData tjd)
 {
-  mat4x4 world_transform = {};
 
   quat orientation = {};
   vec3 x_axis      = {1.0, 0.0, 0.0};
@@ -202,21 +225,25 @@ void helmet_job(ThreadJobData tjd)
   mat4x4_identity(scale_matrix);
   mat4x4_scale_aniso(scale_matrix, scale_matrix, 1.6f, 1.6f, 1.6f);
 
-  mat4x4 tmp = {};
-  mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-  mat4x4_mul(world_transform, tmp, scale_matrix);
+  mat4x4 world_transform = {};
+  multiply_matrices(world_transform, translation_matrix, rotation_matrix, scale_matrix);
 
   recalculate_node_transforms(tjd.game.helmet_entity, tjd.game.ecs, tjd.game.helmet, world_transform);
 }
 
 void robot_job(ThreadJobData tjd)
 {
+  vec3 x_axis = {1.0, 0.0, 0.0};
+  vec3 y_axis = {0.0, 1.0, 0.0};
+  vec3 z_axis = {0.0, 0.0, 1.0};
+
   quat standing_pose = {};
-  vec3 x_axis        = {1.0, 0.0, 0.0};
   quat_rotate(standing_pose, to_rad(180.0), x_axis);
 
+  quat rotate_movement_tilt = {};
+  quat_rotate(rotate_movement_tilt, tjd.game.player_velocity[2], z_axis);
+
   quat rotate_back = {};
-  vec3 y_axis      = {0.0, 1.0, 0.0};
   quat_rotate(rotate_back, tjd.game.player_position[0] < tjd.game.camera_position[0] ? to_rad(180.0f) : to_rad(0.0f),
               y_axis);
 
@@ -227,12 +254,7 @@ void robot_job(ThreadJobData tjd)
   quat_rotate(camera, static_cast<float>(SDL_atan(z_delta / x_delta)), y_axis);
 
   quat orientation = {};
-
-  {
-    quat tmp = {};
-    quat_mul(tmp, standing_pose, rotate_back);
-    quat_mul(orientation, tmp, camera);
-  }
+  multiply_quaternions(orientation, standing_pose, rotate_back, camera);
 
   mat4x4 translation_matrix = {};
   mat4x4_translate(translation_matrix, tjd.game.player_position[0], tjd.game.player_position[1] - 1.0f,
@@ -246,12 +268,7 @@ void robot_job(ThreadJobData tjd)
   mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.5f, 0.5f, 0.5f);
 
   mat4x4 world_transform = {};
-
-  {
-    mat4x4 tmp = {};
-    mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-    mat4x4_mul(world_transform, tmp, scale_matrix);
-  }
+  multiply_matrices(world_transform, translation_matrix, rotation_matrix, scale_matrix);
 
   recalculate_node_transforms(tjd.game.robot_entity, tjd.game.ecs, tjd.game.robot, world_transform);
 }
@@ -274,12 +291,7 @@ void monster_job(ThreadJobData tjd)
   mat4x4_scale_aniso(scale_matrix, scale_matrix, factor, factor, factor);
 
   mat4x4 world_transform = {};
-
-  {
-    mat4x4 tmp = {};
-    mat4x4_mul(tmp, rotation_matrix, translation_matrix);
-    mat4x4_mul(world_transform, tmp, scale_matrix);
-  }
+  multiply_matrices(world_transform, rotation_matrix, translation_matrix, scale_matrix);
 
   animate_entity(tjd.game.monster_entity, tjd.game.ecs, tjd.game.monster, tjd.game.current_time_sec);
   recalculate_node_transforms(tjd.game.monster_entity, tjd.game.ecs, tjd.game.monster, world_transform);
@@ -288,8 +300,6 @@ void monster_job(ThreadJobData tjd)
 
 void rigged_simple_job(ThreadJobData tjd)
 {
-  mat4x4 world_transform = {};
-
   quat orientation = {};
   vec3 x_axis      = {1.0, 0.0, 0.0};
   quat_rotate(orientation, to_rad(45.0f), x_axis);
@@ -305,9 +315,8 @@ void rigged_simple_job(ThreadJobData tjd)
   mat4x4_identity(scale_matrix);
   mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.5f, 0.5f, 0.5f);
 
-  mat4x4 tmp = {};
-  mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-  mat4x4_mul(world_transform, tmp, scale_matrix);
+  mat4x4 world_transform = {};
+  multiply_matrices(world_transform, translation_matrix, rotation_matrix, scale_matrix);
 
   animate_entity(tjd.game.rigged_simple_entity, tjd.game.ecs, tjd.game.riggedSimple, tjd.game.current_time_sec);
   recalculate_node_transforms(tjd.game.rigged_simple_entity, tjd.game.ecs, tjd.game.riggedSimple, world_transform);
@@ -322,22 +331,17 @@ void moving_lights_job(ThreadJobData tjd)
 
   for (int i = 0; i < tjd.game.pbr_light_sources_cache.count; ++i)
   {
+    quat z = {};
+    quat_rotate(z, to_rad(100.0f * tjd.game.current_time_sec), z_axis);
+
+    quat y = {};
+    quat_rotate(y, to_rad(280.0f * tjd.game.current_time_sec), y_axis);
+
+    quat x = {};
+    quat_rotate(x, to_rad(60.0f * tjd.game.current_time_sec), x_axis);
+
     quat orientation = {};
-
-    {
-      quat z = {};
-      quat_rotate(z, to_rad(100.0f * tjd.game.current_time_sec), z_axis);
-
-      quat y = {};
-      quat_rotate(y, to_rad(280.0f * tjd.game.current_time_sec), y_axis);
-
-      quat x = {};
-      quat_rotate(x, to_rad(60.0f * tjd.game.current_time_sec), x_axis);
-
-      quat tmp = {};
-      quat_mul(tmp, z, y);
-      quat_mul(orientation, tmp, x);
-    }
+    multiply_quaternions(orientation, z, y, x);
 
     float* position = tjd.game.pbr_light_sources_cache.positions[i];
 
@@ -352,12 +356,7 @@ void moving_lights_job(ThreadJobData tjd)
     mat4x4_scale_aniso(scale_matrix, scale_matrix, 0.05f, 0.05f, 0.05f);
 
     mat4x4 world_transform = {};
-
-    {
-      mat4x4 tmp = {};
-      mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-      mat4x4_mul(world_transform, tmp, scale_matrix);
-    }
+    multiply_matrices(world_transform, translation_matrix, rotation_matrix, scale_matrix);
 
     recalculate_node_transforms(tjd.game.box_entities[i], tjd.game.ecs, tjd.game.box, world_transform);
   }
@@ -369,8 +368,6 @@ void matrioshka_job(ThreadJobData tjd)
   vec3 y_axis = {1.0, 0.0, 0.0};
   vec3 z_axis = {1.0, 0.0, 0.0};
 
-  quat orientation = {};
-
   quat z = {};
   quat_rotate(z, to_rad(90.0f * tjd.game.current_time_sec / 90.0f), z_axis);
 
@@ -380,11 +377,8 @@ void matrioshka_job(ThreadJobData tjd)
   quat x = {};
   quat_rotate(x, to_rad(90.0f * tjd.game.current_time_sec / 20.0f), x_axis);
 
-  {
-    quat tmp = {};
-    quat_mul(tmp, z, y);
-    quat_mul(orientation, tmp, x);
-  }
+  quat orientation = {};
+  multiply_quaternions(orientation, z, y, x);
 
   mat4x4 translation_matrix = {};
   mat4x4_translate(translation_matrix, tjd.game.robot_position[0], tjd.game.robot_position[1],

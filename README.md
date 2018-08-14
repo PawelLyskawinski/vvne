@@ -28,6 +28,7 @@ Current preview (still a veeeery long road ahead)
 - better model animations (while only using keyframes from glb)
 - particles from engine when using boost
 - refactor height calculation
+- fix the height ruler (implement endless repetition)
 
 ### Used C++ subset
 - no stl
