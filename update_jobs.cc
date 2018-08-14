@@ -240,9 +240,6 @@ void robot_job(ThreadJobData tjd)
   quat standing_pose = {};
   quat_rotate(standing_pose, to_rad(180.0), x_axis);
 
-  quat rotate_movement_tilt = {};
-  quat_rotate(rotate_movement_tilt, tjd.game.player_velocity[2], z_axis);
-
   quat rotate_back = {};
   quat_rotate(rotate_back, tjd.game.player_position[0] < tjd.game.camera_position[0] ? to_rad(180.0f) : to_rad(0.0f),
               y_axis);
@@ -253,8 +250,23 @@ void robot_job(ThreadJobData tjd)
   quat camera = {};
   quat_rotate(camera, static_cast<float>(SDL_atan(z_delta / x_delta)), y_axis);
 
+  //////////////////////////////////////////////////////////////////////////////
+  // Adaptive model tilt when moving
+  //////////////////////////////////////////////////////////////////////////////
+
+  vec2  velocity_vector           = {tjd.game.player_velocity[0], tjd.game.player_velocity[2]};
+  float velocity_length           = vec2_len(velocity_vector);
+  float velocity_angle            = SDL_atan2f(velocity_vector[0], velocity_vector[1]);
+  float relative_velocity_angle   = tjd.game.camera_angle - velocity_angle;
+  vec2  corrected_velocity_vector = {velocity_length * SDL_cosf(relative_velocity_angle),
+                                    velocity_length * SDL_sinf(relative_velocity_angle)};
+
+  quat movement_tilt[2] = {};
+  quat_rotate(movement_tilt[0], 8.0f * corrected_velocity_vector[0], x_axis);
+  quat_rotate(movement_tilt[1], -8.0f * corrected_velocity_vector[1], z_axis);
+
   quat orientation = {};
-  multiply_quaternions(orientation, standing_pose, rotate_back, camera);
+  multiply_quaternions(orientation, standing_pose, rotate_back, camera, movement_tilt[0], movement_tilt[1]);
 
   mat4x4 translation_matrix = {};
   mat4x4_translate(translation_matrix, tjd.game.player_position[0], tjd.game.player_position[1] - 1.0f,
