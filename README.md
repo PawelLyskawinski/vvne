@@ -20,6 +20,8 @@ Current preview (still a veeeery long road ahead)
 
 ### TODO - engine
 - DXT texture compression
+- global illumination (got to understand spherical harmonics and light probes first)
+- cascaded shadow mapping
 
 ### TODO - game
 - movable tilt lines under strafe movement (gui)
