@@ -2,6 +2,8 @@
 
 struct Engine;
 
+void pipeline_reload_shadow_mapping_reload(Engine& engine);
+
 void pipeline_reload_simple_rendering_skybox_reload(Engine& engine);
 void pipeline_reload_simple_rendering_scene3d_reload(Engine& engine);
 void pipeline_reload_simple_rendering_coloredgeometry_reload(Engine& engine);
@@ -16,3 +18,4 @@ void pipeline_reload_simple_rendering_green_gui_sdf_reload(Engine& engine);
 void pipeline_reload_simple_rendering_green_gui_triangle_reload(Engine& engine);
 void pipeline_reload_simple_rendering_imgui_reload(Engine& engine);
 void pipeline_reload_simple_rendering_pbr_water_reload(Engine& engine);
+void pipeline_reload_simple_rendering_debug_billboard(Engine& engine);

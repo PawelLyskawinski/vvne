@@ -3,9 +3,6 @@
 #include <SDL2/SDL_video.h>
 #include <vulkan/vulkan.h>
 
-#define SWAPCHAIN_IMAGES_COUNT 2
-#define MSAA_SAMPLE_COUNT VK_SAMPLE_COUNT_8_BIT
-
 VkDeviceSize align(VkDeviceSize unaligned, VkDeviceSize alignment);
 int          find_first_zeroed_bit_offset(uint64_t bitmap);
 
@@ -42,6 +39,12 @@ struct DoubleEndedStack
 
 struct Engine
 {
+  // configuration
+  static constexpr int  SWAPCHAIN_IMAGES_COUNT = 2;
+  static constexpr int  SHADOWMAP_IMAGE_DIM    = 1024 * 4;
+  VkSampleCountFlagBits MSAA_SAMPLE_COUNT;
+
+  // data
   VkInstance                 instance;
   VkDebugReportCallbackEXT   debug_callback;
   SDL_Window*                window;
@@ -60,15 +63,15 @@ struct Engine
   VkImageView                swapchain_image_views[SWAPCHAIN_IMAGES_COUNT];
   VkCommandPool              graphics_command_pool;
   VkDescriptorPool           descriptor_pool;
-  VkImage                    depth_image;
-  VkImageView                depth_image_view;
   VkImage                    msaa_color_image;
   VkImageView                msaa_color_image_view;
-  VkImage                    msaa_depth_image;
-  VkImageView                msaa_depth_image_view;
+  VkImage                    depth_image;
+  VkImageView                depth_image_view;
   VkSemaphore                image_available;
   VkSemaphore                render_finished;
   VkSampler                  texture_sampler;
+  VkImage                    shadowmap_images[SWAPCHAIN_IMAGES_COUNT];
+  VkImageView                shadowmap_image_views[SWAPCHAIN_IMAGES_COUNT];
 
   //
   // Used for vertex / index data which will be reused all the time
@@ -109,6 +112,15 @@ struct Engine
   //
   DoubleEndedStack allocator;
 
+  struct ShadowMapping
+  {
+    VkRenderPass     render_pass;
+    VkPipeline       pipeline;
+    VkPipelineLayout pipeline_layout;
+    VkFramebuffer    framebuffers[SWAPCHAIN_IMAGES_COUNT];
+    VkSampler        sampler;
+  } shadow_mapping;
+
   struct SimpleRendering
   {
     VkRenderPass render_pass;
@@ -118,6 +130,7 @@ struct Engine
     VkDescriptorSetLayout pbr_dynamic_lights_descriptor_set_layout;
     VkDescriptorSetLayout single_texture_in_frag_descriptor_set_layout;
     VkDescriptorSetLayout skinning_matrices_descriptor_set_layout;
+    VkDescriptorSetLayout light_space_matrix_ubo_set_layout;
 
     VkFramebuffer framebuffers[SWAPCHAIN_IMAGES_COUNT];
 
@@ -152,6 +165,7 @@ struct Engine
         GreenGuiTriangle,
         GreenGuiRadarDots,
         ImGui,
+        DebugBillboard,
         Count
       };
     };
@@ -182,7 +196,7 @@ struct Engine
   ScheduledPipelineDestruction scheduled_pipelines_destruction[16];
   int                          scheduled_pipelines_destruction_count;
 
-  // internals
 private:
+  void setup_shadow_mapping();
   void setup_simple_rendering();
 };

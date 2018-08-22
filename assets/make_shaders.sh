@@ -4,6 +4,8 @@ function compile {
   glslangValidator -V $1 -o ../bin/$(./hasher.py $1)
 }
 
+compile debug_billboard.frag
+compile debug_billboard.vert
 compile imgui.frag
 compile imgui.vert
 compile triangle_push.frag
@@ -38,3 +40,5 @@ compile green_gui_radar_dots.frag
 compile green_gui_radar_dots.vert
 compile pbr_water.vert
 compile pbr_water.frag
+compile depth_pass.vert
+compile depth_pass.frag

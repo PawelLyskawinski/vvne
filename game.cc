@@ -241,7 +241,7 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
   }
 
   VrLevelLoadResult result = {
-      .entrance_point       = {0.0f, -30.0f},
+      .entrance_point       = {0.0f, -1.0f},
       .target_goal          = {0.0f, 0.2f},
       .vertex_target_offset = device_vertex_offset,
       .index_target_offset  = device_index_offset,
@@ -633,7 +633,7 @@ void Game::startup(Engine& engine)
         debug_gui.mousecursors[mapping.imgui] = SDL_CreateSystemCursor(mapping.sdl);
     }
 
-    for (int i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
+    for (int i = 0; i < Engine::SWAPCHAIN_IMAGES_COUNT; ++i)
     {
       GpuMemoryBlock& block = engine.gpu_host_coherent_memory_block;
 
@@ -750,6 +750,12 @@ void Game::startup(Engine& engine)
     {
       offset = block.stack_pointer;
       block.stack_pointer += align(skinning_matrices_ubo_size, block.alignment);
+    }
+
+    for (VkDeviceSize& offset : light_space_matrices_ubo_offsets)
+    {
+      offset = block.stack_pointer;
+      block.stack_pointer += align(sizeof(mat4x4), block.alignment);
     }
   }
 
@@ -933,6 +939,9 @@ void Game::startup(Engine& engine)
     vkAllocateDescriptorSets(engine.device, &allocate, &imgui_font_atlas_dset);
     vkAllocateDescriptorSets(engine.device, &allocate, &lucida_sans_sdf_dset);
     vkAllocateDescriptorSets(engine.device, &allocate, &pbr_water_material_dset);
+
+    for (int i = 0; i < Engine::SWAPCHAIN_IMAGES_COUNT; ++i)
+      vkAllocateDescriptorSets(engine.device, &allocate, &debug_shadow_map_dset[i]);
   }
 
   {
@@ -965,6 +974,14 @@ void Game::startup(Engine& engine)
     image.imageView = engine.image_views[water_normal_idx];
     write.dstSet    = pbr_water_material_dset;
     vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
+
+    image.sampler = engine.shadow_mapping.sampler;
+    for (int i = 0; i < Engine::SWAPCHAIN_IMAGES_COUNT; ++i)
+    {
+      image.imageView = engine.shadowmap_image_views[i];
+      write.dstSet    = debug_shadow_map_dset[i];
+      vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
+    }
   }
 
   // --------------------------------------------------------------- //
@@ -1003,6 +1020,40 @@ void Game::startup(Engine& engine)
     vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
 
     write.dstSet = rig_skinning_matrices_dset;
+    vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
+  }
+
+  // --------------------------------------------------------------- //
+  // Light space matrices ubo descriptor set
+  // --------------------------------------------------------------- //
+
+  for (int i = 0; i < Engine::SWAPCHAIN_IMAGES_COUNT; ++i)
+  {
+    VkDescriptorSetAllocateInfo allocate = {
+        .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool     = engine.descriptor_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts        = &engine.simple_rendering.light_space_matrix_ubo_set_layout,
+    };
+
+    vkAllocateDescriptorSets(engine.device, &allocate, &light_space_matrices_dset[i]);
+
+    VkDescriptorBufferInfo ubo = {
+        .buffer = engine.gpu_host_coherent_ubo_memory_buffer,
+        .offset = light_space_matrices_ubo_offsets[i],
+        .range  = sizeof(mat4x4),
+    };
+
+    VkWriteDescriptorSet write = {
+        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstBinding      = 0,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .pBufferInfo     = &ubo,
+    };
+
+    write.dstSet = light_space_matrices_dset[i];
     vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
   }
 
@@ -1281,11 +1332,20 @@ void Game::startup(Engine& engine)
     engine.allocator.reset_back();
   }
 
-  DEBUG_VEC2[0] = 122.0f;
-  DEBUG_VEC2[1] = 69.5f;
+  DEBUG_VEC2[0] = 96.0f;
+  DEBUG_VEC2[1] = -1.0f;
 
-  DEBUG_VEC2_ADDITIONAL[0] = 240.0f;
-  DEBUG_VEC2_ADDITIONAL[1] = 43.0f;
+  DEBUG_VEC2_ADDITIONAL[0] = 0.0f;
+  DEBUG_VEC2_ADDITIONAL[1] = 0.0f;
+
+  DEBUG_LIGHT_ORTHO_PARAMS[0] = -10.0f;
+  DEBUG_LIGHT_ORTHO_PARAMS[1] = 10.0f;
+  DEBUG_LIGHT_ORTHO_PARAMS[2] = -10.0f;
+  DEBUG_LIGHT_ORTHO_PARAMS[3] = 10.0f;
+
+  light_source_position[0] = 30.0f;
+  light_source_position[1] = -10.0f;
+  light_source_position[2] = -10.0f;
 
   radar_scale = 0.75f;
 
@@ -1309,7 +1369,7 @@ void Game::startup(Engine& engine)
     vkCreateCommandPool(engine.device, &info, nullptr, &pool);
   }
 
-  for (int swapchain_image = 0; swapchain_image < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image)
+  for (int swapchain_image = 0; swapchain_image < Engine::SWAPCHAIN_IMAGES_COUNT; ++swapchain_image)
   {
     for (int worker_thread = 0; worker_thread < WORKER_THREADS_COUNT; ++worker_thread)
     {
@@ -1689,7 +1749,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
       // For now this is hardcoded to fit height sampling function.
       // @todo: Refactor to something readable
       player_position[1] =
-          100.0f * get_vr_level_height(-0.1f * player_position[0] + 0.25f, -0.1f * player_position[2] + 0.25f) + 2.5f;
+          100.0f * get_vr_level_height(-0.1f * player_position[0] + 0.25f, -0.1f * player_position[2] + 0.25f) + 2.0f;
       player_position[1] -= (jump_height * SDL_sinf(current_jump_time * (float)M_PI));
     }
     else
@@ -1702,7 +1762,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     // For now this is hardcoded to fit height sampling function.
     // @todo: Refactor to something readable
     player_position[1] =
-        100.0f * get_vr_level_height(-0.1f * player_position[0] + 0.25f, -0.1f * player_position[2] + 0.25f) + 2.5f;
+        100.0f * get_vr_level_height(-0.1f * player_position[0] + 0.25f, -0.1f * player_position[2] + 0.25f) + 2.0f;
 
     if (player_jump_pressed)
     {
@@ -1774,8 +1834,8 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   }
 
   if (ImGui::CollapsingHeader("Pipeline reload"))
-    if (ImGui::Button("water shaders"))
-      pipeline_reload_simple_rendering_pbr_water_reload(engine);
+    if (ImGui::Button("RELOAD"))
+      pipeline_reload_simple_rendering_scene3d_reload(engine);
 
   if (ImGui::CollapsingHeader("Memory"))
   {
@@ -1815,6 +1875,8 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
   ImGui::InputFloat2("debug vec2", DEBUG_VEC2);
   ImGui::InputFloat2("debug vec2 additional", DEBUG_VEC2_ADDITIONAL);
+  ImGui::InputFloat3("light source position", light_source_position);
+  ImGui::InputFloat4("light ortho projection", DEBUG_LIGHT_ORTHO_PARAMS);
 
   pbr_light_sources_cache.count = 5;
 
@@ -1830,13 +1892,14 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   }
 
   {
-    vec3 position = {0.8f * SDL_cosf(current_time_sec), 3.6f, 3.0f + (0.8f * SDL_sinf(current_time_sec))};
+    vec3 position = {12.8f * SDL_cosf(current_time_sec), 1.0f, -10.0f + (8.8f * SDL_sinf(current_time_sec))};
     vec3 color    = {0.0, 20.0, 0.0};
     update_light(pbr_light_sources_cache, 1, position, color);
   }
 
   {
-    vec3 position = {0.8f * SDL_sinf(current_time_sec / 2.0f), 3.3f, 3.0f + (0.8f * SDL_cosf(current_time_sec / 2.0f))};
+    vec3 position = {20.8f * SDL_sinf(current_time_sec / 2.0f), 3.3f,
+                     3.0f + (0.8f * SDL_cosf(current_time_sec / 2.0f))};
     vec3 color    = {0.0, 0.0, 20.0};
     update_light(pbr_light_sources_cache, 2, position, color);
   }
@@ -1848,7 +1911,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   }
 
   {
-    vec3 position = {0.0f, 3.0f, 4.0f};
+    vec3 position = {0.0f, 3.0f, -4.0f};
     vec3 color    = {10.0, 0.0, 10.0};
     update_light(pbr_light_sources_cache, 4, position, color);
   }
@@ -1918,6 +1981,35 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   }
   ImGui::End();
 
+  // @todo: this can be baked in "setup" method as soon as I get the shadow mapping rolling
+  {
+    if (DEBUG_FLAG_1)
+      DEBUG_VEC2[0] = 15.0f * SDL_sinf(1.1 * current_time_sec) - 15.0f;
+
+    if (DEBUG_FLAG_2)
+      DEBUG_VEC2[1] = 15.0f * SDL_cosf(1.6 * current_time_sec) + 15.0f;
+
+    mat4x4 light_projection = {};
+
+    {
+      float extent_width        = static_cast<float>(Engine::SHADOWMAP_IMAGE_DIM);
+      float extent_height       = static_cast<float>(Engine::SHADOWMAP_IMAGE_DIM);
+      float aspect_ratio        = extent_width / extent_height;
+      float fov                 = to_rad(140.0f);
+      float near_clipping_plane = 1.0f;
+      float far_clipping_plane  = 100.0f;
+      mat4x4_perspective(light_projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
+      light_projection[1][1] *= -1.0f;
+    }
+
+    mat4x4 light_view = {};
+    vec3   center     = {0.0, 0.0, 0.0};
+    vec3   up         = {0.0f, -1.0f, 0.0f};
+    mat4x4_look_at(light_view, light_source_position, center, up);
+
+    mat4x4_mul(light_space_matrix, light_projection, light_view);
+  }
+
   js.jobs_max            = 0;
   js.jobs[js.jobs_max++] = {"moving lights update", update::moving_lights_job};
   js.jobs[js.jobs_max++] = {"helmet update", update::helmet_job};
@@ -1960,10 +2052,13 @@ void Game::render(Engine& engine)
   js.jobs_max            = 0;
   js.jobs[js.jobs_max++] = {"skybox", render::skybox_job};
   js.jobs[js.jobs_max++] = {"robot", render::robot_job};
+  js.jobs[js.jobs_max++] = {"robot depth", render::robot_depth_job};
   js.jobs[js.jobs_max++] = {"helmet", render::helmet_job};
+  js.jobs[js.jobs_max++] = {"helmet depth", render::helmet_depth_job};
   js.jobs[js.jobs_max++] = {"point lights", render::point_light_boxes};
   js.jobs[js.jobs_max++] = {"box", render::matrioshka_box};
   js.jobs[js.jobs_max++] = {"vr scene", render::vr_scene};
+  //js.jobs[js.jobs_max++] = {"vr scene depth", render::vr_scene_depth};
   js.jobs[js.jobs_max++] = {"radar", render::radar};
   js.jobs[js.jobs_max++] = {"gui lines", render::robot_gui_lines};
   js.jobs[js.jobs_max++] = {"gui height ruler text", render::height_ruler_text};
@@ -1978,11 +2073,21 @@ void Game::render(Engine& engine)
   js.jobs[js.jobs_max++] = {"weapon selectors - left", render::weapon_selectors_left};
   js.jobs[js.jobs_max++] = {"weapon selectors - right", render::weapon_selectors_right};
   js.jobs[js.jobs_max++] = {"water", render::water};
+  //js.jobs[js.jobs_max++] = {"debug shadow map depth pass", render::debug_shadowmap};
 
   SDL_LockMutex(js.new_jobs_available_mutex);
   SDL_CondBroadcast(js.new_jobs_available_cond);
   SDL_UnlockMutex(js.new_jobs_available_mutex);
 
+  //
+  //
+  //
+  update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory, sizeof(mat4x4),
+             light_space_matrices_ubo_offsets[image_index], &light_space_matrix);
+
+  //
+  //
+  //
   update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory, sizeof(LightSources),
              pbr_dynamic_lights_ubo_offsets[image_index], &pbr_light_sources_cache);
 
@@ -2102,100 +2207,116 @@ void Game::render(Engine& engine)
   }
 
   SDL_SemWait(js.all_threads_idle_signal);
-  SDL_AtomicSet(&js.threads_finished_work, 0);
-
-  VkCommandBuffer cmd = engine.simple_rendering.primary_command_buffers[image_index];
-
-  {
-    VkCommandBufferBeginInfo begin = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-    vkBeginCommandBuffer(cmd, &begin);
-  }
-
-  VkClearValue clear_values[] = {
-      {.color = {{0.0f, 0.0f, 0.2f, 1.0f}}},
-      {.depthStencil = {1.0, 0}},
-      {.color = {{0.0f, 0.0f, 0.2f, 1.0f}}},
-      {.depthStencil = {1.0, 0}},
-  };
-
-  {
-    VkRenderPassBeginInfo begin = {
-        .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-        .renderPass      = engine.simple_rendering.render_pass,
-        .framebuffer     = engine.simple_rendering.framebuffers[image_index],
-        .renderArea      = {.extent = engine.extent2D},
-        .clearValueCount = SDL_arraysize(clear_values),
-        .pClearValues    = clear_values,
-    };
-
-    vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-  }
 
   const int all_secondary_count = SDL_AtomicGet(&js_sink.count);
-
-  for (int i = 0; i < all_secondary_count; ++i)
-  {
-    const RecordedCommandBuffer& recordere = js_sink.commands[i];
-    if (Engine::SimpleRendering::Pass::Skybox == recordere.subpass)
-      vkCmdExecuteCommands(cmd, 1, &recordere.command);
-  }
-
-  vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-
-  for (int i = 0; i < all_secondary_count; ++i)
-  {
-    const RecordedCommandBuffer& recordere = js_sink.commands[i];
-    if (Engine::SimpleRendering::Pass::Objects3D == recordere.subpass)
-      vkCmdExecuteCommands(cmd, 1, &recordere.command);
-  }
-
-  vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-
-  for (int i = 0; i < all_secondary_count; ++i)
-  {
-    const RecordedCommandBuffer& recordere = js_sink.commands[i];
-    if (Engine::SimpleRendering::Pass::RobotGui == recordere.subpass)
-      vkCmdExecuteCommands(cmd, 1, &recordere.command);
-  }
-
-  vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-
-  for (int i = 0; i < all_secondary_count; ++i)
-  {
-    const RecordedCommandBuffer& recordere = js_sink.commands[i];
-    if (Engine::SimpleRendering::Pass::RadarDots == recordere.subpass)
-      vkCmdExecuteCommands(cmd, 1, &recordere.command);
-  }
-
-  vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-
-  for (int i = 0; i < all_secondary_count; ++i)
-  {
-    const RecordedCommandBuffer& recordere = js_sink.commands[i];
-    if (Engine::SimpleRendering::Pass::ImGui == recordere.subpass)
-      vkCmdExecuteCommands(cmd, 1, &recordere.command);
-  }
-
-  vkCmdEndRenderPass(cmd);
-  vkEndCommandBuffer(cmd);
-
+  SDL_AtomicSet(&js.threads_finished_work, 0);
   SDL_AtomicSet(&js_sink.count, 0);
   SDL_AtomicSet(&js.jobs_taken, 0);
 
+  {
+    VkCommandBuffer cmd = engine.simple_rendering.primary_command_buffers[image_index];
+
+    {
+      VkCommandBufferBeginInfo begin = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+      vkBeginCommandBuffer(cmd, &begin);
+    }
+
+    // -----------------------------------------------------------------------------------------------
+    // SHADOW MAPPING RENDER PASS
+    // -----------------------------------------------------------------------------------------------
+    //
+    // This is pure _MADNESS_ to do this kind of thing without any synchronization.
+    // I've tested two "vkQueueSubmit" calls with semaphore in between but it caused strange stutters.
+    // For now I don't have much of a choice, so I'll go along with this thing.
+    // @todo: rethink the shadow mapping depth pass
+    //
+    {
+      VkClearValue clear_value = {.depthStencil = {1.0, 0}};
+
+      VkRenderPassBeginInfo begin = {
+          .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+          .renderPass      = engine.shadow_mapping.render_pass,
+          .framebuffer     = engine.shadow_mapping.framebuffers[image_index],
+          .renderArea      = {.extent = {.width = Engine::SHADOWMAP_IMAGE_DIM, .height = Engine::SHADOWMAP_IMAGE_DIM}},
+          .clearValueCount = 1,
+          .pClearValues    = &clear_value,
+      };
+
+      vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+      vkCmdSetDepthBias(cmd, 1.25f, 0.0f, 1.75f);
+
+      const RecordedCommandBuffer ref = {VK_NULL_HANDLE, engine.shadow_mapping.render_pass, 0};
+
+      for (int i = 0; i < all_secondary_count; ++i)
+        if (ref == js_sink.commands[i])
+          vkCmdExecuteCommands(cmd, 1, &js_sink.commands[i].command);
+
+      vkCmdEndRenderPass(cmd);
+    }
+
+    // -----------------------------------------------------------------------------------------------
+    // SCENE RENDER PASS
+    // -----------------------------------------------------------------------------------------------
+    {
+      const uint32_t clear_values_count = (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT) ? 2u : 3u;
+      VkClearValue   clear_values[3]    = {};
+
+      if (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT)
+      {
+        clear_values[0].color        = {{0.0f, 0.0f, 0.2f, 1.0f}};
+        clear_values[1].depthStencil = {1.0, 0};
+      }
+      else
+      {
+        clear_values[0].color        = {{0.0f, 0.0f, 0.2f, 1.0f}};
+        clear_values[1].color        = {{0.0f, 0.0f, 0.2f, 1.0f}};
+        clear_values[2].depthStencil = {1.0, 0};
+      }
+
+      VkRenderPassBeginInfo begin = {
+          .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+          .renderPass      = engine.simple_rendering.render_pass,
+          .framebuffer     = engine.simple_rendering.framebuffers[image_index],
+          .renderArea      = {.extent = engine.extent2D},
+          .clearValueCount = clear_values_count,
+          .pClearValues    = clear_values,
+      };
+
+      vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+    }
+
+    for (int subpass = 0; subpass < Engine::SimpleRendering::Pass::Count; ++subpass)
+    {
+      const RecordedCommandBuffer ref = {VK_NULL_HANDLE, engine.simple_rendering.render_pass, subpass};
+
+      for (int i = 0; i < all_secondary_count; ++i)
+        if (ref == js_sink.commands[i])
+          vkCmdExecuteCommands(cmd, 1, &js_sink.commands[i].command);
+
+      if (subpass < (Engine::SimpleRendering::Pass::Count - 1))
+        vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+    }
+
+    vkCmdEndRenderPass(cmd);
+    vkEndCommandBuffer(cmd);
+  }
+
   VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
-  VkSubmitInfo submit = {
-      .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-      .waitSemaphoreCount   = 1,
-      .pWaitSemaphores      = &engine.image_available,
-      .pWaitDstStageMask    = &wait_stage,
-      .commandBufferCount   = 1,
-      .pCommandBuffers      = &cmd,
-      .signalSemaphoreCount = 1,
-      .pSignalSemaphores    = &engine.render_finished,
-  };
+  {
+    VkSubmitInfo submit = {
+        .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .waitSemaphoreCount   = 1,
+        .pWaitSemaphores      = &engine.image_available,
+        .pWaitDstStageMask    = &wait_stage,
+        .commandBufferCount   = 1,
+        .pCommandBuffers      = &engine.simple_rendering.primary_command_buffers[image_index],
+        .signalSemaphoreCount = 1,
+        .pSignalSemaphores    = &engine.render_finished,
+    };
 
-  vkQueueSubmit(engine.graphics_queue, 1, &submit, engine.simple_rendering.submition_fences[image_index]);
+    vkQueueSubmit(engine.graphics_queue, 1, &submit, engine.simple_rendering.submition_fences[image_index]);
+  }
 
   VkPresentInfoKHR present = {
       .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,

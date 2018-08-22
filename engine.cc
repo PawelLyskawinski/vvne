@@ -60,13 +60,10 @@ uint32_t find_memory_type_index(VkPhysicalDeviceMemoryProperties* properties, Vk
 
 VkDeviceSize align(VkDeviceSize unaligned, VkDeviceSize alignment)
 {
-  if (unaligned)
-  {
-    VkDeviceSize remainder = unaligned % alignment;
-    if (remainder)
-      return unaligned + alignment - remainder;
-  }
-  return unaligned;
+  VkDeviceSize result = unaligned;
+  if (unaligned % alignment)
+    result = unaligned + alignment - (unaligned % alignment);
+  return result;
 }
 
 int find_first_zeroed_bit_offset(uint64_t bitmap)
@@ -101,9 +98,9 @@ void Engine::startup()
     VkApplicationInfo ai = {
         .sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO,
         .pNext              = nullptr,
-        .pApplicationName   = "cvk",
+        .pApplicationName   = "vvne",
         .applicationVersion = 1,
-        .pEngineName        = "cvk_engine",
+        .pEngineName        = "vvne_engine",
         .engineVersion      = 1,
         .apiVersion         = VK_API_VERSION_1_0,
     };
@@ -377,24 +374,7 @@ void Engine::startup()
     vkCreateSemaphore(device, &ci, nullptr, &render_finished);
   }
 
-  {
-    VkImageCreateInfo ci = {
-        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType     = VK_IMAGE_TYPE_2D,
-        .format        = VK_FORMAT_D32_SFLOAT,
-        .extent        = {.width = extent2D.width, .height = extent2D.height, .depth = 1},
-        .mipLevels     = 1,
-        .arrayLayers   = 1,
-        .samples       = VK_SAMPLE_COUNT_1_BIT,
-        .tiling        = VK_IMAGE_TILING_OPTIMAL,
-        .usage         = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
-        .initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED,
-    };
-
-    vkCreateImage(device, &ci, nullptr, &depth_image);
-  }
-
+  if (VK_SAMPLE_COUNT_1_BIT != MSAA_SAMPLE_COUNT)
   {
     VkImageCreateInfo ci = {
         .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -428,7 +408,26 @@ void Engine::startup()
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
 
-    vkCreateImage(device, &ci, nullptr, &msaa_depth_image);
+    vkCreateImage(device, &ci, nullptr, &depth_image);
+  }
+
+  for (VkImage& shadowmap_image : shadowmap_images)
+  {
+    VkImageCreateInfo ci = {
+        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType     = VK_IMAGE_TYPE_2D,
+        .format        = VK_FORMAT_D32_SFLOAT,
+        .extent        = {.width = SHADOWMAP_IMAGE_DIM, .height = SHADOWMAP_IMAGE_DIM, .depth = 1},
+        .mipLevels     = 1,
+        .arrayLayers   = 1,
+        .samples       = VK_SAMPLE_COUNT_1_BIT,
+        .tiling        = VK_IMAGE_TILING_OPTIMAL,
+        .usage         = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+
+    vkCreateImage(device, &ci, nullptr, &shadowmap_image);
   }
 
   {
@@ -572,6 +571,7 @@ void Engine::startup()
     gpu_device_images_memory_block.stack_pointer += align(reqs.size, reqs.alignment);
   }
 
+  if (VK_SAMPLE_COUNT_1_BIT != MSAA_SAMPLE_COUNT)
   {
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(device, msaa_color_image, &reqs);
@@ -580,96 +580,18 @@ void Engine::startup()
     gpu_device_images_memory_block.stack_pointer += align(reqs.size, reqs.alignment);
   }
 
+  for (VkImage& shadowmap_image : shadowmap_images)
   {
     VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(device, msaa_depth_image, &reqs);
-    vkBindImageMemory(device, msaa_depth_image, gpu_device_images_memory_block.memory,
+    vkGetImageMemoryRequirements(device, shadowmap_image, &reqs);
+    vkBindImageMemory(device, shadowmap_image, gpu_device_images_memory_block.memory,
                       gpu_device_images_memory_block.stack_pointer);
     gpu_device_images_memory_block.stack_pointer += align(reqs.size, reqs.alignment);
   }
 
-  {
-    VkCommandBuffer command_buffer = VK_NULL_HANDLE;
-
-    {
-      VkCommandBufferAllocateInfo alloc = {
-          .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-          .commandPool        = graphics_command_pool,
-          .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-          .commandBufferCount = 1,
-      };
-
-      vkAllocateCommandBuffers(device, &alloc, &command_buffer);
-    }
-
-    {
-      VkCommandBufferBeginInfo begin = {
-          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-          .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-      };
-
-      vkBeginCommandBuffer(command_buffer, &begin);
-    }
-
-    {
-      VkImageMemoryBarrier barrier = {
-          .sType         = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-          .dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-          .oldLayout     = VK_IMAGE_LAYOUT_UNDEFINED,
-          .newLayout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-          .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-          .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-          .image               = depth_image,
-          .subresourceRange    = {.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT, .levelCount = 1, .layerCount = 1},
-      };
-
-      vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                           VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
-    }
-
-    vkEndCommandBuffer(command_buffer);
-
-    {
-      VkSubmitInfo submit = {
-          .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-          .commandBufferCount = 1,
-          .pCommandBuffers    = &command_buffer,
-      };
-
-      vkQueueSubmit(graphics_queue, 1, &submit, VK_NULL_HANDLE);
-    }
-
-    vkQueueWaitIdle(graphics_queue);
-    vkFreeCommandBuffers(device, graphics_command_pool, 1, &command_buffer);
-  }
-
   // image views can only be created when memory is bound to the image handle
-  {
-    VkImageSubresourceRange sr = {
-        .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-        .levelCount = 1,
-        .layerCount = 1,
-    };
 
-    VkComponentMapping comp = {
-        .r = VK_COMPONENT_SWIZZLE_R,
-        .g = VK_COMPONENT_SWIZZLE_G,
-        .b = VK_COMPONENT_SWIZZLE_B,
-        .a = VK_COMPONENT_SWIZZLE_A,
-    };
-
-    VkImageViewCreateInfo ci = {
-        .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = depth_image,
-        .viewType         = VK_IMAGE_VIEW_TYPE_2D,
-        .format           = VK_FORMAT_D32_SFLOAT,
-        .components       = comp,
-        .subresourceRange = sr,
-    };
-
-    vkCreateImageView(device, &ci, nullptr, &depth_image_view);
-  }
-
+  if (VK_SAMPLE_COUNT_1_BIT != MSAA_SAMPLE_COUNT)
   {
     VkImageSubresourceRange sr = {
         .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -712,14 +634,43 @@ void Engine::startup()
 
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = msaa_depth_image,
+        .image            = depth_image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D,
         .format           = VK_FORMAT_D32_SFLOAT,
         .components       = comp,
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(device, &ci, nullptr, &msaa_depth_image_view);
+    vkCreateImageView(device, &ci, nullptr, &depth_image_view);
+  }
+
+  {
+    VkImageSubresourceRange sr = {
+        .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+        .levelCount = 1,
+        .layerCount = 1,
+    };
+
+    VkComponentMapping comp = {
+        .r = VK_COMPONENT_SWIZZLE_R,
+        .g = VK_COMPONENT_SWIZZLE_G,
+        .b = VK_COMPONENT_SWIZZLE_B,
+        .a = VK_COMPONENT_SWIZZLE_A,
+    };
+
+    VkImageViewCreateInfo ci = {
+        .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .viewType         = VK_IMAGE_VIEW_TYPE_2D,
+        .format           = VK_FORMAT_D32_SFLOAT,
+        .components       = comp,
+        .subresourceRange = sr,
+    };
+
+    for (int i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
+    {
+      ci.image = shadowmap_images[i];
+      vkCreateImageView(device, &ci, nullptr, &shadowmap_image_views[i]);
+    }
   }
 
   {
@@ -729,17 +680,23 @@ void Engine::startup()
     images[offset]      = depth_image;
     image_views[offset] = depth_image_view;
 
-    offset = find_first_zeroed_bit_offset(image_usage_bitmap);
-    image_usage_bitmap |= (uint64_t(1) << offset);
+    if (VK_SAMPLE_COUNT_1_BIT != MSAA_SAMPLE_COUNT)
+    {
+      offset = find_first_zeroed_bit_offset(image_usage_bitmap);
+      image_usage_bitmap |= (uint64_t(1) << offset);
 
-    images[offset]      = msaa_color_image;
-    image_views[offset] = msaa_color_image_view;
+      images[offset]      = msaa_color_image;
+      image_views[offset] = msaa_color_image_view;
+    }
 
-    offset = find_first_zeroed_bit_offset(image_usage_bitmap);
-    image_usage_bitmap |= (uint64_t(1) << offset);
+    for (int i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
+    {
+      offset = find_first_zeroed_bit_offset(image_usage_bitmap);
+      image_usage_bitmap |= (uint64_t(1) << offset);
 
-    images[offset]      = msaa_depth_image;
-    image_views[offset] = msaa_depth_image_view;
+      images[offset]      = shadowmap_images[i];
+      image_views[offset] = shadowmap_image_views[i];
+    }
   }
 
   // UBO HOST VISIBLE
@@ -774,6 +731,7 @@ void Engine::startup()
   }
 
   allocator.reset_back();
+  setup_shadow_mapping();
   setup_simple_rendering();
 }
 
@@ -784,6 +742,13 @@ void Engine::teardown()
   for (int i = 0; i < scheduled_pipelines_destruction_count; ++i)
     vkDestroyPipeline(device, scheduled_pipelines_destruction[i].pipeline, nullptr);
 
+  vkDestroyRenderPass(device, shadow_mapping.render_pass, nullptr);
+  for (VkFramebuffer& framebuffer : shadow_mapping.framebuffers)
+    vkDestroyFramebuffer(device, framebuffer, nullptr);
+  vkDestroyPipelineLayout(device, shadow_mapping.pipeline_layout, nullptr);
+  vkDestroyPipeline(device, shadow_mapping.pipeline, nullptr);
+  vkDestroySampler(device, shadow_mapping.sampler, nullptr);
+
   vkDestroyRenderPass(device, simple_rendering.render_pass, nullptr);
 
   vkDestroyDescriptorSetLayout(device, simple_rendering.pbr_metallic_workflow_material_descriptor_set_layout, nullptr);
@@ -791,6 +756,7 @@ void Engine::teardown()
   vkDestroyDescriptorSetLayout(device, simple_rendering.pbr_dynamic_lights_descriptor_set_layout, nullptr);
   vkDestroyDescriptorSetLayout(device, simple_rendering.single_texture_in_frag_descriptor_set_layout, nullptr);
   vkDestroyDescriptorSetLayout(device, simple_rendering.skinning_matrices_descriptor_set_layout, nullptr);
+  vkDestroyDescriptorSetLayout(device, simple_rendering.light_space_matrix_ubo_set_layout, nullptr);
 
   for (VkFramebuffer& framebuffer : simple_rendering.framebuffers)
     vkDestroyFramebuffer(device, framebuffer, nullptr);
@@ -1487,165 +1453,410 @@ VkShaderModule Engine::load_shader(const char* file_path)
   return result;
 }
 
-void Engine::setup_simple_rendering()
+void Engine::setup_shadow_mapping()
 {
-  SimpleRendering& renderer = simple_rendering;
-
   {
-    VkAttachmentDescription attachments[] = {
-        {
-            .format         = surface_format.format,
-            .samples        = VK_SAMPLE_COUNT_1_BIT,
-            .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp        = VK_ATTACHMENT_STORE_OP_STORE,
-            .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-            .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-            .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
-            .finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-        },
-        {
-            .format         = VK_FORMAT_D32_SFLOAT,
-            .samples        = VK_SAMPLE_COUNT_1_BIT,
-            .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp        = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-            .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-            .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-            .initialLayout  = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-            .finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-        },
-        {
-            .format         = surface_format.format,
-            .samples        = MSAA_SAMPLE_COUNT,
-            .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp        = VK_ATTACHMENT_STORE_OP_STORE,
-            .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-            .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-            .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
-            .finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-
-        },
-        {
-
-            .format         = VK_FORMAT_D32_SFLOAT,
-            .samples        = MSAA_SAMPLE_COUNT,
-            .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp        = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-            .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-            .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-            .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
-            .finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-        },
-    };
-
-    VkAttachmentReference color_reference = {
-        .attachment = 2,
-        .layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+    VkAttachmentDescription attachment = {
+        .format         = VK_FORMAT_D32_SFLOAT,
+        .samples        = VK_SAMPLE_COUNT_1_BIT,
+        .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp        = VK_ATTACHMENT_STORE_OP_STORE,
+        .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
+        .finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
     };
 
     VkAttachmentReference depth_reference = {
-        .attachment = 3,
+        .attachment = 0,
         .layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
     };
 
-    VkAttachmentReference resolve_reference = {
-        .attachment = 0,
-        .layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-    };
-
-    VkSubpassDescription subpasses[] = {
-        {
-            // skybox pass
-            .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
-            .colorAttachmentCount = 1,
-            .pColorAttachments    = &color_reference,
-            .pResolveAttachments  = &resolve_reference,
-        },
-        {
-            // objects3d pass
-            .pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS,
-            .colorAttachmentCount    = 1,
-            .pColorAttachments       = &color_reference,
-            .pResolveAttachments     = &resolve_reference,
-            .pDepthStencilAttachment = &depth_reference,
-        },
-        {
-            // robot gui pass
-            .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
-            .colorAttachmentCount = 1,
-            .pColorAttachments    = &color_reference,
-            .pResolveAttachments  = &resolve_reference,
-        },
-        {
-            // robot gui radar dots pass
-            .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
-            .colorAttachmentCount = 1,
-            .pColorAttachments    = &color_reference,
-            .pResolveAttachments  = &resolve_reference,
-        },
-        {
-            // imgui pass
-            .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
-            .colorAttachmentCount = 1,
-            .pColorAttachments    = &color_reference,
-            .pResolveAttachments  = &resolve_reference,
-        },
+    VkSubpassDescription subpass = {
+        .pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS,
+        .pDepthStencilAttachment = &depth_reference,
     };
 
     VkSubpassDependency dependencies[] = {
         {
             .srcSubpass    = VK_SUBPASS_EXTERNAL,
-            .dstSubpass    = SimpleRendering::Pass::Skybox,
+            .dstSubpass    = 0,
             .srcStageMask  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-            .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
-            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .dstStageMask  = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+            .srcAccessMask = 0,
+            .dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
         },
         {
-            .srcSubpass    = SimpleRendering::Pass::Skybox,
-            .dstSubpass    = SimpleRendering::Pass::Objects3D,
-            .srcStageMask  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-            .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
-            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-        },
-        {
-            .srcSubpass    = SimpleRendering::Pass::Objects3D,
-            .dstSubpass    = SimpleRendering::Pass::RobotGui,
-            .srcStageMask  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-            .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
-            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-        },
-        {
-            .srcSubpass    = SimpleRendering::Pass::RobotGui,
-            .dstSubpass    = SimpleRendering::Pass::RadarDots,
-            .srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-        },
-        {
-            .srcSubpass    = SimpleRendering::Pass::RadarDots,
-            .dstSubpass    = SimpleRendering::Pass::ImGui,
-            .srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .srcSubpass    = 0,
+            .dstSubpass    = VK_SUBPASS_EXTERNAL,
+            .srcStageMask  = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+            .dstStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            .srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+            .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
         },
     };
 
     VkRenderPassCreateInfo ci = {
         .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-        .attachmentCount = SDL_arraysize(attachments),
-        .pAttachments    = attachments,
-        .subpassCount    = SDL_arraysize(subpasses),
-        .pSubpasses      = subpasses,
+        .attachmentCount = 1,
+        .pAttachments    = &attachment,
+        .subpassCount    = 1,
+        .pSubpasses      = &subpass,
         .dependencyCount = SDL_arraysize(dependencies),
         .pDependencies   = dependencies,
     };
 
-    vkCreateRenderPass(device, &ci, nullptr, &renderer.render_pass);
+    vkCreateRenderPass(device, &ci, nullptr, &shadow_mapping.render_pass);
   }
+
+  {
+    VkPushConstantRange ranges[] = {
+        {
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .offset     = 0,
+            .size       = 2 * sizeof(mat4x4),
+        },
+    };
+
+    VkPipelineLayoutCreateInfo ci = {
+        .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .pushConstantRangeCount = SDL_arraysize(ranges),
+        .pPushConstantRanges    = ranges,
+    };
+
+    vkCreatePipelineLayout(device, &ci, nullptr, &shadow_mapping.pipeline_layout);
+  }
+
+  pipeline_reload_shadow_mapping_reload(*this);
+
+  for (int i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
+  {
+    VkFramebufferCreateInfo ci = {
+        .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+        .renderPass      = shadow_mapping.render_pass,
+        .attachmentCount = 1,
+        .pAttachments    = &shadowmap_image_views[i],
+        .width           = SHADOWMAP_IMAGE_DIM,
+        .height          = SHADOWMAP_IMAGE_DIM,
+        .layers          = 1,
+    };
+
+    vkCreateFramebuffer(device, &ci, nullptr, &shadow_mapping.framebuffers[i]);
+  }
+
+  {
+    VkSamplerCreateInfo ci = {
+        .sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .magFilter               = VK_FILTER_LINEAR,
+        .minFilter               = VK_FILTER_LINEAR,
+        .mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+        .addressModeU            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .addressModeV            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .addressModeW            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .mipLodBias              = 0.0f,
+        .anisotropyEnable        = VK_FALSE,
+        .maxAnisotropy           = 1.0f,
+        .compareEnable           = VK_FALSE,
+        .compareOp               = VK_COMPARE_OP_NEVER,
+        .minLod                  = 0.0f,
+        .maxLod                  = 1.0f,
+        .borderColor             = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
+        .unnormalizedCoordinates = VK_FALSE,
+    };
+
+    vkCreateSampler(device, &ci, nullptr, &shadow_mapping.sampler);
+  }
+}
+
+namespace {
+
+VkRenderPass simple_rendering_create_render_pass_single_sample(VkDevice device, VkFormat surface_format)
+{
+  VkAttachmentDescription attachments[] = {
+      {
+          .format         = surface_format,
+          .samples        = VK_SAMPLE_COUNT_1_BIT,
+          .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
+          .storeOp        = VK_ATTACHMENT_STORE_OP_STORE,
+          .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+          .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+          .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
+          .finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+      },
+      {
+          .format         = VK_FORMAT_D32_SFLOAT,
+          .samples        = VK_SAMPLE_COUNT_1_BIT,
+          .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
+          .storeOp        = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+          .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+          .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+          .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
+          .finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+      },
+  };
+
+  VkAttachmentReference color_reference = {
+      .attachment = 0,
+      .layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+  };
+
+  VkAttachmentReference depth_reference = {
+      .attachment = 1,
+      .layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+  };
+
+  VkSubpassDescription subpasses[] = {
+      {
+          // skybox pass
+          .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
+          .colorAttachmentCount = 1,
+          .pColorAttachments    = &color_reference,
+      },
+      {
+          // objects3d pass
+          .pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS,
+          .colorAttachmentCount    = 1,
+          .pColorAttachments       = &color_reference,
+          .pDepthStencilAttachment = &depth_reference,
+      },
+      {
+          // robot gui pass
+          .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
+          .colorAttachmentCount = 1,
+          .pColorAttachments    = &color_reference,
+      },
+      {
+          // robot gui radar dots pass
+          .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
+          .colorAttachmentCount = 1,
+          .pColorAttachments    = &color_reference,
+      },
+      {
+          // imgui pass
+          .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
+          .colorAttachmentCount = 1,
+          .pColorAttachments    = &color_reference,
+      },
+  };
+
+  VkSubpassDependency dependencies[] = {
+      {
+          .srcSubpass    = VK_SUBPASS_EXTERNAL,
+          .dstSubpass    = Engine::SimpleRendering::Pass::Skybox,
+          .srcStageMask  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+          .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+          .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
+          .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+      },
+      {
+          .srcSubpass    = Engine::SimpleRendering::Pass::Skybox,
+          .dstSubpass    = Engine::SimpleRendering::Pass::Objects3D,
+          .srcStageMask  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+          .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+          .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
+          .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+      },
+      {
+          .srcSubpass    = Engine::SimpleRendering::Pass::Objects3D,
+          .dstSubpass    = Engine::SimpleRendering::Pass::RobotGui,
+          .srcStageMask  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+          .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+          .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
+          .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+      },
+      {
+          .srcSubpass    = Engine::SimpleRendering::Pass::RobotGui,
+          .dstSubpass    = Engine::SimpleRendering::Pass::RadarDots,
+          .srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+          .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+          .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+          .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+      },
+      {
+          .srcSubpass    = Engine::SimpleRendering::Pass::RadarDots,
+          .dstSubpass    = Engine::SimpleRendering::Pass::ImGui,
+          .srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+          .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+          .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+          .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+      },
+  };
+
+  VkRenderPassCreateInfo ci = {
+      .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+      .attachmentCount = SDL_arraysize(attachments),
+      .pAttachments    = attachments,
+      .subpassCount    = SDL_arraysize(subpasses),
+      .pSubpasses      = subpasses,
+      .dependencyCount = SDL_arraysize(dependencies),
+      .pDependencies   = dependencies,
+  };
+
+  VkRenderPass render_pass = VK_NULL_HANDLE;
+  vkCreateRenderPass(device, &ci, nullptr, &render_pass);
+  return render_pass;
+}
+
+VkRenderPass simple_rendering_create_render_pass_multi_sample(VkDevice device, VkFormat surface_format,
+                                                              VkSampleCountFlagBits samples)
+{
+  VkAttachmentDescription attachments[] = {
+      {
+          .format         = surface_format,
+          .samples        = VK_SAMPLE_COUNT_1_BIT,
+          .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
+          .storeOp        = VK_ATTACHMENT_STORE_OP_STORE,
+          .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+          .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+          .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
+          .finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+      },
+      {
+          .format         = surface_format,
+          .samples        = samples,
+          .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
+          .storeOp        = VK_ATTACHMENT_STORE_OP_STORE,
+          .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+          .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+          .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
+          .finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+      },
+      {
+          .format         = VK_FORMAT_D32_SFLOAT,
+          .samples        = samples,
+          .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
+          .storeOp        = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+          .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+          .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+          .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
+          .finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+      },
+  };
+
+  VkAttachmentReference resolve_reference = {
+      .attachment = 0,
+      .layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+  };
+
+  VkAttachmentReference color_reference = {
+      .attachment = 1,
+      .layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+  };
+
+  VkAttachmentReference depth_reference = {
+      .attachment = 2,
+      .layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+  };
+
+  VkSubpassDescription subpasses[] = {
+      {
+          // skybox pass
+          .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
+          .colorAttachmentCount = 1,
+          .pColorAttachments    = &color_reference,
+          .pResolveAttachments  = &resolve_reference,
+      },
+      {
+          // objects3d pass
+          .pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS,
+          .colorAttachmentCount    = 1,
+          .pColorAttachments       = &color_reference,
+          .pResolveAttachments     = &resolve_reference,
+          .pDepthStencilAttachment = &depth_reference,
+      },
+      {
+          // robot gui pass
+          .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
+          .colorAttachmentCount = 1,
+          .pColorAttachments    = &color_reference,
+          .pResolveAttachments  = &resolve_reference,
+      },
+      {
+          // robot gui radar dots pass
+          .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
+          .colorAttachmentCount = 1,
+          .pColorAttachments    = &color_reference,
+          .pResolveAttachments  = &resolve_reference,
+      },
+      {
+          // imgui pass
+          .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
+          .colorAttachmentCount = 1,
+          .pColorAttachments    = &color_reference,
+          .pResolveAttachments  = &resolve_reference,
+      },
+  };
+
+  VkSubpassDependency dependencies[] = {
+      {
+          .srcSubpass    = VK_SUBPASS_EXTERNAL,
+          .dstSubpass    = Engine::SimpleRendering::Pass::Skybox,
+          .srcStageMask  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+          .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+          .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
+          .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+      },
+      {
+          .srcSubpass    = Engine::SimpleRendering::Pass::Skybox,
+          .dstSubpass    = Engine::SimpleRendering::Pass::Objects3D,
+          .srcStageMask  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+          .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+          .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
+          .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+      },
+      {
+          .srcSubpass    = Engine::SimpleRendering::Pass::Objects3D,
+          .dstSubpass    = Engine::SimpleRendering::Pass::RobotGui,
+          .srcStageMask  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+          .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+          .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
+          .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+      },
+      {
+          .srcSubpass    = Engine::SimpleRendering::Pass::RobotGui,
+          .dstSubpass    = Engine::SimpleRendering::Pass::RadarDots,
+          .srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+          .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+          .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+          .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+      },
+      {
+          .srcSubpass    = Engine::SimpleRendering::Pass::RadarDots,
+          .dstSubpass    = Engine::SimpleRendering::Pass::ImGui,
+          .srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+          .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+          .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+          .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+      },
+  };
+
+  VkRenderPassCreateInfo ci = {
+      .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+      .attachmentCount = SDL_arraysize(attachments),
+      .pAttachments    = attachments,
+      .subpassCount    = SDL_arraysize(subpasses),
+      .pSubpasses      = subpasses,
+      .dependencyCount = SDL_arraysize(dependencies),
+      .pDependencies   = dependencies,
+  };
+
+  VkRenderPass render_pass = VK_NULL_HANDLE;
+  vkCreateRenderPass(device, &ci, nullptr, &render_pass);
+  return render_pass;
+}
+
+} // namespace
+
+void Engine::setup_simple_rendering()
+{
+  simple_rendering.render_pass =
+      (VK_SAMPLE_COUNT_1_BIT == MSAA_SAMPLE_COUNT)
+          ? simple_rendering_create_render_pass_single_sample(device, surface_format.format)
+          : simple_rendering_create_render_pass_multi_sample(device, surface_format.format, MSAA_SAMPLE_COUNT);
+
+  SimpleRendering& renderer = simple_rendering;
 
   // --------------------------------------------------------------- //
   // Metallic workflow PBR materials descriptor set layout
@@ -1767,6 +1978,26 @@ void Engine::setup_simple_rendering()
     vkCreateDescriptorSetLayout(device, &ci, nullptr, &renderer.skinning_matrices_descriptor_set_layout);
   }
 
+  // --------------------------------------------------------------- //
+  // Light space matrix in vertex shader (shadow mapping)
+  // --------------------------------------------------------------- //
+  {
+    VkDescriptorSetLayoutBinding binding = {
+        .binding         = 0,
+        .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = 1,
+        .stageFlags      = VK_SHADER_STAGE_VERTEX_BIT,
+    };
+
+    VkDescriptorSetLayoutCreateInfo ci = {
+        .sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 1,
+        .pBindings    = &binding,
+    };
+
+    vkCreateDescriptorSetLayout(device, &ci, nullptr, &renderer.light_space_matrix_ubo_set_layout);
+  }
+
   {
     VkPushConstantRange ranges[] = {
         {
@@ -1798,9 +2029,13 @@ void Engine::setup_simple_rendering()
         },
     };
 
-    VkDescriptorSetLayout descriptor_sets[] = {renderer.pbr_metallic_workflow_material_descriptor_set_layout,
-                                               renderer.pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout,
-                                               renderer.pbr_dynamic_lights_descriptor_set_layout};
+    VkDescriptorSetLayout descriptor_sets[] = {
+        renderer.pbr_metallic_workflow_material_descriptor_set_layout,
+        renderer.pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout,
+        renderer.pbr_dynamic_lights_descriptor_set_layout,
+        renderer.light_space_matrix_ubo_set_layout,
+        renderer.single_texture_in_frag_descriptor_set_layout,
+    };
 
     VkPipelineLayoutCreateInfo ci = {
         .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -2133,6 +2368,28 @@ void Engine::setup_simple_rendering()
     vkCreatePipelineLayout(device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Pipeline::ImGui]);
   }
 
+  {
+    VkPushConstantRange ranges[] = {
+        {
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .offset     = 0,
+            .size       = sizeof(mat4x4),
+        },
+    };
+
+    VkDescriptorSetLayout descriptor_sets[] = {renderer.single_texture_in_frag_descriptor_set_layout};
+
+    VkPipelineLayoutCreateInfo ci = {
+        .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount         = SDL_arraysize(descriptor_sets),
+        .pSetLayouts            = descriptor_sets,
+        .pushConstantRangeCount = SDL_arraysize(ranges),
+        .pPushConstantRanges    = ranges,
+    };
+
+    vkCreatePipelineLayout(device, &ci, nullptr, &renderer.pipeline_layouts[SimpleRendering::Pipeline::DebugBillboard]);
+  }
+
   pipeline_reload_simple_rendering_skybox_reload(*this);
   pipeline_reload_simple_rendering_scene3d_reload(*this);
   pipeline_reload_simple_rendering_coloredgeometry_reload(*this);
@@ -2147,27 +2404,36 @@ void Engine::setup_simple_rendering()
   pipeline_reload_simple_rendering_green_gui_radar_dots_reload(*this);
   pipeline_reload_simple_rendering_imgui_reload(*this);
   pipeline_reload_simple_rendering_pbr_water_reload(*this);
+  pipeline_reload_simple_rendering_debug_billboard(*this);
 
   for (uint32_t i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
   {
-    VkImageView attachments[] = {swapchain_image_views[i], depth_image_view, msaa_color_image_view,
-                                 msaa_depth_image_view};
+    VkImageView msaa_attachments[] = {swapchain_image_views[i], msaa_color_image_view, depth_image_view};
+    VkImageView noaa_attachments[] = {swapchain_image_views[i], depth_image_view};
 
     VkFramebufferCreateInfo ci = {
-        .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-        .renderPass      = renderer.render_pass,
-        .attachmentCount = SDL_arraysize(attachments),
-        .pAttachments    = attachments,
-        .width           = extent2D.width,
-        .height          = extent2D.height,
-        .layers          = 1,
+        .sType      = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+        .renderPass = renderer.render_pass,
+        .width      = extent2D.width,
+        .height     = extent2D.height,
+        .layers     = 1,
     };
+
+    if (VK_SAMPLE_COUNT_1_BIT == MSAA_SAMPLE_COUNT)
+    {
+      ci.attachmentCount = SDL_arraysize(noaa_attachments);
+      ci.pAttachments    = noaa_attachments;
+    }
+    else
+    {
+      ci.attachmentCount = SDL_arraysize(msaa_attachments);
+      ci.pAttachments    = msaa_attachments;
+    }
 
     vkCreateFramebuffer(device, &ci, nullptr, &renderer.framebuffers[i]);
   }
 
   for (auto& submition_fence : renderer.submition_fences)
-
   {
     VkFenceCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, .flags = VK_FENCE_CREATE_SIGNALED_BIT};
     vkCreateFence(device, &ci, nullptr, &submition_fence);

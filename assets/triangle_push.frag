@@ -21,6 +21,7 @@ layout(set = 0, binding = 0) uniform sampler2D pbr_material[5];
 // 0.0 irradiance (cubemap)
 // 0.1 prefiltered (cubemap)
 // 1   BRDF lookup table (2D)
+// 2   Precomputed scene shadow map
 layout(set = 1, binding = 0) uniform samplerCube pbr_ibl_material[2];
 layout(set = 1, binding = 1) uniform sampler2D brdf_lut;
 layout(set = 2, binding = 0) uniform LightSourcesUbo
@@ -30,10 +31,12 @@ layout(set = 2, binding = 0) uniform LightSourcesUbo
   int  count;
 }
 light_sources_ubo;
+layout(set = 4, binding = 0) uniform sampler2D shadow_map;
 
 layout(location = 0) in vec4 inNormal;
 layout(location = 1) in vec2 inTexCoord;
 layout(location = 2) in vec3 inWorldPos;
+layout(location = 3) in vec4 inFragPosLightSpace;
 layout(location = 0) out vec4 outColor;
 
 const float PI = 3.14159265359;
@@ -98,6 +101,66 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0)
 vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
 {
   return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(1.0 - cosTheta, 5.0);
+}
+
+float shadowCalculation(vec4 fragPosLightSpace)
+{
+  // perform perspective divide
+  vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+  // transform to [0,1] range
+  projCoords = projCoords * 0.5 + 0.5;
+  // get closest depth value from light's perspective (using [0,1] range fragPosLight as coords)
+  float closestDepth = texture(shadow_map, projCoords.xy).r;
+  // get depth of current fragment from light's perspective
+  float currentDepth = projCoords.z - 0.045;
+  // check whether current frag pos is in shadow
+  float shadow = currentDepth > closestDepth ? 0.8 : 0.0;
+
+  //if(projCoords.z > 1.0)
+    //shadow = 0.0f;
+
+  return shadow;
+}
+
+float textureProj(vec4 P, vec2 off)
+{
+	float shadow = 1.2;
+	vec4 shadowCoord = P / P.w;
+
+	if ( shadowCoord.z > -1.0 && shadowCoord.z < 1.0 )
+	{
+		float dist = texture( shadow_map, shadowCoord.st + off ).r;
+		if ( shadowCoord.w > 0.0 && dist < shadowCoord.z )
+		{
+			shadow = 0.0;
+		}
+	}
+
+	return shadow;
+}
+
+float filterPCF(vec4 sc)
+{
+	ivec2 texDim = textureSize(shadow_map, 0);
+	float scale = 1.5;
+	float dx = scale * 1.0 / float(texDim.x);
+	float dy = scale * 1.0 / float(texDim.y);
+
+	float shadowFactor = 0.0;
+	int count = 0;
+	int range = 1;
+
+	for (int x = -range; x <= range; x++)
+	{
+		for (int y = -range; y <= range; y++)
+		{
+			shadowFactor += textureProj(sc, vec2(dx*x, dy*y));
+			count++;
+		}
+
+	}
+
+	return shadowFactor / count;
 }
 
 void main()
@@ -174,7 +237,9 @@ void main()
   vec2        envBRDF            = texture(brdf_lut, vec2(max(dot(N, V), 0.0), roughness_color)).rg;
   vec3        specular           = prefilteredColor * (F * envBRDF.x + envBRDF.y);
   vec3        ambient            = (kD * diffuse + specular) * ao_color;
-  vec3        color              = ambient + Lo;
+  //float       shadow             = shadowCalculation(inFragPosLightSpace);
+  float       shadow             = filterPCF(inFragPosLightSpace / inFragPosLightSpace.w);
+  vec3        color              = (ambient * shadow) + Lo;
 
   // HDR tonemapping
   color = color / (color + vec3(1.0));
@@ -183,4 +248,5 @@ void main()
   color += emissive_color;
 
   outColor = vec4(color, 1.0);
+  // outColor = vec4(inFragPosLightSpace.rgb, 1.0);
 }

@@ -25,6 +25,10 @@ int main(int argc, char* argv[])
   Engine* engine = reinterpret_cast<Engine*>(SDL_calloc(1, sizeof(Engine)));
   Game*   game   = reinterpret_cast<Game*>(SDL_calloc(1, sizeof(Game)));
 
+  // ----- DEFAULT CONFIGS -----
+  engine->MSAA_SAMPLE_COUNT = VK_SAMPLE_COUNT_1_BIT;
+  // ---------------------------
+
   engine->startup();
   game->startup(*engine);
 

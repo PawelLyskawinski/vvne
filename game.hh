@@ -184,8 +184,8 @@ struct JobSystem
   // Worker thread resources
   SDL_Thread*     worker_threads[WORKER_THREADS_COUNT];
   VkCommandPool   worker_pools[WORKER_THREADS_COUNT];
-  VkCommandBuffer commands[SWAPCHAIN_IMAGES_COUNT][WORKER_THREADS_COUNT][64];
-  int             submited_command_count[SWAPCHAIN_IMAGES_COUNT][WORKER_THREADS_COUNT];
+  VkCommandBuffer commands[Engine::SWAPCHAIN_IMAGES_COUNT][WORKER_THREADS_COUNT][64];
+  int             submited_command_count[Engine::SWAPCHAIN_IMAGES_COUNT][WORKER_THREADS_COUNT];
 
   // profiling data
   ThreadJobStatistic profile_data[64];
@@ -199,7 +199,13 @@ struct JobSystem
 struct RecordedCommandBuffer
 {
   VkCommandBuffer command;
+  VkRenderPass    render_pass;
   int             subpass;
+
+  bool operator==(const RecordedCommandBuffer& rhs) const
+  {
+    return (render_pass == rhs.render_pass) and (subpass == rhs.subpass);
+  }
 };
 
 struct SecondaryCommandBufferSink
@@ -251,14 +257,15 @@ struct Game
       INDEX_BUFFER_CAPACITY_BYTES  = 80 * 1024
     };
 
-    VkDeviceSize vertex_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
-    VkDeviceSize index_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
+    VkDeviceSize vertex_buffer_offsets[Engine::SWAPCHAIN_IMAGES_COUNT];
+    VkDeviceSize index_buffer_offsets[Engine::SWAPCHAIN_IMAGES_COUNT];
   } debug_gui;
 
   bool DEBUG_FLAG_1;
   bool DEBUG_FLAG_2;
   vec2 DEBUG_VEC2;
   vec2 DEBUG_VEC2_ADDITIONAL;
+  vec4 DEBUG_LIGHT_ORTHO_PARAMS;
 
   // materials
   VkDescriptorSet pbr_ibl_environment_dset;
@@ -272,12 +279,15 @@ struct Game
   VkDescriptorSet lucida_sans_sdf_dset;
   VkDescriptorSet sandy_level_pbr_material_dset;
   VkDescriptorSet pbr_water_material_dset;
+  VkDescriptorSet debug_shadow_map_dset[Engine::SWAPCHAIN_IMAGES_COUNT];
+  VkDescriptorSet light_space_matrices_dset[Engine::SWAPCHAIN_IMAGES_COUNT];
 
   // ubos
-  VkDeviceSize rig_skinning_matrices_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
-  VkDeviceSize fig_skinning_matrices_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
-  VkDeviceSize monster_skinning_matrices_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
-  VkDeviceSize pbr_dynamic_lights_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize rig_skinning_matrices_ubo_offsets[Engine::SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize fig_skinning_matrices_ubo_offsets[Engine::SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize monster_skinning_matrices_ubo_offsets[Engine::SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize pbr_dynamic_lights_ubo_offsets[Engine::SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize light_space_matrices_ubo_offsets[Engine::SWAPCHAIN_IMAGES_COUNT];
 
   // frame cache
   LightSources pbr_light_sources_cache;
@@ -313,6 +323,7 @@ struct Game
 
   float robot_position[3];
   float rigged_position[3];
+  float light_source_position[3];
 
   float update_times[50];
   float render_times[50];
@@ -320,6 +331,7 @@ struct Game
   mat4x4 projection;
   mat4x4 view;
   vec3   camera_position;
+  mat4x4 light_space_matrix;
 
   VkDeviceSize vr_level_vertex_buffer_offset;
   VkDeviceSize vr_level_index_buffer_offset;
@@ -328,7 +340,7 @@ struct Game
   vec2         vr_level_entry;
   vec2         vr_level_goal;
 
-  VkDeviceSize     green_gui_rulers_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize     green_gui_rulers_buffer_offsets[Engine::SWAPCHAIN_IMAGES_COUNT];
   GuiLineSizeCount gui_green_lines_count;
   GuiLineSizeCount gui_red_lines_count;
   GuiLineSizeCount gui_yellow_lines_count;

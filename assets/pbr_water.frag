@@ -179,5 +179,5 @@ void main()
   color = pow(color, vec3(1.0 / 2.2));
   color += emissive_color;
 
-  outColor = vec4(color, 0.8);
+  outColor = vec4(color, 0.6);
 }

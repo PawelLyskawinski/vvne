@@ -1,5 +1,7 @@
 @echo off
 
+call:compile debug_billboard.frag
+call:compile debug_billboard.vert
 call:compile imgui.frag
 call:compile imgui.vert
 call:compile triangle_push.frag
@@ -32,8 +34,10 @@ call:compile green_gui_triangle.frag
 call:compile green_gui_triangle.vert
 call:compile green_gui_radar_dots.frag
 call:compile green_gui_radar_dots.vert
-call:compile pbr_water.vert
 call:compile pbr_water.frag
+call:compile pbr_water.vert
+call:compile depth_pass.frag
+call:compile depth_pass.vert
 pause
 goto:eof
 
