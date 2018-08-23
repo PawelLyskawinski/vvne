@@ -1991,6 +1991,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
     mat4x4 light_projection = {};
 
+#if 0
     {
       float extent_width        = static_cast<float>(Engine::SHADOWMAP_IMAGE_DIM);
       float extent_height       = static_cast<float>(Engine::SHADOWMAP_IMAGE_DIM);
@@ -2001,6 +2002,10 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
       mat4x4_perspective(light_projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
       light_projection[1][1] *= -1.0f;
     }
+#else
+    mat4x4_ortho(light_projection, -30.0f, 30.0f, -30.0f, 30.0f, -300.0f, 100.0f);
+    light_projection[1][1] *= -1.0f;
+#endif
 
     mat4x4 light_view = {};
     vec3   center     = {0.0, 0.0, 0.0};
@@ -2073,7 +2078,7 @@ void Game::render(Engine& engine)
   js.jobs[js.jobs_max++] = {"weapon selectors - left", render::weapon_selectors_left};
   js.jobs[js.jobs_max++] = {"weapon selectors - right", render::weapon_selectors_right};
   js.jobs[js.jobs_max++] = {"water", render::water};
-  //js.jobs[js.jobs_max++] = {"debug shadow map depth pass", render::debug_shadowmap};
+  js.jobs[js.jobs_max++] = {"debug shadow map depth pass", render::debug_shadowmap};
 
   SDL_LockMutex(js.new_jobs_available_mutex);
   SDL_CondBroadcast(js.new_jobs_available_cond);
