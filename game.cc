@@ -2007,10 +2007,14 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     light_projection[1][1] *= -1.0f;
 #endif
 
+    light_source_position[0] = player_position[0] + 30.0f;
+    light_source_position[1] = player_position[1] - 10.0f;
+    light_source_position[2] = player_position[2] - 10.0f;
+
     mat4x4 light_view = {};
-    vec3   center     = {0.0, 0.0, 0.0};
+    //vec3   center     = {0.0, 0.0, 0.0};
     vec3   up         = {0.0f, -1.0f, 0.0f};
-    mat4x4_look_at(light_view, light_source_position, center, up);
+    mat4x4_look_at(light_view, light_source_position, player_position, up);
 
     mat4x4_mul(light_space_matrix, light_projection, light_view);
   }
