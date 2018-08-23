@@ -47,7 +47,7 @@ void recalculate_node_transforms(const Entity entity, EntityComponentSystem& ecs
   //////////////////////////////////////////////////////////////////////////////
   /// Apply Translations
   //////////////////////////////////////////////////////////////////////////////
-  for (int i = 0; i < 64; ++i)
+  for (int i = 0; i < nodes.count; ++i)
   {
     mat4x4 translation_matrix = {};
     mat4x4_identity(translation_matrix);
@@ -80,7 +80,7 @@ void recalculate_node_transforms(const Entity entity, EntityComponentSystem& ecs
   //////////////////////////////////////////////////////////////////////////////
   /// Apply Rotations
   //////////////////////////////////////////////////////////////////////////////
-  for (int i = 0; i < 64; ++i)
+  for (int i = 0; i < nodes.count; ++i)
   {
     mat4x4 rotation_matrix = {};
     mat4x4_identity(rotation_matrix);
@@ -112,7 +112,7 @@ void recalculate_node_transforms(const Entity entity, EntityComponentSystem& ecs
   //////////////////////////////////////////////////////////////////////////////
   /// Apply Scaling
   //////////////////////////////////////////////////////////////////////////////
-  for (int i = 0; i < 64; ++i)
+  for (int i = 0; i < nodes.count; ++i)
   {
     mat4x4 scale_matrix = {};
     mat4x4_identity(scale_matrix);
