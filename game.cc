@@ -1749,7 +1749,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
       // For now this is hardcoded to fit height sampling function.
       // @todo: Refactor to something readable
       player_position[1] =
-          100.0f * get_vr_level_height(-0.1f * player_position[0] + 0.25f, -0.1f * player_position[2] + 0.25f) + 2.0f;
+          100.0f * get_vr_level_height(-0.1f * player_position[0] + 0.25f, -0.1f * player_position[2] + 0.25f) + 2.25f;
       player_position[1] -= (jump_height * SDL_sinf(current_jump_time * (float)M_PI));
     }
     else
@@ -1762,7 +1762,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     // For now this is hardcoded to fit height sampling function.
     // @todo: Refactor to something readable
     player_position[1] =
-        100.0f * get_vr_level_height(-0.1f * player_position[0] + 0.25f, -0.1f * player_position[2] + 0.25f) + 2.0f;
+        100.0f * get_vr_level_height(-0.1f * player_position[0] + 0.25f, -0.1f * player_position[2] + 0.25f) + 2.25f;
 
     if (player_jump_pressed)
     {
