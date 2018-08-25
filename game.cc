@@ -2252,7 +2252,6 @@ void Game::render(Engine& engine)
       };
 
       vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-      vkCmdSetDepthBias(cmd, 1.25f, 0.0f, 1.75f);
 
       const RecordedCommandBuffer ref = {VK_NULL_HANDLE, engine.shadow_mapping.render_pass, 0};
 
