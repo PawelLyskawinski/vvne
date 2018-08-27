@@ -26,7 +26,7 @@ add_executable(level_generator_tests unit_tests/LevelGenerator.cc)
 add_executable(sandbox unit_tests/sandbox.cc)
 add_executable(jobsytem unit_tests/JobSystem.cc)
 
-add_executable(${PROJECT_NAME}
+set(SOURCES
         main.cc
         engine.cc
         game.cc
@@ -43,6 +43,12 @@ add_executable(${PROJECT_NAME}
         thirdparty/imgui_draw.cpp
         thirdparty/sha256.cpp
         )
+
+if(WIN32)
+add_executable(${PROJECT_NAME} ${SOURCES} assets/applicationIcon.rc)
+else()
+add_executable(${PROJECT_NAME} ${SOURCES})
+endif()
 
 target_link_libraries(${PROJECT_NAME} ${SDL_LIBRARY} ${VULKAN_LIBRARY})
 if(WIN32)
