@@ -38,7 +38,7 @@ void generate_cubemap_views(mat4x4 views[6])
 
 } // namespace
 
-int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_filepath, int desired_size[2])
+Texture generate_cubemap(Engine* engine, Game* game, const char* equirectangular_filepath, int desired_size[2])
 {
   const VkFormat surface_format = engine->surface_format.format;
 
@@ -135,15 +135,15 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
   //////////////////////////////////////////////////////////////////////////////
   // Push image and image view handles to engine list
   //////////////////////////////////////////////////////////////////////////////
-  int result_idx = find_first_zeroed_bit_offset(engine->image_usage_bitmap);
-  engine->image_usage_bitmap |= (uint64_t(1) << result_idx);
-  engine->images[result_idx]      = cubemap_image;
-  engine->image_views[result_idx] = cubemap_image_view;
+  Texture result = {
+      .image_idx      = engine->image_resources.add(cubemap_image),
+      .image_view_idx = engine->image_resources.add(cubemap_image_view),
+  };
 
   //////////////////////////////////////////////////////////////////////////////
   // Load 2D equirectangular image from file
   //////////////////////////////////////////////////////////////////////////////
-  int plain_texture_idx = engine->load_texture(equirectangular_filepath);
+  Texture plain_texture_idx = engine->load_texture(equirectangular_filepath);
 
   //////////////////////////////////////////////////////////////////////////////
   // cubemap creation plan:
@@ -235,7 +235,7 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
   {
     VkDescriptorImageInfo image = {
         .sampler     = engine->texture_sampler,
-        .imageView   = engine->image_views[plain_texture_idx],
+        .imageView   = engine->image_resources.image_views[plain_texture_idx.image_view_idx],
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
 
@@ -568,14 +568,16 @@ int generate_cubemap(Engine* engine, Game* game, const char* equirectangular_fil
   vkDestroyRenderPass(engine->device, render_pass, nullptr);
 
   // original equirectangular image is no longer needed
-  vkDestroyImage(engine->device, engine->images[plain_texture_idx], nullptr);
-  vkDestroyImageView(engine->device, engine->image_views[plain_texture_idx], nullptr);
-  engine->image_usage_bitmap &= ~(uint64_t(1) << plain_texture_idx);
+  vkDestroyImage(engine->device, engine->image_resources.images[plain_texture_idx.image_idx], nullptr);
+  vkDestroyImageView(engine->device, engine->image_resources.image_views[plain_texture_idx.image_view_idx], nullptr);
 
-  return result_idx;
+  engine->image_resources.images_bitmap.free(plain_texture_idx.image_idx);
+  engine->image_resources.image_views_bitmap.free(plain_texture_idx.image_view_idx);
+
+  return result;
 }
 
-int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cubemap_idx, int desired_size[2])
+Texture generate_irradiance_cubemap(Engine* engine, Game* game, Texture environment_cubemap_idx, int desired_size[2])
 {
   const VkFormat surface_format = engine->surface_format.format;
 
@@ -666,10 +668,10 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
     vkCreateImageView(engine->device, &ci, nullptr, &cubemap_image_side_views[i]);
   }
 
-  int result_idx = find_first_zeroed_bit_offset(engine->image_usage_bitmap);
-  engine->image_usage_bitmap |= (uint64_t(1) << result_idx);
-  engine->images[result_idx]      = cubemap_image;
-  engine->image_views[result_idx] = cubemap_image_view;
+  Texture result = {
+      .image_idx      = engine->image_resources.add(cubemap_image),
+      .image_view_idx = engine->image_resources.add(cubemap_image_view),
+  };
 
   VkRenderPass render_pass = VK_NULL_HANDLE;
 
@@ -748,7 +750,7 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
   {
     VkDescriptorImageInfo image = {
         .sampler     = engine->texture_sampler,
-        .imageView   = engine->image_views[environment_cubemap_idx],
+        .imageView   = engine->image_resources.image_views[environment_cubemap_idx.image_view_idx],
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
 
@@ -1078,10 +1080,10 @@ int generate_irradiance_cubemap(Engine* engine, Game* game, int environment_cube
   vkDestroyDescriptorSetLayout(engine->device, descriptor_set_layout, nullptr);
   vkDestroyRenderPass(engine->device, render_pass, nullptr);
 
-  return result_idx;
+  return result;
 }
 
-int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cubemap_idx, int desired_size[2])
+Texture generate_prefiltered_cubemap(Engine* engine, Game* game, Texture environment_cubemap_idx, int desired_size[2])
 {
   const VkFormat surface_format = engine->surface_format.format;
 
@@ -1178,10 +1180,10 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
     }
   }
 
-  int result_idx = find_first_zeroed_bit_offset(engine->image_usage_bitmap);
-  engine->image_usage_bitmap |= (uint64_t(1) << result_idx);
-  engine->images[result_idx]      = cubemap_image;
-  engine->image_views[result_idx] = cubemap_image_view;
+  Texture result = {
+      .image_idx      = engine->image_resources.add(cubemap_image),
+      .image_view_idx = engine->image_resources.add(cubemap_image_view),
+  };
 
   VkRenderPass render_pass = VK_NULL_HANDLE;
 
@@ -1260,7 +1262,7 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
   {
     VkDescriptorImageInfo image = {
         .sampler     = engine->texture_sampler,
-        .imageView   = engine->image_views[environment_cubemap_idx],
+        .imageView   = engine->image_resources.image_views[environment_cubemap_idx.image_view_idx],
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
 
@@ -1612,10 +1614,10 @@ int generate_prefiltered_cubemap(Engine* engine, Game* game, int environment_cub
   vkDestroyDescriptorSetLayout(engine->device, descriptor_set_layout, nullptr);
   vkDestroyRenderPass(engine->device, render_pass, nullptr);
 
-  return result_idx;
+  return result;
 }
 
-int generate_brdf_lookup(Engine* engine, int size)
+Texture generate_brdf_lookup(Engine* engine, int size)
 {
   VkImage brdf_image = VK_NULL_HANDLE;
 
@@ -1671,10 +1673,10 @@ int generate_brdf_lookup(Engine* engine, int size)
     vkCreateImageView(engine->device, &info, nullptr, &brdf_image_view);
   }
 
-  int result_idx = find_first_zeroed_bit_offset(engine->image_usage_bitmap);
-  engine->image_usage_bitmap |= (uint64_t(1) << result_idx);
-  engine->images[result_idx]      = brdf_image;
-  engine->image_views[result_idx] = brdf_image_view;
+  Texture result = {
+      .image_idx      = engine->image_resources.add(brdf_image),
+      .image_view_idx = engine->image_resources.add(brdf_image_view),
+  };
 
   VkRenderPass render_pass = VK_NULL_HANDLE;
 
@@ -1950,5 +1952,5 @@ int generate_brdf_lookup(Engine* engine, int size)
   vkDestroyFramebuffer(engine->device, framebuffer, nullptr);
   vkDestroyRenderPass(engine->device, render_pass, nullptr);
 
-  return result_idx;
+  return result;
 }

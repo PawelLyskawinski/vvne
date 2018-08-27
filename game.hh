@@ -243,13 +243,13 @@ struct Game
 {
   uint8_t lucida_sans_sdf_char_ids[97];
   SdfChar lucida_sans_sdf_chars[97];
-  int     lucida_sans_sdf_image_idx;
+  Texture lucida_sans_sdf_image;
 
   struct DebugGui
   {
     bool        mousepressed[3];
     SDL_Cursor* mousecursors[ImGuiMouseCursor_Count_];
-    int         font_texture_idx;
+    Texture     font_texture;
 
     enum
     {
@@ -301,18 +301,18 @@ struct Game
   SceneGraph robot;
 
   // textures
-  int environment_cubemap_idx;
-  int irradiance_cubemap_idx;
-  int prefiltered_cubemap_idx;
-  int brdf_lookup_idx;
+  Texture environment_cubemap;
+  Texture irradiance_cubemap;
+  Texture prefiltered_cubemap;
+  Texture brdf_lookup;
 
-  int sand_albedo_idx;
-  int sand_ambient_occlusion_idx;
-  int sand_metallic_roughness_idx;
-  int sand_normal_idx;
-  int sand_emissive_idx;
+  Texture sand_albedo;
+  Texture sand_ambient_occlusion;
+  Texture sand_metallic_roughness;
+  Texture sand_normal;
+  Texture sand_emissive;
 
-  int water_normal_idx;
+  Texture water_normal;
 
   // textures - game
   VkDeviceSize green_gui_billboard_vertex_buffer_offset;

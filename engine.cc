@@ -355,6 +355,7 @@ void Engine::startup()
   {
     VkDescriptorPoolSize pool_sizes[] = {
         {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10 * SWAPCHAIN_IMAGES_COUNT},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 * SWAPCHAIN_IMAGES_COUNT},
         {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 20 * SWAPCHAIN_IMAGES_COUNT},
     };
 
@@ -674,28 +675,19 @@ void Engine::startup()
   }
 
   {
-    int offset = find_first_zeroed_bit_offset(image_usage_bitmap);
-    image_usage_bitmap |= (uint64_t(1) << offset);
-
-    images[offset]      = depth_image;
-    image_views[offset] = depth_image_view;
+    image_resources.add(depth_image);
+    image_resources.add(depth_image_view);
 
     if (VK_SAMPLE_COUNT_1_BIT != MSAA_SAMPLE_COUNT)
     {
-      offset = find_first_zeroed_bit_offset(image_usage_bitmap);
-      image_usage_bitmap |= (uint64_t(1) << offset);
-
-      images[offset]      = msaa_color_image;
-      image_views[offset] = msaa_color_image_view;
+      image_resources.add(msaa_color_image);
+      image_resources.add(msaa_color_image_view);
     }
 
     for (int i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
     {
-      offset = find_first_zeroed_bit_offset(image_usage_bitmap);
-      image_usage_bitmap |= (uint64_t(1) << offset);
-
-      images[offset]      = shadowmap_images[i];
-      image_views[offset] = shadowmap_image_views[i];
+      image_resources.add(shadowmap_images[i]);
+      image_resources.add(shadowmap_image_views[i]);
     }
   }
 
@@ -770,14 +762,13 @@ void Engine::teardown()
   for (VkFence& fence : simple_rendering.submition_fences)
     vkDestroyFence(device, fence, nullptr);
 
-  for (int i = 0; i < 64; ++i)
-  {
-    if (image_usage_bitmap & (uint64_t(1) << i))
-    {
-      vkDestroyImage(device, images[i], nullptr);
-      vkDestroyImageView(device, image_views[i], nullptr);
-    }
-  }
+  for (int i = 0; i < ImageResources::image_capacity; ++i)
+    if (image_resources.images_bitmap.is_used(i))
+      vkDestroyImage(device, image_resources.images[i], nullptr);
+
+  for (int i = 0; i < ImageResources::image_view_capacity; ++i)
+    if (image_resources.image_views_bitmap.is_used(i))
+      vkDestroyImageView(device, image_resources.image_views[i], nullptr);
 
   vkFreeMemory(device, gpu_device_local_memory_block.memory, nullptr);
   vkFreeMemory(device, gpu_host_visible_transfer_source_memory_block.memory, nullptr);
@@ -813,7 +804,7 @@ void Engine::teardown()
   vkDestroyInstance(instance, nullptr);
 }
 
-int Engine::load_texture(const char* filepath)
+Texture Engine::load_texture(const char* filepath)
 {
   int             x           = 0;
   int             y           = 0;
@@ -824,7 +815,7 @@ int Engine::load_texture(const char* filepath)
   SDL_assert(nullptr != pixels);
 
   SDL_Surface surface = {.format = &format, .w = x, .h = y, .pitch = 4 * x, .pixels = pixels};
-  int         result  = load_texture(&surface);
+  Texture     result  = load_texture(&surface);
   stbi_image_free(pixels);
 
   return result;
@@ -851,7 +842,7 @@ VkFormat bitsPerPixelToFormat(SDL_Surface* surface)
 
 } // namespace
 
-int Engine::load_texture_hdr(const char* filename)
+Texture Engine::load_texture_hdr(const char* filename)
 {
   int x           = 0;
   int y           = 0;
@@ -919,10 +910,9 @@ int Engine::load_texture_hdr(const char* filename)
 
   vkUnmapMemory(device, staging_memory);
 
-  int resultIdx = find_first_zeroed_bit_offset(image_usage_bitmap);
-  image_usage_bitmap |= (uint64_t(1) << resultIdx);
-  VkImage&     result_image = images[resultIdx];
-  VkImageView& result_view  = image_views[resultIdx];
+  Texture  result = {.image_idx = image_resources.add(VkImage{}), .image_view_idx = image_resources.add(VkImageView{})};
+  VkImage& result_image    = image_resources.images[result.image_idx];
+  VkImageView& result_view = image_resources.image_views[result.image_view_idx];
 
   {
     VkImageCreateInfo ci = {
@@ -1100,10 +1090,10 @@ int Engine::load_texture_hdr(const char* filename)
 
   stbi_image_free(pixels);
 
-  return resultIdx;
+  return result;
 }
 
-int Engine::load_texture(SDL_Surface* surface)
+Texture Engine::load_texture(SDL_Surface* surface)
 {
   VkImage        staging_image  = VK_NULL_HANDLE;
   VkDeviceMemory staging_memory = VK_NULL_HANDLE;
@@ -1200,10 +1190,9 @@ int Engine::load_texture(SDL_Surface* surface)
 
   vkUnmapMemory(device, staging_memory);
 
-  int resultIdx = find_first_zeroed_bit_offset(image_usage_bitmap);
-  image_usage_bitmap |= (uint64_t(1) << resultIdx);
-  VkImage&     result_image = images[resultIdx];
-  VkImageView& result_view  = image_views[resultIdx];
+  Texture  result = {.image_idx = image_resources.add(VkImage{}), .image_view_idx = image_resources.add(VkImageView{})};
+  VkImage& result_image    = image_resources.images[result.image_idx];
+  VkImageView& result_view = image_resources.image_views[result.image_view_idx];
 
   {
     VkImageCreateInfo ci = {
@@ -1376,7 +1365,7 @@ int Engine::load_texture(SDL_Surface* surface)
   vkFreeMemory(device, staging_memory, nullptr);
   vkDestroyImage(device, staging_image, nullptr);
 
-  return resultIdx;
+  return result;
 }
 
 namespace {
@@ -2449,4 +2438,18 @@ void Engine::setup_simple_rendering()
 
     vkAllocateCommandBuffers(device, &alloc, renderer.primary_command_buffers);
   }
+}
+
+int ImageResources::add(VkImage image)
+{
+  const int position = images_bitmap.allocate();
+  images[position]   = image;
+  return position;
+}
+
+int ImageResources::add(VkImageView image)
+{
+  const int position    = image_views_bitmap.allocate();
+  image_views[position] = image;
+  return position;
 }

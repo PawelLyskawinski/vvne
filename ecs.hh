@@ -1,43 +1,7 @@
 #pragma once
 
 #include <linmath.h>
-
-struct ComponentBitfield
-{
-public:
-  int allocate()
-  {
-    for (int batch_idx = 0; batch_idx < (int)SDL_arraysize(usage); ++batch_idx)
-    {
-      const uint64_t current_batch = usage[batch_idx];
-
-      if (UINT64_MAX == current_batch)
-        continue;
-
-      for (int offset = 0; offset < 64; ++offset)
-      {
-        const uint64_t mask = (1ULL << offset);
-
-        if (current_batch & mask)
-          continue;
-
-        usage[batch_idx] |= mask;
-        return 64 * batch_idx + offset;
-      }
-    }
-
-    return 0;
-  }
-
-  void free(int i)
-  {
-    if (0 <= i)
-      usage[i / 64] &= ~(1ULL << (i % 64));
-  }
-
-private:
-  uint64_t usage[4];
-};
+#include "bitfield.hh"
 
 struct AnimationTranslation
 {

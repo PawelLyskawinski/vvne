@@ -39,6 +39,7 @@ set(SOURCES
         pipelines.cc
         render_jobs.cc
         update_jobs.cc
+        bitfield.cc
         thirdparty/imgui.cpp
         thirdparty/imgui_draw.cpp
         thirdparty/sha256.cpp

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "bitfield.hh"
 #include <SDL2/SDL_video.h>
 #include <vulkan/vulkan.h>
 
@@ -35,6 +36,28 @@ struct DoubleEndedStack
   uint8_t  memory[MEMORY_ALLOCATOR_POOL_SIZE];
   uint64_t stack_pointer_front;
   uint64_t stack_pointer_back;
+};
+
+struct Texture
+{
+  int image_idx;
+  int image_view_idx;
+};
+
+class ImageResources
+{
+public:
+  int add(VkImage image);
+  int add(VkImageView image);
+
+  static constexpr int image_capacity      = 64;
+  static constexpr int image_view_capacity = 64;
+
+  ComponentBitfield images_bitmap;
+  ComponentBitfield image_views_bitmap;
+
+  VkImage     images[image_capacity];
+  VkImageView image_views[image_view_capacity];
 };
 
 struct Engine
@@ -95,9 +118,7 @@ struct Engine
   // Image memory with images in use list
   //
   GpuMemoryBlock gpu_device_images_memory_block;
-  VkImage        images[64];
-  VkImageView    image_views[64];
-  uint64_t       image_usage_bitmap;
+  ImageResources image_resources;
 
   //
   // Used for universal buffer objects
@@ -181,9 +202,9 @@ struct Engine
 
   VkShaderModule load_shader(const char* file_path);
 
-  int load_texture(const char* filepath);
-  int load_texture_hdr(const char* filename);
-  int load_texture(SDL_Surface* surface);
+  Texture load_texture(const char* filepath);
+  Texture load_texture_hdr(const char* filename);
+  Texture load_texture(SDL_Surface* surface);
 
   //
   // Live shader reloading helpers.

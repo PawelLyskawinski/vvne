@@ -48,11 +48,11 @@ template <typename T> struct ArrayView
 
 struct Material
 {
-  int albedo_texture_idx;
-  int metal_roughness_texture_idx;
-  int emissive_texture_idx;
-  int AO_texture_idx;
-  int normal_texture_idx;
+  Texture albedo_texture;
+  Texture metal_roughness_texture;
+  Texture emissive_texture;
+  Texture AO_texture;
+  Texture normal_texture;
 };
 
 struct Mesh
@@ -162,4 +162,3 @@ struct SceneGraph
 };
 
 SceneGraph loadGLB(Engine& engine, const char* path);
-

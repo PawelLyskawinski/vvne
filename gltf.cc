@@ -241,7 +241,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
   const uint32_t offset_to_binary = offset_to_json + offset_to_chunk_data + json_chunk_length;
   const uint8_t* binary_data      = &glb_file_content[offset_to_binary + offset_to_chunk_data];
 
-  auto load_texture = [&engine, binary_data](Seeker buffer_view) -> int {
+  auto load_texture = [&engine, binary_data](Seeker buffer_view) -> Texture {
     int             offset      = buffer_view.integer("byteOffset");
     int             length      = buffer_view.integer("byteLength");
     int             x           = 0;
@@ -250,7 +250,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
     SDL_PixelFormat format      = {.format = SDL_PIXELFORMAT_RGBA32, .BitsPerPixel = 32, .BytesPerPixel = (32 + 7) / 8};
     stbi_uc*        pixels  = stbi_load_from_memory(&binary_data[offset], length, &x, &y, &real_format, STBI_rgb_alpha);
     SDL_Surface     surface = {.format = &format, .w = x, .h = y, .pitch = 4 * x, .pixels = pixels};
-    int             result  = engine.load_texture(&surface);
+    Texture result  = engine.load_texture(&surface);
     stbi_image_free(pixels);
     return result;
   };
@@ -322,11 +322,11 @@ SceneGraph loadGLB(Engine& engine, const char* path)
       int       normal_image_idx                = material_json.node("normalTexture").integer("index");
       int       normal_buffer_view_idx          = images.idx(normal_image_idx).integer("bufferView");
 
-      material.albedo_texture_idx          = load_texture(buffer_views.idx(albedo_buffer_view_idx));
-      material.metal_roughness_texture_idx = load_texture(buffer_views.idx(metal_roughness_buffer_view_idx));
-      material.emissive_texture_idx        = load_texture(buffer_views.idx(emissive_buffer_view_idx));
-      material.AO_texture_idx              = load_texture(buffer_views.idx(occlusion_buffer_view_idx));
-      material.normal_texture_idx          = load_texture(buffer_views.idx(normal_buffer_view_idx));
+      material.albedo_texture          = load_texture(buffer_views.idx(albedo_buffer_view_idx));
+      material.metal_roughness_texture = load_texture(buffer_views.idx(metal_roughness_buffer_view_idx));
+      material.emissive_texture        = load_texture(buffer_views.idx(emissive_buffer_view_idx));
+      material.AO_texture              = load_texture(buffer_views.idx(occlusion_buffer_view_idx));
+      material.normal_texture          = load_texture(buffer_views.idx(normal_buffer_view_idx));
     }
   }
 

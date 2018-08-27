@@ -581,7 +581,7 @@ void Game::startup(Engine& engine)
     io.Fonts->GetTexDataAsRGBA32(&guifont_pixels, &guifont_w, &guifont_h);
     SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormatFrom(guifont_pixels, guifont_w, guifont_h, 32, 4 * guifont_w,
                                                               SDL_PIXELFORMAT_RGBA8888);
-    debug_gui.font_texture_idx = engine.load_texture(surface);
+    debug_gui.font_texture = engine.load_texture(surface);
     SDL_FreeSurface(surface);
 
     {
@@ -705,22 +705,22 @@ void Game::startup(Engine& engine)
 
   {
     int cubemap_size[2]     = {512, 512};
-    environment_cubemap_idx = generate_cubemap(&engine, this, "../assets/mono_lake.jpg", cubemap_size);
-    irradiance_cubemap_idx  = generate_irradiance_cubemap(&engine, this, environment_cubemap_idx, cubemap_size);
-    prefiltered_cubemap_idx = generate_prefiltered_cubemap(&engine, this, environment_cubemap_idx, cubemap_size);
-    brdf_lookup_idx         = generate_brdf_lookup(&engine, cubemap_size[0]);
+    environment_cubemap = generate_cubemap(&engine, this, "../assets/mono_lake.jpg", cubemap_size);
+    irradiance_cubemap  = generate_irradiance_cubemap(&engine, this, environment_cubemap, cubemap_size);
+    prefiltered_cubemap = generate_prefiltered_cubemap(&engine, this, environment_cubemap, cubemap_size);
+    brdf_lookup         = generate_brdf_lookup(&engine, cubemap_size[0]);
   }
 
-  lucida_sans_sdf_image_idx = engine.load_texture("../assets/lucida_sans_sdf.png");
+  lucida_sans_sdf_image = engine.load_texture("../assets/lucida_sans_sdf.png");
 
   // Sand PBR for environment
-  sand_albedo_idx             = engine.load_texture("../assets/pbr_sand/sand_albedo.jpg");
-  sand_ambient_occlusion_idx  = engine.load_texture("../assets/pbr_sand/sand_ambient_occlusion.jpg");
-  sand_metallic_roughness_idx = engine.load_texture("../assets/pbr_sand/sand_metallic_roughness.jpg");
-  sand_normal_idx             = engine.load_texture("../assets/pbr_sand/sand_normal.jpg");
-  sand_emissive_idx           = engine.load_texture("../assets/pbr_sand/sand_emissive.jpg");
+  sand_albedo             = engine.load_texture("../assets/pbr_sand/sand_albedo.jpg");
+  sand_ambient_occlusion  = engine.load_texture("../assets/pbr_sand/sand_ambient_occlusion.jpg");
+  sand_metallic_roughness = engine.load_texture("../assets/pbr_sand/sand_metallic_roughness.jpg");
+  sand_normal             = engine.load_texture("../assets/pbr_sand/sand_normal.jpg");
+  sand_emissive           = engine.load_texture("../assets/pbr_sand/sand_emissive.jpg");
 
-  water_normal_idx = engine.load_texture("../assets/pbr_water/normal_map.jpg");
+  water_normal = engine.load_texture("../assets/pbr_water/normal_map.jpg");
 
   const VkDeviceSize light_sources_ubo_size     = sizeof(LightSources);
   const VkDeviceSize skinning_matrices_ubo_size = 64 * sizeof(mat4x4);
@@ -787,11 +787,11 @@ void Game::startup(Engine& engine)
 
   {
     auto fill_infos = [](const Material& material, VkImageView* views, VkDescriptorImageInfo infos[5]) {
-      infos[0].imageView = views[material.albedo_texture_idx];
-      infos[1].imageView = views[material.metal_roughness_texture_idx];
-      infos[2].imageView = views[material.emissive_texture_idx];
-      infos[3].imageView = views[material.AO_texture_idx];
-      infos[4].imageView = views[material.normal_texture_idx];
+      infos[0].imageView = views[material.albedo_texture.image_view_idx];
+      infos[1].imageView = views[material.metal_roughness_texture.image_view_idx];
+      infos[2].imageView = views[material.emissive_texture.image_view_idx];
+      infos[3].imageView = views[material.AO_texture.image_view_idx];
+      infos[4].imageView = views[material.normal_texture.image_view_idx];
     };
 
     VkDescriptorImageInfo images[5] = {};
@@ -810,21 +810,21 @@ void Game::startup(Engine& engine)
         .pImageInfo      = images,
     };
 
-    fill_infos(helmet.materials[0], engine.image_views, images);
+    fill_infos(helmet.materials[0], engine.image_resources.image_views, images);
     update.dstSet = helmet_pbr_material_dset, vkUpdateDescriptorSets(engine.device, 1, &update, 0, nullptr);
 
-    fill_infos(robot.materials[0], engine.image_views, images);
+    fill_infos(robot.materials[0], engine.image_resources.image_views, images);
     update.dstSet = robot_pbr_material_dset, vkUpdateDescriptorSets(engine.device, 1, &update, 0, nullptr);
 
     Material sand_material = {
-        .albedo_texture_idx          = sand_albedo_idx,
-        .metal_roughness_texture_idx = sand_metallic_roughness_idx,
-        .emissive_texture_idx        = sand_emissive_idx,
-        .AO_texture_idx              = sand_ambient_occlusion_idx,
-        .normal_texture_idx          = sand_normal_idx,
+        .albedo_texture          = sand_albedo,
+        .metal_roughness_texture = sand_metallic_roughness,
+        .emissive_texture        = sand_emissive,
+        .AO_texture              = sand_ambient_occlusion,
+        .normal_texture          = sand_normal,
     };
 
-    fill_infos(sand_material, engine.image_views, images);
+    fill_infos(sand_material, engine.image_resources.image_views, images);
     update.dstSet = sandy_level_pbr_material_dset;
     vkUpdateDescriptorSets(engine.device, 1, &update, 0, nullptr);
   }
@@ -848,19 +848,19 @@ void Game::startup(Engine& engine)
     VkDescriptorImageInfo cubemap_images[] = {
         {
             .sampler     = engine.texture_sampler,
-            .imageView   = engine.image_views[irradiance_cubemap_idx],
+            .imageView   = engine.image_resources.image_views[irradiance_cubemap.image_view_idx],
             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         },
         {
             .sampler     = engine.texture_sampler,
-            .imageView   = engine.image_views[prefiltered_cubemap_idx],
+            .imageView   = engine.image_resources.image_views[prefiltered_cubemap.image_view_idx],
             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         },
     };
 
     VkDescriptorImageInfo brdf_lut_image = {
         .sampler     = engine.texture_sampler,
-        .imageView   = engine.image_views[brdf_lookup_idx],
+        .imageView   = engine.image_resources.image_views[brdf_lookup.image_view_idx],
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
 
@@ -959,19 +959,19 @@ void Game::startup(Engine& engine)
         .pImageInfo      = &image,
     };
 
-    image.imageView = engine.image_views[debug_gui.font_texture_idx];
+    image.imageView = engine.image_resources.image_views[debug_gui.font_texture.image_view_idx];
     write.dstSet    = imgui_font_atlas_dset;
     vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
 
-    image.imageView = engine.image_views[environment_cubemap_idx];
+    image.imageView = engine.image_resources.image_views[environment_cubemap.image_view_idx];
     write.dstSet    = skybox_cubemap_dset;
     vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
 
-    image.imageView = engine.image_views[lucida_sans_sdf_image_idx];
+    image.imageView = engine.image_resources.image_views[lucida_sans_sdf_image.image_view_idx];
     write.dstSet    = lucida_sans_sdf_dset;
     vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
 
-    image.imageView = engine.image_views[water_normal_idx];
+    image.imageView = engine.image_resources.image_views[water_normal.image_view_idx];
     write.dstSet    = pbr_water_material_dset;
     vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
 
