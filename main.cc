@@ -3,15 +3,6 @@
 #include "game.hh"
 #include <SDL2/SDL.h>
 
-namespace {
-
-float max(float a, float b)
-{
-  return a > b ? a : b;
-}
-
-} // namespace
-
 int main(int argc, char* argv[])
 {
   (void)argc;
@@ -26,7 +17,7 @@ int main(int argc, char* argv[])
   Game*   game   = reinterpret_cast<Game*>(SDL_calloc(1, sizeof(Game)));
 
   // ----- DEFAULT CONFIGS -----
-  engine->MSAA_SAMPLE_COUNT = VK_SAMPLE_COUNT_1_BIT;
+  engine->MSAA_SAMPLE_COUNT = VK_SAMPLE_COUNT_8_BIT;
   // ---------------------------
 
   engine->startup();
@@ -46,14 +37,18 @@ int main(int argc, char* argv[])
     float    current_time_sec = static_cast<float>(ticks_from_game_start) / static_cast<float>(performance_frequency);
 
     game->current_time_sec = current_time_sec;
-    game->update(*engine, max(elapsed_ms, desired_frame_duration_ms));
+    game->update(*engine, SDL_max(elapsed_ms, desired_frame_duration_ms));
     game->render(*engine);
 
     uint64_t frame_time_counter = SDL_GetPerformanceCounter() - start_of_frame_ticks;
     elapsed_ms = 1000.0f * (static_cast<float>(frame_time_counter) / static_cast<float>(performance_frequency));
 
     if (elapsed_ms < desired_frame_duration_ms)
-      SDL_Delay((uint32_t)SDL_fabsf(desired_frame_duration_ms - elapsed_ms));
+    {
+      const uint32_t wait_time = static_cast<uint32_t>(desired_frame_duration_ms - elapsed_ms);
+      if (0 < wait_time)
+        SDL_Delay(wait_time);
+    }
   }
   SDL_HideWindow(engine->window);
 

@@ -10,7 +10,7 @@ struct ComponentBitfield
 public:
   int  allocate();
   void free(int i);
-  bool is_used(int position) const;
+  bool is_used(int i) const;
 
 private:
   static constexpr int batches_count = 4;

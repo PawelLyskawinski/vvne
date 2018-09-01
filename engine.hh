@@ -63,8 +63,9 @@ public:
 struct Engine
 {
   // configuration
-  static constexpr int  SWAPCHAIN_IMAGES_COUNT = 2;
-  static constexpr int  SHADOWMAP_IMAGE_DIM    = 1024 * 4;
+  static constexpr int  SWAPCHAIN_IMAGES_COUNT  = 2;
+  static constexpr int  SHADOWMAP_IMAGE_DIM     = 1024;
+  static constexpr int  SHADOWMAP_CASCADE_COUNT = 4;
   VkSampleCountFlagBits MSAA_SAMPLE_COUNT;
 
   // data
@@ -95,6 +96,7 @@ struct Engine
   VkSampler                  texture_sampler;
   VkImage                    shadowmap_images[SWAPCHAIN_IMAGES_COUNT];
   VkImageView                shadowmap_image_views[SWAPCHAIN_IMAGES_COUNT];
+  VkImageView                shadowmap_cascade_image_views[SHADOWMAP_CASCADE_COUNT * SWAPCHAIN_IMAGES_COUNT];
 
   //
   // Used for vertex / index data which will be reused all the time
@@ -135,11 +137,12 @@ struct Engine
 
   struct ShadowMapping
   {
-    VkRenderPass     render_pass;
-    VkPipeline       pipeline;
-    VkPipelineLayout pipeline_layout;
-    VkFramebuffer    framebuffers[SWAPCHAIN_IMAGES_COUNT];
-    VkSampler        sampler;
+    VkRenderPass          render_pass;
+    VkDescriptorSetLayout descriptor_set_layout;
+    VkPipeline            pipeline;
+    VkPipelineLayout      pipeline_layout;
+    VkFramebuffer         framebuffers[SHADOWMAP_CASCADE_COUNT * SWAPCHAIN_IMAGES_COUNT];
+    VkSampler             sampler;
   } shadow_mapping;
 
   struct SimpleRendering
@@ -151,7 +154,7 @@ struct Engine
     VkDescriptorSetLayout pbr_dynamic_lights_descriptor_set_layout;
     VkDescriptorSetLayout single_texture_in_frag_descriptor_set_layout;
     VkDescriptorSetLayout skinning_matrices_descriptor_set_layout;
-    VkDescriptorSetLayout light_space_matrix_ubo_set_layout;
+    VkDescriptorSetLayout cascade_shadow_map_matrices_ubo_frag_set_layout;
 
     VkFramebuffer framebuffers[SWAPCHAIN_IMAGES_COUNT];
 

@@ -17,11 +17,11 @@ Current preview (still a veeeery long road ahead)
 - MSAA
 - Signed Distance Field font rendering
 - Multithreaded rendering / job system
+- Cascaded shadow mapping
 
 ### TODO - engine
 - DXT texture compression
 - global illumination (got to understand spherical harmonics and light probes first)
-- cascaded shadow mapping
 
 ### TODO - game
 - movable tilt lines under strafe movement (gui)

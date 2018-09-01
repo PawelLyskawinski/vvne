@@ -6,7 +6,7 @@ void render_pbr_entity(Entity entity, EntityComponentSystem& ecs, SceneGraph& sc
 void render_entity(Entity entity, EntityComponentSystem& ecs, SceneGraph& scen_graph, Engine& engine,
                    RenderEntityParams& p);
 void render_pbr_entity_shadow(Entity entity, EntityComponentSystem& ecs, SceneGraph& scene_graph, Engine& engine,
-                              Game& game, VkCommandBuffer cmd);
+                              Game& game, VkCommandBuffer cmd, int cascade_idx = 0);
 
 // game_generate_gui_lines.cc
 void generate_gui_height_ruler_text(struct GenerateGuiLinesCommand& cmd, GuiHeightRulerText* dst, int* count);
@@ -54,15 +54,9 @@ namespace render {
 
 void skybox_job(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.simple_rendering.render_pass,
-      .subpass     = Engine::SimpleRendering::Pass::Skybox,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  VkCommandBuffer    command = acquire_command_buffer(tjd);
+  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::Skybox};
+  tjd.game.simple_rendering_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -112,20 +106,18 @@ void skybox_job(ThreadJobData tjd)
 
 void robot_depth_job(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.shadow_mapping.render_pass,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
-
+  for (int cascade_idx = 0; cascade_idx < Engine::SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
   {
+    VkCommandBuffer command = acquire_command_buffer(tjd);
+    DepthPassCmd    result  = {.command = command, .cascade_idx = cascade_idx};
+    tjd.game.depth_pass_cmds.push(result);
+
+    const int framebuffer_idx = (Engine::SHADOWMAP_CASCADE_COUNT * tjd.game.image_index) + cascade_idx;
+
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
         .renderPass  = tjd.engine.shadow_mapping.render_pass,
-        .framebuffer = tjd.engine.shadow_mapping.framebuffers[tjd.game.image_index],
+        .framebuffer = tjd.engine.shadow_mapping.framebuffers[framebuffer_idx],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -135,24 +127,20 @@ void robot_depth_job(ThreadJobData tjd)
     };
 
     vkBeginCommandBuffer(command, &begin_info);
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.shadow_mapping.pipeline);
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.shadow_mapping.pipeline_layout, 0, 1,
+                            &tjd.game.cascade_view_proj_matrices_depth_pass_dset[tjd.game.image_index], 0, nullptr);
+    render_pbr_entity_shadow(tjd.game.robot_entity, tjd.game.ecs, tjd.game.robot, tjd.engine, tjd.game, command,
+                             cascade_idx);
+    vkEndCommandBuffer(command);
   }
-
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.shadow_mapping.pipeline);
-  render_pbr_entity_shadow(tjd.game.robot_entity, tjd.game.ecs, tjd.game.robot, tjd.engine, tjd.game, command);
-  vkEndCommandBuffer(command);
 }
 
 void robot_job(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.simple_rendering.render_pass,
-      .subpass     = Engine::SimpleRendering::Pass::Objects3D,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  VkCommandBuffer    command = acquire_command_buffer(tjd);
+  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::Objects3D};
+  tjd.game.simple_rendering_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -178,15 +166,12 @@ void robot_job(ThreadJobData tjd)
     VkDescriptorSet dsets[] = {
         tjd.game.robot_pbr_material_dset,
         tjd.game.pbr_ibl_environment_dset,
-        tjd.game.pbr_dynamic_lights_dset,
-        tjd.game.light_space_matrices_dset[tjd.game.image_index],
         tjd.game.debug_shadow_map_dset[tjd.game.image_index],
+        tjd.game.pbr_dynamic_lights_dset,
+        tjd.game.cascade_view_proj_matrices_render_dset[tjd.game.image_index],
     };
 
-    uint32_t dynamic_offsets[] = {
-        static_cast<uint32_t>(tjd.game.pbr_dynamic_lights_ubo_offsets[tjd.game.image_index]),
-        //static_cast<uint32_t>(tjd.game.light_space_matrices_ubo_offsets[tjd.game.image_index]),
-    };
+    uint32_t dynamic_offsets[] = {static_cast<uint32_t>(tjd.game.pbr_dynamic_lights_ubo_offsets[tjd.game.image_index])};
 
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 0,
@@ -209,20 +194,18 @@ void robot_job(ThreadJobData tjd)
 
 void helmet_depth_job(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.shadow_mapping.render_pass,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
-
+  for (int cascade_idx = 0; cascade_idx < Engine::SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
   {
+    VkCommandBuffer command = acquire_command_buffer(tjd);
+    DepthPassCmd    result  = {.command = command, .cascade_idx = cascade_idx};
+    tjd.game.depth_pass_cmds.push(result);
+
+    const int framebuffer_idx = (Engine::SHADOWMAP_CASCADE_COUNT * tjd.game.image_index) + cascade_idx;
+
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
         .renderPass  = tjd.engine.shadow_mapping.render_pass,
-        .framebuffer = tjd.engine.shadow_mapping.framebuffers[tjd.game.image_index],
+        .framebuffer = tjd.engine.shadow_mapping.framebuffers[framebuffer_idx],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -232,24 +215,20 @@ void helmet_depth_job(ThreadJobData tjd)
     };
 
     vkBeginCommandBuffer(command, &begin_info);
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.shadow_mapping.pipeline);
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.shadow_mapping.pipeline_layout, 0, 1,
+                            &tjd.game.cascade_view_proj_matrices_depth_pass_dset[tjd.game.image_index], 0, nullptr);
+    render_pbr_entity_shadow(tjd.game.helmet_entity, tjd.game.ecs, tjd.game.helmet, tjd.engine, tjd.game, command,
+                             cascade_idx);
+    vkEndCommandBuffer(command);
   }
-
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.shadow_mapping.pipeline);
-  render_pbr_entity_shadow(tjd.game.helmet_entity, tjd.game.ecs, tjd.game.helmet, tjd.engine, tjd.game, command);
-  vkEndCommandBuffer(command);
 }
 
 void helmet_job(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.simple_rendering.render_pass,
-      .subpass     = Engine::SimpleRendering::Pass::Objects3D,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  VkCommandBuffer    command = acquire_command_buffer(tjd);
+  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::Objects3D};
+  tjd.game.simple_rendering_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -275,15 +254,12 @@ void helmet_job(ThreadJobData tjd)
     VkDescriptorSet dsets[] = {
         tjd.game.helmet_pbr_material_dset,
         tjd.game.pbr_ibl_environment_dset,
-        tjd.game.pbr_dynamic_lights_dset,
-        tjd.game.light_space_matrices_dset[tjd.game.image_index],
         tjd.game.debug_shadow_map_dset[tjd.game.image_index],
+        tjd.game.pbr_dynamic_lights_dset,
+        tjd.game.cascade_view_proj_matrices_render_dset[tjd.game.image_index],
     };
 
-    uint32_t dynamic_offsets[] = {
-        static_cast<uint32_t>(tjd.game.pbr_dynamic_lights_ubo_offsets[tjd.game.image_index]),
-        //static_cast<uint32_t>(tjd.game.light_space_matrices_ubo_offsets[tjd.game.image_index]),
-    };
+    uint32_t dynamic_offsets[] = {static_cast<uint32_t>(tjd.game.pbr_dynamic_lights_ubo_offsets[tjd.game.image_index])};
 
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 0,
@@ -306,15 +282,9 @@ void helmet_job(ThreadJobData tjd)
 
 void point_light_boxes(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.simple_rendering.render_pass,
-      .subpass     = Engine::SimpleRendering::Pass::Objects3D,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  VkCommandBuffer    command = acquire_command_buffer(tjd);
+  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::Objects3D};
+  tjd.game.simple_rendering_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -357,15 +327,9 @@ void point_light_boxes(ThreadJobData tjd)
 
 void matrioshka_box(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.simple_rendering.render_pass,
-      .subpass     = Engine::SimpleRendering::Pass::Objects3D,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  VkCommandBuffer    command = acquire_command_buffer(tjd);
+  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::Objects3D};
+  tjd.game.simple_rendering_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -403,15 +367,9 @@ void matrioshka_box(ThreadJobData tjd)
 
 void vr_scene(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.simple_rendering.render_pass,
-      .subpass     = Engine::SimpleRendering::Pass::Objects3D,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  VkCommandBuffer    command = acquire_command_buffer(tjd);
+  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::Objects3D};
+  tjd.game.simple_rendering_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -437,15 +395,12 @@ void vr_scene(ThreadJobData tjd)
     VkDescriptorSet dsets[] = {
         tjd.game.sandy_level_pbr_material_dset,
         tjd.game.pbr_ibl_environment_dset,
-        tjd.game.pbr_dynamic_lights_dset,
-        tjd.game.light_space_matrices_dset[tjd.game.image_index],
         tjd.game.debug_shadow_map_dset[tjd.game.image_index],
+        tjd.game.pbr_dynamic_lights_dset,
+        tjd.game.cascade_view_proj_matrices_render_dset[tjd.game.image_index],
     };
 
-    uint32_t dynamic_offsets[] = {
-        static_cast<uint32_t>(tjd.game.pbr_dynamic_lights_ubo_offsets[tjd.game.image_index]),
-        //static_cast<uint32_t>(tjd.game.light_space_matrices_ubo_offsets[tjd.game.image_index]),
-    };
+    uint32_t dynamic_offsets[] = {static_cast<uint32_t>(tjd.game.pbr_dynamic_lights_ubo_offsets[tjd.game.image_index])};
 
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 0,
@@ -495,16 +450,12 @@ void vr_scene(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
+#if 0
 void vr_scene_depth(ThreadJobData tjd)
 {
   VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.shadow_mapping.render_pass,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  DepthPassCmd    result  = {.command = command, .cascade_idx = 0};
+  tjd.game.depth_pass_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -556,18 +507,13 @@ void vr_scene_depth(ThreadJobData tjd)
 
   vkEndCommandBuffer(command);
 }
+#endif
 
 void simple_rigged(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.simple_rendering.render_pass,
-      .subpass     = Engine::SimpleRendering::Pass::Objects3D,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  VkCommandBuffer    command = acquire_command_buffer(tjd);
+  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::Objects3D};
+  tjd.game.simple_rendering_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -613,15 +559,9 @@ void simple_rigged(ThreadJobData tjd)
 
 void monster_rigged(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.simple_rendering.render_pass,
-      .subpass     = Engine::SimpleRendering::Pass::Objects3D,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  VkCommandBuffer    command = acquire_command_buffer(tjd);
+  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::Objects3D};
+  tjd.game.simple_rendering_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -667,15 +607,9 @@ void monster_rigged(ThreadJobData tjd)
 
 void radar(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.simple_rendering.render_pass,
-      .subpass     = Engine::SimpleRendering::Pass::RobotGui,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  VkCommandBuffer    command = acquire_command_buffer(tjd);
+  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RobotGui};
+  tjd.game.simple_rendering_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -734,15 +668,9 @@ void radar(ThreadJobData tjd)
 
 void robot_gui_lines(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.simple_rendering.render_pass,
-      .subpass     = Engine::SimpleRendering::Pass::RobotGui,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  VkCommandBuffer    command = acquire_command_buffer(tjd);
+  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RobotGui};
+  tjd.game.simple_rendering_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -857,15 +785,9 @@ void robot_gui_lines(ThreadJobData tjd)
 
 void robot_gui_speed_meter_text(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.simple_rendering.render_pass,
-      .subpass     = Engine::SimpleRendering::Pass::RobotGui,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  VkCommandBuffer    command = acquire_command_buffer(tjd);
+  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RobotGui};
+  tjd.game.simple_rendering_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -1009,15 +931,9 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
 
 void robot_gui_speed_meter_triangle(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.simple_rendering.render_pass,
-      .subpass     = Engine::SimpleRendering::Pass::RobotGui,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  VkCommandBuffer    command = acquire_command_buffer(tjd);
+  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RobotGui};
+  tjd.game.simple_rendering_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -1064,15 +980,9 @@ void robot_gui_speed_meter_triangle(ThreadJobData tjd)
 
 void height_ruler_text(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.simple_rendering.render_pass,
-      .subpass     = Engine::SimpleRendering::Pass::RobotGui,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  VkCommandBuffer    command = acquire_command_buffer(tjd);
+  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RobotGui};
+  tjd.game.simple_rendering_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -1192,15 +1102,9 @@ void height_ruler_text(ThreadJobData tjd)
 
 void tilt_ruler_text(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.simple_rendering.render_pass,
-      .subpass     = Engine::SimpleRendering::Pass::RobotGui,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  VkCommandBuffer    command = acquire_command_buffer(tjd);
+  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RobotGui};
+  tjd.game.simple_rendering_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -1320,15 +1224,9 @@ void tilt_ruler_text(ThreadJobData tjd)
 
 void compass_text(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.simple_rendering.render_pass,
-      .subpass     = Engine::SimpleRendering::Pass::RobotGui,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  VkCommandBuffer    command = acquire_command_buffer(tjd);
+  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RobotGui};
+  tjd.game.simple_rendering_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -1572,15 +1470,9 @@ void compass_text(ThreadJobData tjd)
 
 void radar_dots(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.simple_rendering.render_pass,
-      .subpass     = Engine::SimpleRendering::Pass::RadarDots,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  VkCommandBuffer    command = acquire_command_buffer(tjd);
+  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RadarDots};
+  tjd.game.simple_rendering_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -1653,15 +1545,9 @@ void radar_dots(ThreadJobData tjd)
 
 void weapon_selectors_left(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.simple_rendering.render_pass,
-      .subpass     = Engine::SimpleRendering::Pass::RobotGui,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  VkCommandBuffer    command = acquire_command_buffer(tjd);
+  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RobotGui};
+  tjd.game.simple_rendering_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -1819,15 +1705,9 @@ void weapon_selectors_left(ThreadJobData tjd)
 
 void weapon_selectors_right(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.simple_rendering.render_pass,
-      .subpass     = Engine::SimpleRendering::Pass::RobotGui,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  VkCommandBuffer    command = acquire_command_buffer(tjd);
+  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RobotGui};
+  tjd.game.simple_rendering_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -1985,15 +1865,9 @@ void weapon_selectors_right(ThreadJobData tjd)
 
 void hello_world_text(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.simple_rendering.render_pass,
-      .subpass     = Engine::SimpleRendering::Pass::RobotGui,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  VkCommandBuffer    command = acquire_command_buffer(tjd);
+  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RobotGui};
+  tjd.game.simple_rendering_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -2126,15 +2000,9 @@ void imgui(ThreadJobData tjd)
   if ((0 == vertex_size) or (0 == index_size))
     return;
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.simple_rendering.render_pass,
-      .subpass     = Engine::SimpleRendering::Pass::ImGui,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  VkCommandBuffer    command = acquire_command_buffer(tjd);
+  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::ImGui};
+  tjd.game.simple_rendering_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -2229,15 +2097,9 @@ void imgui(ThreadJobData tjd)
 
 void water(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.simple_rendering.render_pass,
-      .subpass     = Engine::SimpleRendering::Pass::Objects3D,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  VkCommandBuffer    command = acquire_command_buffer(tjd);
+  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::Objects3D};
+  tjd.game.simple_rendering_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -2318,15 +2180,9 @@ void water(ThreadJobData tjd)
 
 void debug_shadowmap(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-
-  RecordedCommandBuffer result = {
-      .command     = command,
-      .render_pass = tjd.engine.simple_rendering.render_pass,
-      .subpass     = Engine::SimpleRendering::Pass::ImGui,
-  };
-
-  tjd.game.js_sink.commands[SDL_AtomicIncRef(&tjd.game.js_sink.count)] = result;
+  VkCommandBuffer    command = acquire_command_buffer(tjd);
+  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::ImGui};
+  tjd.game.simple_rendering_cmds.push(result);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -2356,30 +2212,55 @@ void debug_shadowmap(ThreadJobData tjd)
       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::DebugBillboard], 0, 1,
       &tjd.game.debug_shadow_map_dset[tjd.game.image_index], 0, nullptr);
 
-  mat4x4 gui_projection = {};
-  mat4x4_ortho(gui_projection, 0, tjd.engine.extent2D.width, 0, tjd.engine.extent2D.height, 0.0f, 1.0f);
+  for (uint32_t cascade = 0; cascade < Engine::SHADOWMAP_CASCADE_COUNT; ++cascade)
+  {
+    mat4x4 gui_projection = {};
+    mat4x4_ortho(gui_projection, 0, tjd.engine.extent2D.width, 0, tjd.engine.extent2D.height, 0.0f, 1.0f);
 
-  const float rectangle_dimension_pixels = 100.0f;
-  const vec2  translation                = {rectangle_dimension_pixels + 10.0f, rectangle_dimension_pixels + 220.0f};
+    const float rectangle_dimension_pixels = 120.0f;
+    vec2        translation                = {rectangle_dimension_pixels + 10.0f, rectangle_dimension_pixels + 220.0f};
 
-  mat4x4 translation_matrix = {};
-  mat4x4_translate(translation_matrix, translation[0], translation[1], -1.0f);
+    switch (cascade)
+    {
+    case 0:
+      break;
+    case 1:
+      translation[0] += (2.1f * rectangle_dimension_pixels);
+      break;
+    case 2:
+      translation[1] += (2.1f * rectangle_dimension_pixels);
+      break;
+    case 3:
+      translation[0] += (2.1f * rectangle_dimension_pixels);
+      translation[1] += (2.1f * rectangle_dimension_pixels);
+      break;
+    default:
+      break;
+    }
 
-  mat4x4 scale_matrix = {};
-  mat4x4_identity(scale_matrix);
-  mat4x4_scale_aniso(scale_matrix, scale_matrix, rectangle_dimension_pixels, rectangle_dimension_pixels, 1.0f);
+    mat4x4 translation_matrix = {};
+    mat4x4_translate(translation_matrix, translation[0], translation[1], -1.0f);
 
-  mat4x4 world_transform = {};
-  mat4x4_mul(world_transform, translation_matrix, scale_matrix);
+    mat4x4 scale_matrix = {};
+    mat4x4_identity(scale_matrix);
+    mat4x4_scale_aniso(scale_matrix, scale_matrix, rectangle_dimension_pixels, rectangle_dimension_pixels, 1.0f);
 
-  mat4x4 mvp = {};
-  mat4x4_mul(mvp, gui_projection, world_transform);
+    mat4x4 world_transform = {};
+    mat4x4_mul(world_transform, translation_matrix, scale_matrix);
 
-  vkCmdPushConstants(command,
-                     tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::DebugBillboard],
-                     VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
+    mat4x4 mvp = {};
+    mat4x4_mul(mvp, gui_projection, world_transform);
 
-  vkCmdDraw(command, 4, 1, 0, 0);
+    vkCmdPushConstants(command,
+                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::DebugBillboard],
+                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
+    vkCmdPushConstants(command,
+                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::DebugBillboard],
+                       VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(cascade), &cascade);
+
+    vkCmdDraw(command, 4, 1, 0, 0);
+  }
+
   vkEndCommandBuffer(command);
 }
 

@@ -579,7 +579,7 @@ void Game::startup(Engine& engine)
     int            guifont_w      = 0;
     int            guifont_h      = 0;
     io.Fonts->GetTexDataAsRGBA32(&guifont_pixels, &guifont_w, &guifont_h);
-    SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormatFrom(guifont_pixels, guifont_w, guifont_h, 32, 4 * guifont_w,
+    SDL_Surface* surface   = SDL_CreateRGBSurfaceWithFormatFrom(guifont_pixels, guifont_w, guifont_h, 32, 4 * guifont_w,
                                                               SDL_PIXELFORMAT_RGBA8888);
     debug_gui.font_texture = engine.load_texture(surface);
     SDL_FreeSurface(surface);
@@ -704,7 +704,7 @@ void Game::startup(Engine& engine)
   setup_node_renderability_hierarchy(rigged_simple_entity, ecs, riggedSimple);
 
   {
-    int cubemap_size[2]     = {512, 512};
+    int cubemap_size[2] = {512, 512};
     environment_cubemap = generate_cubemap(&engine, this, "../assets/mono_lake.jpg", cubemap_size);
     irradiance_cubemap  = generate_irradiance_cubemap(&engine, this, environment_cubemap, cubemap_size);
     prefiltered_cubemap = generate_prefiltered_cubemap(&engine, this, environment_cubemap, cubemap_size);
@@ -752,10 +752,10 @@ void Game::startup(Engine& engine)
       block.stack_pointer += align(skinning_matrices_ubo_size, block.alignment);
     }
 
-    for (VkDeviceSize& offset : light_space_matrices_ubo_offsets)
+    for (VkDeviceSize& offset : cascade_view_proj_mat_ubo_offsets)
     {
       offset = block.stack_pointer;
-      block.stack_pointer += align(sizeof(mat4x4), block.alignment);
+      block.stack_pointer += align(sizeof(mat4x4) + sizeof(vec4), block.alignment);
     }
   }
 
@@ -1024,8 +1024,8 @@ void Game::startup(Engine& engine)
   }
 
   // --------------------------------------------------------------- //
-  // Light space matrices ubo descriptor set
-  // --------------------------------------------------------------- //
+  // Cascade shadow map projection matrices - DEPTH PASS
+  // --------------------------------------------------------------- ///
 
   for (int i = 0; i < Engine::SWAPCHAIN_IMAGES_COUNT; ++i)
   {
@@ -1033,15 +1033,15 @@ void Game::startup(Engine& engine)
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool     = engine.descriptor_pool,
         .descriptorSetCount = 1,
-        .pSetLayouts        = &engine.simple_rendering.light_space_matrix_ubo_set_layout,
+        .pSetLayouts        = &engine.shadow_mapping.descriptor_set_layout,
     };
 
-    vkAllocateDescriptorSets(engine.device, &allocate, &light_space_matrices_dset[i]);
+    vkAllocateDescriptorSets(engine.device, &allocate, &cascade_view_proj_matrices_depth_pass_dset[i]);
 
     VkDescriptorBufferInfo ubo = {
         .buffer = engine.gpu_host_coherent_ubo_memory_buffer,
-        .offset = light_space_matrices_ubo_offsets[i],
-        .range  = sizeof(mat4x4),
+        .offset = cascade_view_proj_mat_ubo_offsets[i],
+        .range  = Engine::SHADOWMAP_CASCADE_COUNT * sizeof(mat4x4),
     };
 
     VkWriteDescriptorSet write = {
@@ -1053,7 +1053,40 @@ void Game::startup(Engine& engine)
         .pBufferInfo     = &ubo,
     };
 
-    write.dstSet = light_space_matrices_dset[i];
+    write.dstSet = cascade_view_proj_matrices_depth_pass_dset[i];
+    vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
+  }
+
+  // --------------------------------------------------------------- //
+  // Cascade shadow map projection matrices - RENDERING PASSES
+  // --------------------------------------------------------------- ///
+  for (int i = 0; i < Engine::SWAPCHAIN_IMAGES_COUNT; ++i)
+  {
+    VkDescriptorSetAllocateInfo allocate = {
+        .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool     = engine.descriptor_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts        = &engine.simple_rendering.cascade_shadow_map_matrices_ubo_frag_set_layout,
+    };
+
+    vkAllocateDescriptorSets(engine.device, &allocate, &cascade_view_proj_matrices_render_dset[i]);
+
+    VkDescriptorBufferInfo ubo = {
+        .buffer = engine.gpu_host_coherent_ubo_memory_buffer,
+        .offset = cascade_view_proj_mat_ubo_offsets[i],
+        .range  = Engine::SHADOWMAP_CASCADE_COUNT * sizeof(mat4x4) + sizeof(vec4),
+    };
+
+    VkWriteDescriptorSet write = {
+        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstBinding      = 0,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .pBufferInfo     = &ubo,
+    };
+
+    write.dstSet = cascade_view_proj_matrices_render_dset[i];
     vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
   }
 
@@ -1343,9 +1376,9 @@ void Game::startup(Engine& engine)
   DEBUG_LIGHT_ORTHO_PARAMS[2] = -10.0f;
   DEBUG_LIGHT_ORTHO_PARAMS[3] = 10.0f;
 
-  light_source_position[0] = 30.0f;
+  light_source_position[0] = -30.0f;
   light_source_position[1] = -10.0f;
-  light_source_position[2] = -10.0f;
+  light_source_position[2] = 10.0f;
 
   radar_scale = 0.75f;
 
@@ -1417,6 +1450,149 @@ void Game::teardown(Engine& engine)
   for (VkCommandPool pool : js.worker_pools)
     vkDestroyCommandPool(engine.device, pool, nullptr);
 }
+
+namespace {
+
+// CASCADE SHADOW MAPPING --------------------------------------------------------------------------------------------
+// Based on:
+// https://github.com/SaschaWillems/Vulkan/blob/master/examples/shadowmappingcascade/shadowmappingcascade.cpp
+// -------------------------------------------------------------------------------------------------------------------
+void recalculate_cascade_view_proj_matrices(mat4x4 cascade_view_proj_mat[Engine::SHADOWMAP_CASCADE_COUNT],
+                                            float  cascade_split_depths[Engine::SHADOWMAP_CASCADE_COUNT],
+                                            mat4x4 camera_projection, mat4x4 camera_view, vec3 light_source_position)
+{
+  constexpr float cascade_split_lambda = 0.95f;
+  constexpr float near_clip            = 0.1f;
+  constexpr float far_clip             = 1000.0f;
+  constexpr float clip_range           = far_clip - near_clip;
+  constexpr float min_z                = near_clip;
+  constexpr float max_z                = near_clip + clip_range;
+  constexpr float range                = max_z - min_z;
+  constexpr float ratio                = max_z / min_z;
+
+  //
+  // This calculates the distances between frustums. For example:
+  // near:      0.1
+  // far:    1000.0
+  // splits: 0.013, 0.034, 0.132, 1.000
+  //
+  float cascade_splits[Engine::SHADOWMAP_CASCADE_COUNT] = {};
+  for (uint32_t i = 0; i < Engine::SHADOWMAP_CASCADE_COUNT; i++)
+  {
+    const float p       = static_cast<float>(i + 1) / static_cast<float>(Engine::SHADOWMAP_CASCADE_COUNT);
+    const float log     = min_z * SDL_powf(ratio, p);
+    const float uniform = min_z + range * p;
+    const float d       = cascade_split_lambda * (log - uniform) + uniform;
+    cascade_splits[i]   = (d - near_clip) / clip_range;
+  }
+
+  float last_split_dist = 0.0;
+  for (uint32_t cascade_idx = 0; cascade_idx < Engine::SHADOWMAP_CASCADE_COUNT; cascade_idx++)
+  {
+    //
+    // Frustum edges overview
+    //
+    //         4 --- 5     Y
+    //       /     / |     /\  Z
+    //     0 --- 1   |     | /
+    //     |     |   6     .--> X
+    //     |     | /
+    //     3 --- 2
+    //
+    vec3 frustum_corners[] = {
+        {-1.0f, 1.0f, -1.0f}, {1.0f, 1.0f, -1.0f}, {1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, -1.0f},
+        {-1.0f, 1.0f, 1.0f},  {1.0f, 1.0f, 1.0f},  {1.0f, -1.0f, 1.0f},  {-1.0f, -1.0f, 1.0f},
+    };
+
+    //
+    // LoD change should follow main game camera and not the light projection.
+    // Because of that frustums have to "come out" from viewer camera.
+    //
+    mat4x4 cam = {};
+    mat4x4_mul(cam, camera_projection, camera_view);
+
+    mat4x4 inv_cam = {};
+    mat4x4_invert(inv_cam, cam);
+
+    for (vec3& in : frustum_corners)
+    {
+      vec4 corners_as_vec4 = {in[0], in[1], in[2], 1.0f};
+      vec4 inv_corner      = {};
+      mat4x4_mul_vec4(inv_corner, inv_cam, corners_as_vec4);
+      for (int i = 0; i < 3; ++i)
+        in[i] = inv_corner[i] / inv_corner[3];
+    }
+
+    const float split_dist = cascade_splits[cascade_idx];
+    for (uint32_t i = 0; i < 4; i++)
+    {
+      vec3 dist = {};
+      vec3_sub(dist, frustum_corners[i + 4], frustum_corners[i]);
+
+      vec3 dist_scaled_split_dist = {};
+      vec3_scale(dist_scaled_split_dist, dist, split_dist);
+      vec3_add(frustum_corners[i + 4], frustum_corners[i], dist_scaled_split_dist);
+
+      vec3 dist_scaled_last_split_dist = {};
+      vec3_scale(dist_scaled_last_split_dist, dist, last_split_dist);
+
+      vec3_add(frustum_corners[i], frustum_corners[i], dist_scaled_last_split_dist);
+    }
+
+    vec3 frustum_center = {};
+    for (vec3& frustum_corner : frustum_corners)
+      vec3_add(frustum_center, frustum_center, frustum_corner);
+
+    for (float& i : frustum_center)
+      i /= 8.0f;
+
+    float radius = 0.0f;
+    for (vec3& frustum_corner : frustum_corners)
+    {
+      vec3 tmp = {};
+      vec3_sub(tmp, frustum_corner, frustum_center);
+      float distance = vec3_len(tmp);
+      radius = SDL_max(radius, distance);
+    }
+
+    radius           = SDL_ceilf(radius * 16.0f) / 16.0f;
+    vec3 max_extents = {radius, radius, radius};
+    vec3 min_extents = {-max_extents[0], -max_extents[1], -max_extents[2]};
+
+    vec3 light_dir = {};
+    {
+      vec3 reflected_light_position = {-light_source_position[0], -light_source_position[1], -light_source_position[2]};
+      vec3_norm(light_dir, reflected_light_position);
+    }
+
+    mat4x4 light_view_mat = {};
+    {
+      vec3 up = {0.0f, -1.0f, 0.0f};
+
+      vec3 scaled_light_dir = {};
+      vec3_scale(scaled_light_dir, light_dir, -min_extents[2]);
+
+      vec3 eye = {};
+      vec3_sub(eye, frustum_center, scaled_light_dir);
+      mat4x4_look_at(light_view_mat, eye, frustum_center, up);
+    }
+
+    // I don't know why the near clipping plane has to be a huge negative number! If used with 0 as in tutorials, the depth is not
+    // calculated properly.. I giess for now it'll have to be this way.
+    // @todo: investigate someday (low prio)
+    mat4x4 light_ortho_mat = {};
+    mat4x4_ortho(light_ortho_mat, min_extents[0], max_extents[0], min_extents[1], max_extents[1], -400.0f,
+                 max_extents[2] - min_extents[2]);
+    light_ortho_mat[1][1] *= -1.0f;
+
+    mat4x4_mul(cascade_view_proj_mat[cascade_idx], light_ortho_mat, light_view_mat);
+    float cascade_split_depth         = near_clip + split_dist * clip_range;
+    cascade_split_depths[cascade_idx] = cascade_split_depth;
+    last_split_dist                   = cascade_splits[cascade_idx];
+  }
+}
+
+} // namespace
 
 void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 {
@@ -1784,6 +1960,10 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   vec3 up     = {0.0f, -1.0f, 0.0f};
   mat4x4_look_at(view, camera_position, center, up);
 
+  light_source_position[0] = 200.0f;
+  light_source_position[1] = - 100.0f;
+  light_source_position[2] = 0;//player_position[2];
+
   if (ImGui::CollapsingHeader("Debug and info"))
   {
     ImGui::Text("camera offsets: %.2f %.2f %.2f", x_camera_offset, y_camera_offset, z_camera_offset);
@@ -1793,6 +1973,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     ImGui::Text("camera:       %.2f %.2f %.2f", camera_position[0], camera_position[1], camera_position[2]);
     ImGui::Text("acceleration: %.2f %.2f %.2f", player_acceleration[0], player_acceleration[1], player_acceleration[2]);
     ImGui::Text("velocity:     %.2f %.2f %.2f", player_velocity[0], player_velocity[1], player_velocity[2]);
+    ImGui::Text("Light:        %.2f %.2f %.2f", light_source_position[0], light_source_position[1], light_source_position[2]);
     ImGui::Text("time:         %.4f", current_time_sec);
     ImGui::Text("camera angle: %.2f", to_deg(camera_angle));
 
@@ -1981,43 +2162,9 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   }
   ImGui::End();
 
-  // @todo: this can be baked in "setup" method as soon as I get the shadow mapping rolling
-  {
-    if (DEBUG_FLAG_1)
-      DEBUG_VEC2[0] = 15.0f * SDL_sinf(1.1 * current_time_sec) - 15.0f;
 
-    if (DEBUG_FLAG_2)
-      DEBUG_VEC2[1] = 15.0f * SDL_cosf(1.6 * current_time_sec) + 15.0f;
-
-    mat4x4 light_projection = {};
-
-#if 0
-    {
-      float extent_width        = static_cast<float>(Engine::SHADOWMAP_IMAGE_DIM);
-      float extent_height       = static_cast<float>(Engine::SHADOWMAP_IMAGE_DIM);
-      float aspect_ratio        = extent_width / extent_height;
-      float fov                 = to_rad(140.0f);
-      float near_clipping_plane = 1.0f;
-      float far_clipping_plane  = 100.0f;
-      mat4x4_perspective(light_projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
-      light_projection[1][1] *= -1.0f;
-    }
-#else
-    mat4x4_ortho(light_projection, -30.0f, 30.0f, -30.0f, 30.0f, -300.0f, 100.0f);
-    light_projection[1][1] *= -1.0f;
-#endif
-
-    light_source_position[0] = player_position[0] + 30.0f;
-    light_source_position[1] = player_position[1] - 10.0f;
-    light_source_position[2] = player_position[2] - 10.0f;
-
-    mat4x4 light_view = {};
-    //vec3   center     = {0.0, 0.0, 0.0};
-    vec3   up         = {0.0f, -1.0f, 0.0f};
-    mat4x4_look_at(light_view, light_source_position, player_position, up);
-
-    mat4x4_mul(light_space_matrix, light_projection, light_view);
-  }
+  recalculate_cascade_view_proj_matrices(cascade_view_proj_mat, cascade_split_depths, projection, view,
+                                         light_source_position);
 
   js.jobs_max            = 0;
   js.jobs[js.jobs_max++] = {"moving lights update", update::moving_lights_job};
@@ -2067,7 +2214,7 @@ void Game::render(Engine& engine)
   js.jobs[js.jobs_max++] = {"point lights", render::point_light_boxes};
   js.jobs[js.jobs_max++] = {"box", render::matrioshka_box};
   js.jobs[js.jobs_max++] = {"vr scene", render::vr_scene};
-  //js.jobs[js.jobs_max++] = {"vr scene depth", render::vr_scene_depth};
+  // js.jobs[js.jobs_max++] = {"vr scene depth", render::vr_scene_depth};
   js.jobs[js.jobs_max++] = {"radar", render::radar};
   js.jobs[js.jobs_max++] = {"gui lines", render::robot_gui_lines};
   js.jobs[js.jobs_max++] = {"gui height ruler text", render::height_ruler_text};
@@ -2082,20 +2229,35 @@ void Game::render(Engine& engine)
   js.jobs[js.jobs_max++] = {"weapon selectors - left", render::weapon_selectors_left};
   js.jobs[js.jobs_max++] = {"weapon selectors - right", render::weapon_selectors_right};
   js.jobs[js.jobs_max++] = {"water", render::water};
-  js.jobs[js.jobs_max++] = {"debug shadow map depth pass", render::debug_shadowmap};
+  // js.jobs[js.jobs_max++] = {"debug shadow map depth pass", render::debug_shadowmap};
 
   SDL_LockMutex(js.new_jobs_available_mutex);
   SDL_CondBroadcast(js.new_jobs_available_cond);
   SDL_UnlockMutex(js.new_jobs_available_mutex);
+  // While we await for tasks to be finished by worker threads, this one will handle memory synchronization
 
   //
+  // Cascade shadow map projection matrices
   //
-  //
-  update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory, sizeof(mat4x4),
-             light_space_matrices_ubo_offsets[image_index], &light_space_matrix);
+  {
+    struct Update
+    {
+      mat4x4 cascade_view_proj_mat[Engine::SHADOWMAP_CASCADE_COUNT];
+      vec4   cascade_splits;
+    } ubo_update = {};
+
+    for (int i = 0; i < Engine::SHADOWMAP_CASCADE_COUNT; ++i)
+      mat4x4_dup(ubo_update.cascade_view_proj_mat[i], cascade_view_proj_mat[i]);
+
+    for (int i = 0; i < Engine::SHADOWMAP_CASCADE_COUNT; ++i)
+      ubo_update.cascade_splits[i] = cascade_split_depths[i];
+
+    update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory, sizeof(ubo_update),
+               cascade_view_proj_mat_ubo_offsets[image_index], &ubo_update);
+  }
 
   //
-  //
+  // light sources
   //
   update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory, sizeof(LightSources),
              pbr_dynamic_lights_ubo_offsets[image_index], &pbr_light_sources_cache);
@@ -2216,10 +2378,7 @@ void Game::render(Engine& engine)
   }
 
   SDL_SemWait(js.all_threads_idle_signal);
-
-  const int all_secondary_count = SDL_AtomicGet(&js_sink.count);
   SDL_AtomicSet(&js.threads_finished_work, 0);
-  SDL_AtomicSet(&js_sink.count, 0);
   SDL_AtomicSet(&js.jobs_taken, 0);
 
   {
@@ -2239,13 +2398,15 @@ void Game::render(Engine& engine)
     // For now I don't have much of a choice, so I'll go along with this thing.
     // @todo: rethink the shadow mapping depth pass
     //
+    for (int cascade_idx = 0; cascade_idx < Engine::SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
     {
-      VkClearValue clear_value = {.depthStencil = {1.0, 0}};
+      const int    framebuffer_idx = (Engine::SHADOWMAP_CASCADE_COUNT * image_index) + cascade_idx;
+      VkClearValue clear_value     = {.depthStencil = {1.0, 0}};
 
       VkRenderPassBeginInfo begin = {
           .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
           .renderPass      = engine.shadow_mapping.render_pass,
-          .framebuffer     = engine.shadow_mapping.framebuffers[image_index],
+          .framebuffer     = engine.shadow_mapping.framebuffers[framebuffer_idx],
           .renderArea      = {.extent = {.width = Engine::SHADOWMAP_IMAGE_DIM, .height = Engine::SHADOWMAP_IMAGE_DIM}},
           .clearValueCount = 1,
           .pClearValues    = &clear_value,
@@ -2253,11 +2414,9 @@ void Game::render(Engine& engine)
 
       vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 
-      const RecordedCommandBuffer ref = {VK_NULL_HANDLE, engine.shadow_mapping.render_pass, 0};
-
-      for (int i = 0; i < all_secondary_count; ++i)
-        if (ref == js_sink.commands[i])
-          vkCmdExecuteCommands(cmd, 1, &js_sink.commands[i].command);
+      for (const DepthPassCmd& iter : depth_pass_cmds)
+        if (cascade_idx == iter.cascade_idx)
+          vkCmdExecuteCommands(cmd, 1, &iter.command);
 
       vkCmdEndRenderPass(cmd);
     }
@@ -2295,11 +2454,9 @@ void Game::render(Engine& engine)
 
     for (int subpass = 0; subpass < Engine::SimpleRendering::Pass::Count; ++subpass)
     {
-      const RecordedCommandBuffer ref = {VK_NULL_HANDLE, engine.simple_rendering.render_pass, subpass};
-
-      for (int i = 0; i < all_secondary_count; ++i)
-        if (ref == js_sink.commands[i])
-          vkCmdExecuteCommands(cmd, 1, &js_sink.commands[i].command);
+      for (const SimpleRenderingCmd& iter : simple_rendering_cmds)
+        if (subpass == iter.subpass)
+          vkCmdExecuteCommands(cmd, 1, &iter.command);
 
       if (subpass < (Engine::SimpleRendering::Pass::Count - 1))
         vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
@@ -2309,9 +2466,14 @@ void Game::render(Engine& engine)
     vkEndCommandBuffer(cmd);
   }
 
-  VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+  // queues can only by emptied after all secondary command buffers from there are inlined into target primary
+  // command buffer
+  SDL_AtomicSet(&simple_rendering_cmds.count, 0);
+  SDL_AtomicSet(&depth_pass_cmds.count, 0);
 
   {
+    VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
     VkSubmitInfo submit = {
         .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .waitSemaphoreCount   = 1,

@@ -66,14 +66,6 @@ VkDeviceSize align(VkDeviceSize unaligned, VkDeviceSize alignment)
   return result;
 }
 
-int find_first_zeroed_bit_offset(uint64_t bitmap)
-{
-  for (int i = 0; i < 64; ++i)
-    if (0 == (bitmap & (uint64_t(1) << i)))
-      return i;
-  return 64;
-}
-
 void* DoubleEndedStack::allocate_front(uint64_t size)
 {
   void* result = reinterpret_cast<void*>(&memory[stack_pointer_front]);
@@ -264,27 +256,39 @@ void Engine::startup()
     VkPresentModeKHR* present_modes = reinterpret_cast<VkPresentModeKHR*>(allocation);
     vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, present_modes);
 
-    present_mode = VK_PRESENT_MODE_FIFO_KHR;
+    SDL_Log("Supported presentation modes");
     for (uint32_t i = 0; i < count; ++i)
     {
-      if (VK_PRESENT_MODE_MAILBOX_KHR == present_modes[i])
+      const char* mode = nullptr;
+      switch (present_modes[i])
       {
-        present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
+      case VK_PRESENT_MODE_MAILBOX_KHR:
+        mode = "MAILBOX (smart v-sync)";
+        break;
+      case VK_PRESENT_MODE_FIFO_KHR:
+        mode = "FIFO (v-sync)";
+        break;
+      case VK_PRESENT_MODE_IMMEDIATE_KHR:
+        mode = "IMMEDIATE";
+        break;
+      case VK_PRESENT_MODE_FIFO_RELAXED_KHR:
+        mode = "FIFO RELAXED";
+        break;
+      case VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR:
+        mode = "SHARED DEMAND REFRESH";
+        break;
+      case VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR:
+        mode = "SHARED CONTINUOUS REFRESH";
+        break;
+      default:
+        mode = "unknown?";
         break;
       }
+
+      SDL_Log("- %s", mode);
     }
 
-    const char* selected_mode = nullptr;
-    switch (present_mode)
-    {
-    case VK_PRESENT_MODE_MAILBOX_KHR:
-      selected_mode = "MAILBOX (smart v-sync)";
-      break;
-    default:
-      selected_mode = "FIFO (v-sync)";
-      break;
-    }
-    SDL_Log("Selected presentation mode: %s", selected_mode);
+    present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
   }
 
   {
@@ -355,7 +359,7 @@ void Engine::startup()
   {
     VkDescriptorPoolSize pool_sizes[] = {
         {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10 * SWAPCHAIN_IMAGES_COUNT},
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 * SWAPCHAIN_IMAGES_COUNT},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10 * SWAPCHAIN_IMAGES_COUNT},
         {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 20 * SWAPCHAIN_IMAGES_COUNT},
     };
 
@@ -420,7 +424,7 @@ void Engine::startup()
         .format        = VK_FORMAT_D32_SFLOAT,
         .extent        = {.width = SHADOWMAP_IMAGE_DIM, .height = SHADOWMAP_IMAGE_DIM, .depth = 1},
         .mipLevels     = 1,
-        .arrayLayers   = 1,
+        .arrayLayers   = SHADOWMAP_CASCADE_COUNT,
         .samples       = VK_SAMPLE_COUNT_1_BIT,
         .tiling        = VK_IMAGE_TILING_OPTIMAL,
         .usage         = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
@@ -645,11 +649,13 @@ void Engine::startup()
     vkCreateImageView(device, &ci, nullptr, &depth_image_view);
   }
 
+  for (int swapchain_idx = 0; swapchain_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_idx)
   {
     VkImageSubresourceRange sr = {
-        .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-        .levelCount = 1,
-        .layerCount = 1,
+        .aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT,
+        .levelCount     = 1,
+        .baseArrayLayer = 0,
+        .layerCount     = SHADOWMAP_CASCADE_COUNT,
     };
 
     VkComponentMapping comp = {
@@ -661,16 +667,45 @@ void Engine::startup()
 
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .viewType         = VK_IMAGE_VIEW_TYPE_2D,
+        .image            = shadowmap_images[swapchain_idx],
+        .viewType         = VK_IMAGE_VIEW_TYPE_2D_ARRAY,
         .format           = VK_FORMAT_D32_SFLOAT,
         .components       = comp,
         .subresourceRange = sr,
     };
 
-    for (int i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
+    vkCreateImageView(device, &ci, nullptr, &shadowmap_image_views[swapchain_idx]);
+  }
+
+  for (int swapchain_idx = 0; swapchain_idx < SWAPCHAIN_IMAGES_COUNT; ++swapchain_idx)
+  {
+    for (int cascade_idx = 0; cascade_idx < SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
     {
-      ci.image = shadowmap_images[i];
-      vkCreateImageView(device, &ci, nullptr, &shadowmap_image_views[i]);
+      VkImageSubresourceRange sr = {
+          .aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT,
+          .levelCount     = 1,
+          .baseArrayLayer = static_cast<uint32_t>(cascade_idx),
+          .layerCount     = 1,
+      };
+
+      VkComponentMapping comp = {
+          .r = VK_COMPONENT_SWIZZLE_R,
+          .g = VK_COMPONENT_SWIZZLE_G,
+          .b = VK_COMPONENT_SWIZZLE_B,
+          .a = VK_COMPONENT_SWIZZLE_A,
+      };
+
+      VkImageViewCreateInfo ci = {
+          .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+          .image            = shadowmap_images[swapchain_idx],
+          .viewType         = VK_IMAGE_VIEW_TYPE_2D,
+          .format           = VK_FORMAT_D32_SFLOAT,
+          .components       = comp,
+          .subresourceRange = sr,
+      };
+
+      vkCreateImageView(device, &ci, nullptr,
+                        &shadowmap_cascade_image_views[(swapchain_idx * SHADOWMAP_CASCADE_COUNT) + cascade_idx]);
     }
   }
 
@@ -689,6 +724,9 @@ void Engine::startup()
       image_resources.add(shadowmap_images[i]);
       image_resources.add(shadowmap_image_views[i]);
     }
+
+    for (int i = 0; i < (SHADOWMAP_CASCADE_COUNT * SWAPCHAIN_IMAGES_COUNT); ++i)
+      image_resources.add(shadowmap_cascade_image_views[i]);
   }
 
   // UBO HOST VISIBLE
@@ -735,6 +773,7 @@ void Engine::teardown()
     vkDestroyPipeline(device, scheduled_pipelines_destruction[i].pipeline, nullptr);
 
   vkDestroyRenderPass(device, shadow_mapping.render_pass, nullptr);
+  vkDestroyDescriptorSetLayout(device, shadow_mapping.descriptor_set_layout, nullptr);
   for (VkFramebuffer& framebuffer : shadow_mapping.framebuffers)
     vkDestroyFramebuffer(device, framebuffer, nullptr);
   vkDestroyPipelineLayout(device, shadow_mapping.pipeline_layout, nullptr);
@@ -748,7 +787,7 @@ void Engine::teardown()
   vkDestroyDescriptorSetLayout(device, simple_rendering.pbr_dynamic_lights_descriptor_set_layout, nullptr);
   vkDestroyDescriptorSetLayout(device, simple_rendering.single_texture_in_frag_descriptor_set_layout, nullptr);
   vkDestroyDescriptorSetLayout(device, simple_rendering.skinning_matrices_descriptor_set_layout, nullptr);
-  vkDestroyDescriptorSetLayout(device, simple_rendering.light_space_matrix_ubo_set_layout, nullptr);
+  vkDestroyDescriptorSetLayout(device, simple_rendering.cascade_shadow_map_matrices_ubo_frag_set_layout, nullptr);
 
   for (VkFramebuffer& framebuffer : simple_rendering.framebuffers)
     vkDestroyFramebuffer(device, framebuffer, nullptr);
@@ -1501,16 +1540,35 @@ void Engine::setup_shadow_mapping()
   }
 
   {
+    VkDescriptorSetLayoutBinding binding = {
+        .binding         = 0,
+        .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = 1,
+        .stageFlags      = VK_SHADER_STAGE_VERTEX_BIT,
+    };
+
+    VkDescriptorSetLayoutCreateInfo ci = {
+        .sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 1,
+        .pBindings    = &binding,
+    };
+
+    vkCreateDescriptorSetLayout(device, &ci, nullptr, &shadow_mapping.descriptor_set_layout);
+  }
+
+  {
     VkPushConstantRange ranges[] = {
         {
             .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
             .offset     = 0,
-            .size       = 2 * sizeof(mat4x4),
+            .size       = sizeof(mat4x4) + sizeof(uint32_t),
         },
     };
 
     VkPipelineLayoutCreateInfo ci = {
         .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount         = 1,
+        .pSetLayouts            = &shadow_mapping.descriptor_set_layout,
         .pushConstantRangeCount = SDL_arraysize(ranges),
         .pPushConstantRanges    = ranges,
     };
@@ -1520,13 +1578,13 @@ void Engine::setup_shadow_mapping()
 
   pipeline_reload_shadow_mapping_reload(*this);
 
-  for (int i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
+  for (unsigned i = 0; i < SDL_arraysize(shadowmap_cascade_image_views); ++i)
   {
     VkFramebufferCreateInfo ci = {
         .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
         .renderPass      = shadow_mapping.render_pass,
         .attachmentCount = 1,
-        .pAttachments    = &shadowmap_image_views[i],
+        .pAttachments    = &shadowmap_cascade_image_views[i],
         .width           = SHADOWMAP_IMAGE_DIM,
         .height          = SHADOWMAP_IMAGE_DIM,
         .layers          = 1,
@@ -1975,7 +2033,7 @@ void Engine::setup_simple_rendering()
         .binding         = 0,
         .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
         .descriptorCount = 1,
-        .stageFlags      = VK_SHADER_STAGE_VERTEX_BIT,
+        .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
     };
 
     VkDescriptorSetLayoutCreateInfo ci = {
@@ -1984,7 +2042,8 @@ void Engine::setup_simple_rendering()
         .pBindings    = &binding,
     };
 
-    vkCreateDescriptorSetLayout(device, &ci, nullptr, &renderer.light_space_matrix_ubo_set_layout);
+    binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+    vkCreateDescriptorSetLayout(device, &ci, nullptr, &renderer.cascade_shadow_map_matrices_ubo_frag_set_layout);
   }
 
   {
@@ -2021,9 +2080,9 @@ void Engine::setup_simple_rendering()
     VkDescriptorSetLayout descriptor_sets[] = {
         renderer.pbr_metallic_workflow_material_descriptor_set_layout,
         renderer.pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout,
-        renderer.pbr_dynamic_lights_descriptor_set_layout,
-        renderer.light_space_matrix_ubo_set_layout,
         renderer.single_texture_in_frag_descriptor_set_layout,
+        renderer.pbr_dynamic_lights_descriptor_set_layout,
+        renderer.cascade_shadow_map_matrices_ubo_frag_set_layout,
     };
 
     VkPipelineLayoutCreateInfo ci = {
@@ -2363,6 +2422,11 @@ void Engine::setup_simple_rendering()
             .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
             .offset     = 0,
             .size       = sizeof(mat4x4),
+        },
+        {
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .offset     = sizeof(mat4x4),
+            .size       = sizeof(uint32_t),
         },
     };
 

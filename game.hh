@@ -196,22 +196,37 @@ struct JobSystem
   int                paused_profile_data_count;
 };
 
-struct RecordedCommandBuffer
+struct SimpleRenderingCmd
 {
   VkCommandBuffer command;
-  VkRenderPass    render_pass;
   int             subpass;
-
-  bool operator==(const RecordedCommandBuffer& rhs) const
-  {
-    return (render_pass == rhs.render_pass) and (subpass == rhs.subpass);
-  }
 };
 
-struct SecondaryCommandBufferSink
+struct DepthPassCmd
 {
-  RecordedCommandBuffer commands[512];
-  SDL_atomic_t          count;
+  VkCommandBuffer command;
+  int             cascade_idx;
+};
+
+template <typename T, int SIZE> struct AtomicStack
+{
+  void push(const T& in)
+  {
+    stack[SDL_AtomicIncRef(&count)] = in;
+  }
+
+  T* begin()
+  {
+    return stack;
+  }
+
+  T* end()
+  {
+    return &stack[SDL_AtomicGet(&count)];
+  }
+
+  T            stack[SIZE];
+  SDL_atomic_t count;
 };
 
 struct RenderEntityParams
@@ -280,14 +295,27 @@ struct Game
   VkDescriptorSet sandy_level_pbr_material_dset;
   VkDescriptorSet pbr_water_material_dset;
   VkDescriptorSet debug_shadow_map_dset[Engine::SWAPCHAIN_IMAGES_COUNT];
-  VkDescriptorSet light_space_matrices_dset[Engine::SWAPCHAIN_IMAGES_COUNT];
+
+  //
+  // Those two descriptor sets partially point to the same data. In both cases we'll be using
+  // already calculated and uploaded cascade view projection matrices. The difference is:
+  // - during rendering additionally information about the depth split distance per cascade is required
+  // - depth pass uses them in vertex shader, rendering in fragment. The stages itself require us to have separate
+  //   descriptors
+  //
+  VkDescriptorSet cascade_view_proj_matrices_depth_pass_dset[Engine::SWAPCHAIN_IMAGES_COUNT];
+  VkDescriptorSet cascade_view_proj_matrices_render_dset[Engine::SWAPCHAIN_IMAGES_COUNT];
 
   // ubos
   VkDeviceSize rig_skinning_matrices_ubo_offsets[Engine::SWAPCHAIN_IMAGES_COUNT];
   VkDeviceSize fig_skinning_matrices_ubo_offsets[Engine::SWAPCHAIN_IMAGES_COUNT];
   VkDeviceSize monster_skinning_matrices_ubo_offsets[Engine::SWAPCHAIN_IMAGES_COUNT];
   VkDeviceSize pbr_dynamic_lights_ubo_offsets[Engine::SWAPCHAIN_IMAGES_COUNT];
-  VkDeviceSize light_space_matrices_ubo_offsets[Engine::SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize cascade_view_proj_mat_ubo_offsets[Engine::SWAPCHAIN_IMAGES_COUNT];
+
+  // cascade shadow mapping
+  mat4x4 cascade_view_proj_mat[Engine::SHADOWMAP_CASCADE_COUNT];
+  float  cascade_split_depths[Engine::SHADOWMAP_CASCADE_COUNT];
 
   // frame cache
   LightSources pbr_light_sources_cache;
@@ -331,7 +359,6 @@ struct Game
   mat4x4 projection;
   mat4x4 view;
   vec3   camera_position;
-  mat4x4 light_space_matrix;
 
   VkDeviceSize vr_level_vertex_buffer_offset;
   VkDeviceSize vr_level_index_buffer_offset;
@@ -368,11 +395,12 @@ struct Game
   int  lmb_last_cursor_position[2];
   int  lmb_current_cursor_position[2];
 
-  uint32_t                   image_index;
-  JobSystem                  js;
-  SecondaryCommandBufferSink js_sink;
-  float                      current_time_sec;
-  float                      diagnostic_meas_scale;
+  uint32_t                             image_index;
+  JobSystem                            js;
+  AtomicStack<DepthPassCmd, 512>       depth_pass_cmds;
+  AtomicStack<SimpleRenderingCmd, 512> simple_rendering_cmds;
+  float                                current_time_sec;
+  float                                diagnostic_meas_scale;
 
   EntityComponentSystem ecs;
 

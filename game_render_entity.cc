@@ -41,20 +41,20 @@ SkinningUbo to_skinning(RenderEntityParams& p, mat4x4 transform)
 } // namespace
 
 void render_pbr_entity_shadow(Entity entity, EntityComponentSystem& ecs, SceneGraph& scene_graph, Engine& engine,
-                              Game& game, VkCommandBuffer cmd)
+                              Game& game, VkCommandBuffer cmd, int cascade_idx)
 {
   uint64_t renderable_nodes_bitmap = ecs.node_renderabilities[entity.node_renderabilities];
   uint64_t nodes_with_mesh_bitmap  = filter_nodes_with_mesh(scene_graph.nodes);
   uint64_t bitmap                  = renderable_nodes_bitmap & nodes_with_mesh_bitmap;
   mat4x4*  transforms              = ecs.node_transforms[entity.node_transforms].transforms;
 
-  struct PushConstant
+  struct Push
   {
-    mat4x4 light_space_matrix;
-    mat4x4 model;
-  } pc = {};
+    mat4x4   model;
+    uint32_t cascade_idx;
+  } push = {};
 
-  mat4x4_dup(pc.light_space_matrix, game.light_space_matrix);
+  push.cascade_idx = static_cast<uint32_t>(cascade_idx);
 
   for (int node_idx = 0; node_idx < 64; ++node_idx)
   {
@@ -63,11 +63,12 @@ void render_pbr_entity_shadow(Entity entity, EntityComponentSystem& ecs, SceneGr
       int         mesh_idx = scene_graph.nodes.data[node_idx].mesh;
       const Mesh& mesh     = scene_graph.meshes.data[mesh_idx];
 
-      mat4x4_dup(pc.model, transforms[node_idx]);
+      mat4x4_dup(push.model, transforms[node_idx]);
 
       vkCmdBindIndexBuffer(cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
-      vkCmdPushConstants(cmd, engine.shadow_mapping.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(pc), &pc);
+      vkCmdPushConstants(cmd, engine.shadow_mapping.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push),
+                         &push);
       vkCmdDrawIndexed(cmd, mesh.indices_count, 1, 0, 0, 0);
     }
   }

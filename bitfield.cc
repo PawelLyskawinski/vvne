@@ -44,17 +44,20 @@ int ComponentBitfield::allocate()
 
 void ComponentBitfield::free(int i)
 {
-  if (0 <= i)
-    usage[i / ELEMENTS_IN_BATCH] &= ~(uint64_t(1) << (i % ELEMENTS_IN_BATCH));
+  SDL_assert(0 <= i);
+  SDL_assert(i < (ELEMENTS_IN_BATCH * batches_count));
+
+  usage[i / ELEMENTS_IN_BATCH] &= ~(uint64_t(1) << (i % ELEMENTS_IN_BATCH));
 }
 
-bool ComponentBitfield::is_used(int position) const
+bool ComponentBitfield::is_used(int i) const
 {
-  const int batch_idx = position / ELEMENTS_IN_BATCH;
-  SDL_assert(batch_idx < batches_count);
+  SDL_assert(0 <= i);
+  SDL_assert(i < (ELEMENTS_IN_BATCH * batches_count));
 
+  const int      batch_idx     = i / ELEMENTS_IN_BATCH;
   const uint64_t current_batch = usage[batch_idx];
-  const int      offset        = position - (ELEMENTS_IN_BATCH * batch_idx);
+  const int      offset        = i - (ELEMENTS_IN_BATCH * batch_idx);
   const uint64_t mask          = (uint64_t(1) << offset);
 
   return static_cast<bool>(current_batch & mask);

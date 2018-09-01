@@ -287,12 +287,14 @@ void robot_job(ThreadJobData tjd)
 
 void monster_job(ThreadJobData tjd)
 {
+  mat4x4 translation_matrix = {};
+  mat4x4_translate(translation_matrix,
+          //tjd.game.light_source_position[0], tjd.game.light_source_position[1], tjd.game.light_source_position[2]);
+  -2.0f, 3.5f, 0.5f);
+
   quat orientation = {};
   vec3 x_axis      = {1.0, 0.0, 0.0};
   quat_rotate(orientation, to_rad(45.0f), x_axis);
-
-  mat4x4 translation_matrix = {};
-  mat4x4_translate(translation_matrix, -2.0f, 5.5f, 0.5f);
 
   mat4x4 rotation_matrix = {};
   mat4x4_from_quat(rotation_matrix, orientation);
@@ -303,7 +305,7 @@ void monster_job(ThreadJobData tjd)
   mat4x4_scale_aniso(scale_matrix, scale_matrix, factor, factor, factor);
 
   mat4x4 world_transform = {};
-  multiply_matrices(world_transform, rotation_matrix, translation_matrix, scale_matrix);
+  multiply_matrices(world_transform, translation_matrix, rotation_matrix, scale_matrix);
 
   animate_entity(tjd.game.monster_entity, tjd.game.ecs, tjd.game.monster, tjd.game.current_time_sec);
   recalculate_node_transforms(tjd.game.monster_entity, tjd.game.ecs, tjd.game.monster, world_transform);
