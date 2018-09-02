@@ -64,7 +64,7 @@ struct Engine
 {
   // configuration
   static constexpr int  SWAPCHAIN_IMAGES_COUNT  = 2;
-  static constexpr int  SHADOWMAP_IMAGE_DIM     = 1024;
+  static constexpr int  SHADOWMAP_IMAGE_DIM     = 1024 * 2;
   static constexpr int  SHADOWMAP_CASCADE_COUNT = 4;
   VkSampleCountFlagBits MSAA_SAMPLE_COUNT;
 
