@@ -1577,9 +1577,9 @@ void recalculate_cascade_view_proj_matrices(mat4x4 cascade_view_proj_mat[Engine:
       mat4x4_look_at(light_view_mat, eye, frustum_center, up);
     }
 
-    // I don't know why the near clipping plane has to be a huge negative number! If used with 0 as in tutorials, the depth is not
-    // calculated properly.. I giess for now it'll have to be this way.
-    // @todo: investigate someday (low prio)
+    // I don't know why the near clipping plane has to be a huge negative number! If used with 0 as in tutorials,
+    // the depth is not calculated properly.. I guess for now it'll have to be this way.
+    // @todo: investigate someday (low priority)
     mat4x4 light_ortho_mat = {};
     mat4x4_ortho(light_ortho_mat, min_extents[0], max_extents[0], min_extents[1], max_extents[1], -400.0f,
                  max_extents[2] - min_extents[2]);
