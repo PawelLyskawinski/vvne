@@ -17,17 +17,17 @@ int main(int argc, char* argv[])
   Game*   game   = reinterpret_cast<Game*>(SDL_calloc(1, sizeof(Game)));
 
   // ----- DEFAULT CONFIGS -----
-  engine->MSAA_SAMPLE_COUNT = VK_SAMPLE_COUNT_8_BIT;
+  engine->MSAA_SAMPLE_COUNT            = VK_SAMPLE_COUNT_8_BIT;
+  constexpr int desired_frames_per_sec = 60;
   // ---------------------------
 
   engine->startup();
   game->startup(*engine);
 
-  uint64_t    performance_frequency     = SDL_GetPerformanceFrequency();
-  uint64_t    start_of_game_ticks       = SDL_GetPerformanceCounter();
-  const int   desired_frames_per_sec    = 60;
-  const float desired_frame_duration_ms = (1000.0f / static_cast<float>(desired_frames_per_sec));
-  float       elapsed_ms                = desired_frame_duration_ms;
+  uint64_t        performance_frequency     = SDL_GetPerformanceFrequency();
+  uint64_t        start_of_game_ticks       = SDL_GetPerformanceCounter();
+  constexpr float desired_frame_duration_ms = (1000.0f / static_cast<float>(desired_frames_per_sec));
+  float           elapsed_ms                = desired_frame_duration_ms;
 
   SDL_ShowWindow(engine->window);
   while (!SDL_QuitRequested())
@@ -45,7 +45,7 @@ int main(int argc, char* argv[])
 
     if (elapsed_ms < desired_frame_duration_ms)
     {
-      const uint32_t wait_time = static_cast<uint32_t>(desired_frame_duration_ms - elapsed_ms);
+      const uint32_t wait_time = static_cast<uint32_t>(SDL_ceilf(desired_frame_duration_ms - elapsed_ms));
       if (0 < wait_time)
         SDL_Delay(wait_time);
     }

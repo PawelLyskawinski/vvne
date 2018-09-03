@@ -256,39 +256,42 @@ void Engine::startup()
     VkPresentModeKHR* present_modes = reinterpret_cast<VkPresentModeKHR*>(allocation);
     vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, present_modes);
 
+    bool has_immediate_mode = false;
+    bool has_mailbox_mode   = false;
+
     SDL_Log("Supported presentation modes");
     for (uint32_t i = 0; i < count; ++i)
     {
-      const char* mode = nullptr;
       switch (present_modes[i])
       {
       case VK_PRESENT_MODE_MAILBOX_KHR:
-        mode = "MAILBOX (smart v-sync)";
+        has_mailbox_mode = true;
+        SDL_Log("MAILBOX (smart v-sync)");
         break;
       case VK_PRESENT_MODE_FIFO_KHR:
-        mode = "FIFO (v-sync)";
+        SDL_Log("FIFO (v-sync)");
         break;
       case VK_PRESENT_MODE_IMMEDIATE_KHR:
-        mode = "IMMEDIATE";
+        has_immediate_mode = true;
+        SDL_Log("IMMEDIATE");
         break;
       case VK_PRESENT_MODE_FIFO_RELAXED_KHR:
-        mode = "FIFO RELAXED";
+        SDL_Log("FIFO RELAXED");
         break;
       case VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR:
-        mode = "SHARED DEMAND REFRESH";
+        SDL_Log("SHARED DEMAND REFRESH");
         break;
       case VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR:
-        mode = "SHARED CONTINUOUS REFRESH";
+        SDL_Log("SHARED CONTINUOUS REFRESH");
         break;
       default:
-        mode = "unknown?";
+        SDL_Log("unknown?");
         break;
       }
-
-      SDL_Log("- %s", mode);
     }
 
-    present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+    present_mode = has_immediate_mode ? VK_PRESENT_MODE_IMMEDIATE_KHR
+                                      : has_mailbox_mode ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_FIFO_KHR;
   }
 
   {

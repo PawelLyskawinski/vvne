@@ -355,6 +355,7 @@ struct Game
 
   float update_times[50];
   float render_times[50];
+  float acquire_times[50];
 
   mat4x4 projection;
   mat4x4 view;

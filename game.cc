@@ -1552,7 +1552,7 @@ void recalculate_cascade_view_proj_matrices(mat4x4 cascade_view_proj_mat[Engine:
       vec3 tmp = {};
       vec3_sub(tmp, frustum_corner, frustum_center);
       float distance = vec3_len(tmp);
-      radius = SDL_max(radius, distance);
+      radius         = SDL_max(radius, distance);
     }
 
     radius           = SDL_ceilf(radius * 16.0f) / 16.0f;
@@ -1813,10 +1813,13 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   {
     ImGui::PlotHistogram("update times", update_times, SDL_arraysize(update_times), 0, nullptr, 0.0, 0.005,
                          ImVec2(300, 20));
-    ImGui::PlotHistogram("render times", render_times, SDL_arraysize(render_times), 0, nullptr, 0.0, 0.005,
+    ImGui::PlotHistogram("acquire times", acquire_times, SDL_arraysize(acquire_times), 0, nullptr, 0.0, 0.02,
+                         ImVec2(300, 20));
+    ImGui::PlotHistogram("render times", render_times, SDL_arraysize(render_times), 0, nullptr, 0.0, 0.01,
                          ImVec2(300, 20));
 
     ImGui::Text("Average update time:            %.2fms", 1000.0f * avg(update_times, SDL_arraysize(update_times)));
+    ImGui::Text("Average acquire time:           %.2fms", 1000.0f * avg(acquire_times, SDL_arraysize(acquire_times)));
     ImGui::Text("Average render time:            %.2fms", 1000.0f * avg(render_times, SDL_arraysize(render_times)));
   }
 
@@ -1961,8 +1964,8 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   mat4x4_look_at(view, camera_position, center, up);
 
   light_source_position[0] = 200.0f;
-  light_source_position[1] = - 100.0f;
-  light_source_position[2] = 0;//player_position[2];
+  light_source_position[1] = -100.0f;
+  light_source_position[2] = 0; // player_position[2];
 
   if (ImGui::CollapsingHeader("Debug and info"))
   {
@@ -1973,7 +1976,8 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     ImGui::Text("camera:       %.2f %.2f %.2f", camera_position[0], camera_position[1], camera_position[2]);
     ImGui::Text("acceleration: %.2f %.2f %.2f", player_acceleration[0], player_acceleration[1], player_acceleration[2]);
     ImGui::Text("velocity:     %.2f %.2f %.2f", player_velocity[0], player_velocity[1], player_velocity[2]);
-    ImGui::Text("Light:        %.2f %.2f %.2f", light_source_position[0], light_source_position[1], light_source_position[2]);
+    ImGui::Text("Light:        %.2f %.2f %.2f", light_source_position[0], light_source_position[1],
+                light_source_position[2]);
     ImGui::Text("time:         %.4f", current_time_sec);
     ImGui::Text("camera angle: %.2f", to_deg(camera_angle));
 
@@ -2162,7 +2166,6 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   }
   ImGui::End();
 
-
   recalculate_cascade_view_proj_matrices(cascade_view_proj_mat, cascade_split_depths, projection, view,
                                          light_source_position);
 
@@ -2190,17 +2193,20 @@ void Game::render(Engine& engine)
 {
   Engine::SimpleRendering& renderer = engine.simple_rendering;
 
-  vkAcquireNextImageKHR(engine.device, engine.swapchain, UINT64_MAX, engine.image_available, VK_NULL_HANDLE,
-                        &image_index);
-  vkWaitForFences(engine.device, 1, &renderer.submition_fences[image_index], VK_TRUE, UINT64_MAX);
-  vkResetFences(engine.device, 1, &renderer.submition_fences[image_index]);
-
-  for (int worker_thread = 0; worker_thread < WORKER_THREADS_COUNT; ++worker_thread)
   {
-    int count = js.submited_command_count[image_index][worker_thread];
-    for (int i = 0; i < count; ++i)
-      vkResetCommandBuffer(js.commands[image_index][worker_thread][i], 0);
-    js.submited_command_count[image_index][worker_thread] = 0;
+    FunctionTimer timer(acquire_times, SDL_arraysize(acquire_times));
+    vkAcquireNextImageKHR(engine.device, engine.swapchain, UINT64_MAX, engine.image_available, VK_NULL_HANDLE,
+                          &image_index);
+    vkWaitForFences(engine.device, 1, &renderer.submition_fences[image_index], VK_TRUE, UINT64_MAX);
+    vkResetFences(engine.device, 1, &renderer.submition_fences[image_index]);
+
+    for (int worker_thread = 0; worker_thread < WORKER_THREADS_COUNT; ++worker_thread)
+    {
+      int count = js.submited_command_count[image_index][worker_thread];
+      for (int i = 0; i < count; ++i)
+        vkResetCommandBuffer(js.commands[image_index][worker_thread][i], 0);
+      js.submited_command_count[image_index][worker_thread] = 0;
+    }
   }
 
   FunctionTimer timer(render_times, SDL_arraysize(render_times));
@@ -2421,6 +2427,27 @@ void Game::render(Engine& engine)
       vkCmdEndRenderPass(cmd);
     }
 
+    {
+      VkImageMemoryBarrier barrier = {
+          .sType         = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+          .srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+          .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+          .oldLayout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+          .newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+          .image         = engine.shadowmap_images[image_index],
+          .subresourceRange =
+              {
+                  .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+                  .levelCount = 1,
+                  .layerCount = Engine::SHADOWMAP_CASCADE_COUNT,
+              },
+      };
+
+      vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr,
+                           1, &barrier);
+    }
+
     // -----------------------------------------------------------------------------------------------
     // SCENE RENDER PASS
     // -----------------------------------------------------------------------------------------------
@@ -2498,4 +2525,5 @@ void Game::render(Engine& engine)
   };
 
   vkQueuePresentKHR(engine.graphics_queue, &present);
+  // vkQueueWaitIdle(engine.graphics_queue);
 }
