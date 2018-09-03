@@ -2427,27 +2427,6 @@ void Game::render(Engine& engine)
       vkCmdEndRenderPass(cmd);
     }
 
-    {
-      VkImageMemoryBarrier barrier = {
-          .sType         = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-          .srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-          .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
-          .oldLayout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-          .newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-          .image         = engine.shadowmap_images[image_index],
-          .subresourceRange =
-              {
-                  .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-                  .levelCount = 1,
-                  .layerCount = Engine::SHADOWMAP_CASCADE_COUNT,
-              },
-      };
-
-      vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr,
-                           1, &barrier);
-    }
-
     // -----------------------------------------------------------------------------------------------
     // SCENE RENDER PASS
     // -----------------------------------------------------------------------------------------------
@@ -2525,5 +2504,4 @@ void Game::render(Engine& engine)
   };
 
   vkQueuePresentKHR(engine.graphics_queue, &present);
-  // vkQueueWaitIdle(engine.graphics_queue);
 }
