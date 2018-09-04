@@ -1,7 +1,7 @@
 #pragma once
 
-#include <linmath.h>
 #include "bitfield.hh"
+#include <linmath.h>
 
 struct AnimationTranslation
 {

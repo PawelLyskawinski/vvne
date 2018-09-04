@@ -288,9 +288,10 @@ void robot_job(ThreadJobData tjd)
 void monster_job(ThreadJobData tjd)
 {
   mat4x4 translation_matrix = {};
-  mat4x4_translate(translation_matrix,
-          //tjd.game.light_source_position[0], tjd.game.light_source_position[1], tjd.game.light_source_position[2]);
-  -2.0f, 3.5f, 0.5f);
+  mat4x4_translate(
+      translation_matrix,
+      // tjd.game.light_source_position[0], tjd.game.light_source_position[1], tjd.game.light_source_position[2]);
+      -2.0f, 3.5f, 0.5f);
 
   quat orientation = {};
   vec3 x_axis      = {1.0, 0.0, 0.0};

@@ -5,7 +5,6 @@
 #include <vulkan/vulkan.h>
 
 VkDeviceSize align(VkDeviceSize unaligned, VkDeviceSize alignment);
-int          find_first_zeroed_bit_offset(uint64_t bitmap);
 
 struct ScheduledPipelineDestruction
 {
