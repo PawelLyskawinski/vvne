@@ -20,15 +20,16 @@ int find_first_higher(const float times[], float current)
   return iter;
 }
 
-void lerp(const float a[], const float b[], float result[], int dim, float t)
+template <int DIM> void lerp(const float a[], const float b[], float result[], float t)
 {
-  for (int i = 0; i < dim; ++i)
+  for (int i = 0; i < DIM; ++i)
   {
-    float difference = b[i] - a[i];
-    float progressed = difference * t;
-    result[i]        = a[i] + progressed;
+    float distance = b[i] - a[i];
+    float progress = distance * t;
+    result[i]      = a[i] + progress;
   }
 }
+
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#appendix-c-spline-interpolation
 void hermite_cubic_spline_interpolation(const float a_in[], const float b_in[], float result[], int dim, float t,
                                         float total_duration)
@@ -122,7 +123,7 @@ void animate_entity(Entity& entity, EntityComponentSystem& ecs, SceneGraph& scen
           float* a = &sampler.values[4 * keyframe_lower];
           float* b = &sampler.values[4 * keyframe_upper];
           float* c = animation_rotation;
-          lerp(a, b, c, 4, keyframe_uniform_time);
+          lerp<4>(a, b, c, keyframe_uniform_time);
           vec4_norm(c, c);
         }
         else if (AnimationSampler::Interpolation::CubicSpline == sampler.interpolation)
@@ -159,7 +160,7 @@ void animate_entity(Entity& entity, EntityComponentSystem& ecs, SceneGraph& scen
           float* a = &sampler.values[3 * keyframe_lower];
           float* b = &sampler.values[3 * keyframe_upper];
           float* c = animation_translation;
-          lerp(a, b, c, 3, keyframe_uniform_time);
+          lerp<3>(a, b, c, keyframe_uniform_time);
         }
         else if (AnimationSampler::Interpolation::CubicSpline == sampler.interpolation)
         {
