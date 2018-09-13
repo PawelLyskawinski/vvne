@@ -67,8 +67,7 @@ void render_pbr_entity_shadow(Entity entity, EntityComponentSystem& ecs, SceneGr
 
       vkCmdBindIndexBuffer(cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
-      vkCmdPushConstants(cmd, engine.shadow_mapping.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push),
-                         &push);
+      vkCmdPushConstants(cmd, engine.shadowmap_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), &push);
       vkCmdDrawIndexed(cmd, mesh.indices_count, 1, 0, 0, 0);
     }
   }
@@ -92,8 +91,8 @@ void render_pbr_entity(Entity entity, EntityComponentSystem& ecs, SceneGraph& sc
 
       vkCmdBindIndexBuffer(p.cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(p.cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
-      vkCmdPushConstants(p.cmd, engine.simple_rendering.pipeline_layouts[p.pipeline],
-                         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ubo), &ubo);
+      vkCmdPushConstants(p.cmd, p.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                         sizeof(ubo), &ubo);
       vkCmdDrawIndexed(p.cmd, mesh.indices_count, 1, 0, 0, 0);
     }
   }
@@ -122,11 +121,8 @@ void render_entity(Entity entity, EntityComponentSystem& ecs, SceneGraph& scene_
       mat4x4 calculated_mvp = {};
       mat4x4_mul(calculated_mvp, projection_view, transforms[node_idx]);
 
-      vkCmdPushConstants(p.cmd, engine.simple_rendering.pipeline_layouts[p.pipeline], VK_SHADER_STAGE_VERTEX_BIT, 0,
-                         sizeof(mat4x4), calculated_mvp);
-
-      vkCmdPushConstants(p.cmd, engine.simple_rendering.pipeline_layouts[p.pipeline], VK_SHADER_STAGE_FRAGMENT_BIT,
-                         sizeof(mat4x4), sizeof(vec3), p.color);
+      vkCmdPushConstants(p.cmd, p.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), calculated_mvp);
+      vkCmdPushConstants(p.cmd, p.pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(vec3), p.color);
 
       vkCmdDrawIndexed(p.cmd, mesh.indices_count, 1, 0, 0, 0);
     }

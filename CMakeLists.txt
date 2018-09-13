@@ -36,14 +36,14 @@ set(SOURCES
         game_render_entity.cc
         gltf.cc
         cubemap.cc
-        pipelines.cc
+        engine_pipelines.cc
         render_jobs.cc
         update_jobs.cc
         bitfield.cc
         thirdparty/imgui.cpp
         thirdparty/imgui_draw.cpp
         thirdparty/sha256.cpp
-        )
+        engine_render_passes.cc engine_framebuffers.cc engine_descriptor_set_layouts.cc engine_pipeline_layouts.cc)
 
 if(WIN32)
 add_executable(${PROJECT_NAME} ${SOURCES} assets/applicationIcon.rc)

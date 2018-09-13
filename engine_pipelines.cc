@@ -1,4 +1,3 @@
-#include "pipelines.hh"
 #include "engine.hh"
 #include "linmath.h"
 
@@ -33,41 +32,41 @@ struct GreenGuiVertex
   vec2 uv;
 };
 
-void schedule_destruction_if_needed(ScheduledPipelineDestruction* list, int* list_length, VkPipeline pipeline)
+struct TwoStageShader
 {
-  if (VK_NULL_HANDLE != pipeline)
+  explicit TwoStageShader(Engine& engine, const char* vs_name, const char* fs_name)
+      : device(engine.device)
+      , shader_stages{
+            {
+                .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                .stage  = VK_SHADER_STAGE_VERTEX_BIT,
+                .module = engine.load_shader(vs_name),
+                .pName  = "main",
+            },
+            {
+
+                .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
+                .module = engine.load_shader(fs_name),
+                .pName  = "main",
+            },
+        }
   {
-    ScheduledPipelineDestruction destrution_promise = {
-        .frame_countdown = Engine::SWAPCHAIN_IMAGES_COUNT,
-        .pipeline        = pipeline,
-    };
-
-    list[*list_length] = destrution_promise;
-    *list_length += 1;
   }
-}
 
-} // namespace
+  ~TwoStageShader()
+  {
+    vkDestroyShaderModule(device, shader_stages[0].module, nullptr);
+    vkDestroyShaderModule(device, shader_stages[1].module, nullptr);
+  }
 
-void pipeline_reload_shadow_mapping_reload(Engine& engine)
+  VkDevice                        device;
+  VkPipelineShaderStageCreateInfo shader_stages[2];
+};
+
+void shadow_mapping(Engine& engine)
 {
-  schedule_destruction_if_needed(engine.scheduled_pipelines_destruction, &engine.scheduled_pipelines_destruction_count,
-                                 engine.shadow_mapping.pipeline);
-
-  VkPipelineShaderStageCreateInfo shader_stages[] = {
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("depth_pass.vert"),
-          .pName  = "main",
-      },
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("depth_pass.frag"),
-          .pName  = "main",
-      },
-  };
+  TwoStageShader shaders(engine, "depth_pass.vert", "depth_pass.frag");
 
   VkVertexInputAttributeDescription attribute_descriptions[] = {
       {
@@ -191,8 +190,8 @@ void pipeline_reload_shadow_mapping_reload(Engine& engine)
 
   VkGraphicsPipelineCreateInfo ci = {
       .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-      .stageCount          = SDL_arraysize(shader_stages),
-      .pStages             = shader_stages,
+      .stageCount          = SDL_arraysize(shaders.shader_stages),
+      .pStages             = shaders.shader_stages,
       .pVertexInputState   = &vertex_input_state,
       .pInputAssemblyState = &input_assembly_state,
       .pViewportState      = &viewport_state,
@@ -200,38 +199,19 @@ void pipeline_reload_shadow_mapping_reload(Engine& engine)
       .pMultisampleState   = &multisample_state,
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
-      .layout              = engine.shadow_mapping.pipeline_layout,
-      .renderPass          = engine.shadow_mapping.render_pass,
+      .layout              = engine.shadowmap_pipeline_layout,
+      .renderPass          = engine.shadowmap_render_pass,
       .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.shadow_mapping.pipeline);
-
-  for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.shadowmap_pipeline);
 }
 
-void pipeline_reload_simple_rendering_skybox_reload(Engine& engine)
+void skybox(Engine& engine)
 {
-  schedule_destruction_if_needed(engine.scheduled_pipelines_destruction, &engine.scheduled_pipelines_destruction_count,
-                                 engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::Skybox]);
-
-  VkPipelineShaderStageCreateInfo shader_stages[] = {
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("skybox.vert"),
-          .pName  = "main",
-      },
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("skybox.frag"),
-          .pName  = "main",
-      },
-  };
+  TwoStageShader shaders(engine, "skybox.vert", "skybox.frag");
 
   VkVertexInputAttributeDescription attribute_descriptions[] = {
       {
@@ -353,8 +333,8 @@ void pipeline_reload_simple_rendering_skybox_reload(Engine& engine)
 
   VkGraphicsPipelineCreateInfo ci = {
       .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-      .stageCount          = SDL_arraysize(shader_stages),
-      .pStages             = shader_stages,
+      .stageCount          = SDL_arraysize(shaders.shader_stages),
+      .pStages             = shaders.shader_stages,
       .pVertexInputState   = &vertex_input_state,
       .pInputAssemblyState = &input_assembly_state,
       .pViewportState      = &viewport_state,
@@ -362,40 +342,19 @@ void pipeline_reload_simple_rendering_skybox_reload(Engine& engine)
       .pMultisampleState   = &multisample_state,
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
-      .layout              = engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Skybox],
-      .renderPass          = engine.simple_rendering.render_pass,
-      .subpass             = Engine::SimpleRendering::Pass::Skybox,
+      .layout              = engine.skybox_pipeline_layout,
+      .renderPass          = engine.skybox_render_pass,
+      .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-                            &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::Skybox]);
-
-  for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.skybox_pipeline);
 }
 
-void pipeline_reload_simple_rendering_scene3d_reload(Engine& engine)
+void scene3d(Engine& engine)
 {
-  schedule_destruction_if_needed(engine.scheduled_pipelines_destruction, &engine.scheduled_pipelines_destruction_count,
-                                 engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::Scene3D]);
-
-  VkPipelineShaderStageCreateInfo shader_stages[] = {
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("triangle_push.vert"),
-          .pName  = "main",
-      },
-      {
-
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("triangle_push.frag"),
-          .pName  = "main",
-      },
-  };
+  TwoStageShader shaders(engine, "triangle_push.vert", "triangle_push.frag");
 
   VkVertexInputAttributeDescription attribute_descriptions[] = {
       {
@@ -529,8 +488,8 @@ void pipeline_reload_simple_rendering_scene3d_reload(Engine& engine)
 
   VkGraphicsPipelineCreateInfo ci = {
       .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-      .stageCount          = SDL_arraysize(shader_stages),
-      .pStages             = shader_stages,
+      .stageCount          = SDL_arraysize(shaders.shader_stages),
+      .pStages             = shaders.shader_stages,
       .pVertexInputState   = &vertex_input_state,
       .pInputAssemblyState = &input_assembly_state,
       .pViewportState      = &viewport_state,
@@ -538,39 +497,19 @@ void pipeline_reload_simple_rendering_scene3d_reload(Engine& engine)
       .pMultisampleState   = &multisample_state,
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
-      .layout              = engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D],
-      .renderPass          = engine.simple_rendering.render_pass,
-      .subpass             = Engine::SimpleRendering::Pass::Objects3D,
+      .layout              = engine.scene3D_pipeline_layout,
+      .renderPass          = engine.color_and_depth_render_pass,
+      .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-                            &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::Scene3D]);
-
-  for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.scene3D_pipeline);
 }
 
-void pipeline_reload_simple_rendering_coloredgeometry_reload(Engine& engine)
+void colored_geometry(Engine& engine)
 {
-  schedule_destruction_if_needed(engine.scheduled_pipelines_destruction, &engine.scheduled_pipelines_destruction_count,
-                                 engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometry]);
-
-  VkPipelineShaderStageCreateInfo shader_stages[] = {
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("colored_geometry.vert"),
-          .pName  = "main",
-      },
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("colored_geometry.frag"),
-          .pName  = "main",
-      },
-  };
+  TwoStageShader shaders(engine, "colored_geometry.vert", "colored_geometry.frag");
 
   VkVertexInputAttributeDescription attribute_descriptions[] = {
       {
@@ -692,8 +631,8 @@ void pipeline_reload_simple_rendering_coloredgeometry_reload(Engine& engine)
 
   VkGraphicsPipelineCreateInfo ci = {
       .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-      .stageCount          = SDL_arraysize(shader_stages),
-      .pStages             = shader_stages,
+      .stageCount          = SDL_arraysize(shaders.shader_stages),
+      .pStages             = shaders.shader_stages,
       .pVertexInputState   = &vertex_input_state,
       .pInputAssemblyState = &input_assembly_state,
       .pViewportState      = &viewport_state,
@@ -701,40 +640,19 @@ void pipeline_reload_simple_rendering_coloredgeometry_reload(Engine& engine)
       .pMultisampleState   = &multisample_state,
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
-      .layout     = engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometry],
-      .renderPass = engine.simple_rendering.render_pass,
-      .subpass    = Engine::SimpleRendering::Pass::Objects3D,
-      .basePipelineHandle = VK_NULL_HANDLE,
-      .basePipelineIndex  = -1,
+      .layout              = engine.colored_geometry_pipeline_layout,
+      .renderPass          = engine.color_and_depth_render_pass,
+      .subpass             = 0,
+      .basePipelineHandle  = VK_NULL_HANDLE,
+      .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-                            &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometry]);
-
-  for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.colored_geometry_pipeline);
 }
 
-void pipeline_reload_simple_rendering_coloredgeometry_triangle_strip_reload(Engine& engine)
+void colored_geometry_triangle_strip(Engine& engine)
 {
-  schedule_destruction_if_needed(
-      engine.scheduled_pipelines_destruction, &engine.scheduled_pipelines_destruction_count,
-      engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometryTriangleStrip]);
-
-  VkPipelineShaderStageCreateInfo shader_stages[] = {
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("colored_geometry.vert"),
-          .pName  = "main",
-      },
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("colored_geometry.frag"),
-          .pName  = "main",
-      },
-  };
+  TwoStageShader shaders(engine, "colored_geometry.vert", "colored_geometry.frag");
 
   VkVertexInputAttributeDescription attribute_descriptions[] = {
       {
@@ -856,8 +774,8 @@ void pipeline_reload_simple_rendering_coloredgeometry_triangle_strip_reload(Engi
 
   VkGraphicsPipelineCreateInfo ci = {
       .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-      .stageCount          = SDL_arraysize(shader_stages),
-      .pStages             = shader_stages,
+      .stageCount          = SDL_arraysize(shaders.shader_stages),
+      .pStages             = shaders.shader_stages,
       .pVertexInputState   = &vertex_input_state,
       .pInputAssemblyState = &input_assembly_state,
       .pViewportState      = &viewport_state,
@@ -865,42 +783,20 @@ void pipeline_reload_simple_rendering_coloredgeometry_triangle_strip_reload(Engi
       .pMultisampleState   = &multisample_state,
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
-      .layout =
-          engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometryTriangleStrip],
-      .renderPass         = engine.simple_rendering.render_pass,
-      .subpass            = Engine::SimpleRendering::Pass::Objects3D,
-      .basePipelineHandle = VK_NULL_HANDLE,
-      .basePipelineIndex  = -1,
+      .layout              = engine.colored_geometry_triangle_strip_pipeline_layout,
+      .renderPass          = engine.color_and_depth_render_pass,
+      .subpass             = 0,
+      .basePipelineHandle  = VK_NULL_HANDLE,
+      .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(
-      engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-      &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometryTriangleStrip]);
-
-  for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
+                            &engine.colored_geometry_triangle_strip_pipeline);
 }
 
-void pipeline_reload_simple_rendering_coloredgeometryskinned_reload(Engine& engine)
+void colored_geometry_skinned(Engine& engine)
 {
-  schedule_destruction_if_needed(
-      engine.scheduled_pipelines_destruction, &engine.scheduled_pipelines_destruction_count,
-      engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned]);
-
-  VkPipelineShaderStageCreateInfo shader_stages[] = {
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("colored_geometry_skinned.vert"),
-          .pName  = "main",
-      },
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("colored_geometry_skinned.frag"),
-          .pName  = "main",
-      },
-  };
+  TwoStageShader shaders(engine, "colored_geometry_skinned.vert", "colored_geometry_skinned.frag");
 
   VkVertexInputAttributeDescription attribute_descriptions[] = {
       {
@@ -1046,8 +942,8 @@ void pipeline_reload_simple_rendering_coloredgeometryskinned_reload(Engine& engi
 
   VkGraphicsPipelineCreateInfo ci = {
       .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-      .stageCount          = SDL_arraysize(shader_stages),
-      .pStages             = shader_stages,
+      .stageCount          = SDL_arraysize(shaders.shader_stages),
+      .pStages             = shaders.shader_stages,
       .pVertexInputState   = &vertex_input_state,
       .pInputAssemblyState = &input_assembly_state,
       .pViewportState      = &viewport_state,
@@ -1055,40 +951,19 @@ void pipeline_reload_simple_rendering_coloredgeometryskinned_reload(Engine& engi
       .pMultisampleState   = &multisample_state,
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
-      .layout     = engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned],
-      .renderPass = engine.simple_rendering.render_pass,
-      .subpass    = Engine::SimpleRendering::Pass::Objects3D,
-      .basePipelineHandle = VK_NULL_HANDLE,
-      .basePipelineIndex  = -1,
+      .layout              = engine.colored_geometry_skinned_pipeline_layout,
+      .renderPass          = engine.color_and_depth_render_pass,
+      .subpass             = 0,
+      .basePipelineHandle  = VK_NULL_HANDLE,
+      .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(
-      engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-      &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned]);
-
-  for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.colored_geometry_skinned_pipeline);
 }
 
-void pipeline_reload_simple_rendering_imgui_reload(Engine& engine)
+void imgui(Engine& engine)
 {
-  schedule_destruction_if_needed(engine.scheduled_pipelines_destruction, &engine.scheduled_pipelines_destruction_count,
-                                 engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ImGui]);
-
-  VkPipelineShaderStageCreateInfo shader_stages[] = {
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("imgui.vert"),
-          .pName  = "main",
-      },
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("imgui.frag"),
-          .pName  = "main",
-      },
-  };
+  TwoStageShader shaders(engine, "imgui.vert", "imgui.frag");
 
   VkVertexInputAttributeDescription attribute_descriptions[] = {
       {
@@ -1219,8 +1094,8 @@ void pipeline_reload_simple_rendering_imgui_reload(Engine& engine)
 
   VkGraphicsPipelineCreateInfo ci = {
       .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-      .stageCount          = SDL_arraysize(shader_stages),
-      .pStages             = shader_stages,
+      .stageCount          = SDL_arraysize(shaders.shader_stages),
+      .pStages             = shaders.shader_stages,
       .pVertexInputState   = &vertex_input_state,
       .pInputAssemblyState = &input_assembly_state,
       .pViewportState      = &viewport_state,
@@ -1228,39 +1103,319 @@ void pipeline_reload_simple_rendering_imgui_reload(Engine& engine)
       .pMultisampleState   = &multisample_state,
       .pColorBlendState    = &color_blend_state,
       .pDynamicState       = &dynamic_state,
-      .layout              = engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ImGui],
-      .renderPass          = engine.simple_rendering.render_pass,
-      .subpass             = Engine::SimpleRendering::Pass::ImGui,
+      .layout              = engine.imgui_pipeline_layout,
+      .renderPass          = engine.gui_render_pass,
+      .subpass             = 0,
+      .basePipelineHandle  = VK_NULL_HANDLE,
+      .basePipelineIndex   = -1,
+  };
+
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.imgui_pipeline);
+}
+
+void green_gui(Engine& engine)
+{
+  TwoStageShader shaders(engine, "green_gui.vert", "green_gui.frag");
+
+  VkVertexInputAttributeDescription attribute_descriptions[] = {
+      {
+          .location = 0,
+          .binding  = 0,
+          .format   = VK_FORMAT_R32G32_SFLOAT,
+          .offset   = static_cast<uint32_t>(offsetof(GreenGuiVertex, position)),
+      },
+      {
+          .location = 1,
+          .binding  = 0,
+          .format   = VK_FORMAT_R32G32_SFLOAT,
+          .offset   = static_cast<uint32_t>(offsetof(GreenGuiVertex, uv)),
+      },
+  };
+
+  VkVertexInputBindingDescription vertex_binding_descriptions[] = {
+      {
+          .binding   = 0,
+          .stride    = sizeof(GreenGuiVertex),
+          .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+      },
+  };
+
+  VkPipelineVertexInputStateCreateInfo vertex_input_state = {
+      .sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+      .vertexBindingDescriptionCount   = SDL_arraysize(vertex_binding_descriptions),
+      .pVertexBindingDescriptions      = vertex_binding_descriptions,
+      .vertexAttributeDescriptionCount = SDL_arraysize(attribute_descriptions),
+      .pVertexAttributeDescriptions    = attribute_descriptions,
+  };
+
+  VkPipelineInputAssemblyStateCreateInfo input_assembly_state = {
+      .sType                  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+      .topology               = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
+      .primitiveRestartEnable = VK_FALSE,
+  };
+
+  VkViewport viewports[] = {
+      {
+          .x        = 0.0f,
+          .y        = 0.0f,
+          .width    = static_cast<float>(engine.extent2D.width),
+          .height   = static_cast<float>(engine.extent2D.height),
+          .minDepth = 0.0f,
+          .maxDepth = 1.0f,
+      },
+  };
+
+  VkRect2D scissors[] = {
+      {
+          .offset = {0, 0},
+          .extent = engine.extent2D,
+      },
+  };
+
+  VkPipelineViewportStateCreateInfo viewport_state = {
+      .sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+      .viewportCount = SDL_arraysize(viewports),
+      .pViewports    = viewports,
+      .scissorCount  = SDL_arraysize(scissors),
+      .pScissors     = scissors,
+  };
+
+  VkPipelineRasterizationStateCreateInfo rasterization_state = {
+      .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+      .depthClampEnable        = VK_FALSE,
+      .rasterizerDiscardEnable = VK_FALSE,
+      .polygonMode             = VK_POLYGON_MODE_FILL,
+      .cullMode                = VK_CULL_MODE_FRONT_BIT,
+      .frontFace               = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+      .depthBiasEnable         = VK_FALSE,
+      .depthBiasConstantFactor = 0.0f,
+      .depthBiasClamp          = 0.0f,
+      .depthBiasSlopeFactor    = 0.0f,
+      .lineWidth               = 1.0f,
+  };
+
+  VkPipelineMultisampleStateCreateInfo multisample_state = {
+      .sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+      .rasterizationSamples  = engine.MSAA_SAMPLE_COUNT,
+      .sampleShadingEnable   = VK_TRUE,
+      .minSampleShading      = 1.0f,
+      .alphaToCoverageEnable = VK_TRUE,
+      .alphaToOneEnable      = VK_FALSE,
+  };
+
+  VkPipelineDepthStencilStateCreateInfo depth_stencil_state = {
+      .sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+      .depthTestEnable       = VK_TRUE,
+      .depthWriteEnable      = VK_TRUE,
+      .depthCompareOp        = VK_COMPARE_OP_LESS,
+      .depthBoundsTestEnable = VK_FALSE,
+      .stencilTestEnable     = VK_FALSE,
+      .minDepthBounds        = 0.0f,
+      .maxDepthBounds        = 1.0f,
+  };
+
+  VkColorComponentFlags rgba_mask = 0;
+  rgba_mask |= VK_COLOR_COMPONENT_R_BIT;
+  rgba_mask |= VK_COLOR_COMPONENT_G_BIT;
+  rgba_mask |= VK_COLOR_COMPONENT_B_BIT;
+  rgba_mask |= VK_COLOR_COMPONENT_A_BIT;
+
+  VkPipelineColorBlendAttachmentState color_blend_attachments[] = {
+      {
+          .blendEnable         = VK_FALSE,
+          .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
+          .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
+          .colorBlendOp        = VK_BLEND_OP_ADD,
+          .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+          .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+          .alphaBlendOp        = VK_BLEND_OP_ADD,
+          .colorWriteMask      = rgba_mask,
+      },
+  };
+
+  VkPipelineColorBlendStateCreateInfo color_blend_state = {
+      .sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+      .logicOpEnable   = VK_FALSE,
+      .logicOp         = VK_LOGIC_OP_COPY,
+      .attachmentCount = SDL_arraysize(color_blend_attachments),
+      .pAttachments    = color_blend_attachments,
+  };
+
+  VkGraphicsPipelineCreateInfo ci = {
+      .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+      .stageCount          = SDL_arraysize(shaders.shader_stages),
+      .pStages             = shaders.shader_stages,
+      .pVertexInputState   = &vertex_input_state,
+      .pInputAssemblyState = &input_assembly_state,
+      .pViewportState      = &viewport_state,
+      .pRasterizationState = &rasterization_state,
+      .pMultisampleState   = &multisample_state,
+      .pDepthStencilState  = &depth_stencil_state,
+      .pColorBlendState    = &color_blend_state,
+      .layout              = engine.green_gui_pipeline_layout,
+      .renderPass          = engine.gui_render_pass,
+      .subpass             = 0,
+      .basePipelineHandle  = VK_NULL_HANDLE,
+      .basePipelineIndex   = -1,
+  };
+
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.green_gui_pipeline);
+}
+
+void green_gui_weapon_selector_box_left(Engine& engine)
+{
+  TwoStageShader shaders(engine, "green_gui_weapon_selector_box_left.vert", "green_gui_weapon_selector_box_left.frag");
+
+  VkVertexInputAttributeDescription attribute_descriptions[] = {
+      {
+          .location = 0,
+          .binding  = 0,
+          .format   = VK_FORMAT_R32G32_SFLOAT,
+          .offset   = static_cast<uint32_t>(offsetof(GreenGuiVertex, position)),
+      },
+      {
+          .location = 1,
+          .binding  = 0,
+          .format   = VK_FORMAT_R32G32_SFLOAT,
+          .offset   = static_cast<uint32_t>(offsetof(GreenGuiVertex, uv)),
+      },
+  };
+
+  VkVertexInputBindingDescription vertex_binding_descriptions[] = {
+      {
+          .binding   = 0,
+          .stride    = sizeof(GreenGuiVertex),
+          .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+      },
+  };
+
+  VkPipelineVertexInputStateCreateInfo vertex_input_state = {
+      .sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+      .vertexBindingDescriptionCount   = SDL_arraysize(vertex_binding_descriptions),
+      .pVertexBindingDescriptions      = vertex_binding_descriptions,
+      .vertexAttributeDescriptionCount = SDL_arraysize(attribute_descriptions),
+      .pVertexAttributeDescriptions    = attribute_descriptions,
+  };
+
+  VkPipelineInputAssemblyStateCreateInfo input_assembly_state = {
+      .sType                  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+      .topology               = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
+      .primitiveRestartEnable = VK_FALSE,
+  };
+
+  VkViewport viewports[] = {
+      {
+          .x        = 0.0f,
+          .y        = 0.0f,
+          .width    = static_cast<float>(engine.extent2D.width),
+          .height   = static_cast<float>(engine.extent2D.height),
+          .minDepth = 0.0f,
+          .maxDepth = 1.0f,
+      },
+  };
+
+  VkRect2D scissors[] = {
+      {
+          .offset = {0, 0},
+          .extent = engine.extent2D,
+      },
+  };
+
+  VkPipelineViewportStateCreateInfo viewport_state = {
+      .sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+      .viewportCount = SDL_arraysize(viewports),
+      .pViewports    = viewports,
+      .scissorCount  = SDL_arraysize(scissors),
+      .pScissors     = scissors,
+  };
+
+  VkPipelineRasterizationStateCreateInfo rasterization_state = {
+      .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+      .depthClampEnable        = VK_FALSE,
+      .rasterizerDiscardEnable = VK_FALSE,
+      .polygonMode             = VK_POLYGON_MODE_FILL,
+      .cullMode                = VK_CULL_MODE_FRONT_BIT,
+      .frontFace               = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+      .depthBiasEnable         = VK_FALSE,
+      .depthBiasConstantFactor = 0.0f,
+      .depthBiasClamp          = 0.0f,
+      .depthBiasSlopeFactor    = 0.0f,
+      .lineWidth               = 1.0f,
+  };
+
+  VkPipelineMultisampleStateCreateInfo multisample_state = {
+      .sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+      .rasterizationSamples  = engine.MSAA_SAMPLE_COUNT,
+      .sampleShadingEnable   = VK_TRUE,
+      .minSampleShading      = 1.0f,
+      .alphaToCoverageEnable = VK_TRUE,
+      .alphaToOneEnable      = VK_FALSE,
+  };
+
+  VkPipelineDepthStencilStateCreateInfo depth_stencil_state = {
+      .sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+      .depthTestEnable       = VK_TRUE,
+      .depthWriteEnable      = VK_TRUE,
+      .depthCompareOp        = VK_COMPARE_OP_LESS,
+      .depthBoundsTestEnable = VK_FALSE,
+      .stencilTestEnable     = VK_FALSE,
+      .minDepthBounds        = 0.0f,
+      .maxDepthBounds        = 1.0f,
+  };
+
+  VkColorComponentFlags rgba_mask = 0;
+  rgba_mask |= VK_COLOR_COMPONENT_R_BIT;
+  rgba_mask |= VK_COLOR_COMPONENT_G_BIT;
+  rgba_mask |= VK_COLOR_COMPONENT_B_BIT;
+  rgba_mask |= VK_COLOR_COMPONENT_A_BIT;
+
+  VkPipelineColorBlendAttachmentState color_blend_attachments[] = {
+      {
+          .blendEnable         = VK_FALSE,
+          .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
+          .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
+          .colorBlendOp        = VK_BLEND_OP_ADD,
+          .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+          .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+          .alphaBlendOp        = VK_BLEND_OP_ADD,
+          .colorWriteMask      = rgba_mask,
+      },
+  };
+
+  VkPipelineColorBlendStateCreateInfo color_blend_state = {
+      .sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+      .logicOpEnable   = VK_FALSE,
+      .logicOp         = VK_LOGIC_OP_COPY,
+      .attachmentCount = SDL_arraysize(color_blend_attachments),
+      .pAttachments    = color_blend_attachments,
+  };
+
+  VkGraphicsPipelineCreateInfo ci = {
+      .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+      .stageCount          = SDL_arraysize(shaders.shader_stages),
+      .pStages             = shaders.shader_stages,
+      .pVertexInputState   = &vertex_input_state,
+      .pInputAssemblyState = &input_assembly_state,
+      .pViewportState      = &viewport_state,
+      .pRasterizationState = &rasterization_state,
+      .pMultisampleState   = &multisample_state,
+      .pDepthStencilState  = &depth_stencil_state,
+      .pColorBlendState    = &color_blend_state,
+      .layout              = engine.green_gui_weapon_selector_box_left_pipeline_layout,
+      .renderPass          = engine.gui_render_pass,
+      .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
   vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-                            &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ImGui]);
-
-  for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
+                            &engine.green_gui_weapon_selector_box_left_pipeline);
 }
 
-void pipeline_reload_simple_rendering_green_gui_reload(Engine& engine)
+void green_gui_weapon_selector_box_right(Engine& engine)
 {
-  schedule_destruction_if_needed(engine.scheduled_pipelines_destruction, &engine.scheduled_pipelines_destruction_count,
-                                 engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGui]);
-
-  VkPipelineShaderStageCreateInfo shader_stages[] = {
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("green_gui.vert"),
-          .pName  = "main",
-      },
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("green_gui.frag"),
-          .pName  = "main",
-      },
-  };
+  TwoStageShader shaders(engine, "green_gui_weapon_selector_box_right.vert",
+                         "green_gui_weapon_selector_box_right.frag");
 
   VkVertexInputAttributeDescription attribute_descriptions[] = {
       {
@@ -1388,8 +1543,8 @@ void pipeline_reload_simple_rendering_green_gui_reload(Engine& engine)
 
   VkGraphicsPipelineCreateInfo ci = {
       .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-      .stageCount          = SDL_arraysize(shader_stages),
-      .pStages             = shader_stages,
+      .stageCount          = SDL_arraysize(shaders.shader_stages),
+      .pStages             = shaders.shader_stages,
       .pVertexInputState   = &vertex_input_state,
       .pInputAssemblyState = &input_assembly_state,
       .pViewportState      = &viewport_state,
@@ -1397,383 +1552,20 @@ void pipeline_reload_simple_rendering_green_gui_reload(Engine& engine)
       .pMultisampleState   = &multisample_state,
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
-      .layout              = engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGui],
-      .renderPass          = engine.simple_rendering.render_pass,
-      .subpass             = Engine::SimpleRendering::Pass::RobotGui,
+      .layout              = engine.green_gui_weapon_selector_box_right_pipeline_layout,
+      .renderPass          = engine.gui_render_pass,
+      .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
   vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-                            &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGui]);
-
-  for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
+                            &engine.green_gui_weapon_selector_box_right_pipeline);
 }
 
-void pipeline_reload_simple_rendering_green_gui_weapon_selector_box_left_reload(Engine& engine)
+void green_gui_lines(Engine& engine)
 {
-  schedule_destruction_if_needed(
-      engine.scheduled_pipelines_destruction, &engine.scheduled_pipelines_destruction_count,
-      engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiWeaponSelectorBoxLeft]);
-
-  VkPipelineShaderStageCreateInfo shader_stages[] = {
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("green_gui_weapon_selector_box_left.vert"),
-          .pName  = "main",
-      },
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("green_gui_weapon_selector_box_left.frag"),
-          .pName  = "main",
-      },
-  };
-
-  VkVertexInputAttributeDescription attribute_descriptions[] = {
-      {
-          .location = 0,
-          .binding  = 0,
-          .format   = VK_FORMAT_R32G32_SFLOAT,
-          .offset   = static_cast<uint32_t>(offsetof(GreenGuiVertex, position)),
-      },
-      {
-          .location = 1,
-          .binding  = 0,
-          .format   = VK_FORMAT_R32G32_SFLOAT,
-          .offset   = static_cast<uint32_t>(offsetof(GreenGuiVertex, uv)),
-      },
-  };
-
-  VkVertexInputBindingDescription vertex_binding_descriptions[] = {
-      {
-          .binding   = 0,
-          .stride    = sizeof(GreenGuiVertex),
-          .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
-      },
-  };
-
-  VkPipelineVertexInputStateCreateInfo vertex_input_state = {
-      .sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-      .vertexBindingDescriptionCount   = SDL_arraysize(vertex_binding_descriptions),
-      .pVertexBindingDescriptions      = vertex_binding_descriptions,
-      .vertexAttributeDescriptionCount = SDL_arraysize(attribute_descriptions),
-      .pVertexAttributeDescriptions    = attribute_descriptions,
-  };
-
-  VkPipelineInputAssemblyStateCreateInfo input_assembly_state = {
-      .sType                  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-      .topology               = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
-      .primitiveRestartEnable = VK_FALSE,
-  };
-
-  VkViewport viewports[] = {
-      {
-          .x        = 0.0f,
-          .y        = 0.0f,
-          .width    = static_cast<float>(engine.extent2D.width),
-          .height   = static_cast<float>(engine.extent2D.height),
-          .minDepth = 0.0f,
-          .maxDepth = 1.0f,
-      },
-  };
-
-  VkRect2D scissors[] = {
-      {
-          .offset = {0, 0},
-          .extent = engine.extent2D,
-      },
-  };
-
-  VkPipelineViewportStateCreateInfo viewport_state = {
-      .sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-      .viewportCount = SDL_arraysize(viewports),
-      .pViewports    = viewports,
-      .scissorCount  = SDL_arraysize(scissors),
-      .pScissors     = scissors,
-  };
-
-  VkPipelineRasterizationStateCreateInfo rasterization_state = {
-      .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-      .depthClampEnable        = VK_FALSE,
-      .rasterizerDiscardEnable = VK_FALSE,
-      .polygonMode             = VK_POLYGON_MODE_FILL,
-      .cullMode                = VK_CULL_MODE_FRONT_BIT,
-      .frontFace               = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-      .depthBiasEnable         = VK_FALSE,
-      .depthBiasConstantFactor = 0.0f,
-      .depthBiasClamp          = 0.0f,
-      .depthBiasSlopeFactor    = 0.0f,
-      .lineWidth               = 1.0f,
-  };
-
-  VkPipelineMultisampleStateCreateInfo multisample_state = {
-      .sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-      .rasterizationSamples  = engine.MSAA_SAMPLE_COUNT,
-      .sampleShadingEnable   = VK_TRUE,
-      .minSampleShading      = 1.0f,
-      .alphaToCoverageEnable = VK_TRUE,
-      .alphaToOneEnable      = VK_FALSE,
-  };
-
-  VkPipelineDepthStencilStateCreateInfo depth_stencil_state = {
-      .sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-      .depthTestEnable       = VK_TRUE,
-      .depthWriteEnable      = VK_TRUE,
-      .depthCompareOp        = VK_COMPARE_OP_LESS,
-      .depthBoundsTestEnable = VK_FALSE,
-      .stencilTestEnable     = VK_FALSE,
-      .minDepthBounds        = 0.0f,
-      .maxDepthBounds        = 1.0f,
-  };
-
-  VkColorComponentFlags rgba_mask = 0;
-  rgba_mask |= VK_COLOR_COMPONENT_R_BIT;
-  rgba_mask |= VK_COLOR_COMPONENT_G_BIT;
-  rgba_mask |= VK_COLOR_COMPONENT_B_BIT;
-  rgba_mask |= VK_COLOR_COMPONENT_A_BIT;
-
-  VkPipelineColorBlendAttachmentState color_blend_attachments[] = {
-      {
-          .blendEnable         = VK_FALSE,
-          .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
-          .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
-          .colorBlendOp        = VK_BLEND_OP_ADD,
-          .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
-          .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
-          .alphaBlendOp        = VK_BLEND_OP_ADD,
-          .colorWriteMask      = rgba_mask,
-      },
-  };
-
-  VkPipelineColorBlendStateCreateInfo color_blend_state = {
-      .sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-      .logicOpEnable   = VK_FALSE,
-      .logicOp         = VK_LOGIC_OP_COPY,
-      .attachmentCount = SDL_arraysize(color_blend_attachments),
-      .pAttachments    = color_blend_attachments,
-  };
-
-  VkGraphicsPipelineCreateInfo ci = {
-      .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-      .stageCount          = SDL_arraysize(shader_stages),
-      .pStages             = shader_stages,
-      .pVertexInputState   = &vertex_input_state,
-      .pInputAssemblyState = &input_assembly_state,
-      .pViewportState      = &viewport_state,
-      .pRasterizationState = &rasterization_state,
-      .pMultisampleState   = &multisample_state,
-      .pDepthStencilState  = &depth_stencil_state,
-      .pColorBlendState    = &color_blend_state,
-      .layout =
-          engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiWeaponSelectorBoxLeft],
-      .renderPass         = engine.simple_rendering.render_pass,
-      .subpass            = Engine::SimpleRendering::Pass::RobotGui,
-      .basePipelineHandle = VK_NULL_HANDLE,
-      .basePipelineIndex  = -1,
-  };
-
-  vkCreateGraphicsPipelines(
-      engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-      &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiWeaponSelectorBoxLeft]);
-
-  for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
-}
-
-void pipeline_reload_simple_rendering_green_gui_weapon_selector_box_right_reload(Engine& engine)
-{
-  schedule_destruction_if_needed(
-      engine.scheduled_pipelines_destruction, &engine.scheduled_pipelines_destruction_count,
-      engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiWeaponSelectorBoxRight]);
-
-  VkPipelineShaderStageCreateInfo shader_stages[] = {
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("green_gui_weapon_selector_box_right.vert"),
-          .pName  = "main",
-      },
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("green_gui_weapon_selector_box_right.frag"),
-          .pName  = "main",
-      },
-  };
-
-  VkVertexInputAttributeDescription attribute_descriptions[] = {
-      {
-          .location = 0,
-          .binding  = 0,
-          .format   = VK_FORMAT_R32G32_SFLOAT,
-          .offset   = static_cast<uint32_t>(offsetof(GreenGuiVertex, position)),
-      },
-      {
-          .location = 1,
-          .binding  = 0,
-          .format   = VK_FORMAT_R32G32_SFLOAT,
-          .offset   = static_cast<uint32_t>(offsetof(GreenGuiVertex, uv)),
-      },
-  };
-
-  VkVertexInputBindingDescription vertex_binding_descriptions[] = {
-      {
-          .binding   = 0,
-          .stride    = sizeof(GreenGuiVertex),
-          .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
-      },
-  };
-
-  VkPipelineVertexInputStateCreateInfo vertex_input_state = {
-      .sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-      .vertexBindingDescriptionCount   = SDL_arraysize(vertex_binding_descriptions),
-      .pVertexBindingDescriptions      = vertex_binding_descriptions,
-      .vertexAttributeDescriptionCount = SDL_arraysize(attribute_descriptions),
-      .pVertexAttributeDescriptions    = attribute_descriptions,
-  };
-
-  VkPipelineInputAssemblyStateCreateInfo input_assembly_state = {
-      .sType                  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-      .topology               = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
-      .primitiveRestartEnable = VK_FALSE,
-  };
-
-  VkViewport viewports[] = {
-      {
-          .x        = 0.0f,
-          .y        = 0.0f,
-          .width    = static_cast<float>(engine.extent2D.width),
-          .height   = static_cast<float>(engine.extent2D.height),
-          .minDepth = 0.0f,
-          .maxDepth = 1.0f,
-      },
-  };
-
-  VkRect2D scissors[] = {
-      {
-          .offset = {0, 0},
-          .extent = engine.extent2D,
-      },
-  };
-
-  VkPipelineViewportStateCreateInfo viewport_state = {
-      .sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-      .viewportCount = SDL_arraysize(viewports),
-      .pViewports    = viewports,
-      .scissorCount  = SDL_arraysize(scissors),
-      .pScissors     = scissors,
-  };
-
-  VkPipelineRasterizationStateCreateInfo rasterization_state = {
-      .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-      .depthClampEnable        = VK_FALSE,
-      .rasterizerDiscardEnable = VK_FALSE,
-      .polygonMode             = VK_POLYGON_MODE_FILL,
-      .cullMode                = VK_CULL_MODE_FRONT_BIT,
-      .frontFace               = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-      .depthBiasEnable         = VK_FALSE,
-      .depthBiasConstantFactor = 0.0f,
-      .depthBiasClamp          = 0.0f,
-      .depthBiasSlopeFactor    = 0.0f,
-      .lineWidth               = 1.0f,
-  };
-
-  VkPipelineMultisampleStateCreateInfo multisample_state = {
-      .sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-      .rasterizationSamples  = engine.MSAA_SAMPLE_COUNT,
-      .sampleShadingEnable   = VK_TRUE,
-      .minSampleShading      = 1.0f,
-      .alphaToCoverageEnable = VK_TRUE,
-      .alphaToOneEnable      = VK_FALSE,
-  };
-
-  VkPipelineDepthStencilStateCreateInfo depth_stencil_state = {
-      .sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-      .depthTestEnable       = VK_TRUE,
-      .depthWriteEnable      = VK_TRUE,
-      .depthCompareOp        = VK_COMPARE_OP_LESS,
-      .depthBoundsTestEnable = VK_FALSE,
-      .stencilTestEnable     = VK_FALSE,
-      .minDepthBounds        = 0.0f,
-      .maxDepthBounds        = 1.0f,
-  };
-
-  VkColorComponentFlags rgba_mask = 0;
-  rgba_mask |= VK_COLOR_COMPONENT_R_BIT;
-  rgba_mask |= VK_COLOR_COMPONENT_G_BIT;
-  rgba_mask |= VK_COLOR_COMPONENT_B_BIT;
-  rgba_mask |= VK_COLOR_COMPONENT_A_BIT;
-
-  VkPipelineColorBlendAttachmentState color_blend_attachments[] = {
-      {
-          .blendEnable         = VK_FALSE,
-          .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
-          .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
-          .colorBlendOp        = VK_BLEND_OP_ADD,
-          .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
-          .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
-          .alphaBlendOp        = VK_BLEND_OP_ADD,
-          .colorWriteMask      = rgba_mask,
-      },
-  };
-
-  VkPipelineColorBlendStateCreateInfo color_blend_state = {
-      .sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-      .logicOpEnable   = VK_FALSE,
-      .logicOp         = VK_LOGIC_OP_COPY,
-      .attachmentCount = SDL_arraysize(color_blend_attachments),
-      .pAttachments    = color_blend_attachments,
-  };
-
-  VkGraphicsPipelineCreateInfo ci = {
-      .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-      .stageCount          = SDL_arraysize(shader_stages),
-      .pStages             = shader_stages,
-      .pVertexInputState   = &vertex_input_state,
-      .pInputAssemblyState = &input_assembly_state,
-      .pViewportState      = &viewport_state,
-      .pRasterizationState = &rasterization_state,
-      .pMultisampleState   = &multisample_state,
-      .pDepthStencilState  = &depth_stencil_state,
-      .pColorBlendState    = &color_blend_state,
-      .layout =
-          engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiWeaponSelectorBoxRight],
-      .renderPass         = engine.simple_rendering.render_pass,
-      .subpass            = Engine::SimpleRendering::Pass::RobotGui,
-      .basePipelineHandle = VK_NULL_HANDLE,
-      .basePipelineIndex  = -1,
-  };
-
-  vkCreateGraphicsPipelines(
-      engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-      &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiWeaponSelectorBoxRight]);
-
-  for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
-}
-
-void pipeline_reload_simple_rendering_green_gui_lines_reload(Engine& engine)
-{
-  schedule_destruction_if_needed(engine.scheduled_pipelines_destruction, &engine.scheduled_pipelines_destruction_count,
-                                 engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiLines]);
-
-  VkPipelineShaderStageCreateInfo shader_stages[] = {
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("green_gui_lines.vert"),
-          .pName  = "main",
-      },
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("green_gui_lines.frag"),
-          .pName  = "main",
-      },
-  };
+  TwoStageShader shaders(engine, "green_gui_lines.vert", "green_gui_lines.frag");
 
   VkVertexInputAttributeDescription attribute_descriptions[] = {
       {
@@ -1903,8 +1695,8 @@ void pipeline_reload_simple_rendering_green_gui_lines_reload(Engine& engine)
 
   VkGraphicsPipelineCreateInfo ci = {
       .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-      .stageCount          = SDL_arraysize(shader_stages),
-      .pStages             = shader_stages,
+      .stageCount          = SDL_arraysize(shaders.shader_stages),
+      .pStages             = shaders.shader_stages,
       .pVertexInputState   = &vertex_input_state,
       .pInputAssemblyState = &input_assembly_state,
       .pViewportState      = &viewport_state,
@@ -1913,39 +1705,19 @@ void pipeline_reload_simple_rendering_green_gui_lines_reload(Engine& engine)
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
       .pDynamicState       = &dynamic_state_info,
-      .layout              = engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiLines],
-      .renderPass          = engine.simple_rendering.render_pass,
-      .subpass             = Engine::SimpleRendering::Pass::RobotGui,
+      .layout              = engine.green_gui_lines_pipeline_layout,
+      .renderPass          = engine.gui_render_pass,
+      .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-                            &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiLines]);
-
-  for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.green_gui_lines_pipeline);
 }
 
-void pipeline_reload_simple_rendering_green_gui_sdf_reload(Engine& engine)
+void green_gui_sdf(Engine& engine)
 {
-  schedule_destruction_if_needed(engine.scheduled_pipelines_destruction, &engine.scheduled_pipelines_destruction_count,
-                                 engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont]);
-
-  VkPipelineShaderStageCreateInfo shader_stages[] = {
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("green_gui_sdf.vert"),
-          .pName  = "main",
-      },
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("green_gui_sdf.frag"),
-          .pName  = "main",
-      },
-  };
+  TwoStageShader shaders(engine, "green_gui_sdf.vert", "green_gui_sdf.frag");
 
   VkVertexInputAttributeDescription attribute_descriptions[] = {
       {
@@ -2083,8 +1855,8 @@ void pipeline_reload_simple_rendering_green_gui_sdf_reload(Engine& engine)
 
   VkGraphicsPipelineCreateInfo ci = {
       .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-      .stageCount          = SDL_arraysize(shader_stages),
-      .pStages             = shader_stages,
+      .stageCount          = SDL_arraysize(shaders.shader_stages),
+      .pStages             = shaders.shader_stages,
       .pVertexInputState   = &vertex_input_state,
       .pInputAssemblyState = &input_assembly_state,
       .pViewportState      = &viewport_state,
@@ -2093,40 +1865,19 @@ void pipeline_reload_simple_rendering_green_gui_sdf_reload(Engine& engine)
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
       .pDynamicState       = &dynamic_state,
-      .layout     = engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-      .renderPass = engine.simple_rendering.render_pass,
-      .subpass    = Engine::SimpleRendering::Pass::RobotGui,
-      .basePipelineHandle = VK_NULL_HANDLE,
-      .basePipelineIndex  = -1,
+      .layout              = engine.green_gui_sdf_font_pipeline_layout,
+      .renderPass          = engine.gui_render_pass,
+      .subpass             = 0,
+      .basePipelineHandle  = VK_NULL_HANDLE,
+      .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-                            &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont]);
-
-  for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.green_gui_sdf_font_pipeline);
 }
 
-void pipeline_reload_simple_rendering_green_gui_triangle_reload(Engine& engine)
+void green_gui_triangle(Engine& engine)
 {
-  schedule_destruction_if_needed(
-      engine.scheduled_pipelines_destruction, &engine.scheduled_pipelines_destruction_count,
-      engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiTriangle]);
-
-  VkPipelineShaderStageCreateInfo shader_stages[] = {
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("green_gui_triangle.vert"),
-          .pName  = "main",
-      },
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("green_gui_triangle.frag"),
-          .pName  = "main",
-      },
-  };
+  TwoStageShader shaders(engine, "green_gui_triangle.vert", "green_gui_triangle.frag");
 
   VkPipelineVertexInputStateCreateInfo vertex_input_state = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
@@ -2216,50 +1967,27 @@ void pipeline_reload_simple_rendering_green_gui_triangle_reload(Engine& engine)
 
   VkGraphicsPipelineCreateInfo ci = {
       .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-      .stageCount          = SDL_arraysize(shader_stages),
-      .pStages             = shader_stages,
+      .stageCount          = SDL_arraysize(shaders.shader_stages),
+      .pStages             = shaders.shader_stages,
       .pVertexInputState   = &vertex_input_state,
       .pInputAssemblyState = &input_assembly_state,
       .pViewportState      = &viewport_state,
       .pRasterizationState = &rasterization_state,
       .pMultisampleState   = &multisample_state,
-      //.pDepthStencilState  = &depth_stencil_state,
-      .pColorBlendState = &color_blend_state,
-      //.pDynamicState       = &dynamic_state_info,
-      .layout     = engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiTriangle],
-      .renderPass = engine.simple_rendering.render_pass,
-      .subpass    = Engine::SimpleRendering::Pass::RobotGui,
-      .basePipelineHandle = VK_NULL_HANDLE,
-      .basePipelineIndex  = -1,
+      .pColorBlendState    = &color_blend_state,
+      .layout              = engine.green_gui_triangle_pipeline_layout,
+      .renderPass          = engine.gui_render_pass,
+      .subpass             = 0,
+      .basePipelineHandle  = VK_NULL_HANDLE,
+      .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-                            &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiTriangle]);
-
-  for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.green_gui_triangle_pipeline);
 }
 
-void pipeline_reload_simple_rendering_green_gui_radar_dots_reload(Engine& engine)
+void green_gui_radar_dots(Engine& engine)
 {
-  schedule_destruction_if_needed(
-      engine.scheduled_pipelines_destruction, &engine.scheduled_pipelines_destruction_count,
-      engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiRadarDots]);
-
-  VkPipelineShaderStageCreateInfo shader_stages[] = {
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("green_gui_radar_dots.vert"),
-          .pName  = "main",
-      },
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("green_gui_radar_dots.frag"),
-          .pName  = "main",
-      },
-  };
+  TwoStageShader shaders(engine, "green_gui_radar_dots.vert", "green_gui_radar_dots.frag");
 
   VkPipelineVertexInputStateCreateInfo vertex_input_state = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
@@ -2357,8 +2085,8 @@ void pipeline_reload_simple_rendering_green_gui_radar_dots_reload(Engine& engine
 
   VkGraphicsPipelineCreateInfo ci = {
       .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-      .stageCount          = SDL_arraysize(shader_stages),
-      .pStages             = shader_stages,
+      .stageCount          = SDL_arraysize(shaders.shader_stages),
+      .pStages             = shaders.shader_stages,
       .pVertexInputState   = &vertex_input_state,
       .pInputAssemblyState = &input_assembly_state,
       .pViewportState      = &viewport_state,
@@ -2366,40 +2094,19 @@ void pipeline_reload_simple_rendering_green_gui_radar_dots_reload(Engine& engine
       .pMultisampleState   = &multisample_state,
       .pColorBlendState    = &color_blend_state,
       .pDynamicState       = &dynamic_state_info,
-      .layout     = engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiRadarDots],
-      .renderPass = engine.simple_rendering.render_pass,
-      .subpass    = Engine::SimpleRendering::Pass::RadarDots,
-      .basePipelineHandle = VK_NULL_HANDLE,
-      .basePipelineIndex  = -1,
+      .layout              = engine.green_gui_radar_dots_pipeline_layout,
+      .renderPass          = engine.gui_render_pass,
+      .subpass             = 0,
+      .basePipelineHandle  = VK_NULL_HANDLE,
+      .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-                            &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiRadarDots]);
-
-  for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.green_gui_radar_dots_pipeline);
 }
 
-void pipeline_reload_simple_rendering_pbr_water_reload(Engine& engine)
+void pbr_water(Engine& engine)
 {
-  schedule_destruction_if_needed(engine.scheduled_pipelines_destruction, &engine.scheduled_pipelines_destruction_count,
-                                 engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::PbrWater]);
-
-  VkPipelineShaderStageCreateInfo shader_stages[] = {
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("pbr_water.vert"),
-          .pName  = "main",
-      },
-      {
-
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("pbr_water.frag"),
-          .pName  = "main",
-      },
-  };
+  TwoStageShader shaders(engine, "pbr_water.vert", "pbr_water.frag");
 
   VkVertexInputAttributeDescription attribute_descriptions[] = {
       {
@@ -2533,8 +2240,8 @@ void pipeline_reload_simple_rendering_pbr_water_reload(Engine& engine)
 
   VkGraphicsPipelineCreateInfo ci = {
       .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-      .stageCount          = SDL_arraysize(shader_stages),
-      .pStages             = shader_stages,
+      .stageCount          = SDL_arraysize(shaders.shader_stages),
+      .pStages             = shaders.shader_stages,
       .pVertexInputState   = &vertex_input_state,
       .pInputAssemblyState = &input_assembly_state,
       .pViewportState      = &viewport_state,
@@ -2542,40 +2249,19 @@ void pipeline_reload_simple_rendering_pbr_water_reload(Engine& engine)
       .pMultisampleState   = &multisample_state,
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
-      .layout              = engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::PbrWater],
-      .renderPass          = engine.simple_rendering.render_pass,
-      .subpass             = Engine::SimpleRendering::Pass::Objects3D,
+      .layout              = engine.pbr_water_pipeline_layout,
+      .renderPass          = engine.color_and_depth_render_pass,
+      .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-                            &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::PbrWater]);
-
-  for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.pbr_water_pipeline);
 }
 
-void pipeline_reload_simple_rendering_debug_billboard(Engine& engine)
+void debug_billboard(Engine& engine)
 {
-  schedule_destruction_if_needed(engine.scheduled_pipelines_destruction, &engine.scheduled_pipelines_destruction_count,
-                                 engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::DebugBillboard]);
-
-  VkPipelineShaderStageCreateInfo shader_stages[] = {
-      {
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = engine.load_shader("debug_billboard.vert"),
-          .pName  = "main",
-      },
-      {
-
-          .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = engine.load_shader("debug_billboard.frag"),
-          .pName  = "main",
-      },
-  };
+  TwoStageShader shaders(engine, "debug_billboard.vert", "debug_billboard.frag");
 
   VkVertexInputAttributeDescription attribute_descriptions[] = {
       {
@@ -2703,8 +2389,8 @@ void pipeline_reload_simple_rendering_debug_billboard(Engine& engine)
 
   VkGraphicsPipelineCreateInfo ci = {
       .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-      .stageCount          = SDL_arraysize(shader_stages),
-      .pStages             = shader_stages,
+      .stageCount          = SDL_arraysize(shaders.shader_stages),
+      .pStages             = shaders.shader_stages,
       .pVertexInputState   = &vertex_input_state,
       .pInputAssemblyState = &input_assembly_state,
       .pViewportState      = &viewport_state,
@@ -2712,16 +2398,34 @@ void pipeline_reload_simple_rendering_debug_billboard(Engine& engine)
       .pMultisampleState   = &multisample_state,
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
-      .layout             = engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::DebugBillboard],
-      .renderPass         = engine.simple_rendering.render_pass,
-      .subpass            = Engine::SimpleRendering::Pass::ImGui,
-      .basePipelineHandle = VK_NULL_HANDLE,
-      .basePipelineIndex  = -1,
+      .layout              = engine.debug_billboard_pipeline_layout,
+      .renderPass          = engine.gui_render_pass,
+      .subpass             = 0,
+      .basePipelineHandle  = VK_NULL_HANDLE,
+      .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-                            &engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::DebugBillboard]);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.debug_billboard_pipeline);
+}
 
-  for (auto& shader_stage : shader_stages)
-    vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
+} // namespace
+
+void Engine::setup_pipelines()
+{
+  shadow_mapping(*this);
+  skybox(*this);
+  scene3d(*this);
+  colored_geometry(*this);
+  colored_geometry_triangle_strip(*this);
+  colored_geometry_skinned(*this);
+  imgui(*this);
+  green_gui(*this);
+  green_gui_weapon_selector_box_left(*this);
+  green_gui_weapon_selector_box_right(*this);
+  green_gui_lines(*this);
+  green_gui_sdf(*this);
+  green_gui_triangle(*this);
+  green_gui_radar_dots(*this);
+  pbr_water(*this);
+  debug_billboard(*this);
 }

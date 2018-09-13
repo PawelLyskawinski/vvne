@@ -1,6 +1,5 @@
 #include "game.hh"
 #include "cubemap.hh"
-#include "pipelines.hh"
 #include "render_jobs.hh"
 #include "update_jobs.hh"
 #include <SDL2/SDL_assert.h>
@@ -777,7 +776,7 @@ void Game::startup(Engine& engine)
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool     = engine.descriptor_pool,
         .descriptorSetCount = 1,
-        .pSetLayouts        = &engine.simple_rendering.pbr_metallic_workflow_material_descriptor_set_layout,
+        .pSetLayouts        = &engine.pbr_metallic_workflow_material_descriptor_set_layout,
     };
 
     vkAllocateDescriptorSets(engine.device, &allocate, &helmet_pbr_material_dset);
@@ -838,7 +837,7 @@ void Game::startup(Engine& engine)
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool     = engine.descriptor_pool,
         .descriptorSetCount = 1,
-        .pSetLayouts        = &engine.simple_rendering.pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout,
+        .pSetLayouts        = &engine.pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout,
     };
 
     vkAllocateDescriptorSets(engine.device, &allocate, &pbr_ibl_environment_dset);
@@ -897,7 +896,7 @@ void Game::startup(Engine& engine)
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool     = engine.descriptor_pool,
         .descriptorSetCount = 1,
-        .pSetLayouts        = &engine.simple_rendering.pbr_dynamic_lights_descriptor_set_layout,
+        .pSetLayouts        = &engine.pbr_dynamic_lights_descriptor_set_layout,
     };
 
     vkAllocateDescriptorSets(engine.device, &allocate, &pbr_dynamic_lights_dset);
@@ -932,16 +931,14 @@ void Game::startup(Engine& engine)
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool     = engine.descriptor_pool,
         .descriptorSetCount = 1,
-        .pSetLayouts        = &engine.simple_rendering.single_texture_in_frag_descriptor_set_layout,
+        .pSetLayouts        = &engine.single_texture_in_frag_descriptor_set_layout,
     };
 
     vkAllocateDescriptorSets(engine.device, &allocate, &skybox_cubemap_dset);
     vkAllocateDescriptorSets(engine.device, &allocate, &imgui_font_atlas_dset);
     vkAllocateDescriptorSets(engine.device, &allocate, &lucida_sans_sdf_dset);
     vkAllocateDescriptorSets(engine.device, &allocate, &pbr_water_material_dset);
-
-    for (int i = 0; i < Engine::SWAPCHAIN_IMAGES_COUNT; ++i)
-      vkAllocateDescriptorSets(engine.device, &allocate, &debug_shadow_map_dset[i]);
+    vkAllocateDescriptorSets(engine.device, &allocate, &debug_shadow_map_dset);
   }
 
   {
@@ -975,13 +972,10 @@ void Game::startup(Engine& engine)
     write.dstSet    = pbr_water_material_dset;
     vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
 
-    image.sampler = engine.shadow_mapping.sampler;
-    for (int i = 0; i < Engine::SWAPCHAIN_IMAGES_COUNT; ++i)
-    {
-      image.imageView = engine.shadowmap_image_views[i];
-      write.dstSet    = debug_shadow_map_dset[i];
-      vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
-    }
+    image.sampler   = engine.shadowmap_sampler;
+    image.imageView = engine.shadowmap_image_view;
+    write.dstSet    = debug_shadow_map_dset;
+    vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
   }
 
   // --------------------------------------------------------------- //
@@ -993,7 +987,7 @@ void Game::startup(Engine& engine)
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool     = engine.descriptor_pool,
         .descriptorSetCount = 1,
-        .pSetLayouts        = &engine.simple_rendering.skinning_matrices_descriptor_set_layout,
+        .pSetLayouts        = &engine.skinning_matrices_descriptor_set_layout,
     };
 
     vkAllocateDescriptorSets(engine.device, &allocate, &monster_skinning_matrices_dset);
@@ -1033,7 +1027,7 @@ void Game::startup(Engine& engine)
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool     = engine.descriptor_pool,
         .descriptorSetCount = 1,
-        .pSetLayouts        = &engine.shadow_mapping.descriptor_set_layout,
+        .pSetLayouts        = &engine.shadow_pass_descriptor_set_layout,
     };
 
     vkAllocateDescriptorSets(engine.device, &allocate, &cascade_view_proj_matrices_depth_pass_dset[i]);
@@ -1066,7 +1060,7 @@ void Game::startup(Engine& engine)
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool     = engine.descriptor_pool,
         .descriptorSetCount = 1,
-        .pSetLayouts        = &engine.simple_rendering.cascade_shadow_map_matrices_ubo_frag_set_layout,
+        .pSetLayouts        = &engine.cascade_shadow_map_matrices_ubo_frag_set_layout,
     };
 
     vkAllocateDescriptorSets(engine.device, &allocate, &cascade_view_proj_matrices_render_dset[i]);
@@ -1391,6 +1385,17 @@ void Game::startup(Engine& engine)
 
   for (WeaponSelection& sel : weapon_selections)
     sel.init();
+
+  {
+    VkCommandBufferAllocateInfo info = {
+        .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool        = engine.graphics_command_pool,
+        .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = Engine::SWAPCHAIN_IMAGES_COUNT,
+    };
+
+    vkAllocateCommandBuffers(engine.device, &info, primary_command_buffers);
+  }
 
   for (VkCommandPool& pool : js.worker_pools)
   {
@@ -2018,10 +2023,6 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     }
   }
 
-  if (ImGui::CollapsingHeader("Pipeline reload"))
-    if (ImGui::Button("RELOAD"))
-      pipeline_reload_simple_rendering_scene3d_reload(engine);
-
   if (ImGui::CollapsingHeader("Memory"))
   {
     auto bytes_as_mb = [](uint32_t in) { return in / (1024u * 1024u); };
@@ -2191,14 +2192,12 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
 void Game::render(Engine& engine)
 {
-  Engine::SimpleRendering& renderer = engine.simple_rendering;
-
   {
     FunctionTimer timer(acquire_times, SDL_arraysize(acquire_times));
     vkAcquireNextImageKHR(engine.device, engine.swapchain, UINT64_MAX, engine.image_available, VK_NULL_HANDLE,
                           &image_index);
-    vkWaitForFences(engine.device, 1, &renderer.submition_fences[image_index], VK_TRUE, UINT64_MAX);
-    vkResetFences(engine.device, 1, &renderer.submition_fences[image_index]);
+    vkWaitForFences(engine.device, 1, &engine.submition_fences[image_index], VK_TRUE, UINT64_MAX);
+    vkResetFences(engine.device, 1, &engine.submition_fences[image_index]);
 
     for (int worker_thread = 0; worker_thread < WORKER_THREADS_COUNT; ++worker_thread)
     {
@@ -2388,7 +2387,7 @@ void Game::render(Engine& engine)
   SDL_AtomicSet(&js.jobs_taken, 0);
 
   {
-    VkCommandBuffer cmd = engine.simple_rendering.primary_command_buffers[image_index];
+    VkCommandBuffer cmd = primary_command_buffers[image_index];
 
     {
       VkCommandBufferBeginInfo begin = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
@@ -2396,23 +2395,16 @@ void Game::render(Engine& engine)
     }
 
     // -----------------------------------------------------------------------------------------------
-    // SHADOW MAPPING RENDER PASS
+    // SHADOW MAPPING PASS
     // -----------------------------------------------------------------------------------------------
-    //
-    // This is pure _MADNESS_ to do this kind of thing without any synchronization.
-    // I've tested two "vkQueueSubmit" calls with semaphore in between but it caused strange stutters.
-    // For now I don't have much of a choice, so I'll go along with this thing.
-    // @todo: rethink the shadow mapping depth pass
-    //
     for (int cascade_idx = 0; cascade_idx < Engine::SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
     {
-      const int    framebuffer_idx = (Engine::SHADOWMAP_CASCADE_COUNT * image_index) + cascade_idx;
-      VkClearValue clear_value     = {.depthStencil = {1.0, 0}};
+      VkClearValue clear_value = {.depthStencil = {1.0, 0}};
 
       VkRenderPassBeginInfo begin = {
           .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-          .renderPass      = engine.shadow_mapping.render_pass,
-          .framebuffer     = engine.shadow_mapping.framebuffers[framebuffer_idx],
+          .renderPass      = engine.shadowmap_render_pass,
+          .framebuffer     = engine.shadowmap_framebuffers[cascade_idx],
           .renderArea      = {.extent = {.width = Engine::SHADOWMAP_IMAGE_DIM, .height = Engine::SHADOWMAP_IMAGE_DIM}},
           .clearValueCount = 1,
           .pClearValues    = &clear_value,
@@ -2420,15 +2412,46 @@ void Game::render(Engine& engine)
 
       vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 
-      for (const DepthPassCmd& iter : depth_pass_cmds)
+      for (const ShadowmapCommandBuffer& iter : shadow_mapping_pass_commands)
         if (cascade_idx == iter.cascade_idx)
-          vkCmdExecuteCommands(cmd, 1, &iter.command);
+          vkCmdExecuteCommands(cmd, 1, &iter.cmd);
 
       vkCmdEndRenderPass(cmd);
     }
 
     // -----------------------------------------------------------------------------------------------
-    // SCENE RENDER PASS
+    // SKYBOX PASS
+    // -----------------------------------------------------------------------------------------------
+    {
+      const uint32_t clear_values_count = (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT) ? 1u : 2u;
+      VkClearValue   clear_values[2]    = {};
+
+      if (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT)
+      {
+        clear_values[0].color = {{0.0f, 0.0f, 0.2f, 1.0f}};
+      }
+      else
+      {
+        clear_values[0].color = {{0.0f, 0.0f, 0.2f, 1.0f}};
+        clear_values[1].color = {{0.0f, 0.0f, 0.2f, 1.0f}};
+      }
+
+      VkRenderPassBeginInfo begin = {
+          .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+          .renderPass      = engine.skybox_render_pass,
+          .framebuffer     = engine.skybox_framebuffers[image_index],
+          .renderArea      = {.extent = engine.extent2D},
+          .clearValueCount = clear_values_count,
+          .pClearValues    = clear_values,
+      };
+
+      vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+      vkCmdExecuteCommands(cmd, 1, &skybox_command);
+      vkCmdEndRenderPass(cmd);
+    }
+
+    // -----------------------------------------------------------------------------------------------
+    // SCENE PASS
     // -----------------------------------------------------------------------------------------------
     {
       const uint32_t clear_values_count = (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT) ? 2u : 3u;
@@ -2442,43 +2465,90 @@ void Game::render(Engine& engine)
       else
       {
         clear_values[0].color        = {{0.0f, 0.0f, 0.2f, 1.0f}};
-        clear_values[1].color        = {{0.0f, 0.0f, 0.2f, 1.0f}};
-        clear_values[2].depthStencil = {1.0, 0};
+        clear_values[1].depthStencil = {1.0, 0};
+        clear_values[2].color        = {{0.0f, 0.0f, 0.2f, 1.0f}};
       }
 
       VkRenderPassBeginInfo begin = {
           .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-          .renderPass      = engine.simple_rendering.render_pass,
-          .framebuffer     = engine.simple_rendering.framebuffers[image_index],
+          .renderPass      = engine.color_and_depth_render_pass,
+          .framebuffer     = engine.color_and_depth_framebuffers[image_index],
           .renderArea      = {.extent = engine.extent2D},
           .clearValueCount = clear_values_count,
           .pClearValues    = clear_values,
       };
 
       vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+      for (VkCommandBuffer secondary_command : scene_rendering_commands)
+        vkCmdExecuteCommands(cmd, 1, &secondary_command);
+      vkCmdEndRenderPass(cmd);
     }
 
-    for (int subpass = 0; subpass < Engine::SimpleRendering::Pass::Count; ++subpass)
+    // -----------------------------------------------------------------------------------------------
+    // GUI PASS
+    // -----------------------------------------------------------------------------------------------
     {
-      for (const SimpleRenderingCmd& iter : simple_rendering_cmds)
-        if (subpass == iter.subpass)
-          vkCmdExecuteCommands(cmd, 1, &iter.command);
+      const uint32_t clear_values_count = (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT) ? 1u : 2u;
+      VkClearValue   clear_values[2]    = {};
 
-      if (subpass < (Engine::SimpleRendering::Pass::Count - 1))
-        vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+      if (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT)
+      {
+        clear_values[0].color = {{0.0f, 0.0f, 0.2f, 0.0f}};
+      }
+      else
+      {
+        clear_values[0].color = {{0.0f, 0.0f, 0.2f, 0.0f}};
+        clear_values[1].color = {{0.0f, 0.0f, 0.2f, 0.0f}};
+      }
+
+      VkRenderPassBeginInfo begin = {
+          .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+          .renderPass      = engine.gui_render_pass,
+          .framebuffer     = engine.gui_framebuffers[image_index],
+          .renderArea      = {.extent = engine.extent2D},
+          .clearValueCount = clear_values_count,
+          .pClearValues    = clear_values,
+      };
+
+      vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+      for (VkCommandBuffer secondary_command : gui_commands)
+        vkCmdExecuteCommands(cmd, 1, &secondary_command);
+      vkCmdEndRenderPass(cmd);
     }
 
-    vkCmdEndRenderPass(cmd);
+    {
+      VkImageMemoryBarrier barrier = {
+          .sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+          .srcAccessMask       = 0,
+          .dstAccessMask       = 0,
+          .oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+          .newLayout           = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+          .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+          .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+          .image               = engine.shadowmap_image,
+          .subresourceRange =
+              {
+                  .aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT,
+                  .baseMipLevel   = 0,
+                  .levelCount     = 1,
+                  .baseArrayLayer = 0,
+                  .layerCount     = Engine::SHADOWMAP_CASCADE_COUNT,
+              },
+      };
+
+      vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, 0, nullptr,
+                           0, nullptr, 1, &barrier);
+    }
+
     vkEndCommandBuffer(cmd);
   }
 
-  // queues can only by emptied after all secondary command buffers from there are inlined into target primary
-  // command buffer
-  SDL_AtomicSet(&simple_rendering_cmds.count, 0);
-  SDL_AtomicSet(&depth_pass_cmds.count, 0);
+  shadow_mapping_pass_commands.reset();
+  scene_rendering_commands.reset();
+  gui_commands.reset();
 
   {
-    VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 
     VkSubmitInfo submit = {
         .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -2486,12 +2556,12 @@ void Game::render(Engine& engine)
         .pWaitSemaphores      = &engine.image_available,
         .pWaitDstStageMask    = &wait_stage,
         .commandBufferCount   = 1,
-        .pCommandBuffers      = &engine.simple_rendering.primary_command_buffers[image_index],
+        .pCommandBuffers      = &primary_command_buffers[image_index],
         .signalSemaphoreCount = 1,
         .pSignalSemaphores    = &engine.render_finished,
     };
 
-    vkQueueSubmit(engine.graphics_queue, 1, &submit, engine.simple_rendering.submition_fences[image_index]);
+    vkQueueSubmit(engine.graphics_queue, 1, &submit, engine.submition_fences[image_index]);
   }
 
   VkPresentInfoKHR present = {
@@ -2504,4 +2574,5 @@ void Game::render(Engine& engine)
   };
 
   vkQueuePresentKHR(engine.graphics_queue, &present);
+  // vkQueueWaitIdle(engine.graphics_queue);
 }

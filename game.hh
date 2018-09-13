@@ -196,15 +196,9 @@ struct JobSystem
   int                paused_profile_data_count;
 };
 
-struct SimpleRenderingCmd
+struct ShadowmapCommandBuffer
 {
-  VkCommandBuffer command;
-  int             subpass;
-};
-
-struct DepthPassCmd
-{
-  VkCommandBuffer command;
+  VkCommandBuffer cmd;
   int             cascade_idx;
 };
 
@@ -225,18 +219,23 @@ template <typename T, int SIZE> struct AtomicStack
     return &stack[SDL_AtomicGet(&count)];
   }
 
+  void reset()
+  {
+    SDL_AtomicSet(&count, 0);
+  }
+
   T            stack[SIZE];
   SDL_atomic_t count;
 };
 
 struct RenderEntityParams
 {
-  VkCommandBuffer cmd;
-  mat4x4          projection;
-  mat4x4          view;
-  vec3            camera_position;
-  vec3            color;
-  int             pipeline;
+  VkCommandBuffer  cmd;
+  mat4x4           projection;
+  mat4x4           view;
+  vec3             camera_position;
+  vec3             color;
+  VkPipelineLayout pipeline_layout;
 };
 
 struct WeaponSelection
@@ -294,9 +293,8 @@ struct Game
   VkDescriptorSet lucida_sans_sdf_dset;
   VkDescriptorSet sandy_level_pbr_material_dset;
   VkDescriptorSet pbr_water_material_dset;
-  VkDescriptorSet debug_shadow_map_dset[Engine::SWAPCHAIN_IMAGES_COUNT];
+  VkDescriptorSet debug_shadow_map_dset;
 
-  //
   // Those two descriptor sets partially point to the same data. In both cases we'll be using
   // already calculated and uploaded cascade view projection matrices. The difference is:
   // - during rendering additionally information about the depth split distance per cascade is required
@@ -345,6 +343,8 @@ struct Game
   // textures - game
   VkDeviceSize green_gui_billboard_vertex_buffer_offset;
   VkDeviceSize regular_billboard_vertex_buffer_offset;
+
+  VkCommandBuffer primary_command_buffers[Engine::SWAPCHAIN_IMAGES_COUNT];
 
   vec2  green_gui_radar_position;
   float green_gui_radar_rotation;
@@ -396,12 +396,14 @@ struct Game
   int  lmb_last_cursor_position[2];
   int  lmb_current_cursor_position[2];
 
-  uint32_t                             image_index;
-  JobSystem                            js;
-  AtomicStack<DepthPassCmd, 512>       depth_pass_cmds;
-  AtomicStack<SimpleRenderingCmd, 512> simple_rendering_cmds;
-  float                                current_time_sec;
-  float                                diagnostic_meas_scale;
+  uint32_t                                image_index;
+  JobSystem                               js;
+  AtomicStack<ShadowmapCommandBuffer, 64> shadow_mapping_pass_commands;
+  VkCommandBuffer                         skybox_command;
+  AtomicStack<VkCommandBuffer, 64>        scene_rendering_commands;
+  AtomicStack<VkCommandBuffer, 64>        gui_commands;
+  float                                   current_time_sec;
+  float                                   diagnostic_meas_scale;
 
   EntityComponentSystem ecs;
 

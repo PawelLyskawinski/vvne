@@ -54,16 +54,14 @@ namespace render {
 
 void skybox_job(ThreadJobData tjd)
 {
-  VkCommandBuffer    command = acquire_command_buffer(tjd);
-  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::Skybox};
-  tjd.game.simple_rendering_cmds.push(result);
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  tjd.game.skybox_command = command;
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::Skybox,
-        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.skybox_render_pass,
+        .framebuffer = tjd.engine.skybox_framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -84,15 +82,10 @@ void skybox_job(ThreadJobData tjd)
   mat4x4_dup(push.projection, tjd.game.projection);
   mat4x4_dup(push.view, tjd.game.view);
 
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::Skybox]);
-
-  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Skybox], 0, 1,
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.skybox_pipeline);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.skybox_pipeline_layout, 0, 1,
                           &tjd.game.skybox_cubemap_dset, 0, nullptr);
-
-  vkCmdPushConstants(command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Skybox],
-                     VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), &push);
+  vkCmdPushConstants(command, tjd.engine.skybox_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), &push);
 
   const Node& node = tjd.game.box.nodes.data[1];
   Mesh&       mesh = tjd.game.box.meshes.data[node.mesh];
@@ -109,15 +102,12 @@ void robot_depth_job(ThreadJobData tjd)
   for (int cascade_idx = 0; cascade_idx < Engine::SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
   {
     VkCommandBuffer command = acquire_command_buffer(tjd);
-    DepthPassCmd    result  = {.command = command, .cascade_idx = cascade_idx};
-    tjd.game.depth_pass_cmds.push(result);
-
-    const int framebuffer_idx = (Engine::SHADOWMAP_CASCADE_COUNT * tjd.game.image_index) + cascade_idx;
+    tjd.game.shadow_mapping_pass_commands.push({command, cascade_idx});
 
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.shadow_mapping.render_pass,
-        .framebuffer = tjd.engine.shadow_mapping.framebuffers[framebuffer_idx],
+        .renderPass  = tjd.engine.shadowmap_render_pass,
+        .framebuffer = tjd.engine.shadowmap_framebuffers[cascade_idx],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -127,8 +117,8 @@ void robot_depth_job(ThreadJobData tjd)
     };
 
     vkBeginCommandBuffer(command, &begin_info);
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.shadow_mapping.pipeline);
-    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.shadow_mapping.pipeline_layout, 0, 1,
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.shadowmap_pipeline);
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.shadowmap_pipeline_layout, 0, 1,
                             &tjd.game.cascade_view_proj_matrices_depth_pass_dset[tjd.game.image_index], 0, nullptr);
     render_pbr_entity_shadow(tjd.game.robot_entity, tjd.game.ecs, tjd.game.robot, tjd.engine, tjd.game, command,
                              cascade_idx);
@@ -138,16 +128,14 @@ void robot_depth_job(ThreadJobData tjd)
 
 void robot_job(ThreadJobData tjd)
 {
-  VkCommandBuffer    command = acquire_command_buffer(tjd);
-  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::Objects3D};
-  tjd.game.simple_rendering_cmds.push(result);
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  tjd.game.scene_rendering_commands.push(command);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::Objects3D,
-        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.color_and_depth_render_pass,
+        .framebuffer = tjd.engine.color_and_depth_framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -159,29 +147,27 @@ void robot_job(ThreadJobData tjd)
     vkBeginCommandBuffer(command, &begin_info);
   }
 
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::Scene3D]);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.scene3D_pipeline);
 
   {
     VkDescriptorSet dsets[] = {
         tjd.game.robot_pbr_material_dset,
         tjd.game.pbr_ibl_environment_dset,
-        tjd.game.debug_shadow_map_dset[tjd.game.image_index],
+        tjd.game.debug_shadow_map_dset,
         tjd.game.pbr_dynamic_lights_dset,
         tjd.game.cascade_view_proj_matrices_render_dset[tjd.game.image_index],
     };
 
     uint32_t dynamic_offsets[] = {static_cast<uint32_t>(tjd.game.pbr_dynamic_lights_ubo_offsets[tjd.game.image_index])};
 
-    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 0,
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.scene3D_pipeline_layout, 0,
                             SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
   }
 
   RenderEntityParams params = {
-      .cmd      = command,
-      .color    = {0.0f, 0.0f, 0.0f},
-      .pipeline = Engine::SimpleRendering::Pipeline::Scene3D,
+      .cmd             = command,
+      .color           = {0.0f, 0.0f, 0.0f},
+      .pipeline_layout = tjd.engine.scene3D_pipeline_layout,
   };
 
   mat4x4_dup(params.projection, tjd.game.projection);
@@ -197,15 +183,12 @@ void helmet_depth_job(ThreadJobData tjd)
   for (int cascade_idx = 0; cascade_idx < Engine::SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
   {
     VkCommandBuffer command = acquire_command_buffer(tjd);
-    DepthPassCmd    result  = {.command = command, .cascade_idx = cascade_idx};
-    tjd.game.depth_pass_cmds.push(result);
-
-    const int framebuffer_idx = (Engine::SHADOWMAP_CASCADE_COUNT * tjd.game.image_index) + cascade_idx;
+    tjd.game.shadow_mapping_pass_commands.push({command, cascade_idx});
 
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.shadow_mapping.render_pass,
-        .framebuffer = tjd.engine.shadow_mapping.framebuffers[framebuffer_idx],
+        .renderPass  = tjd.engine.shadowmap_render_pass,
+        .framebuffer = tjd.engine.shadowmap_framebuffers[cascade_idx],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -215,8 +198,8 @@ void helmet_depth_job(ThreadJobData tjd)
     };
 
     vkBeginCommandBuffer(command, &begin_info);
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.shadow_mapping.pipeline);
-    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.shadow_mapping.pipeline_layout, 0, 1,
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.shadowmap_pipeline);
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.shadowmap_pipeline_layout, 0, 1,
                             &tjd.game.cascade_view_proj_matrices_depth_pass_dset[tjd.game.image_index], 0, nullptr);
     render_pbr_entity_shadow(tjd.game.helmet_entity, tjd.game.ecs, tjd.game.helmet, tjd.engine, tjd.game, command,
                              cascade_idx);
@@ -226,16 +209,14 @@ void helmet_depth_job(ThreadJobData tjd)
 
 void helmet_job(ThreadJobData tjd)
 {
-  VkCommandBuffer    command = acquire_command_buffer(tjd);
-  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::Objects3D};
-  tjd.game.simple_rendering_cmds.push(result);
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  tjd.game.scene_rendering_commands.push(command);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::Objects3D,
-        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.color_and_depth_render_pass,
+        .framebuffer = tjd.engine.color_and_depth_framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -247,29 +228,27 @@ void helmet_job(ThreadJobData tjd)
     vkBeginCommandBuffer(command, &begin_info);
   }
 
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::Scene3D]);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.scene3D_pipeline);
 
   {
     VkDescriptorSet dsets[] = {
         tjd.game.helmet_pbr_material_dset,
         tjd.game.pbr_ibl_environment_dset,
-        tjd.game.debug_shadow_map_dset[tjd.game.image_index],
+        tjd.game.debug_shadow_map_dset,
         tjd.game.pbr_dynamic_lights_dset,
         tjd.game.cascade_view_proj_matrices_render_dset[tjd.game.image_index],
     };
 
     uint32_t dynamic_offsets[] = {static_cast<uint32_t>(tjd.game.pbr_dynamic_lights_ubo_offsets[tjd.game.image_index])};
 
-    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 0,
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.scene3D_pipeline_layout, 0,
                             SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
   }
 
   RenderEntityParams params = {
-      .cmd      = command,
-      .color    = {0.0f, 0.0f, 0.0f},
-      .pipeline = Engine::SimpleRendering::Pipeline::Scene3D,
+      .cmd             = command,
+      .color           = {0.0f, 0.0f, 0.0f},
+      .pipeline_layout = tjd.engine.scene3D_pipeline_layout,
   };
 
   mat4x4_dup(params.projection, tjd.game.projection);
@@ -282,16 +261,14 @@ void helmet_job(ThreadJobData tjd)
 
 void point_light_boxes(ThreadJobData tjd)
 {
-  VkCommandBuffer    command = acquire_command_buffer(tjd);
-  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::Objects3D};
-  tjd.game.simple_rendering_cmds.push(result);
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  tjd.game.scene_rendering_commands.push(command);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::Objects3D,
-        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.color_and_depth_render_pass,
+        .framebuffer = tjd.engine.color_and_depth_framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -303,13 +280,12 @@ void point_light_boxes(ThreadJobData tjd)
     vkBeginCommandBuffer(command, &begin_info);
   }
 
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometry]);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.colored_geometry_pipeline);
 
   RenderEntityParams params = {
-      .cmd      = command,
-      .color    = {0.0f, 0.0f, 0.0f},
-      .pipeline = Engine::SimpleRendering::Pipeline::ColoredGeometry,
+      .cmd             = command,
+      .color           = {0.0f, 0.0f, 0.0f},
+      .pipeline_layout = tjd.engine.colored_geometry_pipeline_layout,
   };
 
   mat4x4_dup(params.projection, tjd.game.projection);
@@ -327,16 +303,14 @@ void point_light_boxes(ThreadJobData tjd)
 
 void matrioshka_box(ThreadJobData tjd)
 {
-  VkCommandBuffer    command = acquire_command_buffer(tjd);
-  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::Objects3D};
-  tjd.game.simple_rendering_cmds.push(result);
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  tjd.game.scene_rendering_commands.push(command);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::Objects3D,
-        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.color_and_depth_render_pass,
+        .framebuffer = tjd.engine.color_and_depth_framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -348,13 +322,12 @@ void matrioshka_box(ThreadJobData tjd)
     vkBeginCommandBuffer(command, &begin_info);
   }
 
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometry]);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.colored_geometry_pipeline);
 
   RenderEntityParams params = {
-      .cmd      = command,
-      .color    = {0.0f, 1.0f, 0.0f},
-      .pipeline = Engine::SimpleRendering::Pipeline::ColoredGeometry,
+      .cmd             = command,
+      .color           = {0.0f, 1.0f, 0.0f},
+      .pipeline_layout = tjd.engine.colored_geometry_pipeline_layout,
   };
 
   mat4x4_dup(params.projection, tjd.game.projection);
@@ -367,16 +340,14 @@ void matrioshka_box(ThreadJobData tjd)
 
 void vr_scene(ThreadJobData tjd)
 {
-  VkCommandBuffer    command = acquire_command_buffer(tjd);
-  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::Objects3D};
-  tjd.game.simple_rendering_cmds.push(result);
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  tjd.game.scene_rendering_commands.push(command);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::Objects3D,
-        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.color_and_depth_render_pass,
+        .framebuffer = tjd.engine.color_and_depth_framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -388,22 +359,20 @@ void vr_scene(ThreadJobData tjd)
     vkBeginCommandBuffer(command, &begin_info);
   }
 
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::Scene3D]);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.scene3D_pipeline);
 
   {
     VkDescriptorSet dsets[] = {
         tjd.game.sandy_level_pbr_material_dset,
         tjd.game.pbr_ibl_environment_dset,
-        tjd.game.debug_shadow_map_dset[tjd.game.image_index],
+        tjd.game.debug_shadow_map_dset,
         tjd.game.pbr_dynamic_lights_dset,
         tjd.game.cascade_view_proj_matrices_render_dset[tjd.game.image_index],
     };
 
     uint32_t dynamic_offsets[] = {static_cast<uint32_t>(tjd.game.pbr_dynamic_lights_ubo_offsets[tjd.game.image_index])};
 
-    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D], 0,
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.scene3D_pipeline_layout, 0,
                             SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
   }
 
@@ -442,9 +411,8 @@ void vr_scene(ThreadJobData tjd)
   for (int i = 0; i < 3; ++i)
     ubo.camera_position[i] = tjd.game.camera_position[i];
 
-  vkCmdPushConstants(command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::Scene3D],
+  vkCmdPushConstants(command, tjd.engine.scene3D_pipeline_layout,
                      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ubo), &ubo);
-
   vkCmdDrawIndexed(command, static_cast<uint32_t>(tjd.game.vr_level_index_count), 1, 0, 0, 0);
 
   vkEndCommandBuffer(command);
@@ -511,16 +479,14 @@ void vr_scene_depth(ThreadJobData tjd)
 
 void simple_rigged(ThreadJobData tjd)
 {
-  VkCommandBuffer    command = acquire_command_buffer(tjd);
-  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::Objects3D};
-  tjd.game.simple_rendering_cmds.push(result);
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  tjd.game.scene_rendering_commands.push(command);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::Objects3D,
-        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.color_and_depth_render_pass,
+        .framebuffer = tjd.engine.color_and_depth_framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -532,21 +498,18 @@ void simple_rigged(ThreadJobData tjd)
     vkBeginCommandBuffer(command, &begin_info);
   }
 
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned]);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.colored_geometry_skinned_pipeline);
 
   uint32_t dynamic_offsets[] = {
       static_cast<uint32_t>(tjd.game.rig_skinning_matrices_ubo_offsets[tjd.game.image_index])};
 
-  vkCmdBindDescriptorSets(
-      command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-      tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned], 0, 1,
-      &tjd.game.rig_skinning_matrices_dset, SDL_arraysize(dynamic_offsets), dynamic_offsets);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.colored_geometry_skinned_pipeline_layout,
+                          0, 1, &tjd.game.rig_skinning_matrices_dset, SDL_arraysize(dynamic_offsets), dynamic_offsets);
 
   RenderEntityParams params = {
-      .cmd      = command,
-      .color    = {0.0f, 0.0f, 0.0f},
-      .pipeline = Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned,
+      .cmd             = command,
+      .color           = {0.0f, 0.0f, 0.0f},
+      .pipeline_layout = tjd.engine.colored_geometry_skinned_pipeline_layout,
   };
 
   mat4x4_dup(params.projection, tjd.game.projection);
@@ -559,16 +522,14 @@ void simple_rigged(ThreadJobData tjd)
 
 void monster_rigged(ThreadJobData tjd)
 {
-  VkCommandBuffer    command = acquire_command_buffer(tjd);
-  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::Objects3D};
-  tjd.game.simple_rendering_cmds.push(result);
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  tjd.game.scene_rendering_commands.push(command);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::Objects3D,
-        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.color_and_depth_render_pass,
+        .framebuffer = tjd.engine.color_and_depth_framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -580,21 +541,19 @@ void monster_rigged(ThreadJobData tjd)
     vkBeginCommandBuffer(command, &begin_info);
   }
 
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned]);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.colored_geometry_skinned_pipeline);
 
   uint32_t dynamic_offsets[] = {
       static_cast<uint32_t>(tjd.game.monster_skinning_matrices_ubo_offsets[tjd.game.image_index])};
 
-  vkCmdBindDescriptorSets(
-      command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-      tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned], 0, 1,
-      &tjd.game.monster_skinning_matrices_dset, SDL_arraysize(dynamic_offsets), dynamic_offsets);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.colored_geometry_skinned_pipeline_layout,
+                          0, 1, &tjd.game.monster_skinning_matrices_dset, SDL_arraysize(dynamic_offsets),
+                          dynamic_offsets);
 
   RenderEntityParams params = {
-      .cmd      = command,
-      .color    = {1.0f, 1.0f, 1.0f},
-      .pipeline = Engine::SimpleRendering::Pipeline::ColoredGeometrySkinned,
+      .cmd             = command,
+      .color           = {1.0f, 1.0f, 1.0f},
+      .pipeline_layout = tjd.engine.colored_geometry_skinned_pipeline_layout,
   };
 
   mat4x4_dup(params.projection, tjd.game.projection);
@@ -607,16 +566,14 @@ void monster_rigged(ThreadJobData tjd)
 
 void radar(ThreadJobData tjd)
 {
-  VkCommandBuffer    command = acquire_command_buffer(tjd);
-  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RobotGui};
-  tjd.game.simple_rendering_cmds.push(result);
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  tjd.game.gui_commands.push(command);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::RobotGui,
-        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.gui_render_pass,
+        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -628,8 +585,7 @@ void radar(ThreadJobData tjd)
     vkBeginCommandBuffer(command, &begin_info);
   }
 
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGui]);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_pipeline);
 
   vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.green_gui_billboard_vertex_buffer_offset);
@@ -656,11 +612,9 @@ void radar(ThreadJobData tjd)
   mat4x4 mvp = {};
   mat4x4_mul(mvp, gui_projection, world_transform);
 
-  vkCmdPushConstants(command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGui],
-                     VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
-
-  vkCmdPushConstants(command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGui],
-                     VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(float), &tjd.game.current_time_sec);
+  vkCmdPushConstants(command, tjd.engine.green_gui_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
+  vkCmdPushConstants(command, tjd.engine.green_gui_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4),
+                     sizeof(float), &tjd.game.current_time_sec);
 
   vkCmdDraw(command, 4, 1, 0, 0);
   vkEndCommandBuffer(command);
@@ -668,16 +622,14 @@ void radar(ThreadJobData tjd)
 
 void robot_gui_lines(ThreadJobData tjd)
 {
-  VkCommandBuffer    command = acquire_command_buffer(tjd);
-  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RobotGui};
-  tjd.game.simple_rendering_cmds.push(result);
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  tjd.game.gui_commands.push(command);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::RobotGui,
-        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.gui_render_pass,
+        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -689,9 +641,7 @@ void robot_gui_lines(ThreadJobData tjd)
     vkBeginCommandBuffer(command, &begin_info);
   }
 
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiLines]);
-
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_lines_pipeline);
   vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_host_coherent_memory_buffer,
                          &tjd.game.green_gui_rulers_buffer_offsets[tjd.game.image_index]);
 
@@ -707,9 +657,8 @@ void robot_gui_lines(ThreadJobData tjd)
     const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
 
     vec4 color = {125.0f / 255.0f, 204.0f / 255.0f, 174.0f / 255.0f, 0.9f};
-    vkCmdPushConstants(command,
-                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiLines],
-                       VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(vec4), color);
+    vkCmdPushConstants(command, tjd.engine.green_gui_lines_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                       sizeof(vec4), color);
 
     for (int i = 0; i < 4; ++i)
     {
@@ -736,9 +685,8 @@ void robot_gui_lines(ThreadJobData tjd)
     const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
 
     vec4 color = {1.0f, 0.0f, 0.0f, 0.9f};
-    vkCmdPushConstants(command,
-                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiLines],
-                       VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(vec4), color);
+    vkCmdPushConstants(command, tjd.engine.green_gui_lines_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                       sizeof(vec4), color);
 
     for (int i = 0; i < 4; ++i)
     {
@@ -765,9 +713,8 @@ void robot_gui_lines(ThreadJobData tjd)
     const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
 
     vec4 color = {1.0f, 1.0f, 0.0f, 0.7f};
-    vkCmdPushConstants(command,
-                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiLines],
-                       VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(vec4), color);
+    vkCmdPushConstants(command, tjd.engine.green_gui_lines_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                       sizeof(vec4), color);
 
     for (int i = 0; i < 4; ++i)
     {
@@ -785,16 +732,14 @@ void robot_gui_lines(ThreadJobData tjd)
 
 void robot_gui_speed_meter_text(ThreadJobData tjd)
 {
-  VkCommandBuffer    command = acquire_command_buffer(tjd);
-  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RobotGui};
-  tjd.game.simple_rendering_cmds.push(result);
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  tjd.game.gui_commands.push(command);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::RobotGui,
-        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.gui_render_pass,
+        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -806,13 +751,9 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
     vkBeginCommandBuffer(command, &begin_info);
   }
 
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont]);
-
-  vkCmdBindDescriptorSets(
-      command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-      tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont], 0, 1,
-      &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline_layout, 0, 1,
+                          &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
 
   vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.green_gui_billboard_vertex_buffer_offset);
@@ -910,17 +851,15 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
       VkRect2D scissor = {.extent = tjd.engine.extent2D};
       vkCmdSetScissor(command, 0, 1, &scissor);
 
-      vkCmdPushConstants(
-          command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-          VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
+      vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                         sizeof(vpc), &vpc);
 
       fpc.color[0] = 125.0f / 255.0f;
       fpc.color[1] = 204.0f / 255.0f;
       fpc.color[2] = 174.0f / 255.0f;
 
-      vkCmdPushConstants(
-          command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-          VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(fpc), &fpc);
+      vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                         sizeof(vpc), sizeof(fpc), &fpc);
 
       vkCmdDraw(command, 4, 1, 0, 0);
     }
@@ -931,16 +870,14 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
 
 void robot_gui_speed_meter_triangle(ThreadJobData tjd)
 {
-  VkCommandBuffer    command = acquire_command_buffer(tjd);
-  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RobotGui};
-  tjd.game.simple_rendering_cmds.push(result);
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  tjd.game.gui_commands.push(command);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::RobotGui,
-        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.gui_render_pass,
+        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -952,8 +889,7 @@ void robot_gui_speed_meter_triangle(ThreadJobData tjd)
     vkBeginCommandBuffer(command, &begin_info);
   }
 
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiTriangle]);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_triangle_pipeline);
 
   struct VertPush
   {
@@ -964,15 +900,13 @@ void robot_gui_speed_meter_triangle(ThreadJobData tjd)
       .scale  = {0.012f, 0.02f, 1.0f, 1.0f},
   };
 
-  vkCmdPushConstants(command,
-                     tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiTriangle],
-                     VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpush), &vpush);
+  vkCmdPushConstants(command, tjd.engine.green_gui_triangle_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                     sizeof(vpush), &vpush);
 
   vec4 color = {125.0f / 255.0f, 204.0f / 255.0f, 174.0f / 255.0f, 1.0f};
 
-  vkCmdPushConstants(command,
-                     tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiTriangle],
-                     VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpush), sizeof(vec4), color);
+  vkCmdPushConstants(command, tjd.engine.green_gui_triangle_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                     sizeof(vpush), sizeof(vec4), color);
 
   vkCmdDraw(command, 3, 1, 0, 0);
   vkEndCommandBuffer(command);
@@ -980,16 +914,14 @@ void robot_gui_speed_meter_triangle(ThreadJobData tjd)
 
 void height_ruler_text(ThreadJobData tjd)
 {
-  VkCommandBuffer    command = acquire_command_buffer(tjd);
-  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RobotGui};
-  tjd.game.simple_rendering_cmds.push(result);
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  tjd.game.gui_commands.push(command);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::RobotGui,
-        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.gui_render_pass,
+        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -1001,13 +933,9 @@ void height_ruler_text(ThreadJobData tjd)
     vkBeginCommandBuffer(command, &begin_info);
   }
 
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont]);
-
-  vkCmdBindDescriptorSets(
-      command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-      tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont], 0, 1,
-      &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline_layout, 0, 1,
+                          &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
 
   vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.green_gui_billboard_vertex_buffer_offset);
@@ -1085,13 +1013,10 @@ void height_ruler_text(ThreadJobData tjd)
       fpc.color[1] = 0.0f;
       fpc.color[2] = 0.0f;
 
-      vkCmdPushConstants(
-          command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-          VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
-
-      vkCmdPushConstants(
-          command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-          VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(fpc), &fpc);
+      vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                         sizeof(vpc), &vpc);
+      vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                         sizeof(vpc), sizeof(fpc), &fpc);
 
       vkCmdDraw(command, 4, 1, 0, 0);
     }
@@ -1102,16 +1027,14 @@ void height_ruler_text(ThreadJobData tjd)
 
 void tilt_ruler_text(ThreadJobData tjd)
 {
-  VkCommandBuffer    command = acquire_command_buffer(tjd);
-  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RobotGui};
-  tjd.game.simple_rendering_cmds.push(result);
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  tjd.game.gui_commands.push(command);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::RobotGui,
-        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.gui_render_pass,
+        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -1123,14 +1046,9 @@ void tilt_ruler_text(ThreadJobData tjd)
     vkBeginCommandBuffer(command, &begin_info);
   }
 
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont]);
-
-  vkCmdBindDescriptorSets(
-      command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-      tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont], 0, 1,
-      &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
-
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline_layout, 0, 1,
+                          &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
   vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
@@ -1203,17 +1121,15 @@ void tilt_ruler_text(ThreadJobData tjd)
       scissor.offset.y      = line_to_pixel_length(0.2f, tjd.engine.extent2D.height);
       vkCmdSetScissor(command, 0, 1, &scissor);
 
-      vkCmdPushConstants(
-          command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-          VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
+      vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                         sizeof(vpc), &vpc);
 
       fpc.color[0] = 1.0f;
       fpc.color[1] = 1.0f;
       fpc.color[2] = 0.0f;
 
-      vkCmdPushConstants(
-          command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-          VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(fpc), &fpc);
+      vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                         sizeof(vpc), sizeof(fpc), &fpc);
 
       vkCmdDraw(command, 4, 1, 0, 0);
     }
@@ -1224,16 +1140,14 @@ void tilt_ruler_text(ThreadJobData tjd)
 
 void compass_text(ThreadJobData tjd)
 {
-  VkCommandBuffer    command = acquire_command_buffer(tjd);
-  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RobotGui};
-  tjd.game.simple_rendering_cmds.push(result);
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  tjd.game.gui_commands.push(command);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::RobotGui,
-        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.gui_render_pass,
+        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -1245,14 +1159,9 @@ void compass_text(ThreadJobData tjd)
     vkBeginCommandBuffer(command, &begin_info);
   }
 
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont]);
-
-  vkCmdBindDescriptorSets(
-      command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-      tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont], 0, 1,
-      &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
-
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline_layout, 0, 1,
+                          &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
   vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
@@ -1336,17 +1245,15 @@ void compass_text(ThreadJobData tjd)
     VkRect2D scissor = {.extent = tjd.engine.extent2D};
     vkCmdSetScissor(command, 0, 1, &scissor);
 
-    vkCmdPushConstants(command,
-                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
+    vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                       sizeof(vpc), &vpc);
 
     fpc.color[0] = 125.0f / 255.0f;
     fpc.color[1] = 204.0f / 255.0f;
     fpc.color[2] = 174.0f / 255.0f;
 
-    vkCmdPushConstants(command,
-                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-                       VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(fpc), &fpc);
+    vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                       sizeof(vpc), sizeof(fpc), &fpc);
 
     vkCmdDraw(command, 4, 1, 0, 0);
   }
@@ -1393,17 +1300,15 @@ void compass_text(ThreadJobData tjd)
     VkRect2D scissor = {.extent = tjd.engine.extent2D};
     vkCmdSetScissor(command, 0, 1, &scissor);
 
-    vkCmdPushConstants(command,
-                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
+    vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                       sizeof(vpc), &vpc);
 
     fpc.color[0] = 125.0f / 255.0f;
     fpc.color[1] = 204.0f / 255.0f;
     fpc.color[2] = 174.0f / 255.0f;
 
-    vkCmdPushConstants(command,
-                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-                       VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(fpc), &fpc);
+    vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                       sizeof(vpc), sizeof(fpc), &fpc);
 
     vkCmdDraw(command, 4, 1, 0, 0);
   }
@@ -1450,17 +1355,15 @@ void compass_text(ThreadJobData tjd)
     VkRect2D scissor = {.extent = tjd.engine.extent2D};
     vkCmdSetScissor(command, 0, 1, &scissor);
 
-    vkCmdPushConstants(command,
-                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
+    vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                       sizeof(vpc), &vpc);
 
     fpc.color[0] = 125.0f / 255.0f;
     fpc.color[1] = 204.0f / 255.0f;
     fpc.color[2] = 174.0f / 255.0f;
 
-    vkCmdPushConstants(command,
-                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-                       VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(fpc), &fpc);
+    vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                       sizeof(vpc), sizeof(fpc), &fpc);
 
     vkCmdDraw(command, 4, 1, 0, 0);
   }
@@ -1470,16 +1373,14 @@ void compass_text(ThreadJobData tjd)
 
 void radar_dots(ThreadJobData tjd)
 {
-  VkCommandBuffer    command = acquire_command_buffer(tjd);
-  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RadarDots};
-  tjd.game.simple_rendering_cmds.push(result);
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  tjd.game.gui_commands.push(command);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::RadarDots,
-        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.gui_render_pass,
+        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -1491,8 +1392,7 @@ void radar_dots(ThreadJobData tjd)
     vkBeginCommandBuffer(command, &begin_info);
   }
 
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiRadarDots]);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_radar_dots_pipeline);
 
   int   rectangle_dim           = 100;
   float vertical_length         = pixels_to_line_length(rectangle_dim, tjd.engine.extent2D.width);
@@ -1530,14 +1430,12 @@ void radar_dots(ThreadJobData tjd)
   vec2_sub(relative_helmet_position, center_radar_position, helmet_position);
 
   vec4 position = {relative_helmet_position[0], relative_helmet_position[1], 0.0f, 1.0f};
-  vkCmdPushConstants(command,
-                     tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiRadarDots],
-                     VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vec4), position);
+  vkCmdPushConstants(command, tjd.engine.green_gui_radar_dots_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                     sizeof(vec4), position);
 
   vec4 color = {1.0f, 0.0f, 0.0f, (final_distance < 0.22f) ? 0.6f : 0.0f};
-  vkCmdPushConstants(command,
-                     tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiRadarDots],
-                     VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vec4), sizeof(vec4), color);
+  vkCmdPushConstants(command, tjd.engine.green_gui_radar_dots_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                     sizeof(vec4), sizeof(vec4), color);
 
   vkCmdDraw(command, 1, 1, 0, 0);
   vkEndCommandBuffer(command);
@@ -1545,16 +1443,14 @@ void radar_dots(ThreadJobData tjd)
 
 void weapon_selectors_left(ThreadJobData tjd)
 {
-  VkCommandBuffer    command = acquire_command_buffer(tjd);
-  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RobotGui};
-  tjd.game.simple_rendering_cmds.push(result);
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  tjd.game.gui_commands.push(command);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::RobotGui,
-        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.gui_render_pass,
+        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -1598,23 +1494,17 @@ void weapon_selectors_left(ThreadJobData tjd)
     mat4x4 mvp = {};
     mat4x4_mul(mvp, gui_projection, world_transform);
 
-    vkCmdBindPipeline(
-        command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-        tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiWeaponSelectorBoxLeft]);
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_weapon_selector_box_left_pipeline);
 
     vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                            &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
-    vkCmdPushConstants(
-        command,
-        tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiWeaponSelectorBoxLeft],
-        VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
+    vkCmdPushConstants(command, tjd.engine.green_gui_weapon_selector_box_left_pipeline_layout,
+                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
 
     float frag_push[] = {tjd.game.current_time_sec, box_size[1] / box_size[0], transparencies[i]};
-    vkCmdPushConstants(
-        command,
-        tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiWeaponSelectorBoxLeft],
-        VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(frag_push), &frag_push);
+    vkCmdPushConstants(command, tjd.engine.green_gui_weapon_selector_box_left_pipeline_layout,
+                       VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(frag_push), &frag_push);
 
     vkCmdDraw(command, 4, 1, 0, 0);
 
@@ -1622,14 +1512,9 @@ void weapon_selectors_left(ThreadJobData tjd)
     // weapon description
     ////////////////////////////////////////////////////////////////////////////
 
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont]);
-
-    vkCmdBindDescriptorSets(
-        command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-        tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont], 0, 1,
-        &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
-
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline);
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline_layout, 0,
+                            1, &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
     vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                            &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
@@ -1684,17 +1569,15 @@ void weapon_selectors_left(ThreadJobData tjd)
       VkRect2D scissor = {.extent = tjd.engine.extent2D};
       vkCmdSetScissor(command, 0, 1, &scissor);
 
-      vkCmdPushConstants(
-          command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-          VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
+      vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                         sizeof(vpc), &vpc);
 
       fpc.color[0] = 145.0f / 255.0f;
       fpc.color[1] = 224.0f / 255.0f;
       fpc.color[2] = 194.0f / 255.0f;
 
-      vkCmdPushConstants(
-          command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-          VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(fpc), &fpc);
+      vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                         sizeof(vpc), sizeof(fpc), &fpc);
 
       vkCmdDraw(command, 4, 1, 0, 0);
     }
@@ -1705,16 +1588,14 @@ void weapon_selectors_left(ThreadJobData tjd)
 
 void weapon_selectors_right(ThreadJobData tjd)
 {
-  VkCommandBuffer    command = acquire_command_buffer(tjd);
-  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RobotGui};
-  tjd.game.simple_rendering_cmds.push(result);
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  tjd.game.gui_commands.push(command);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::RobotGui,
-        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.gui_render_pass,
+        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -1758,23 +1639,18 @@ void weapon_selectors_right(ThreadJobData tjd)
     mat4x4 mvp = {};
     mat4x4_mul(mvp, gui_projection, world_transform);
 
-    vkCmdBindPipeline(
-        command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-        tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiWeaponSelectorBoxRight]);
-
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      tjd.engine.green_gui_weapon_selector_box_right_pipeline);
     vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                            &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
-    vkCmdPushConstants(
-        command,
-        tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiWeaponSelectorBoxRight],
-        VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
+    vkCmdPushConstants(command, tjd.engine.green_gui_weapon_selector_box_right_pipeline_layout,
+                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
 
     float frag_push[] = {tjd.game.current_time_sec, box_size[1] / box_size[0], transparencies[i]};
-    vkCmdPushConstants(
-        command,
-        tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiWeaponSelectorBoxRight],
-        VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(frag_push), &frag_push);
+
+    vkCmdPushConstants(command, tjd.engine.green_gui_weapon_selector_box_right_pipeline_layout,
+                       VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(frag_push), &frag_push);
 
     vkCmdDraw(command, 4, 1, 0, 0);
 
@@ -1782,14 +1658,9 @@ void weapon_selectors_right(ThreadJobData tjd)
     // weapon description
     ////////////////////////////////////////////////////////////////////////////
 
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont]);
-
-    vkCmdBindDescriptorSets(
-        command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-        tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont], 0, 1,
-        &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
-
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline);
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline_layout, 0,
+                            1, &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
     vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                            &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
@@ -1844,17 +1715,15 @@ void weapon_selectors_right(ThreadJobData tjd)
       VkRect2D scissor = {.extent = tjd.engine.extent2D};
       vkCmdSetScissor(command, 0, 1, &scissor);
 
-      vkCmdPushConstants(
-          command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-          VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vpc), &vpc);
+      vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                         sizeof(vpc), &vpc);
 
       fpc.color[0] = 145.0f / 255.0f;
       fpc.color[1] = 224.0f / 255.0f;
       fpc.color[2] = 194.0f / 255.0f;
 
-      vkCmdPushConstants(
-          command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::GreenGuiSdfFont],
-          VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vpc), sizeof(fpc), &fpc);
+      vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                         sizeof(vpc), sizeof(fpc), &fpc);
 
       vkCmdDraw(command, 4, 1, 0, 0);
     }
@@ -1863,6 +1732,7 @@ void weapon_selectors_right(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
+#if 0
 void hello_world_text(ThreadJobData tjd)
 {
   VkCommandBuffer    command = acquire_command_buffer(tjd);
@@ -1988,6 +1858,7 @@ void hello_world_text(ThreadJobData tjd)
 
   vkEndCommandBuffer(command);
 }
+#endif
 
 void imgui(ThreadJobData tjd)
 {
@@ -2000,16 +1871,14 @@ void imgui(ThreadJobData tjd)
   if ((0 == vertex_size) or (0 == index_size))
     return;
 
-  VkCommandBuffer    command = acquire_command_buffer(tjd);
-  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::ImGui};
-  tjd.game.simple_rendering_cmds.push(result);
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  tjd.game.gui_commands.push(command);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::ImGui,
-        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.gui_render_pass,
+        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -2023,12 +1892,10 @@ void imgui(ThreadJobData tjd)
 
   if (vertex_size and index_size)
   {
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::ImGui]);
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.imgui_pipeline);
 
-    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ImGui], 0,
-                            1, &tjd.game.imgui_font_atlas_dset, 0, nullptr);
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.imgui_pipeline_layout, 0, 1,
+                            &tjd.game.imgui_font_atlas_dset, 0, nullptr);
 
     vkCmdBindIndexBuffer(command, tjd.engine.gpu_host_coherent_memory_buffer,
                          tjd.game.debug_gui.index_buffer_offsets[tjd.game.image_index], VK_INDEX_TYPE_UINT16);
@@ -2049,10 +1916,10 @@ void imgui(ThreadJobData tjd)
     float scale[]     = {2.0f / io.DisplaySize.x, 2.0f / io.DisplaySize.y};
     float translate[] = {-1.0f, -1.0f};
 
-    vkCmdPushConstants(command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ImGui],
-                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float) * 2, scale);
-    vkCmdPushConstants(command, tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::ImGui],
-                       VK_SHADER_STAGE_VERTEX_BIT, sizeof(float) * 2, sizeof(float) * 2, translate);
+    vkCmdPushConstants(command, tjd.engine.imgui_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float) * 2,
+                       scale);
+    vkCmdPushConstants(command, tjd.engine.imgui_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, sizeof(float) * 2,
+                       sizeof(float) * 2, translate);
 
     {
       int vtx_offset = 0;
@@ -2097,16 +1964,14 @@ void imgui(ThreadJobData tjd)
 
 void water(ThreadJobData tjd)
 {
-  VkCommandBuffer    command = acquire_command_buffer(tjd);
-  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::Objects3D};
-  tjd.game.simple_rendering_cmds.push(result);
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  tjd.game.scene_rendering_commands.push(command);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::Objects3D,
-        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.color_and_depth_render_pass,
+        .framebuffer = tjd.engine.color_and_depth_framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -2118,8 +1983,7 @@ void water(ThreadJobData tjd)
     vkBeginCommandBuffer(command, &begin_info);
   }
 
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::PbrWater]);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pbr_water_pipeline);
 
   vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.regular_billboard_vertex_buffer_offset);
@@ -2159,18 +2023,17 @@ void water(ThreadJobData tjd)
       SDL_memcpy(push.camPos, tjd.game.camera_position, sizeof(vec3));
       push.time = tjd.game.current_time_sec;
 
-      vkCmdPushConstants(command,
-                         tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::PbrWater],
+      vkCmdPushConstants(command, tjd.engine.pbr_water_pipeline_layout,
                          VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
 
-      VkDescriptorSet dsets[]           = {tjd.game.pbr_ibl_environment_dset, tjd.game.pbr_dynamic_lights_dset,
+      VkDescriptorSet dsets[] = {tjd.game.pbr_ibl_environment_dset, tjd.game.pbr_dynamic_lights_dset,
                                  tjd.game.pbr_water_material_dset};
-      uint32_t        dynamic_offsets[] = {
+
+      uint32_t dynamic_offsets[] = {
           static_cast<uint32_t>(tjd.game.pbr_dynamic_lights_ubo_offsets[tjd.game.image_index])};
 
-      vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::PbrWater],
-                              0, SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
+      vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pbr_water_pipeline_layout, 0,
+                              SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
 
       vkCmdDraw(command, 4, 1, 0, 0);
     }
@@ -2180,16 +2043,14 @@ void water(ThreadJobData tjd)
 
 void debug_shadowmap(ThreadJobData tjd)
 {
-  VkCommandBuffer    command = acquire_command_buffer(tjd);
-  SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::ImGui};
-  tjd.game.simple_rendering_cmds.push(result);
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  tjd.game.gui_commands.push(command);
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.simple_rendering.render_pass,
-        .subpass     = Engine::SimpleRendering::Pass::ImGui,
-        .framebuffer = tjd.engine.simple_rendering.framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.gui_render_pass,
+        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -2201,16 +2062,13 @@ void debug_shadowmap(ThreadJobData tjd)
     vkBeginCommandBuffer(command, &begin_info);
   }
 
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    tjd.engine.simple_rendering.pipelines[Engine::SimpleRendering::Pipeline::DebugBillboard]);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.debug_billboard_pipeline);
 
   vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
-  vkCmdBindDescriptorSets(
-      command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-      tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::DebugBillboard], 0, 1,
-      &tjd.game.debug_shadow_map_dset[tjd.game.image_index], 0, nullptr);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.debug_billboard_pipeline_layout, 0, 1,
+                          &tjd.game.debug_shadow_map_dset, 0, nullptr);
 
   for (uint32_t cascade = 0; cascade < Engine::SHADOWMAP_CASCADE_COUNT; ++cascade)
   {
@@ -2251,12 +2109,10 @@ void debug_shadowmap(ThreadJobData tjd)
     mat4x4 mvp = {};
     mat4x4_mul(mvp, gui_projection, world_transform);
 
-    vkCmdPushConstants(command,
-                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::DebugBillboard],
-                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
-    vkCmdPushConstants(command,
-                       tjd.engine.simple_rendering.pipeline_layouts[Engine::SimpleRendering::Pipeline::DebugBillboard],
-                       VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(cascade), &cascade);
+    vkCmdPushConstants(command, tjd.engine.debug_billboard_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                       sizeof(mat4x4), mvp);
+    vkCmdPushConstants(command, tjd.engine.debug_billboard_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                       sizeof(mat4x4), sizeof(cascade), &cascade);
 
     vkCmdDraw(command, 4, 1, 0, 0);
   }

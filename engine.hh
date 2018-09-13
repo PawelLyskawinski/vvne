@@ -93,133 +93,109 @@ struct Engine
   VkSemaphore                image_available;
   VkSemaphore                render_finished;
   VkSampler                  texture_sampler;
-  VkImage                    shadowmap_images[SWAPCHAIN_IMAGES_COUNT];
-  VkImageView                shadowmap_image_views[SWAPCHAIN_IMAGES_COUNT];
-  VkImageView                shadowmap_cascade_image_views[SHADOWMAP_CASCADE_COUNT * SWAPCHAIN_IMAGES_COUNT];
+  VkSampler                  shadowmap_sampler;
+  VkImage                    shadowmap_image;
+  VkImageView                shadowmap_image_view;
+  VkImageView                shadowmap_cascade_image_views[SHADOWMAP_CASCADE_COUNT];
+  VkFence                    submition_fences[SWAPCHAIN_IMAGES_COUNT];
 
-  //
   // Used for vertex / index data which will be reused all the time
-  //
   GpuMemoryBlock gpu_device_local_memory_block;
   VkBuffer       gpu_device_local_memory_buffer;
 
-  //
   // Used for data transfers to device local memory
-  //
   GpuMemoryBlock gpu_host_visible_transfer_source_memory_block;
   VkBuffer       gpu_host_visible_transfer_source_memory_buffer;
 
-  //
   // Used for dynamic vertex/index data updates (for example imgui, dynamic draws)
-  //
   GpuMemoryBlock gpu_host_coherent_memory_block;
   VkBuffer       gpu_host_coherent_memory_buffer;
 
-  //
   // Image memory with images in use list
-  //
   GpuMemoryBlock gpu_device_images_memory_block;
   ImageResources image_resources;
 
-  //
   // Used for universal buffer objects
-  //
   GpuMemoryBlock gpu_host_coherent_ubo_memory_block;
   VkBuffer       gpu_host_coherent_ubo_memory_buffer;
 
-  //
   // General purpose allocator for application resources.
   // front : permanent allocations
   // back  : temporary allocations
-  //
   DoubleEndedStack allocator;
 
-  struct ShadowMapping
-  {
-    VkRenderPass          render_pass;
-    VkDescriptorSetLayout descriptor_set_layout;
-    VkPipeline            pipeline;
-    VkPipelineLayout      pipeline_layout;
-    VkFramebuffer         framebuffers[SHADOWMAP_CASCADE_COUNT * SWAPCHAIN_IMAGES_COUNT];
-    VkSampler             sampler;
-  } shadow_mapping;
+  VkRenderPass shadowmap_render_pass;
+  VkRenderPass skybox_render_pass;
+  VkRenderPass color_and_depth_render_pass;
+  VkRenderPass gui_render_pass;
 
-  struct SimpleRendering
-  {
-    VkRenderPass render_pass;
+  VkFramebuffer shadowmap_framebuffers[SHADOWMAP_CASCADE_COUNT];
+  VkFramebuffer skybox_framebuffers[SWAPCHAIN_IMAGES_COUNT];
+  VkFramebuffer color_and_depth_framebuffers[SWAPCHAIN_IMAGES_COUNT];
+  VkFramebuffer gui_framebuffers[SWAPCHAIN_IMAGES_COUNT];
 
-    VkDescriptorSetLayout pbr_metallic_workflow_material_descriptor_set_layout;
-    VkDescriptorSetLayout pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout;
-    VkDescriptorSetLayout pbr_dynamic_lights_descriptor_set_layout;
-    VkDescriptorSetLayout single_texture_in_frag_descriptor_set_layout;
-    VkDescriptorSetLayout skinning_matrices_descriptor_set_layout;
-    VkDescriptorSetLayout cascade_shadow_map_matrices_ubo_frag_set_layout;
+  VkDescriptorSetLayout shadow_pass_descriptor_set_layout;
+  VkDescriptorSetLayout pbr_metallic_workflow_material_descriptor_set_layout;
+  VkDescriptorSetLayout pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout;
+  VkDescriptorSetLayout pbr_dynamic_lights_descriptor_set_layout;
+  VkDescriptorSetLayout single_texture_in_frag_descriptor_set_layout;
+  VkDescriptorSetLayout skinning_matrices_descriptor_set_layout;
+  VkDescriptorSetLayout cascade_shadow_map_matrices_ubo_frag_set_layout;
 
-    VkFramebuffer framebuffers[SWAPCHAIN_IMAGES_COUNT];
+  VkPipelineLayout shadowmap_pipeline_layout;
+  VkPipelineLayout skybox_pipeline_layout;
+  VkPipelineLayout scene3D_pipeline_layout;
+  VkPipelineLayout pbr_water_pipeline_layout;
+  VkPipelineLayout colored_geometry_pipeline_layout;
+  VkPipelineLayout colored_geometry_triangle_strip_pipeline_layout;
+  VkPipelineLayout colored_geometry_skinned_pipeline_layout;
+  VkPipelineLayout green_gui_pipeline_layout;
+  VkPipelineLayout green_gui_weapon_selector_box_left_pipeline_layout;
+  VkPipelineLayout green_gui_weapon_selector_box_right_pipeline_layout;
+  VkPipelineLayout green_gui_lines_pipeline_layout;
+  VkPipelineLayout green_gui_sdf_font_pipeline_layout;
+  VkPipelineLayout green_gui_triangle_pipeline_layout;
+  VkPipelineLayout green_gui_radar_dots_pipeline_layout;
+  VkPipelineLayout imgui_pipeline_layout;
+  VkPipelineLayout debug_billboard_pipeline_layout;
 
-    struct Pass
-    {
-      enum
-      {
-        Skybox,
-        Objects3D,
-        RobotGui,
-        RadarDots,
-        ImGui,
-        Count
-      };
-    };
+  VkPipeline shadowmap_pipeline;
+  VkPipeline skybox_pipeline;
+  VkPipeline scene3D_pipeline;
+  VkPipeline pbr_water_pipeline;
+  VkPipeline colored_geometry_pipeline;
+  VkPipeline colored_geometry_triangle_strip_pipeline;
+  VkPipeline colored_geometry_skinned_pipeline;
+  VkPipeline green_gui_pipeline;
+  VkPipeline green_gui_weapon_selector_box_left_pipeline;
+  VkPipeline green_gui_weapon_selector_box_right_pipeline;
+  VkPipeline green_gui_lines_pipeline;
+  VkPipeline green_gui_sdf_font_pipeline;
+  VkPipeline green_gui_triangle_pipeline;
+  VkPipeline green_gui_radar_dots_pipeline;
+  VkPipeline imgui_pipeline;
+  VkPipeline debug_billboard_pipeline;
 
-    struct Pipeline
-    {
-      enum
-      {
-        Skybox,
-        Scene3D,
-        PbrWater,
-        ColoredGeometry,
-        ColoredGeometryTriangleStrip,
-        ColoredGeometrySkinned,
-        GreenGui,
-        GreenGuiWeaponSelectorBoxLeft,
-        GreenGuiWeaponSelectorBoxRight,
-        GreenGuiLines,
-        GreenGuiSdfFont,
-        GreenGuiTriangle,
-        GreenGuiRadarDots,
-        ImGui,
-        DebugBillboard,
-        Count
-      };
-    };
-
-    VkPipelineLayout pipeline_layouts[Pipeline::Count];
-    VkPipeline       pipelines[Pipeline::Count];
-    VkCommandBuffer  primary_command_buffers[SWAPCHAIN_IMAGES_COUNT];
-    VkFence          submition_fences[SWAPCHAIN_IMAGES_COUNT];
-  } simple_rendering;
-
-  void startup();
-  void teardown();
-
-  VkShaderModule load_shader(const char* file_path);
-
-  Texture load_texture(const char* filepath);
-  Texture load_texture_hdr(const char* filename);
-  Texture load_texture(SDL_Surface* surface);
-
-  //
   // Live shader reloading helpers.
   //
   // Each time pipeline is recreated the previous one has to be destroyed to release memory / gpu resources.
   // Unfortunately the pipeline can't be destroyed when in use, so the safest bet is to wait until any potential
   // command buffer finishes executing and then safely calling vkDestroyPipeline on the obsolete pipeline.
   // The list below stores both pipeline handles and the frame countdowns until the destruction can happen.
-  //
   ScheduledPipelineDestruction scheduled_pipelines_destruction[16];
   int                          scheduled_pipelines_destruction_count;
 
+  void           startup();
+  void           teardown();
+  VkShaderModule load_shader(const char* file_path);
+  Texture        load_texture(const char* filepath);
+  Texture        load_texture_hdr(const char* filename);
+  Texture        load_texture(SDL_Surface* surface);
+
 private:
-  void setup_shadow_mapping();
-  void setup_simple_rendering();
+  void setup_render_passes();
+  void setup_framebuffers();
+  void setup_descriptor_set_layouts();
+  void setup_pipeline_layouts();
+  void setup_pipelines();
 };
