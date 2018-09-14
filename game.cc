@@ -2574,5 +2574,5 @@ void Game::render(Engine& engine)
   };
 
   vkQueuePresentKHR(engine.graphics_queue, &present);
-  // vkQueueWaitIdle(engine.graphics_queue);
+  vkWaitForFences(engine.device, 1, &engine.submition_fences[image_index], VK_TRUE, UINT64_MAX);
 }
