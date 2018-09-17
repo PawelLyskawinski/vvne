@@ -175,7 +175,7 @@ void Engine::startup()
     VkQueueFamilyProperties* all_properties = reinterpret_cast<VkQueueFamilyProperties*>(allocation);
     vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, all_properties);
 
-    for (uint32_t i = 0; count; ++i)
+    for (uint32_t i = 0; i < count; ++i)
     {
       VkQueueFamilyProperties properties          = all_properties[i];
       VkBool32                has_present_support = 0;
