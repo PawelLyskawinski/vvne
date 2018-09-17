@@ -754,7 +754,7 @@ void Game::startup(Engine& engine)
     for (VkDeviceSize& offset : cascade_view_proj_mat_ubo_offsets)
     {
       offset = block.stack_pointer;
-      block.stack_pointer += align(sizeof(mat4x4) + sizeof(vec4), block.alignment);
+      block.stack_pointer += align(Engine::SHADOWMAP_CASCADE_COUNT * sizeof(mat4x4) + sizeof(vec4), block.alignment);
     }
   }
 
@@ -2208,371 +2208,372 @@ void Game::render(Engine& engine)
     }
   }
 
-  FunctionTimer timer(render_times, SDL_arraysize(render_times));
-
-  js.jobs_max            = 0;
-  js.jobs[js.jobs_max++] = {"skybox", render::skybox_job};
-  js.jobs[js.jobs_max++] = {"robot", render::robot_job};
-  js.jobs[js.jobs_max++] = {"robot depth", render::robot_depth_job};
-  js.jobs[js.jobs_max++] = {"helmet", render::helmet_job};
-  js.jobs[js.jobs_max++] = {"helmet depth", render::helmet_depth_job};
-  js.jobs[js.jobs_max++] = {"point lights", render::point_light_boxes};
-  js.jobs[js.jobs_max++] = {"box", render::matrioshka_box};
-  js.jobs[js.jobs_max++] = {"vr scene", render::vr_scene};
-  // js.jobs[js.jobs_max++] = {"vr scene depth", render::vr_scene_depth};
-  js.jobs[js.jobs_max++] = {"radar", render::radar};
-  js.jobs[js.jobs_max++] = {"gui lines", render::robot_gui_lines};
-  js.jobs[js.jobs_max++] = {"gui height ruler text", render::height_ruler_text};
-  js.jobs[js.jobs_max++] = {"gui tilt ruler text", render::tilt_ruler_text};
-  js.jobs[js.jobs_max++] = {"imgui", render::imgui};
-  js.jobs[js.jobs_max++] = {"simple rigged", render::simple_rigged};
-  js.jobs[js.jobs_max++] = {"monster", render::monster_rigged};
-  js.jobs[js.jobs_max++] = {"speed meter", render::robot_gui_speed_meter_text};
-  js.jobs[js.jobs_max++] = {"speed meter triangle", render::robot_gui_speed_meter_triangle};
-  js.jobs[js.jobs_max++] = {"compass text", render::compass_text};
-  js.jobs[js.jobs_max++] = {"radar dots", render::radar_dots};
-  js.jobs[js.jobs_max++] = {"weapon selectors - left", render::weapon_selectors_left};
-  js.jobs[js.jobs_max++] = {"weapon selectors - right", render::weapon_selectors_right};
-  js.jobs[js.jobs_max++] = {"water", render::water};
-  // js.jobs[js.jobs_max++] = {"debug shadow map depth pass", render::debug_shadowmap};
-
-  SDL_LockMutex(js.new_jobs_available_mutex);
-  SDL_CondBroadcast(js.new_jobs_available_cond);
-  SDL_UnlockMutex(js.new_jobs_available_mutex);
-  // While we await for tasks to be finished by worker threads, this one will handle memory synchronization
-
-  //
-  // Cascade shadow map projection matrices
-  //
   {
-    struct Update
+    FunctionTimer timer(render_times, SDL_arraysize(render_times));
+
+    js.jobs_max            = 0;
+    js.jobs[js.jobs_max++] = {"skybox", render::skybox_job};
+    js.jobs[js.jobs_max++] = {"robot", render::robot_job};
+    js.jobs[js.jobs_max++] = {"robot depth", render::robot_depth_job};
+    js.jobs[js.jobs_max++] = {"helmet", render::helmet_job};
+    js.jobs[js.jobs_max++] = {"helmet depth", render::helmet_depth_job};
+    js.jobs[js.jobs_max++] = {"point lights", render::point_light_boxes};
+    js.jobs[js.jobs_max++] = {"box", render::matrioshka_box};
+    js.jobs[js.jobs_max++] = {"vr scene", render::vr_scene};
+    // js.jobs[js.jobs_max++] = {"vr scene depth", render::vr_scene_depth};
+    js.jobs[js.jobs_max++] = {"radar", render::radar};
+    js.jobs[js.jobs_max++] = {"gui lines", render::robot_gui_lines};
+    js.jobs[js.jobs_max++] = {"gui height ruler text", render::height_ruler_text};
+    js.jobs[js.jobs_max++] = {"gui tilt ruler text", render::tilt_ruler_text};
+    js.jobs[js.jobs_max++] = {"imgui", render::imgui};
+    js.jobs[js.jobs_max++] = {"simple rigged", render::simple_rigged};
+    js.jobs[js.jobs_max++] = {"monster", render::monster_rigged};
+    js.jobs[js.jobs_max++] = {"speed meter", render::robot_gui_speed_meter_text};
+    js.jobs[js.jobs_max++] = {"speed meter triangle", render::robot_gui_speed_meter_triangle};
+    js.jobs[js.jobs_max++] = {"compass text", render::compass_text};
+    js.jobs[js.jobs_max++] = {"radar dots", render::radar_dots};
+    js.jobs[js.jobs_max++] = {"weapon selectors - left", render::weapon_selectors_left};
+    js.jobs[js.jobs_max++] = {"weapon selectors - right", render::weapon_selectors_right};
+    js.jobs[js.jobs_max++] = {"water", render::water};
+    // js.jobs[js.jobs_max++] = {"debug shadow map depth pass", render::debug_shadowmap};
+
+    SDL_LockMutex(js.new_jobs_available_mutex);
+    SDL_CondBroadcast(js.new_jobs_available_cond);
+    SDL_UnlockMutex(js.new_jobs_available_mutex);
+    // While we await for tasks to be finished by worker threads, this one will handle memory synchronization
+
+    //
+    // Cascade shadow map projection matrices
+    //
     {
-      mat4x4 cascade_view_proj_mat[Engine::SHADOWMAP_CASCADE_COUNT];
-      vec4   cascade_splits;
-    } ubo_update = {};
-
-    for (int i = 0; i < Engine::SHADOWMAP_CASCADE_COUNT; ++i)
-      mat4x4_dup(ubo_update.cascade_view_proj_mat[i], cascade_view_proj_mat[i]);
-
-    for (int i = 0; i < Engine::SHADOWMAP_CASCADE_COUNT; ++i)
-      ubo_update.cascade_splits[i] = cascade_split_depths[i];
-
-    update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory, sizeof(ubo_update),
-               cascade_view_proj_mat_ubo_offsets[image_index], &ubo_update);
-  }
-
-  //
-  // light sources
-  //
-  update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory, sizeof(LightSources),
-             pbr_dynamic_lights_ubo_offsets[image_index], &pbr_light_sources_cache);
-
-  //
-  // rigged simple skinning matrices
-  //
-  update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory,
-             SDL_arraysize(ecs.joint_matrices[0].joints) * sizeof(mat4x4),
-             rig_skinning_matrices_ubo_offsets[image_index],
-             ecs.joint_matrices[rigged_simple_entity.joint_matrices].joints);
-
-  //
-  // monster skinning matrices
-  //
-  update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory,
-             SDL_arraysize(ecs.joint_matrices[0].joints) * sizeof(mat4x4),
-             monster_skinning_matrices_ubo_offsets[image_index],
-             ecs.joint_matrices[monster_entity.joint_matrices].joints);
-
-  {
-    GenerateGuiLinesCommand cmd = {
-        .player_y_location_meters = -(2.0f - player_position[1]),
-        .camera_x_pitch_radians   = 0.0f, // to_rad(10) * SDL_sinf(current_time_sec), // simulating future strafe tilts,
-        .camera_y_pitch_radians   = camera_updown_angle,
-    };
-
-    ArrayView<GuiLine> r = {};
-    {
-      generate_gui_lines(cmd, nullptr, &r.count);
-      void* allocation = engine.allocator.allocate_back(r.count * sizeof(GuiLine));
-      r.data           = reinterpret_cast<GuiLine*>(allocation);
-      generate_gui_lines(cmd, r.data, &r.count);
-    }
-
-    float* pushed_lines_data    = nullptr;
-    int    pushed_lines_counter = 0;
-
-    {
-      void* allocation  = engine.allocator.allocate_back(4 * r.count * sizeof(float));
-      pushed_lines_data = reinterpret_cast<float*>(allocation);
-    }
-
-    gui_green_lines_count  = count_lines(r, GuiLine::Color::Green);
-    gui_red_lines_count    = count_lines(r, GuiLine::Color::Red);
-    gui_yellow_lines_count = count_lines(r, GuiLine::Color::Yellow);
-
-    GuiLine::Color colors_order[] = {
-        GuiLine::Color::Green,
-        GuiLine::Color::Red,
-        GuiLine::Color::Yellow,
-    };
-
-    GuiLine::Size sizes_order[] = {
-        GuiLine::Size::Big,
-        GuiLine::Size::Normal,
-        GuiLine::Size::Small,
-        GuiLine::Size::Tiny,
-    };
-
-    for (GuiLine::Color color : colors_order)
-    {
-      for (GuiLine::Size size : sizes_order)
+      struct Update
       {
-        for (const GuiLine& line : r)
+        mat4x4 cascade_view_proj_mat[Engine::SHADOWMAP_CASCADE_COUNT];
+        vec4   cascade_splits;
+      } ubo_update = {};
+
+      for (int i = 0; i < Engine::SHADOWMAP_CASCADE_COUNT; ++i)
+        mat4x4_dup(ubo_update.cascade_view_proj_mat[i], cascade_view_proj_mat[i]);
+
+      for (int i = 0; i < Engine::SHADOWMAP_CASCADE_COUNT; ++i)
+        ubo_update.cascade_splits[i] = cascade_split_depths[i];
+
+      update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory, sizeof(ubo_update),
+                 cascade_view_proj_mat_ubo_offsets[image_index], &ubo_update);
+    }
+
+    //
+    // light sources
+    //
+    update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory, sizeof(LightSources),
+               pbr_dynamic_lights_ubo_offsets[image_index], &pbr_light_sources_cache);
+
+    //
+    // rigged simple skinning matrices
+    //
+    update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory,
+               SDL_arraysize(ecs.joint_matrices[0].joints) * sizeof(mat4x4),
+               rig_skinning_matrices_ubo_offsets[image_index],
+               ecs.joint_matrices[rigged_simple_entity.joint_matrices].joints);
+
+    //
+    // monster skinning matrices
+    //
+    update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory,
+               SDL_arraysize(ecs.joint_matrices[0].joints) * sizeof(mat4x4),
+               monster_skinning_matrices_ubo_offsets[image_index],
+               ecs.joint_matrices[monster_entity.joint_matrices].joints);
+
+    {
+      GenerateGuiLinesCommand cmd = {
+          .player_y_location_meters = -(2.0f - player_position[1]),
+          .camera_x_pitch_radians = 0.0f, // to_rad(10) * SDL_sinf(current_time_sec), // simulating future strafe tilts,
+          .camera_y_pitch_radians = camera_updown_angle,
+      };
+
+      ArrayView<GuiLine> r = {};
+      {
+        generate_gui_lines(cmd, nullptr, &r.count);
+        void* allocation = engine.allocator.allocate_back(r.count * sizeof(GuiLine));
+        r.data           = reinterpret_cast<GuiLine*>(allocation);
+        generate_gui_lines(cmd, r.data, &r.count);
+      }
+
+      float* pushed_lines_data    = nullptr;
+      int    pushed_lines_counter = 0;
+
+      {
+        void* allocation  = engine.allocator.allocate_back(4 * r.count * sizeof(float));
+        pushed_lines_data = reinterpret_cast<float*>(allocation);
+      }
+
+      gui_green_lines_count  = count_lines(r, GuiLine::Color::Green);
+      gui_red_lines_count    = count_lines(r, GuiLine::Color::Red);
+      gui_yellow_lines_count = count_lines(r, GuiLine::Color::Yellow);
+
+      GuiLine::Color colors_order[] = {
+          GuiLine::Color::Green,
+          GuiLine::Color::Red,
+          GuiLine::Color::Yellow,
+      };
+
+      GuiLine::Size sizes_order[] = {
+          GuiLine::Size::Big,
+          GuiLine::Size::Normal,
+          GuiLine::Size::Small,
+          GuiLine::Size::Tiny,
+      };
+
+      for (GuiLine::Color color : colors_order)
+      {
+        for (GuiLine::Size size : sizes_order)
         {
-          if ((color == line.color) and (size == line.size))
+          for (const GuiLine& line : r)
           {
-            pushed_lines_data[4 * pushed_lines_counter + 0] = line.a[0];
-            pushed_lines_data[4 * pushed_lines_counter + 1] = line.a[1];
-            pushed_lines_data[4 * pushed_lines_counter + 2] = line.b[0];
-            pushed_lines_data[4 * pushed_lines_counter + 3] = line.b[1];
-            pushed_lines_counter++;
+            if ((color == line.color) and (size == line.size))
+            {
+              pushed_lines_data[4 * pushed_lines_counter + 0] = line.a[0];
+              pushed_lines_data[4 * pushed_lines_counter + 1] = line.a[1];
+              pushed_lines_data[4 * pushed_lines_counter + 2] = line.b[0];
+              pushed_lines_data[4 * pushed_lines_counter + 3] = line.b[1];
+              pushed_lines_counter++;
+            }
           }
         }
       }
+
+      update_ubo(engine.device, engine.gpu_host_coherent_memory_block.memory, r.count * 2 * sizeof(vec2),
+                 green_gui_rulers_buffer_offsets[image_index], pushed_lines_data);
+      engine.allocator.reset_back();
     }
 
-    update_ubo(engine.device, engine.gpu_host_coherent_memory_block.memory, r.count * 2 * sizeof(vec2),
-               green_gui_rulers_buffer_offsets[image_index], pushed_lines_data);
-    engine.allocator.reset_back();
-  }
+    ImDrawData* draw_data = ImGui::GetDrawData();
 
-  ImDrawData* draw_data = ImGui::GetDrawData();
+    size_t vertex_size = draw_data->TotalVtxCount * sizeof(ImDrawVert);
+    size_t index_size  = draw_data->TotalIdxCount * sizeof(ImDrawIdx);
 
-  size_t vertex_size = draw_data->TotalVtxCount * sizeof(ImDrawVert);
-  size_t index_size  = draw_data->TotalIdxCount * sizeof(ImDrawIdx);
+    SDL_assert(Game::DebugGui::VERTEX_BUFFER_CAPACITY_BYTES >= vertex_size);
+    SDL_assert(Game::DebugGui::INDEX_BUFFER_CAPACITY_BYTES >= index_size);
 
-  SDL_assert(Game::DebugGui::VERTEX_BUFFER_CAPACITY_BYTES >= vertex_size);
-  SDL_assert(Game::DebugGui::INDEX_BUFFER_CAPACITY_BYTES >= index_size);
-
-  if (0 < vertex_size)
-  {
-    ScopedMemoryMap memory_map(engine.device, engine.gpu_host_coherent_memory_block.memory,
-                               debug_gui.vertex_buffer_offsets[image_index], vertex_size);
-
-    ImDrawVert* vtx_dst = memory_map.get<ImDrawVert>();
-    for (int n = 0; n < draw_data->CmdListsCount; ++n)
+    if (0 < vertex_size)
     {
-      const ImDrawList* cmd_list = draw_data->CmdLists[n];
-      SDL_memcpy(vtx_dst, cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size * sizeof(ImDrawVert));
-      vtx_dst += cmd_list->VtxBuffer.Size;
-    }
-  }
+      ScopedMemoryMap memory_map(engine.device, engine.gpu_host_coherent_memory_block.memory,
+                                 debug_gui.vertex_buffer_offsets[image_index], vertex_size);
 
-  if (0 < index_size)
-  {
-    ScopedMemoryMap memory_map(engine.device, engine.gpu_host_coherent_memory_block.memory,
-                               debug_gui.index_buffer_offsets[image_index], index_size);
-
-    ImDrawIdx* idx_dst = memory_map.get<ImDrawIdx>();
-    for (int n = 0; n < draw_data->CmdListsCount; ++n)
-    {
-      const ImDrawList* cmd_list = draw_data->CmdLists[n];
-      SDL_memcpy(idx_dst, cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx));
-      idx_dst += cmd_list->IdxBuffer.Size;
-    }
-  }
-
-  SDL_SemWait(js.all_threads_idle_signal);
-  SDL_AtomicSet(&js.threads_finished_work, 0);
-  SDL_AtomicSet(&js.jobs_taken, 0);
-
-  {
-    VkCommandBuffer cmd = primary_command_buffers[image_index];
-
-    {
-      VkCommandBufferBeginInfo begin = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-      vkBeginCommandBuffer(cmd, &begin);
+      ImDrawVert* vtx_dst = memory_map.get<ImDrawVert>();
+      for (int n = 0; n < draw_data->CmdListsCount; ++n)
+      {
+        const ImDrawList* cmd_list = draw_data->CmdLists[n];
+        SDL_memcpy(vtx_dst, cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size * sizeof(ImDrawVert));
+        vtx_dst += cmd_list->VtxBuffer.Size;
+      }
     }
 
-    // -----------------------------------------------------------------------------------------------
-    // SHADOW MAPPING PASS
-    // -----------------------------------------------------------------------------------------------
-    for (int cascade_idx = 0; cascade_idx < Engine::SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
+    if (0 < index_size)
     {
-      VkClearValue clear_value = {.depthStencil = {1.0, 0}};
+      ScopedMemoryMap memory_map(engine.device, engine.gpu_host_coherent_memory_block.memory,
+                                 debug_gui.index_buffer_offsets[image_index], index_size);
 
-      VkRenderPassBeginInfo begin = {
-          .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-          .renderPass      = engine.shadowmap_render_pass,
-          .framebuffer     = engine.shadowmap_framebuffers[cascade_idx],
-          .renderArea      = {.extent = {.width = Engine::SHADOWMAP_IMAGE_DIM, .height = Engine::SHADOWMAP_IMAGE_DIM}},
-          .clearValueCount = 1,
-          .pClearValues    = &clear_value,
+      ImDrawIdx* idx_dst = memory_map.get<ImDrawIdx>();
+      for (int n = 0; n < draw_data->CmdListsCount; ++n)
+      {
+        const ImDrawList* cmd_list = draw_data->CmdLists[n];
+        SDL_memcpy(idx_dst, cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx));
+        idx_dst += cmd_list->IdxBuffer.Size;
+      }
+    }
+
+    SDL_SemWait(js.all_threads_idle_signal);
+    SDL_AtomicSet(&js.threads_finished_work, 0);
+    SDL_AtomicSet(&js.jobs_taken, 0);
+
+    {
+      VkCommandBuffer cmd = primary_command_buffers[image_index];
+
+      {
+        VkCommandBufferBeginInfo begin = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        vkBeginCommandBuffer(cmd, &begin);
+      }
+
+      // -----------------------------------------------------------------------------------------------
+      // SHADOW MAPPING PASS
+      // -----------------------------------------------------------------------------------------------
+      for (int cascade_idx = 0; cascade_idx < Engine::SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
+      {
+        VkClearValue clear_value = {.depthStencil = {1.0, 0}};
+
+        VkRenderPassBeginInfo begin = {
+            .sType       = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+            .renderPass  = engine.shadowmap_render_pass,
+            .framebuffer = engine.shadowmap_framebuffers[cascade_idx],
+            .renderArea  = {.extent = {.width = Engine::SHADOWMAP_IMAGE_DIM, .height = Engine::SHADOWMAP_IMAGE_DIM}},
+            .clearValueCount = 1,
+            .pClearValues    = &clear_value,
+        };
+
+        vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+
+        for (const ShadowmapCommandBuffer& iter : shadow_mapping_pass_commands)
+          if (cascade_idx == iter.cascade_idx)
+            vkCmdExecuteCommands(cmd, 1, &iter.cmd);
+
+        vkCmdEndRenderPass(cmd);
+      }
+
+      // -----------------------------------------------------------------------------------------------
+      // SKYBOX PASS
+      // -----------------------------------------------------------------------------------------------
+      {
+        const uint32_t clear_values_count = (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT) ? 1u : 2u;
+        VkClearValue   clear_values[2]    = {};
+
+        if (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT)
+        {
+          clear_values[0].color = {{0.0f, 0.0f, 0.2f, 1.0f}};
+        }
+        else
+        {
+          clear_values[0].color = {{0.0f, 0.0f, 0.2f, 1.0f}};
+          clear_values[1].color = {{0.0f, 0.0f, 0.2f, 1.0f}};
+        }
+
+        VkRenderPassBeginInfo begin = {
+            .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+            .renderPass      = engine.skybox_render_pass,
+            .framebuffer     = engine.skybox_framebuffers[image_index],
+            .renderArea      = {.extent = engine.extent2D},
+            .clearValueCount = clear_values_count,
+            .pClearValues    = clear_values,
+        };
+
+        vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+        vkCmdExecuteCommands(cmd, 1, &skybox_command);
+        vkCmdEndRenderPass(cmd);
+      }
+
+      // -----------------------------------------------------------------------------------------------
+      // SCENE PASS
+      // -----------------------------------------------------------------------------------------------
+      {
+        const uint32_t clear_values_count = (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT) ? 2u : 3u;
+        VkClearValue   clear_values[3]    = {};
+
+        if (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT)
+        {
+          clear_values[0].color        = {{0.0f, 0.0f, 0.2f, 1.0f}};
+          clear_values[1].depthStencil = {1.0, 0};
+        }
+        else
+        {
+          clear_values[0].color        = {{0.0f, 0.0f, 0.2f, 1.0f}};
+          clear_values[1].depthStencil = {1.0, 0};
+          clear_values[2].color        = {{0.0f, 0.0f, 0.2f, 1.0f}};
+        }
+
+        VkRenderPassBeginInfo begin = {
+            .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+            .renderPass      = engine.color_and_depth_render_pass,
+            .framebuffer     = engine.color_and_depth_framebuffers[image_index],
+            .renderArea      = {.extent = engine.extent2D},
+            .clearValueCount = clear_values_count,
+            .pClearValues    = clear_values,
+        };
+
+        vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+        for (VkCommandBuffer secondary_command : scene_rendering_commands)
+          vkCmdExecuteCommands(cmd, 1, &secondary_command);
+        vkCmdEndRenderPass(cmd);
+      }
+
+      // -----------------------------------------------------------------------------------------------
+      // GUI PASS
+      // -----------------------------------------------------------------------------------------------
+      {
+        const uint32_t clear_values_count = (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT) ? 1u : 2u;
+        VkClearValue   clear_values[2]    = {};
+
+        if (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT)
+        {
+          clear_values[0].color = {{0.0f, 0.0f, 0.2f, 0.0f}};
+        }
+        else
+        {
+          clear_values[0].color = {{0.0f, 0.0f, 0.2f, 0.0f}};
+          clear_values[1].color = {{0.0f, 0.0f, 0.2f, 0.0f}};
+        }
+
+        VkRenderPassBeginInfo begin = {
+            .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+            .renderPass      = engine.gui_render_pass,
+            .framebuffer     = engine.gui_framebuffers[image_index],
+            .renderArea      = {.extent = engine.extent2D},
+            .clearValueCount = clear_values_count,
+            .pClearValues    = clear_values,
+        };
+
+        vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+        for (VkCommandBuffer secondary_command : gui_commands)
+          vkCmdExecuteCommands(cmd, 1, &secondary_command);
+        vkCmdEndRenderPass(cmd);
+      }
+
+      {
+        VkImageMemoryBarrier barrier = {
+            .sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask       = 0,
+            .dstAccessMask       = 0,
+            .oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            .newLayout           = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image               = engine.shadowmap_image,
+            .subresourceRange =
+                {
+                    .aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT,
+                    .baseMipLevel   = 0,
+                    .levelCount     = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount     = Engine::SHADOWMAP_CASCADE_COUNT,
+                },
+        };
+
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr,
+                             0, nullptr, 1, &barrier);
+      }
+
+      vkEndCommandBuffer(cmd);
+    }
+
+    shadow_mapping_pass_commands.reset();
+    scene_rendering_commands.reset();
+    gui_commands.reset();
+
+    {
+      VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+
+      VkSubmitInfo submit = {
+          .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+          .waitSemaphoreCount   = 1,
+          .pWaitSemaphores      = &engine.image_available,
+          .pWaitDstStageMask    = &wait_stage,
+          .commandBufferCount   = 1,
+          .pCommandBuffers      = &primary_command_buffers[image_index],
+          .signalSemaphoreCount = 1,
+          .pSignalSemaphores    = &engine.render_finished,
       };
 
-      vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-
-      for (const ShadowmapCommandBuffer& iter : shadow_mapping_pass_commands)
-        if (cascade_idx == iter.cascade_idx)
-          vkCmdExecuteCommands(cmd, 1, &iter.cmd);
-
-      vkCmdEndRenderPass(cmd);
+      vkQueueSubmit(engine.graphics_queue, 1, &submit, engine.submition_fences[image_index]);
     }
 
-    // -----------------------------------------------------------------------------------------------
-    // SKYBOX PASS
-    // -----------------------------------------------------------------------------------------------
-    {
-      const uint32_t clear_values_count = (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT) ? 1u : 2u;
-      VkClearValue   clear_values[2]    = {};
-
-      if (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT)
-      {
-        clear_values[0].color = {{0.0f, 0.0f, 0.2f, 1.0f}};
-      }
-      else
-      {
-        clear_values[0].color = {{0.0f, 0.0f, 0.2f, 1.0f}};
-        clear_values[1].color = {{0.0f, 0.0f, 0.2f, 1.0f}};
-      }
-
-      VkRenderPassBeginInfo begin = {
-          .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-          .renderPass      = engine.skybox_render_pass,
-          .framebuffer     = engine.skybox_framebuffers[image_index],
-          .renderArea      = {.extent = engine.extent2D},
-          .clearValueCount = clear_values_count,
-          .pClearValues    = clear_values,
-      };
-
-      vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-      vkCmdExecuteCommands(cmd, 1, &skybox_command);
-      vkCmdEndRenderPass(cmd);
-    }
-
-    // -----------------------------------------------------------------------------------------------
-    // SCENE PASS
-    // -----------------------------------------------------------------------------------------------
-    {
-      const uint32_t clear_values_count = (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT) ? 2u : 3u;
-      VkClearValue   clear_values[3]    = {};
-
-      if (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT)
-      {
-        clear_values[0].color        = {{0.0f, 0.0f, 0.2f, 1.0f}};
-        clear_values[1].depthStencil = {1.0, 0};
-      }
-      else
-      {
-        clear_values[0].color        = {{0.0f, 0.0f, 0.2f, 1.0f}};
-        clear_values[1].depthStencil = {1.0, 0};
-        clear_values[2].color        = {{0.0f, 0.0f, 0.2f, 1.0f}};
-      }
-
-      VkRenderPassBeginInfo begin = {
-          .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-          .renderPass      = engine.color_and_depth_render_pass,
-          .framebuffer     = engine.color_and_depth_framebuffers[image_index],
-          .renderArea      = {.extent = engine.extent2D},
-          .clearValueCount = clear_values_count,
-          .pClearValues    = clear_values,
-      };
-
-      vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-      for (VkCommandBuffer secondary_command : scene_rendering_commands)
-        vkCmdExecuteCommands(cmd, 1, &secondary_command);
-      vkCmdEndRenderPass(cmd);
-    }
-
-    // -----------------------------------------------------------------------------------------------
-    // GUI PASS
-    // -----------------------------------------------------------------------------------------------
-    {
-      const uint32_t clear_values_count = (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT) ? 1u : 2u;
-      VkClearValue   clear_values[2]    = {};
-
-      if (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT)
-      {
-        clear_values[0].color = {{0.0f, 0.0f, 0.2f, 0.0f}};
-      }
-      else
-      {
-        clear_values[0].color = {{0.0f, 0.0f, 0.2f, 0.0f}};
-        clear_values[1].color = {{0.0f, 0.0f, 0.2f, 0.0f}};
-      }
-
-      VkRenderPassBeginInfo begin = {
-          .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-          .renderPass      = engine.gui_render_pass,
-          .framebuffer     = engine.gui_framebuffers[image_index],
-          .renderArea      = {.extent = engine.extent2D},
-          .clearValueCount = clear_values_count,
-          .pClearValues    = clear_values,
-      };
-
-      vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-      for (VkCommandBuffer secondary_command : gui_commands)
-        vkCmdExecuteCommands(cmd, 1, &secondary_command);
-      vkCmdEndRenderPass(cmd);
-    }
-
-    {
-      VkImageMemoryBarrier barrier = {
-          .sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-          .srcAccessMask       = 0,
-          .dstAccessMask       = 0,
-          .oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-          .newLayout           = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-          .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-          .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-          .image               = engine.shadowmap_image,
-          .subresourceRange =
-              {
-                  .aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT,
-                  .baseMipLevel   = 0,
-                  .levelCount     = 1,
-                  .baseArrayLayer = 0,
-                  .layerCount     = Engine::SHADOWMAP_CASCADE_COUNT,
-              },
-      };
-
-      vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, 0, nullptr,
-                           0, nullptr, 1, &barrier);
-    }
-
-    vkEndCommandBuffer(cmd);
-  }
-
-  shadow_mapping_pass_commands.reset();
-  scene_rendering_commands.reset();
-  gui_commands.reset();
-
-  {
-    VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-
-    VkSubmitInfo submit = {
-        .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .waitSemaphoreCount   = 1,
-        .pWaitSemaphores      = &engine.image_available,
-        .pWaitDstStageMask    = &wait_stage,
-        .commandBufferCount   = 1,
-        .pCommandBuffers      = &primary_command_buffers[image_index],
-        .signalSemaphoreCount = 1,
-        .pSignalSemaphores    = &engine.render_finished,
+    VkPresentInfoKHR present = {
+        .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores    = &engine.render_finished,
+        .swapchainCount     = 1,
+        .pSwapchains        = &engine.swapchain,
+        .pImageIndices      = &image_index,
     };
 
-    vkQueueSubmit(engine.graphics_queue, 1, &submit, engine.submition_fences[image_index]);
+    vkQueuePresentKHR(engine.graphics_queue, &present);
   }
-
-  VkPresentInfoKHR present = {
-      .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-      .waitSemaphoreCount = 1,
-      .pWaitSemaphores    = &engine.render_finished,
-      .swapchainCount     = 1,
-      .pSwapchains        = &engine.swapchain,
-      .pImageIndices      = &image_index,
-  };
-
-  vkQueuePresentKHR(engine.graphics_queue, &present);
-  vkWaitForFences(engine.device, 1, &engine.submition_fences[image_index], VK_TRUE, UINT64_MAX);
 }
