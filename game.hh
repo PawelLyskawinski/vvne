@@ -94,18 +94,6 @@ struct GuiLineSizeCount
   int tiny;
 };
 
-struct KeyMapping
-{
-  ImGuiKey_    imgui;
-  SDL_Scancode sdl;
-};
-
-struct CursorMapping
-{
-  ImGuiMouseCursor_ imgui;
-  SDL_SystemCursor  sdl;
-};
-
 struct GuiHeightRulerText
 {
   vec2 offset;
@@ -143,65 +131,6 @@ struct GenerateGuiLinesCommand
 
 struct Game;
 
-struct ThreadJobData
-{
-  int              thread_id;
-  Engine&          engine;
-  Game&            game;
-  LinearAllocator& allocator;
-};
-
-struct Job
-{
-  using Fcn = void (*)(ThreadJobData tjd);
-  const char* name;
-  Fcn         fcn;
-};
-
-struct ThreadJobStatistic
-{
-  int         threadId;
-  float       duration_sec;
-  const char* name;
-};
-
-struct JobSystem
-{
-  // general controls
-  bool thread_end_requested;
-
-  // Workload dispatching
-  Job          jobs[64];
-  int          jobs_max;
-  SDL_atomic_t jobs_taken;
-
-  // Synchronization
-  SDL_cond*    new_jobs_available_cond;
-  SDL_mutex*   new_jobs_available_mutex;
-  SDL_sem*     all_threads_idle_signal;
-  SDL_atomic_t threads_finished_work;
-
-  // Worker thread resources
-  SDL_Thread*     worker_threads[WORKER_THREADS_COUNT];
-  VkCommandPool   worker_pools[WORKER_THREADS_COUNT];
-  VkCommandBuffer commands[Engine::SWAPCHAIN_IMAGES_COUNT][WORKER_THREADS_COUNT][64];
-  int             submited_command_count[Engine::SWAPCHAIN_IMAGES_COUNT][WORKER_THREADS_COUNT];
-
-  // profiling data
-  ThreadJobStatistic profile_data[64];
-  SDL_atomic_t       profile_data_count;
-
-  bool               is_profiling_paused;
-  ThreadJobStatistic paused_profile_data[64];
-  int                paused_profile_data_count;
-};
-
-struct ShadowmapCommandBuffer
-{
-  VkCommandBuffer cmd;
-  int             cascade_idx;
-};
-
 template <typename T, int SIZE> struct AtomicStack
 {
   void push(const T& in)
@@ -226,6 +155,94 @@ template <typename T, int SIZE> struct AtomicStack
 
   T            stack[SIZE];
   SDL_atomic_t count;
+};
+
+struct ThreadJobData
+{
+  int              thread_id;
+  Engine&          engine;
+  Game&            game;
+  LinearAllocator& allocator;
+};
+
+struct JobSystem
+{
+  using JobFunction = void (*)(ThreadJobData tjd);
+
+  // general controls
+  bool thread_end_requested;
+
+  // Workload dispatching
+  const char*  job_names[128];
+  JobFunction  jobs[128];
+  int          jobs_max;
+  SDL_atomic_t jobs_taken;
+
+  void push(const char* name, JobFunction job)
+  {
+    job_names[jobs_max] = name;
+    jobs[jobs_max]      = job;
+    jobs_max += 1;
+  }
+
+  // Synchronization
+  SDL_cond*    new_jobs_available_cond;
+  SDL_mutex*   new_jobs_available_mutex;
+  SDL_sem*     all_threads_idle_signal;
+  SDL_atomic_t threads_finished_work;
+
+  // Worker thread resources
+  SDL_Thread*     worker_threads[WORKER_THREADS_COUNT];
+  VkCommandPool   worker_pools[WORKER_THREADS_COUNT];
+  VkCommandBuffer commands[SWAPCHAIN_IMAGES_COUNT][WORKER_THREADS_COUNT][64];
+  int             submited_command_count[SWAPCHAIN_IMAGES_COUNT][WORKER_THREADS_COUNT];
+
+  struct ProfileData
+  {
+    int         thread_ids[128];
+    float       duration_sec[128];
+    const char* job_names[128];
+
+    void copy_from(const ProfileData& other, const int count)
+    {
+      for (int i = 0; i < count; ++i)
+        thread_ids[i] = other.thread_ids[i];
+
+      for (int i = 0; i < count; ++i)
+        duration_sec[i] = other.duration_sec[i];
+
+      for (int i = 0; i < count; ++i)
+        job_names[i] = other.job_names[i];
+    }
+  };
+
+  // profiling data
+  ProfileData  profile_each_frame;
+  SDL_atomic_t profile_each_frame_counter;
+
+  // paused profiling data
+  bool        is_profiling_paused;
+  ProfileData paused_profile_data;
+  int         paused_profile_data_count;
+
+  // common read-only access to the samples
+  ProfileData* selected_profile_data;
+  int          selected_profile_data_count;
+
+  void push_profile_data(int thread_id, float duration, const char* job_name)
+  {
+    const int idx = SDL_AtomicIncRef(&profile_each_frame_counter);
+
+    profile_each_frame.thread_ids[idx]   = thread_id;
+    profile_each_frame.duration_sec[idx] = duration;
+    profile_each_frame.job_names[idx]    = job_name;
+  }
+};
+
+struct ShadowmapCommandBuffer
+{
+  VkCommandBuffer cmd;
+  int             cascade_idx;
 };
 
 struct RenderEntityParams
@@ -255,6 +272,10 @@ private:
 
 struct Game
 {
+  //////////////////////////////////////////////////////////////////////////////
+  // Rendering resources
+  //////////////////////////////////////////////////////////////////////////////
+
   uint8_t lucida_sans_sdf_char_ids[97];
   SdfChar lucida_sans_sdf_chars[97];
   Texture lucida_sans_sdf_image;
@@ -271,15 +292,9 @@ struct Game
       INDEX_BUFFER_CAPACITY_BYTES  = 80 * 1024
     };
 
-    VkDeviceSize vertex_buffer_offsets[Engine::SWAPCHAIN_IMAGES_COUNT];
-    VkDeviceSize index_buffer_offsets[Engine::SWAPCHAIN_IMAGES_COUNT];
+    VkDeviceSize vertex_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
+    VkDeviceSize index_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
   } debug_gui;
-
-  bool DEBUG_FLAG_1;
-  bool DEBUG_FLAG_2;
-  vec2 DEBUG_VEC2;
-  vec2 DEBUG_VEC2_ADDITIONAL;
-  vec4 DEBUG_LIGHT_ORTHO_PARAMS;
 
   // materials
   VkDescriptorSet pbr_ibl_environment_dset;
@@ -301,19 +316,25 @@ struct Game
   // - depth pass uses them in vertex shader, rendering in fragment. The stages itself require us to have separate
   //   descriptors
   //
-  VkDescriptorSet cascade_view_proj_matrices_depth_pass_dset[Engine::SWAPCHAIN_IMAGES_COUNT];
-  VkDescriptorSet cascade_view_proj_matrices_render_dset[Engine::SWAPCHAIN_IMAGES_COUNT];
+  VkDescriptorSet cascade_view_proj_matrices_depth_pass_dset[SWAPCHAIN_IMAGES_COUNT];
+  VkDescriptorSet cascade_view_proj_matrices_render_dset[SWAPCHAIN_IMAGES_COUNT];
 
   // ubos
-  VkDeviceSize rig_skinning_matrices_ubo_offsets[Engine::SWAPCHAIN_IMAGES_COUNT];
-  VkDeviceSize fig_skinning_matrices_ubo_offsets[Engine::SWAPCHAIN_IMAGES_COUNT];
-  VkDeviceSize monster_skinning_matrices_ubo_offsets[Engine::SWAPCHAIN_IMAGES_COUNT];
-  VkDeviceSize pbr_dynamic_lights_ubo_offsets[Engine::SWAPCHAIN_IMAGES_COUNT];
-  VkDeviceSize cascade_view_proj_mat_ubo_offsets[Engine::SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize rig_skinning_matrices_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize fig_skinning_matrices_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize monster_skinning_matrices_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize pbr_dynamic_lights_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize cascade_view_proj_mat_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
 
   // cascade shadow mapping
-  mat4x4 cascade_view_proj_mat[Engine::SHADOWMAP_CASCADE_COUNT];
-  float  cascade_split_depths[Engine::SHADOWMAP_CASCADE_COUNT];
+  mat4x4 cascade_view_proj_mat[SHADOWMAP_CASCADE_COUNT];
+  float  cascade_split_depths[SHADOWMAP_CASCADE_COUNT];
+
+  // CSM debuging mostly, but can be used as a billboard space in any shader
+  VkDeviceSize green_gui_billboard_vertex_buffer_offset;
+  VkDeviceSize regular_billboard_vertex_buffer_offset;
+
+  VkCommandBuffer primary_command_buffers[SWAPCHAIN_IMAGES_COUNT];
 
   // frame cache
   LightSources pbr_light_sources_cache;
@@ -325,6 +346,8 @@ struct Game
   SceneGraph riggedSimple;
   SceneGraph monster;
   SceneGraph robot;
+  SceneGraph rock;
+  SceneGraph lil_arrow;
 
   // textures
   Texture environment_cubemap;
@@ -340,61 +363,15 @@ struct Game
 
   Texture water_normal;
 
-  // textures - game
-  VkDeviceSize green_gui_billboard_vertex_buffer_offset;
-  VkDeviceSize regular_billboard_vertex_buffer_offset;
-
-  VkCommandBuffer primary_command_buffers[Engine::SWAPCHAIN_IMAGES_COUNT];
-
-  vec2  green_gui_radar_position;
-  float green_gui_radar_rotation;
-
-  float robot_position[3];
-  float rigged_position[3];
-  float light_source_position[3];
-
-  float update_times[50];
-  float render_times[50];
-  float acquire_times[50];
-
-  mat4x4 projection;
-  mat4x4 view;
-  vec3   camera_position;
-
   VkDeviceSize vr_level_vertex_buffer_offset;
   VkDeviceSize vr_level_index_buffer_offset;
   int          vr_level_index_count;
   VkIndexType  vr_level_index_type;
-  vec2         vr_level_entry;
-  vec2         vr_level_goal;
 
-  VkDeviceSize     green_gui_rulers_buffer_offsets[Engine::SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize     green_gui_rulers_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
   GuiLineSizeCount gui_green_lines_count;
   GuiLineSizeCount gui_red_lines_count;
   GuiLineSizeCount gui_yellow_lines_count;
-
-  vec3  player_position;
-  vec3  player_velocity;
-  vec3  player_acceleration;
-  float camera_angle;
-  float camera_updown_angle;
-  bool  player_jumping;
-  float player_jump_start_timestamp_sec;
-  float radar_scale;
-
-  bool player_forward_pressed;
-  bool player_back_pressed;
-  bool player_jump_pressed;
-  bool player_strafe_left_pressed;
-  bool player_strafe_right_pressed;
-  bool player_booster_activated;
-
-  // gameplay mechanics
-  float booster_jet_fuel;
-
-  bool lmb_clicked;
-  int  lmb_last_cursor_position[2];
-  int  lmb_current_cursor_position[2];
 
   uint32_t                                image_index;
   JobSystem                               js;
@@ -405,14 +382,136 @@ struct Game
   float                                   current_time_sec;
   float                                   diagnostic_meas_scale;
 
-  EntityComponentSystem ecs;
+  Ecs ecs;
 
-  Entity helmet_entity;
-  Entity robot_entity;
-  Entity monster_entity;
-  Entity box_entities[6];
-  Entity matrioshka_entity;
-  Entity rigged_simple_entity;
+  //////////////////////////////////////////////////////////////////////////////
+  // Gameplay logic
+  //////////////////////////////////////////////////////////////////////////////
+
+  vec2 vr_level_entry;
+  vec2 vr_level_goal;
+
+  bool DEBUG_FLAG_1;
+  bool DEBUG_FLAG_2;
+  vec2 DEBUG_VEC2;
+  vec2 DEBUG_VEC2_ADDITIONAL;
+  vec4 DEBUG_LIGHT_ORTHO_PARAMS;
+
+  vec2  green_gui_radar_position;
+  float green_gui_radar_rotation;
+
+  float robot_position[3];
+  float rigged_position[3];
+  float light_source_position[3];
+
+  float update_times[50];
+  float render_times[50];
+
+  enum class CameraState
+  {
+    Gameplay,
+    LevelEditor,
+  };
+
+  CameraState camera_state;
+
+  mat4x4& get_selected_camera_projection()
+  {
+    switch (camera_state)
+    {
+    default:
+    case CameraState::Gameplay:
+      return projection;
+    case CameraState::LevelEditor:
+      return editor_projection;
+    }
+  }
+
+  mat4x4& get_selected_camera_view()
+  {
+    switch (camera_state)
+    {
+    default:
+    case CameraState::Gameplay:
+      return view;
+    case CameraState::LevelEditor:
+      return editor_view;
+    }
+  }
+
+  vec3& get_selected_camera_position()
+  {
+    switch (camera_state)
+    {
+    default:
+    case CameraState::Gameplay:
+      return camera_position;
+    case CameraState::LevelEditor:
+      return editor_camera_position;
+    }
+  }
+
+  // gameplay "behind the robot" view
+  mat4x4 projection;
+  mat4x4 view;
+  vec3   camera_position;
+
+  // editor view and camera
+  mat4x4 editor_projection;
+  mat4x4 editor_view;
+  vec3   editor_camera_position;
+
+  vec3  player_position;
+  vec3  player_velocity;
+  vec3  player_acceleration;
+  float camera_angle;
+  float camera_updown_angle;
+  bool  player_jumping;
+  float player_jump_start_timestamp_sec;
+  float radar_scale;
+
+  struct GameplayKeyFlags
+  {
+    enum : uint64_t
+    {
+      forward_pressed      = (1 << 0),
+      back_pressed         = (1 << 1),
+      jump_pressed         = (1 << 2),
+      strafe_left_pressed  = (1 << 3),
+      strafe_right_pressed = (1 << 4),
+      booster_activated    = (1 << 5),
+    };
+  };
+
+  uint64_t player_key_flags;
+
+  struct EditorKeyFlags
+  {
+    enum : uint64_t
+    {
+      up_pressed    = (1 << 0),
+      down_pressed  = (1 << 1),
+      left_pressed  = (1 << 2),
+      right_pressed = (1 << 3),
+    };
+  };
+
+  uint64_t editor_key_flags;
+
+  // gameplay mechanics
+  float booster_jet_fuel;
+
+  bool lmb_clicked;
+  int  lmb_last_cursor_position[2];
+  int  lmb_current_cursor_position[2];
+
+  SimpleEntity  helmet_entity;
+  SimpleEntity  robot_entity;
+  SimpleEntity  box_entities[6];
+  SimpleEntity  matrioshka_entity;
+  SkinnedEntity monster_entity;
+  SkinnedEntity rigged_simple_entity;
+  SimpleEntity  axis_arrow_entities[3];
 
   WeaponSelection weapon_selections[2];
 

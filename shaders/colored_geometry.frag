@@ -11,5 +11,5 @@ layout(location = 0) out vec4 outColor;
 
 void main()
 {
-  outColor = vec4(mix(parameters.color, normalize(inPosition), 0.4), 1.0);
+  outColor = vec4(parameters.color, 0.8);
 }

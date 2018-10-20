@@ -103,8 +103,8 @@ void shadow_mapping(Engine& engine)
       {
           .x        = 0.0f,
           .y        = 0.0f,
-          .width    = static_cast<float>(Engine::SHADOWMAP_IMAGE_DIM),
-          .height   = static_cast<float>(Engine::SHADOWMAP_IMAGE_DIM),
+          .width    = static_cast<float>(SHADOWMAP_IMAGE_DIM),
+          .height   = static_cast<float>(SHADOWMAP_IMAGE_DIM),
           .minDepth = 0.0f,
           .maxDepth = 1.0f,
       },
@@ -114,8 +114,8 @@ void shadow_mapping(Engine& engine)
       {.offset = {0, 0},
        .extent =
            {
-               .width  = Engine::SHADOWMAP_IMAGE_DIM,
-               .height = Engine::SHADOWMAP_IMAGE_DIM,
+               .width  = SHADOWMAP_IMAGE_DIM,
+               .height = SHADOWMAP_IMAGE_DIM,
            }},
   };
 
@@ -199,14 +199,14 @@ void shadow_mapping(Engine& engine)
       .pMultisampleState   = &multisample_state,
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
-      .layout              = engine.shadowmap_pipeline_layout,
-      .renderPass          = engine.shadowmap_render_pass,
+      .layout              = engine.pipelines.shadowmap.layout,
+      .renderPass          = engine.render_passes.shadowmap.render_pass,
       .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.shadowmap_pipeline);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.pipelines.shadowmap.pipeline);
 }
 
 void skybox(Engine& engine)
@@ -342,14 +342,14 @@ void skybox(Engine& engine)
       .pMultisampleState   = &multisample_state,
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
-      .layout              = engine.skybox_pipeline_layout,
-      .renderPass          = engine.skybox_render_pass,
+      .layout              = engine.pipelines.skybox.layout,
+      .renderPass          = engine.render_passes.skybox.render_pass,
       .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.skybox_pipeline);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.pipelines.skybox.pipeline);
 }
 
 void scene3d(Engine& engine)
@@ -497,14 +497,14 @@ void scene3d(Engine& engine)
       .pMultisampleState   = &multisample_state,
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
-      .layout              = engine.scene3D_pipeline_layout,
-      .renderPass          = engine.color_and_depth_render_pass,
+      .layout              = engine.pipelines.scene3D.layout,
+      .renderPass          = engine.render_passes.color_and_depth.render_pass,
       .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.scene3D_pipeline);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.pipelines.scene3D.pipeline);
 }
 
 void colored_geometry(Engine& engine)
@@ -640,14 +640,14 @@ void colored_geometry(Engine& engine)
       .pMultisampleState   = &multisample_state,
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
-      .layout              = engine.colored_geometry_pipeline_layout,
-      .renderPass          = engine.color_and_depth_render_pass,
+      .layout              = engine.pipelines.colored_geometry.layout,
+      .renderPass          = engine.render_passes.color_and_depth.render_pass,
       .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.colored_geometry_pipeline);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.pipelines.colored_geometry.pipeline);
 }
 
 void colored_geometry_triangle_strip(Engine& engine)
@@ -783,15 +783,15 @@ void colored_geometry_triangle_strip(Engine& engine)
       .pMultisampleState   = &multisample_state,
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
-      .layout              = engine.colored_geometry_triangle_strip_pipeline_layout,
-      .renderPass          = engine.color_and_depth_render_pass,
+      .layout              = engine.pipelines.colored_geometry_triangle_strip.layout,
+      .renderPass          = engine.render_passes.color_and_depth.render_pass,
       .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
   vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-                            &engine.colored_geometry_triangle_strip_pipeline);
+                            &engine.pipelines.colored_geometry_triangle_strip.pipeline);
 }
 
 void colored_geometry_skinned(Engine& engine)
@@ -951,14 +951,14 @@ void colored_geometry_skinned(Engine& engine)
       .pMultisampleState   = &multisample_state,
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
-      .layout              = engine.colored_geometry_skinned_pipeline_layout,
-      .renderPass          = engine.color_and_depth_render_pass,
+      .layout              = engine.pipelines.colored_geometry_skinned.layout,
+      .renderPass          = engine.render_passes.color_and_depth.render_pass,
       .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.colored_geometry_skinned_pipeline);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.pipelines.colored_geometry_skinned.pipeline);
 }
 
 void imgui(Engine& engine)
@@ -1103,14 +1103,14 @@ void imgui(Engine& engine)
       .pMultisampleState   = &multisample_state,
       .pColorBlendState    = &color_blend_state,
       .pDynamicState       = &dynamic_state,
-      .layout              = engine.imgui_pipeline_layout,
-      .renderPass          = engine.gui_render_pass,
+      .layout              = engine.pipelines.imgui.layout,
+      .renderPass          = engine.render_passes.gui.render_pass,
       .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.imgui_pipeline);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.pipelines.imgui.pipeline);
 }
 
 void green_gui(Engine& engine)
@@ -1252,14 +1252,14 @@ void green_gui(Engine& engine)
       .pMultisampleState   = &multisample_state,
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
-      .layout              = engine.green_gui_pipeline_layout,
-      .renderPass          = engine.gui_render_pass,
+      .layout              = engine.pipelines.green_gui.layout,
+      .renderPass          = engine.render_passes.gui.render_pass,
       .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.green_gui_pipeline);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.pipelines.green_gui.pipeline);
 }
 
 void green_gui_weapon_selector_box_left(Engine& engine)
@@ -1401,15 +1401,15 @@ void green_gui_weapon_selector_box_left(Engine& engine)
       .pMultisampleState   = &multisample_state,
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
-      .layout              = engine.green_gui_weapon_selector_box_left_pipeline_layout,
-      .renderPass          = engine.gui_render_pass,
+      .layout              = engine.pipelines.green_gui_weapon_selector_box_left.layout,
+      .renderPass          = engine.render_passes.gui.render_pass,
       .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
   vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-                            &engine.green_gui_weapon_selector_box_left_pipeline);
+                            &engine.pipelines.green_gui_weapon_selector_box_left.pipeline);
 }
 
 void green_gui_weapon_selector_box_right(Engine& engine)
@@ -1552,15 +1552,15 @@ void green_gui_weapon_selector_box_right(Engine& engine)
       .pMultisampleState   = &multisample_state,
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
-      .layout              = engine.green_gui_weapon_selector_box_right_pipeline_layout,
-      .renderPass          = engine.gui_render_pass,
+      .layout              = engine.pipelines.green_gui_weapon_selector_box_right.layout,
+      .renderPass          = engine.render_passes.gui.render_pass,
       .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
   vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
-                            &engine.green_gui_weapon_selector_box_right_pipeline);
+                            &engine.pipelines.green_gui_weapon_selector_box_right.pipeline);
 }
 
 void green_gui_lines(Engine& engine)
@@ -1705,14 +1705,14 @@ void green_gui_lines(Engine& engine)
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
       .pDynamicState       = &dynamic_state_info,
-      .layout              = engine.green_gui_lines_pipeline_layout,
-      .renderPass          = engine.gui_render_pass,
+      .layout              = engine.pipelines.green_gui_lines.layout,
+      .renderPass          = engine.render_passes.gui.render_pass,
       .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.green_gui_lines_pipeline);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.pipelines.green_gui_lines.pipeline);
 }
 
 void green_gui_sdf(Engine& engine)
@@ -1865,14 +1865,14 @@ void green_gui_sdf(Engine& engine)
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
       .pDynamicState       = &dynamic_state,
-      .layout              = engine.green_gui_sdf_font_pipeline_layout,
-      .renderPass          = engine.gui_render_pass,
+      .layout              = engine.pipelines.green_gui_sdf_font.layout,
+      .renderPass          = engine.render_passes.gui.render_pass,
       .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.green_gui_sdf_font_pipeline);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.pipelines.green_gui_sdf_font.pipeline);
 }
 
 void green_gui_triangle(Engine& engine)
@@ -1975,14 +1975,14 @@ void green_gui_triangle(Engine& engine)
       .pRasterizationState = &rasterization_state,
       .pMultisampleState   = &multisample_state,
       .pColorBlendState    = &color_blend_state,
-      .layout              = engine.green_gui_triangle_pipeline_layout,
-      .renderPass          = engine.gui_render_pass,
+      .layout              = engine.pipelines.green_gui_triangle.layout,
+      .renderPass          = engine.render_passes.gui.render_pass,
       .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.green_gui_triangle_pipeline);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.pipelines.green_gui_triangle.pipeline);
 }
 
 void green_gui_radar_dots(Engine& engine)
@@ -2094,14 +2094,14 @@ void green_gui_radar_dots(Engine& engine)
       .pMultisampleState   = &multisample_state,
       .pColorBlendState    = &color_blend_state,
       .pDynamicState       = &dynamic_state_info,
-      .layout              = engine.green_gui_radar_dots_pipeline_layout,
-      .renderPass          = engine.gui_render_pass,
+      .layout              = engine.pipelines.green_gui_radar_dots.layout,
+      .renderPass          = engine.render_passes.gui.render_pass,
       .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.green_gui_radar_dots_pipeline);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.pipelines.green_gui_radar_dots.pipeline);
 }
 
 void pbr_water(Engine& engine)
@@ -2249,14 +2249,14 @@ void pbr_water(Engine& engine)
       .pMultisampleState   = &multisample_state,
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
-      .layout              = engine.pbr_water_pipeline_layout,
-      .renderPass          = engine.color_and_depth_render_pass,
+      .layout              = engine.pipelines.pbr_water.layout,
+      .renderPass          = engine.render_passes.color_and_depth.render_pass,
       .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.pbr_water_pipeline);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.pipelines.pbr_water.pipeline);
 }
 
 void debug_billboard(Engine& engine)
@@ -2398,14 +2398,157 @@ void debug_billboard(Engine& engine)
       .pMultisampleState   = &multisample_state,
       .pDepthStencilState  = &depth_stencil_state,
       .pColorBlendState    = &color_blend_state,
-      .layout              = engine.debug_billboard_pipeline_layout,
-      .renderPass          = engine.gui_render_pass,
+      .layout              = engine.pipelines.debug_billboard.layout,
+      .renderPass          = engine.render_passes.gui.render_pass,
       .subpass             = 0,
       .basePipelineHandle  = VK_NULL_HANDLE,
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.debug_billboard_pipeline);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.pipelines.debug_billboard.pipeline);
+}
+
+void colored_model_wireframe(Engine& engine)
+{
+  TwoStageShader shaders(engine, "colored_model_wireframe.vert", "colored_model_wireframe.frag");
+
+  VkVertexInputAttributeDescription attribute_descriptions[] = {
+      {
+          .location = 0,
+          .binding  = 0,
+          .format   = VK_FORMAT_R32G32B32_SFLOAT,
+          .offset   = static_cast<uint32_t>(offsetof(TrianglesVertex, position)),
+      },
+  };
+
+  VkVertexInputBindingDescription vertex_binding_descriptions[] = {
+      {
+          .binding   = 0,
+          .stride    = sizeof(TrianglesVertex),
+          .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+      },
+  };
+
+  VkPipelineVertexInputStateCreateInfo vertex_input_state = {
+      .sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+      .vertexBindingDescriptionCount   = SDL_arraysize(vertex_binding_descriptions),
+      .pVertexBindingDescriptions      = vertex_binding_descriptions,
+      .vertexAttributeDescriptionCount = SDL_arraysize(attribute_descriptions),
+      .pVertexAttributeDescriptions    = attribute_descriptions,
+  };
+
+  VkPipelineInputAssemblyStateCreateInfo input_assembly_state = {
+      .sType                  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+      .topology               = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+      .primitiveRestartEnable = VK_FALSE,
+  };
+
+  VkViewport viewports[] = {
+      {
+          .x        = 0.0f,
+          .y        = 0.0f,
+          .width    = static_cast<float>(engine.extent2D.width),
+          .height   = static_cast<float>(engine.extent2D.height),
+          .minDepth = 0.0f,
+          .maxDepth = 1.0f,
+      },
+  };
+
+  VkRect2D scissors[] = {
+      {
+          .offset = {0, 0},
+          .extent = engine.extent2D,
+      },
+  };
+
+  VkPipelineViewportStateCreateInfo viewport_state = {
+      .sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+      .viewportCount = SDL_arraysize(viewports),
+      .pViewports    = viewports,
+      .scissorCount  = SDL_arraysize(scissors),
+      .pScissors     = scissors,
+  };
+
+  VkPipelineRasterizationStateCreateInfo rasterization_state = {
+      .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+      .depthClampEnable        = VK_FALSE,
+      .rasterizerDiscardEnable = VK_FALSE,
+      .polygonMode             = VK_POLYGON_MODE_LINE,
+      .cullMode                = VK_CULL_MODE_FRONT_BIT,
+      .frontFace               = VK_FRONT_FACE_CLOCKWISE,
+      .depthBiasEnable         = VK_FALSE,
+      .depthBiasConstantFactor = 0.0f,
+      .depthBiasClamp          = 0.0f,
+      .depthBiasSlopeFactor    = 0.0f,
+      .lineWidth               = 1.0f,
+  };
+
+  VkPipelineMultisampleStateCreateInfo multisample_state = {
+      .sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+      .rasterizationSamples  = engine.MSAA_SAMPLE_COUNT,
+      .sampleShadingEnable   = VK_TRUE,
+      .minSampleShading      = 1.0f,
+      .alphaToCoverageEnable = VK_TRUE,
+      .alphaToOneEnable      = VK_FALSE,
+  };
+
+  VkPipelineDepthStencilStateCreateInfo depth_stencil_state = {
+      .sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+      .depthTestEnable       = VK_TRUE,
+      .depthWriteEnable      = VK_TRUE,
+      .depthCompareOp        = VK_COMPARE_OP_LESS,
+      .depthBoundsTestEnable = VK_FALSE,
+      .stencilTestEnable     = VK_FALSE,
+      .minDepthBounds        = 0.0f,
+      .maxDepthBounds        = 1.0f,
+  };
+
+  VkColorComponentFlags rgba_mask = 0;
+  rgba_mask |= VK_COLOR_COMPONENT_R_BIT;
+  rgba_mask |= VK_COLOR_COMPONENT_G_BIT;
+  rgba_mask |= VK_COLOR_COMPONENT_B_BIT;
+  rgba_mask |= VK_COLOR_COMPONENT_A_BIT;
+
+  VkPipelineColorBlendAttachmentState color_blend_attachments[] = {
+      {
+          .blendEnable         = VK_FALSE,
+          .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
+          .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
+          .colorBlendOp        = VK_BLEND_OP_ADD,
+          .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+          .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+          .alphaBlendOp        = VK_BLEND_OP_ADD,
+          .colorWriteMask      = rgba_mask,
+      },
+  };
+
+  VkPipelineColorBlendStateCreateInfo color_blend_state = {
+      .sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+      .logicOpEnable   = VK_FALSE,
+      .logicOp         = VK_LOGIC_OP_COPY,
+      .attachmentCount = SDL_arraysize(color_blend_attachments),
+      .pAttachments    = color_blend_attachments,
+  };
+
+  VkGraphicsPipelineCreateInfo ci = {
+      .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+      .stageCount          = SDL_arraysize(shaders.shader_stages),
+      .pStages             = shaders.shader_stages,
+      .pVertexInputState   = &vertex_input_state,
+      .pInputAssemblyState = &input_assembly_state,
+      .pViewportState      = &viewport_state,
+      .pRasterizationState = &rasterization_state,
+      .pMultisampleState   = &multisample_state,
+      .pDepthStencilState  = &depth_stencil_state,
+      .pColorBlendState    = &color_blend_state,
+      .layout              = engine.pipelines.colored_model_wireframe.layout,
+      .renderPass          = engine.render_passes.color_and_depth.render_pass,
+      .subpass             = 0,
+      .basePipelineHandle  = VK_NULL_HANDLE,
+      .basePipelineIndex   = -1,
+  };
+
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.pipelines.colored_model_wireframe.pipeline);
 }
 
 } // namespace
@@ -2428,4 +2571,5 @@ void Engine::setup_pipelines()
   green_gui_radar_dots(*this);
   pbr_water(*this);
   debug_billboard(*this);
+  colored_model_wireframe(*this);
 }

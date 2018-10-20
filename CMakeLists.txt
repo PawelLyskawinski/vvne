@@ -29,21 +29,25 @@ add_executable(jobsytem unit_tests/JobSystem.cc)
 set(SOURCES
         main.cc
         engine.cc
+        engine_render_passes.cc
+        engine_framebuffers.cc
+        engine_descriptor_set_layouts.cc
+        engine_pipeline_layouts.cc
+        engine_pipelines.cc
         game.cc
         game_generate_gui_lines.cc
         game_generate_sdf_font.cc
-        game_recalculate_node_transforms.cc
         game_render_entity.cc
         gltf.cc
         cubemap.cc
-        engine_pipelines.cc
         render_jobs.cc
         update_jobs.cc
         bitfield.cc
+        ecs.cc
         thirdparty/imgui.cpp
         thirdparty/imgui_draw.cpp
-        thirdparty/sha256.cpp
-        engine_render_passes.cc engine_framebuffers.cc engine_descriptor_set_layouts.cc engine_pipeline_layouts.cc)
+        thirdparty/imgui_widgets.cpp
+        thirdparty/sha256.cpp)
 
 if(WIN32)
 add_executable(${PROJECT_NAME} ${SOURCES} assets/applicationIcon.rc)

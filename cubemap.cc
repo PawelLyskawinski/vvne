@@ -168,7 +168,7 @@ Texture generate_cubemap(Engine* engine, Game* game, const char* equirectangular
       a.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
       a.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
       a.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
-      a.finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+      a.finalLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     }
 
     VkAttachmentReference color_references[6] = {};
@@ -686,7 +686,7 @@ Texture generate_irradiance_cubemap(Engine* engine, Game* game, Texture environm
       a.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
       a.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
       a.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
-      a.finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+      a.finalLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     }
 
     VkAttachmentReference color_references[6] = {};
@@ -1198,7 +1198,7 @@ Texture generate_prefiltered_cubemap(Engine* engine, Game* game, Texture environ
       a.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
       a.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
       a.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
-      a.finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+      a.finalLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     }
 
     VkAttachmentReference color_references[CUBE_SIDES] = {};

@@ -1,19 +1,15 @@
 #include "game.hh"
+#include <SDL2/SDL_assert.h>
 
 namespace {
 
-uint64_t filter_nodes_with_mesh(const Node nodes[], const int n)
-{
-  uint64_t result = 0;
-  for (int i = 0; i < n; ++i)
-    if (nodes[i].has(Node::Property::Mesh))
-      result |= (1ULL << i);
-  return result;
-}
-
 uint64_t filter_nodes_with_mesh(const ArrayView<Node>& nodes)
 {
-  return filter_nodes_with_mesh(nodes.data, nodes.count);
+  uint64_t result = 0;
+  for (int i = 0; i < nodes.count; ++i)
+    if (nodes[i].flags & Node::Property::Mesh)
+      result |= (uint64_t(1) << i);
+  return result;
 }
 
 struct SkinningUbo
@@ -24,29 +20,26 @@ struct SkinningUbo
   vec3   camera_position;
 };
 
-SkinningUbo to_skinning(RenderEntityParams& p, mat4x4 transform)
+void multiply(mat4x4 result, const mat4x4 lhs, const mat4x4 rhs)
 {
-  SkinningUbo r = {};
+  mat4x4_mul(result, lhs, rhs);
+}
 
-  mat4x4_dup(r.projection, p.projection);
-  mat4x4_dup(r.view, p.view);
-  mat4x4_dup(r.model, transform);
-
-  for (int i = 0; i < 3; ++i)
-    r.camera_position[i] = p.camera_position[i];
-
-  return r;
+template <typename... Args> void multiply(mat4x4 result, const mat4x4 lhs, const mat4x4 rhs, Args... args)
+{
+  mat4x4 tmp = {};
+  mat4x4_mul(tmp, lhs, rhs);
+  multiply(result, tmp, args...);
 }
 
 } // namespace
 
-void render_pbr_entity_shadow(Entity entity, EntityComponentSystem& ecs, SceneGraph& scene_graph, Engine& engine,
-                              Game& game, VkCommandBuffer cmd, int cascade_idx)
+void render_pbr_entity_shadow(const SimpleEntity& entity, const Ecs& ecs, const SceneGraph& scene_graph,
+                              const Engine& engine, const Game& game, VkCommandBuffer cmd, const int cascade_idx)
 {
-  uint64_t renderable_nodes_bitmap = ecs.node_renderabilities[entity.node_renderabilities];
-  uint64_t nodes_with_mesh_bitmap  = filter_nodes_with_mesh(scene_graph.nodes);
-  uint64_t bitmap                  = renderable_nodes_bitmap & nodes_with_mesh_bitmap;
-  mat4x4*  transforms              = ecs.node_transforms[entity.node_transforms].transforms;
+  const uint64_t nodes_with_mesh_bitmap = filter_nodes_with_mesh(scene_graph.nodes);
+  const uint64_t bitmap                 = entity.node_renderabilities & nodes_with_mesh_bitmap;
+  const mat4x4*  transforms             = &ecs.node_transforms[entity.node_transforms];
 
   struct Push
   {
@@ -56,38 +49,42 @@ void render_pbr_entity_shadow(Entity entity, EntityComponentSystem& ecs, SceneGr
 
   push.cascade_idx = static_cast<uint32_t>(cascade_idx);
 
-  for (int node_idx = 0; node_idx < 64; ++node_idx)
+  for (int node_idx = 0; node_idx < scene_graph.nodes.count; ++node_idx)
   {
-    if (bitmap & (1ULL << node_idx))
+    if (bitmap & (uint64_t(1) << node_idx))
     {
-      int         mesh_idx = scene_graph.nodes.data[node_idx].mesh;
+      const int   mesh_idx = scene_graph.nodes.data[node_idx].mesh;
       const Mesh& mesh     = scene_graph.meshes.data[mesh_idx];
 
-      mat4x4_dup(push.model, transforms[node_idx]);
+      SDL_memcpy(push.model, transforms[node_idx], sizeof(mat4x4));
 
       vkCmdBindIndexBuffer(cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
-      vkCmdPushConstants(cmd, engine.shadowmap_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), &push);
+      vkCmdPushConstants(cmd, engine.pipelines.shadowmap.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), &push);
       vkCmdDrawIndexed(cmd, mesh.indices_count, 1, 0, 0, 0);
     }
   }
 }
 
-void render_pbr_entity(Entity entity, EntityComponentSystem& ecs, SceneGraph& scene_graph, Engine& engine,
-                       RenderEntityParams& p)
+void render_pbr_entity(const SimpleEntity& entity, const Ecs& ecs, const SceneGraph& scene_graph, const Engine& engine,
+                       const RenderEntityParams& p)
 {
-  uint64_t renderable_nodes_bitmap = ecs.node_renderabilities[entity.node_renderabilities];
-  uint64_t nodes_with_mesh_bitmap  = filter_nodes_with_mesh(scene_graph.nodes);
-  uint64_t bitmap                  = renderable_nodes_bitmap & nodes_with_mesh_bitmap;
-  mat4x4*  transforms              = ecs.node_transforms[entity.node_transforms].transforms;
+  const uint64_t nodes_with_mesh_bitmap = filter_nodes_with_mesh(scene_graph.nodes);
+  const uint64_t bitmap                 = entity.node_renderabilities & nodes_with_mesh_bitmap;
+  const mat4x4*  transforms             = &ecs.node_transforms[entity.node_transforms];
+  SkinningUbo    ubo                    = {};
 
-  for (int node_idx = 0; node_idx < 64; ++node_idx)
+  SDL_memcpy(ubo.projection, p.projection, sizeof(mat4x4));
+  SDL_memcpy(ubo.view, p.view, sizeof(mat4x4));
+  SDL_memcpy(ubo.camera_position, p.camera_position, sizeof(vec3));
+
+  for (int node_idx = 0; node_idx < scene_graph.nodes.count; ++node_idx)
   {
-    if (bitmap & (1ULL << node_idx))
+    if (bitmap & (uint64_t(1) << node_idx))
     {
-      int         mesh_idx = scene_graph.nodes.data[node_idx].mesh;
+      const int   mesh_idx = scene_graph.nodes.data[node_idx].mesh;
       const Mesh& mesh     = scene_graph.meshes.data[mesh_idx];
-      SkinningUbo ubo      = to_skinning(p, transforms[node_idx]);
+      SDL_memcpy(ubo.model, transforms[node_idx], sizeof(mat4x4));
 
       vkCmdBindIndexBuffer(p.cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(p.cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
@@ -98,21 +95,45 @@ void render_pbr_entity(Entity entity, EntityComponentSystem& ecs, SceneGraph& sc
   }
 }
 
-void render_entity(Entity entity, EntityComponentSystem& ecs, SceneGraph& scene_graph, Engine& engine,
-                   RenderEntityParams& p)
+void render_wireframe_entity(const SimpleEntity& entity, const Ecs& ecs, const SceneGraph& scene_graph,
+                             const Engine& engine, const RenderEntityParams& p)
+{
+  const uint64_t nodes_with_mesh_bitmap = filter_nodes_with_mesh(scene_graph.nodes);
+  const uint64_t bitmap                 = entity.node_renderabilities & nodes_with_mesh_bitmap;
+  const mat4x4*  transforms             = &ecs.node_transforms[entity.node_transforms];
+
+  for (int node_idx = 0; node_idx < scene_graph.nodes.count; ++node_idx)
+  {
+    if (bitmap & (uint64_t(1) << node_idx))
+    {
+      const int   mesh_idx = scene_graph.nodes.data[node_idx].mesh;
+      const Mesh& mesh     = scene_graph.meshes.data[mesh_idx];
+      mat4x4      mvp      = {};
+      multiply(mvp, p.projection, p.view, transforms[node_idx]);
+
+      vkCmdBindIndexBuffer(p.cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
+      vkCmdBindVertexBuffers(p.cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
+      vkCmdPushConstants(p.cmd, p.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mvp), mvp);
+      vkCmdPushConstants(p.cmd, p.pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mvp), sizeof(vec3), p.color);
+      vkCmdDrawIndexed(p.cmd, mesh.indices_count, 1, 0, 0, 0);
+    }
+  }
+}
+
+void render_entity(const SimpleEntity& entity, const Ecs& ecs, const SceneGraph& scene_graph, const Engine& engine,
+                   const RenderEntityParams& p)
 {
   mat4x4 projection_view = {};
   mat4x4_mul(projection_view, p.projection, p.view);
 
-  const uint64_t bitmap =
-      ecs.node_renderabilities[entity.node_renderabilities] & filter_nodes_with_mesh(scene_graph.nodes);
-  mat4x4* transforms = ecs.node_transforms[entity.node_transforms].transforms;
+  const uint64_t bitmap     = entity.node_renderabilities & filter_nodes_with_mesh(scene_graph.nodes);
+  const mat4x4*  transforms = &ecs.node_transforms[entity.node_transforms];
 
-  for (int node_idx = 0; node_idx < 64; ++node_idx)
+  for (int node_idx = 0; node_idx < scene_graph.nodes.count; ++node_idx)
   {
-    if (bitmap & (1ULL << node_idx))
+    if (bitmap & (uint64_t(1) << node_idx))
     {
-      int         mesh_idx = scene_graph.nodes.data[node_idx].mesh;
+      const int   mesh_idx = scene_graph.nodes.data[node_idx].mesh;
       const Mesh& mesh     = scene_graph.meshes.data[mesh_idx];
 
       vkCmdBindIndexBuffer(p.cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
@@ -123,7 +144,6 @@ void render_entity(Entity entity, EntityComponentSystem& ecs, SceneGraph& scene_
 
       vkCmdPushConstants(p.cmd, p.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), calculated_mvp);
       vkCmdPushConstants(p.cmd, p.pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(vec3), p.color);
-
       vkCmdDrawIndexed(p.cmd, mesh.indices_count, 1, 0, 0, 0);
     }
   }

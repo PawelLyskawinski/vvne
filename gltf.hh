@@ -77,29 +77,18 @@ public:
   int mesh;
   int skin;
 
-  enum Property
+  enum Property : uint64_t
   {
-    Children,
-    Rotation,
-    Translation,
-    Scale,
-    Matrix,
-    Mesh,
-    Skin
+    Children    = (1 << 0),
+    Rotation    = (1 << 1),
+    Translation = (1 << 2),
+    Scale       = (1 << 3),
+    Matrix      = (1 << 4),
+    Mesh        = (1 << 5),
+    Skin        = (1 << 6)
   };
 
-  bool has(Property property) const
-  {
-    return static_cast<bool>(flags & (1 << property));
-  }
-
-  void set(Property property)
-  {
-    flags |= (1 << property);
-  }
-
-private:
-  unsigned flags;
+  uint64_t flags;
 };
 
 struct Scene

@@ -1,12 +1,14 @@
 #include "render_jobs.hh"
 
 // game_render_entity.cc
-void render_pbr_entity(Entity entity, EntityComponentSystem& ecs, SceneGraph& scene_graph, Engine& engine,
-                       RenderEntityParams& p);
-void render_entity(Entity entity, EntityComponentSystem& ecs, SceneGraph& scen_graph, Engine& engine,
-                   RenderEntityParams& p);
-void render_pbr_entity_shadow(Entity entity, EntityComponentSystem& ecs, SceneGraph& scene_graph, Engine& engine,
-                              Game& game, VkCommandBuffer cmd, int cascade_idx = 0);
+void render_pbr_entity_shadow(const SimpleEntity& entity, const Ecs& ecs, const SceneGraph& scene_graph,
+                              const Engine& engine, const Game& game, VkCommandBuffer cmd, const int cascade_idx);
+void render_pbr_entity(const SimpleEntity& entity, const Ecs& ecs, const SceneGraph& scene_graph, const Engine& engine,
+                       const RenderEntityParams& p);
+void render_wireframe_entity(const SimpleEntity& entity, const Ecs& ecs, const SceneGraph& scene_graph,
+                             const Engine& engine, const RenderEntityParams& p);
+void render_entity(const SimpleEntity& entity, const Ecs& ecs, const SceneGraph& scene_graph, const Engine& engine,
+                   const RenderEntityParams& p);
 
 // game_generate_gui_lines.cc
 void generate_gui_height_ruler_text(struct GenerateGuiLinesCommand& cmd, GuiHeightRulerText* dst, int* count);
@@ -48,6 +50,18 @@ VkCommandBuffer acquire_command_buffer(ThreadJobData& tjd)
   return acquire_command_buffer(tjd.thread_id, tjd.game);
 }
 
+void multiply(mat4x4 result, mat4x4 lhs, mat4x4 rhs)
+{
+  mat4x4_mul(result, lhs, rhs);
+}
+
+template <typename... Args> void multiply(mat4x4 result, mat4x4 lhs, mat4x4 rhs, Args... args)
+{
+  mat4x4 tmp = {};
+  mat4x4_mul(tmp, lhs, rhs);
+  multiply(result, tmp, args...);
+}
+
 } // namespace
 
 namespace render {
@@ -57,21 +71,7 @@ void skybox_job(ThreadJobData tjd)
   VkCommandBuffer command = acquire_command_buffer(tjd);
   tjd.game.skybox_command = command;
 
-  {
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.skybox_render_pass,
-        .framebuffer = tjd.engine.skybox_framebuffers[tjd.game.image_index],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-  }
+  tjd.engine.render_passes.skybox.begin(command, tjd.game.image_index);
 
   struct
   {
@@ -79,13 +79,13 @@ void skybox_job(ThreadJobData tjd)
     mat4x4 view;
   } push = {};
 
-  mat4x4_dup(push.projection, tjd.game.projection);
-  mat4x4_dup(push.view, tjd.game.view);
+  mat4x4_dup(push.projection, tjd.game.get_selected_camera_projection());
+  mat4x4_dup(push.view, tjd.game.get_selected_camera_view());
 
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.skybox_pipeline);
-  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.skybox_pipeline_layout, 0, 1,
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.skybox.pipeline);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.skybox.layout, 0, 1,
                           &tjd.game.skybox_cubemap_dset, 0, nullptr);
-  vkCmdPushConstants(command, tjd.engine.skybox_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), &push);
+  vkCmdPushConstants(command, tjd.engine.pipelines.skybox.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), &push);
 
   const Node& node = tjd.game.box.nodes.data[1];
   Mesh&       mesh = tjd.game.box.meshes.data[node.mesh];
@@ -99,26 +99,13 @@ void skybox_job(ThreadJobData tjd)
 
 void robot_depth_job(ThreadJobData tjd)
 {
-  for (int cascade_idx = 0; cascade_idx < Engine::SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
+  for (int cascade_idx = 0; cascade_idx < SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
   {
     VkCommandBuffer command = acquire_command_buffer(tjd);
     tjd.game.shadow_mapping_pass_commands.push({command, cascade_idx});
-
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.shadowmap_render_pass,
-        .framebuffer = tjd.engine.shadowmap_framebuffers[cascade_idx],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.shadowmap_pipeline);
-    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.shadowmap_pipeline_layout, 0, 1,
+    tjd.engine.render_passes.shadowmap.begin(command, static_cast<uint32_t>(cascade_idx));
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.shadowmap.pipeline);
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.shadowmap.layout, 0, 1,
                             &tjd.game.cascade_view_proj_matrices_depth_pass_dset[tjd.game.image_index], 0, nullptr);
     render_pbr_entity_shadow(tjd.game.robot_entity, tjd.game.ecs, tjd.game.robot, tjd.engine, tjd.game, command,
                              cascade_idx);
@@ -130,24 +117,8 @@ void robot_job(ThreadJobData tjd)
 {
   VkCommandBuffer command = acquire_command_buffer(tjd);
   tjd.game.scene_rendering_commands.push(command);
-
-  {
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.color_and_depth_render_pass,
-        .framebuffer = tjd.engine.color_and_depth_framebuffers[tjd.game.image_index],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-  }
-
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.scene3D_pipeline);
+  tjd.engine.render_passes.color_and_depth.begin(command, tjd.game.image_index);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.scene3D.pipeline);
 
   {
     VkDescriptorSet dsets[] = {
@@ -160,46 +131,42 @@ void robot_job(ThreadJobData tjd)
 
     uint32_t dynamic_offsets[] = {static_cast<uint32_t>(tjd.game.pbr_dynamic_lights_ubo_offsets[tjd.game.image_index])};
 
-    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.scene3D_pipeline_layout, 0,
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.scene3D.layout, 0,
                             SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
   }
 
   RenderEntityParams params = {
       .cmd             = command,
       .color           = {0.0f, 0.0f, 0.0f},
-      .pipeline_layout = tjd.engine.scene3D_pipeline_layout,
+      .pipeline_layout = tjd.engine.pipelines.scene3D.layout,
   };
 
-  mat4x4_dup(params.projection, tjd.game.projection);
-  mat4x4_dup(params.view, tjd.game.view);
-  SDL_memcpy(params.camera_position, tjd.game.camera_position, sizeof(vec3));
+  mat4x4_dup(params.projection, tjd.game.get_selected_camera_projection());
+  mat4x4_dup(params.view, tjd.game.get_selected_camera_view());
+  SDL_memcpy(params.camera_position, tjd.game.get_selected_camera_position(), sizeof(vec3));
   render_pbr_entity(tjd.game.robot_entity, tjd.game.ecs, tjd.game.robot, tjd.engine, params);
+
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.colored_model_wireframe.pipeline);
+  params.pipeline_layout = tjd.engine.pipelines.colored_model_wireframe.layout;
+
+  params.color[0] = SDL_fabsf(SDL_sinf(tjd.game.current_time_sec));
+  params.color[1] = SDL_fabsf(SDL_cosf(tjd.game.current_time_sec * 1.2f));
+  params.color[2] = SDL_fabsf(SDL_sinf(1.0f * tjd.game.current_time_sec * 1.5f));
+
+  render_wireframe_entity(tjd.game.robot_entity, tjd.game.ecs, tjd.game.robot, tjd.engine, params);
 
   vkEndCommandBuffer(command);
 }
 
 void helmet_depth_job(ThreadJobData tjd)
 {
-  for (int cascade_idx = 0; cascade_idx < Engine::SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
+  for (int cascade_idx = 0; cascade_idx < SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
   {
     VkCommandBuffer command = acquire_command_buffer(tjd);
     tjd.game.shadow_mapping_pass_commands.push({command, cascade_idx});
-
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.shadowmap_render_pass,
-        .framebuffer = tjd.engine.shadowmap_framebuffers[cascade_idx],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.shadowmap_pipeline);
-    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.shadowmap_pipeline_layout, 0, 1,
+    tjd.engine.render_passes.shadowmap.begin(command, static_cast<uint32_t>(cascade_idx));
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.shadowmap.pipeline);
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.shadowmap.layout, 0, 1,
                             &tjd.game.cascade_view_proj_matrices_depth_pass_dset[tjd.game.image_index], 0, nullptr);
     render_pbr_entity_shadow(tjd.game.helmet_entity, tjd.game.ecs, tjd.game.helmet, tjd.engine, tjd.game, command,
                              cascade_idx);
@@ -211,24 +178,8 @@ void helmet_job(ThreadJobData tjd)
 {
   VkCommandBuffer command = acquire_command_buffer(tjd);
   tjd.game.scene_rendering_commands.push(command);
-
-  {
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.color_and_depth_render_pass,
-        .framebuffer = tjd.engine.color_and_depth_framebuffers[tjd.game.image_index],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-  }
-
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.scene3D_pipeline);
+  tjd.engine.render_passes.color_and_depth.begin(command, tjd.game.image_index);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.scene3D.pipeline);
 
   {
     VkDescriptorSet dsets[] = {
@@ -241,19 +192,19 @@ void helmet_job(ThreadJobData tjd)
 
     uint32_t dynamic_offsets[] = {static_cast<uint32_t>(tjd.game.pbr_dynamic_lights_ubo_offsets[tjd.game.image_index])};
 
-    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.scene3D_pipeline_layout, 0,
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.scene3D.layout, 0,
                             SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
   }
 
   RenderEntityParams params = {
       .cmd             = command,
       .color           = {0.0f, 0.0f, 0.0f},
-      .pipeline_layout = tjd.engine.scene3D_pipeline_layout,
+      .pipeline_layout = tjd.engine.pipelines.scene3D.layout,
   };
 
-  mat4x4_dup(params.projection, tjd.game.projection);
-  mat4x4_dup(params.view, tjd.game.view);
-  SDL_memcpy(params.camera_position, tjd.game.camera_position, sizeof(vec3));
+  mat4x4_dup(params.projection, tjd.game.get_selected_camera_projection());
+  mat4x4_dup(params.view, tjd.game.get_selected_camera_view());
+  SDL_memcpy(params.camera_position, tjd.game.get_selected_camera_position(), sizeof(vec3));
   render_pbr_entity(tjd.game.helmet_entity, tjd.game.ecs, tjd.game.helmet, tjd.engine, params);
 
   vkEndCommandBuffer(command);
@@ -263,34 +214,18 @@ void point_light_boxes(ThreadJobData tjd)
 {
   VkCommandBuffer command = acquire_command_buffer(tjd);
   tjd.game.scene_rendering_commands.push(command);
-
-  {
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.color_and_depth_render_pass,
-        .framebuffer = tjd.engine.color_and_depth_framebuffers[tjd.game.image_index],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-  }
-
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.colored_geometry_pipeline);
+  tjd.engine.render_passes.color_and_depth.begin(command, tjd.game.image_index);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.colored_geometry.pipeline);
 
   RenderEntityParams params = {
       .cmd             = command,
       .color           = {0.0f, 0.0f, 0.0f},
-      .pipeline_layout = tjd.engine.colored_geometry_pipeline_layout,
+      .pipeline_layout = tjd.engine.pipelines.colored_geometry.layout,
   };
 
-  mat4x4_dup(params.projection, tjd.game.projection);
-  mat4x4_dup(params.view, tjd.game.view);
-  SDL_memcpy(params.camera_position, tjd.game.camera_position, sizeof(vec3));
+  mat4x4_dup(params.projection, tjd.game.get_selected_camera_projection());
+  mat4x4_dup(params.view, tjd.game.get_selected_camera_view());
+  SDL_memcpy(params.camera_position, tjd.game.get_selected_camera_position(), sizeof(vec3));
 
   for (unsigned i = 0; i < SDL_arraysize(tjd.game.box_entities); ++i)
   {
@@ -305,34 +240,18 @@ void matrioshka_box(ThreadJobData tjd)
 {
   VkCommandBuffer command = acquire_command_buffer(tjd);
   tjd.game.scene_rendering_commands.push(command);
-
-  {
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.color_and_depth_render_pass,
-        .framebuffer = tjd.engine.color_and_depth_framebuffers[tjd.game.image_index],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-  }
-
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.colored_geometry_pipeline);
+  tjd.engine.render_passes.color_and_depth.begin(command, tjd.game.image_index);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.colored_geometry.pipeline);
 
   RenderEntityParams params = {
       .cmd             = command,
       .color           = {0.0f, 1.0f, 0.0f},
-      .pipeline_layout = tjd.engine.colored_geometry_pipeline_layout,
+      .pipeline_layout = tjd.engine.pipelines.colored_geometry.layout,
   };
 
-  mat4x4_dup(params.projection, tjd.game.projection);
-  mat4x4_dup(params.view, tjd.game.view);
-  SDL_memcpy(params.camera_position, tjd.game.camera_position, sizeof(vec3));
+  mat4x4_dup(params.projection, tjd.game.get_selected_camera_projection());
+  mat4x4_dup(params.view, tjd.game.get_selected_camera_view());
+  SDL_memcpy(params.camera_position, tjd.game.get_selected_camera_position(), sizeof(vec3));
   render_entity(tjd.game.matrioshka_entity, tjd.game.ecs, tjd.game.animatedBox, tjd.engine, params);
 
   vkEndCommandBuffer(command);
@@ -342,24 +261,8 @@ void vr_scene(ThreadJobData tjd)
 {
   VkCommandBuffer command = acquire_command_buffer(tjd);
   tjd.game.scene_rendering_commands.push(command);
-
-  {
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.color_and_depth_render_pass,
-        .framebuffer = tjd.engine.color_and_depth_framebuffers[tjd.game.image_index],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-  }
-
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.scene3D_pipeline);
+  tjd.engine.render_passes.color_and_depth.begin(command, tjd.game.image_index);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.scene3D.pipeline);
 
   {
     VkDescriptorSet dsets[] = {
@@ -372,7 +275,7 @@ void vr_scene(ThreadJobData tjd)
 
     uint32_t dynamic_offsets[] = {static_cast<uint32_t>(tjd.game.pbr_dynamic_lights_ubo_offsets[tjd.game.image_index])};
 
-    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.scene3D_pipeline_layout, 0,
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.scene3D.layout, 0,
                             SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
   }
 
@@ -404,14 +307,12 @@ void vr_scene(ThreadJobData tjd)
     vec3   camera_position;
   } ubo = {};
 
-  mat4x4_dup(ubo.projection, tjd.game.projection);
-  mat4x4_dup(ubo.view, tjd.game.view);
+  mat4x4_dup(ubo.projection, tjd.game.get_selected_camera_projection());
+  mat4x4_dup(ubo.view, tjd.game.get_selected_camera_view());
   mat4x4_mul(ubo.model, tmp, scale_matrix);
+  SDL_memcpy(ubo.camera_position, tjd.game.get_selected_camera_position(), sizeof(vec3));
 
-  for (int i = 0; i < 3; ++i)
-    ubo.camera_position[i] = tjd.game.camera_position[i];
-
-  vkCmdPushConstants(command, tjd.engine.scene3D_pipeline_layout,
+  vkCmdPushConstants(command, tjd.engine.pipelines.scene3D.layout,
                      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ubo), &ubo);
   vkCmdDrawIndexed(command, static_cast<uint32_t>(tjd.game.vr_level_index_count), 1, 0, 0, 0);
 
@@ -421,15 +322,15 @@ void vr_scene(ThreadJobData tjd)
 #if 0
 void vr_scene_depth(ThreadJobData tjd)
 {
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-  DepthPassCmd    result  = {.command = command, .cascade_idx = 0};
-  tjd.game.depth_pass_cmds.push(result);
-
+  for (int cascade_idx = 0; cascade_idx < Engine::SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
   {
+    VkCommandBuffer command = acquire_command_buffer(tjd);
+    tjd.game.shadow_mapping_pass_commands.push({command, cascade_idx});
+
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.shadow_mapping.render_pass,
-        .framebuffer = tjd.engine.shadow_mapping.framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.shadowmap_render_pass,
+        .framebuffer = tjd.engine.shadowmap_framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -439,41 +340,41 @@ void vr_scene_depth(ThreadJobData tjd)
     };
 
     vkBeginCommandBuffer(command, &begin_info);
+
+    mat4x4 translation_matrix = {};
+    mat4x4_translate(translation_matrix, 0.0, 3.0, 0.0);
+
+    mat4x4 rotation_matrix = {};
+    mat4x4_identity(rotation_matrix);
+
+    mat4x4 scale_matrix = {};
+    mat4x4_identity(scale_matrix);
+    const float scale = 100.0f;
+    mat4x4_scale_aniso(scale_matrix, scale_matrix, scale, scale, scale);
+
+    mat4x4 tmp = {};
+    mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+
+    struct PushConstant
+    {
+      mat4x4 light_space_matrix;
+      mat4x4 model;
+    } pc = {};
+
+    mat4x4_dup(pc.light_space_matrix, tjd.game.light_space_matrix);
+    mat4x4_mul(pc.model, tmp, scale_matrix);
+
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.shadow_mapping.pipeline);
+    vkCmdBindIndexBuffer(command, tjd.engine.gpu_device_local_memory_buffer, tjd.game.vr_level_index_buffer_offset,
+                         tjd.game.vr_level_index_type);
+    vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
+                           &tjd.game.vr_level_vertex_buffer_offset);
+    vkCmdPushConstants(command, tjd.engine.shadow_mapping.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(pc),
+                       &pc);
+    vkCmdDrawIndexed(command, static_cast<uint32_t>(tjd.game.vr_level_index_count), 1, 0, 0, 0);
+
+    vkEndCommandBuffer(command);
   }
-
-  mat4x4 translation_matrix = {};
-  mat4x4_translate(translation_matrix, 0.0, 3.0, 0.0);
-
-  mat4x4 rotation_matrix = {};
-  mat4x4_identity(rotation_matrix);
-
-  mat4x4 scale_matrix = {};
-  mat4x4_identity(scale_matrix);
-  const float scale = 100.0f;
-  mat4x4_scale_aniso(scale_matrix, scale_matrix, scale, scale, scale);
-
-  mat4x4 tmp = {};
-  mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-
-  struct PushConstant
-  {
-    mat4x4 light_space_matrix;
-    mat4x4 model;
-  } pc = {};
-
-  mat4x4_dup(pc.light_space_matrix, tjd.game.light_space_matrix);
-  mat4x4_mul(pc.model, tmp, scale_matrix);
-
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.shadow_mapping.pipeline);
-  vkCmdBindIndexBuffer(command, tjd.engine.gpu_device_local_memory_buffer, tjd.game.vr_level_index_buffer_offset,
-                       tjd.game.vr_level_index_type);
-  vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
-                         &tjd.game.vr_level_vertex_buffer_offset);
-  vkCmdPushConstants(command, tjd.engine.shadow_mapping.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(pc),
-                     &pc);
-  vkCmdDrawIndexed(command, static_cast<uint32_t>(tjd.game.vr_level_index_count), 1, 0, 0, 0);
-
-  vkEndCommandBuffer(command);
 }
 #endif
 
@@ -481,41 +382,25 @@ void simple_rigged(ThreadJobData tjd)
 {
   VkCommandBuffer command = acquire_command_buffer(tjd);
   tjd.game.scene_rendering_commands.push(command);
-
-  {
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.color_and_depth_render_pass,
-        .framebuffer = tjd.engine.color_and_depth_framebuffers[tjd.game.image_index],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-  }
-
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.colored_geometry_skinned_pipeline);
+  tjd.engine.render_passes.color_and_depth.begin(command, tjd.game.image_index);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.colored_geometry_skinned.pipeline);
 
   uint32_t dynamic_offsets[] = {
       static_cast<uint32_t>(tjd.game.rig_skinning_matrices_ubo_offsets[tjd.game.image_index])};
 
-  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.colored_geometry_skinned_pipeline_layout,
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.colored_geometry_skinned.layout,
                           0, 1, &tjd.game.rig_skinning_matrices_dset, SDL_arraysize(dynamic_offsets), dynamic_offsets);
 
   RenderEntityParams params = {
       .cmd             = command,
       .color           = {0.0f, 0.0f, 0.0f},
-      .pipeline_layout = tjd.engine.colored_geometry_skinned_pipeline_layout,
+      .pipeline_layout = tjd.engine.pipelines.colored_geometry_skinned.layout,
   };
 
-  mat4x4_dup(params.projection, tjd.game.projection);
-  mat4x4_dup(params.view, tjd.game.view);
-  SDL_memcpy(params.camera_position, tjd.game.camera_position, sizeof(vec3));
-  render_entity(tjd.game.rigged_simple_entity, tjd.game.ecs, tjd.game.riggedSimple, tjd.engine, params);
+  mat4x4_dup(params.projection, tjd.game.get_selected_camera_projection());
+  mat4x4_dup(params.view, tjd.game.get_selected_camera_view());
+  SDL_memcpy(params.camera_position, tjd.game.get_selected_camera_position(), sizeof(vec3));
+  render_entity(tjd.game.rigged_simple_entity.base, tjd.game.ecs, tjd.game.riggedSimple, tjd.engine, params);
 
   vkEndCommandBuffer(command);
 }
@@ -524,42 +409,26 @@ void monster_rigged(ThreadJobData tjd)
 {
   VkCommandBuffer command = acquire_command_buffer(tjd);
   tjd.game.scene_rendering_commands.push(command);
-
-  {
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.color_and_depth_render_pass,
-        .framebuffer = tjd.engine.color_and_depth_framebuffers[tjd.game.image_index],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-  }
-
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.colored_geometry_skinned_pipeline);
+  tjd.engine.render_passes.color_and_depth.begin(command, tjd.game.image_index);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.colored_geometry_skinned.pipeline);
 
   uint32_t dynamic_offsets[] = {
       static_cast<uint32_t>(tjd.game.monster_skinning_matrices_ubo_offsets[tjd.game.image_index])};
 
-  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.colored_geometry_skinned_pipeline_layout,
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.colored_geometry_skinned.layout,
                           0, 1, &tjd.game.monster_skinning_matrices_dset, SDL_arraysize(dynamic_offsets),
                           dynamic_offsets);
 
   RenderEntityParams params = {
       .cmd             = command,
       .color           = {1.0f, 1.0f, 1.0f},
-      .pipeline_layout = tjd.engine.colored_geometry_skinned_pipeline_layout,
+      .pipeline_layout = tjd.engine.pipelines.colored_geometry_skinned.layout,
   };
 
-  mat4x4_dup(params.projection, tjd.game.projection);
-  mat4x4_dup(params.view, tjd.game.view);
-  SDL_memcpy(params.camera_position, tjd.game.camera_position, sizeof(vec3));
-  render_entity(tjd.game.monster_entity, tjd.game.ecs, tjd.game.monster, tjd.engine, params);
+  mat4x4_dup(params.projection, tjd.game.get_selected_camera_projection());
+  mat4x4_dup(params.view, tjd.game.get_selected_camera_view());
+  SDL_memcpy(params.camera_position, tjd.game.get_selected_camera_position(), sizeof(vec3));
+  render_entity(tjd.game.monster_entity.base, tjd.game.ecs, tjd.game.monster, tjd.engine, params);
 
   vkEndCommandBuffer(command);
 }
@@ -568,25 +437,8 @@ void radar(ThreadJobData tjd)
 {
   VkCommandBuffer command = acquire_command_buffer(tjd);
   tjd.game.gui_commands.push(command);
-
-  {
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.gui_render_pass,
-        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-  }
-
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_pipeline);
-
+  tjd.engine.render_passes.gui.begin(command, tjd.game.image_index);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui.pipeline);
   vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
@@ -612,8 +464,8 @@ void radar(ThreadJobData tjd)
   mat4x4 mvp = {};
   mat4x4_mul(mvp, gui_projection, world_transform);
 
-  vkCmdPushConstants(command, tjd.engine.green_gui_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
-  vkCmdPushConstants(command, tjd.engine.green_gui_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4),
+  vkCmdPushConstants(command, tjd.engine.pipelines.green_gui.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
+  vkCmdPushConstants(command, tjd.engine.pipelines.green_gui.layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4),
                      sizeof(float), &tjd.game.current_time_sec);
 
   vkCmdDraw(command, 4, 1, 0, 0);
@@ -624,24 +476,8 @@ void robot_gui_lines(ThreadJobData tjd)
 {
   VkCommandBuffer command = acquire_command_buffer(tjd);
   tjd.game.gui_commands.push(command);
-
-  {
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.gui_render_pass,
-        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-  }
-
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_lines_pipeline);
+  tjd.engine.render_passes.gui.begin(command, tjd.game.image_index);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_lines.pipeline);
   vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_host_coherent_memory_buffer,
                          &tjd.game.green_gui_rulers_buffer_offsets[tjd.game.image_index]);
 
@@ -657,7 +493,7 @@ void robot_gui_lines(ThreadJobData tjd)
     const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
 
     vec4 color = {125.0f / 255.0f, 204.0f / 255.0f, 174.0f / 255.0f, 0.9f};
-    vkCmdPushConstants(command, tjd.engine.green_gui_lines_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+    vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_lines.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
                        sizeof(vec4), color);
 
     for (int i = 0; i < 4; ++i)
@@ -685,7 +521,7 @@ void robot_gui_lines(ThreadJobData tjd)
     const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
 
     vec4 color = {1.0f, 0.0f, 0.0f, 0.9f};
-    vkCmdPushConstants(command, tjd.engine.green_gui_lines_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+    vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_lines.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
                        sizeof(vec4), color);
 
     for (int i = 0; i < 4; ++i)
@@ -713,7 +549,7 @@ void robot_gui_lines(ThreadJobData tjd)
     const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
 
     vec4 color = {1.0f, 1.0f, 0.0f, 0.7f};
-    vkCmdPushConstants(command, tjd.engine.green_gui_lines_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+    vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_lines.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
                        sizeof(vec4), color);
 
     for (int i = 0; i < 4; ++i)
@@ -734,25 +570,9 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
 {
   VkCommandBuffer command = acquire_command_buffer(tjd);
   tjd.game.gui_commands.push(command);
-
-  {
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.gui_render_pass,
-        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-  }
-
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline);
-  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline_layout, 0, 1,
+  tjd.engine.render_passes.gui.begin(command, tjd.game.image_index);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.pipeline);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.layout, 0, 1,
                           &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
 
   vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
@@ -851,14 +671,14 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
       VkRect2D scissor = {.extent = tjd.engine.extent2D};
       vkCmdSetScissor(command, 0, 1, &scissor);
 
-      vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+      vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                          sizeof(vpc), &vpc);
 
       fpc.color[0] = 125.0f / 255.0f;
       fpc.color[1] = 204.0f / 255.0f;
       fpc.color[2] = 174.0f / 255.0f;
 
-      vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+      vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                          sizeof(vpc), sizeof(fpc), &fpc);
 
       vkCmdDraw(command, 4, 1, 0, 0);
@@ -872,24 +692,8 @@ void robot_gui_speed_meter_triangle(ThreadJobData tjd)
 {
   VkCommandBuffer command = acquire_command_buffer(tjd);
   tjd.game.gui_commands.push(command);
-
-  {
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.gui_render_pass,
-        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-  }
-
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_triangle_pipeline);
+  tjd.engine.render_passes.gui.begin(command, tjd.game.image_index);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_triangle.pipeline);
 
   struct VertPush
   {
@@ -900,12 +704,12 @@ void robot_gui_speed_meter_triangle(ThreadJobData tjd)
       .scale  = {0.012f, 0.02f, 1.0f, 1.0f},
   };
 
-  vkCmdPushConstants(command, tjd.engine.green_gui_triangle_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+  vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_triangle.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                      sizeof(vpush), &vpush);
 
   vec4 color = {125.0f / 255.0f, 204.0f / 255.0f, 174.0f / 255.0f, 1.0f};
 
-  vkCmdPushConstants(command, tjd.engine.green_gui_triangle_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+  vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_triangle.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                      sizeof(vpush), sizeof(vec4), color);
 
   vkCmdDraw(command, 3, 1, 0, 0);
@@ -916,25 +720,9 @@ void height_ruler_text(ThreadJobData tjd)
 {
   VkCommandBuffer command = acquire_command_buffer(tjd);
   tjd.game.gui_commands.push(command);
-
-  {
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.gui_render_pass,
-        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-  }
-
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline);
-  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline_layout, 0, 1,
+  tjd.engine.render_passes.gui.begin(command, tjd.game.image_index);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.pipeline);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.layout, 0, 1,
                           &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
 
   vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
@@ -1013,9 +801,9 @@ void height_ruler_text(ThreadJobData tjd)
       fpc.color[1] = 0.0f;
       fpc.color[2] = 0.0f;
 
-      vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+      vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                          sizeof(vpc), &vpc);
-      vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+      vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                          sizeof(vpc), sizeof(fpc), &fpc);
 
       vkCmdDraw(command, 4, 1, 0, 0);
@@ -1029,25 +817,9 @@ void tilt_ruler_text(ThreadJobData tjd)
 {
   VkCommandBuffer command = acquire_command_buffer(tjd);
   tjd.game.gui_commands.push(command);
-
-  {
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.gui_render_pass,
-        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-  }
-
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline);
-  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline_layout, 0, 1,
+  tjd.engine.render_passes.gui.begin(command, tjd.game.image_index);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.pipeline);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.layout, 0, 1,
                           &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
   vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.green_gui_billboard_vertex_buffer_offset);
@@ -1121,14 +893,14 @@ void tilt_ruler_text(ThreadJobData tjd)
       scissor.offset.y      = line_to_pixel_length(0.2f, tjd.engine.extent2D.height);
       vkCmdSetScissor(command, 0, 1, &scissor);
 
-      vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+      vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                          sizeof(vpc), &vpc);
 
       fpc.color[0] = 1.0f;
       fpc.color[1] = 1.0f;
       fpc.color[2] = 0.0f;
 
-      vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+      vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                          sizeof(vpc), sizeof(fpc), &fpc);
 
       vkCmdDraw(command, 4, 1, 0, 0);
@@ -1142,25 +914,9 @@ void compass_text(ThreadJobData tjd)
 {
   VkCommandBuffer command = acquire_command_buffer(tjd);
   tjd.game.gui_commands.push(command);
-
-  {
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.gui_render_pass,
-        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-  }
-
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline);
-  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline_layout, 0, 1,
+  tjd.engine.render_passes.gui.begin(command, tjd.game.image_index);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.pipeline);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.layout, 0, 1,
                           &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
   vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.green_gui_billboard_vertex_buffer_offset);
@@ -1245,14 +1001,14 @@ void compass_text(ThreadJobData tjd)
     VkRect2D scissor = {.extent = tjd.engine.extent2D};
     vkCmdSetScissor(command, 0, 1, &scissor);
 
-    vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+    vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                        sizeof(vpc), &vpc);
 
     fpc.color[0] = 125.0f / 255.0f;
     fpc.color[1] = 204.0f / 255.0f;
     fpc.color[2] = 174.0f / 255.0f;
 
-    vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+    vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                        sizeof(vpc), sizeof(fpc), &fpc);
 
     vkCmdDraw(command, 4, 1, 0, 0);
@@ -1300,14 +1056,14 @@ void compass_text(ThreadJobData tjd)
     VkRect2D scissor = {.extent = tjd.engine.extent2D};
     vkCmdSetScissor(command, 0, 1, &scissor);
 
-    vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+    vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                        sizeof(vpc), &vpc);
 
     fpc.color[0] = 125.0f / 255.0f;
     fpc.color[1] = 204.0f / 255.0f;
     fpc.color[2] = 174.0f / 255.0f;
 
-    vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+    vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                        sizeof(vpc), sizeof(fpc), &fpc);
 
     vkCmdDraw(command, 4, 1, 0, 0);
@@ -1355,14 +1111,14 @@ void compass_text(ThreadJobData tjd)
     VkRect2D scissor = {.extent = tjd.engine.extent2D};
     vkCmdSetScissor(command, 0, 1, &scissor);
 
-    vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+    vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                        sizeof(vpc), &vpc);
 
     fpc.color[0] = 125.0f / 255.0f;
     fpc.color[1] = 204.0f / 255.0f;
     fpc.color[2] = 174.0f / 255.0f;
 
-    vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+    vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                        sizeof(vpc), sizeof(fpc), &fpc);
 
     vkCmdDraw(command, 4, 1, 0, 0);
@@ -1375,24 +1131,8 @@ void radar_dots(ThreadJobData tjd)
 {
   VkCommandBuffer command = acquire_command_buffer(tjd);
   tjd.game.gui_commands.push(command);
-
-  {
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.gui_render_pass,
-        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-  }
-
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_radar_dots_pipeline);
+  tjd.engine.render_passes.gui.begin(command, tjd.game.image_index);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_radar_dots.pipeline);
 
   int   rectangle_dim           = 100;
   float vertical_length         = pixels_to_line_length(rectangle_dim, tjd.engine.extent2D.width);
@@ -1430,11 +1170,11 @@ void radar_dots(ThreadJobData tjd)
   vec2_sub(relative_helmet_position, center_radar_position, helmet_position);
 
   vec4 position = {relative_helmet_position[0], relative_helmet_position[1], 0.0f, 1.0f};
-  vkCmdPushConstants(command, tjd.engine.green_gui_radar_dots_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+  vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_radar_dots.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                      sizeof(vec4), position);
 
   vec4 color = {1.0f, 0.0f, 0.0f, (final_distance < 0.22f) ? 0.6f : 0.0f};
-  vkCmdPushConstants(command, tjd.engine.green_gui_radar_dots_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+  vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_radar_dots.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                      sizeof(vec4), sizeof(vec4), color);
 
   vkCmdDraw(command, 1, 1, 0, 0);
@@ -1449,8 +1189,8 @@ void weapon_selectors_left(ThreadJobData tjd)
   {
     VkCommandBufferInheritanceInfo inheritance = {
         .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.gui_render_pass,
-        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
+        .renderPass  = tjd.engine.render_passes.gui.render_pass,
+        .framebuffer = tjd.engine.render_passes.gui.framebuffers[tjd.game.image_index],
     };
 
     VkCommandBufferBeginInfo begin_info = {
@@ -1494,16 +1234,16 @@ void weapon_selectors_left(ThreadJobData tjd)
     mat4x4 mvp = {};
     mat4x4_mul(mvp, gui_projection, world_transform);
 
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_weapon_selector_box_left_pipeline);
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_weapon_selector_box_left.pipeline);
 
     vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                            &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
-    vkCmdPushConstants(command, tjd.engine.green_gui_weapon_selector_box_left_pipeline_layout,
+    vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_weapon_selector_box_left.layout,
                        VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
 
     float frag_push[] = {tjd.game.current_time_sec, box_size[1] / box_size[0], transparencies[i]};
-    vkCmdPushConstants(command, tjd.engine.green_gui_weapon_selector_box_left_pipeline_layout,
+    vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_weapon_selector_box_left.layout,
                        VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(frag_push), &frag_push);
 
     vkCmdDraw(command, 4, 1, 0, 0);
@@ -1512,8 +1252,8 @@ void weapon_selectors_left(ThreadJobData tjd)
     // weapon description
     ////////////////////////////////////////////////////////////////////////////
 
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline);
-    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline_layout, 0,
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.pipeline);
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.layout, 0,
                             1, &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
     vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                            &tjd.game.green_gui_billboard_vertex_buffer_offset);
@@ -1569,14 +1309,14 @@ void weapon_selectors_left(ThreadJobData tjd)
       VkRect2D scissor = {.extent = tjd.engine.extent2D};
       vkCmdSetScissor(command, 0, 1, &scissor);
 
-      vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+      vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                          sizeof(vpc), &vpc);
 
       fpc.color[0] = 145.0f / 255.0f;
       fpc.color[1] = 224.0f / 255.0f;
       fpc.color[2] = 194.0f / 255.0f;
 
-      vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+      vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                          sizeof(vpc), sizeof(fpc), &fpc);
 
       vkCmdDraw(command, 4, 1, 0, 0);
@@ -1590,23 +1330,7 @@ void weapon_selectors_right(ThreadJobData tjd)
 {
   VkCommandBuffer command = acquire_command_buffer(tjd);
   tjd.game.gui_commands.push(command);
-
-  {
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.gui_render_pass,
-        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-  }
-
+  tjd.engine.render_passes.gui.begin(command, tjd.game.image_index);
   mat4x4 gui_projection = {};
   mat4x4_ortho(gui_projection, 0, tjd.engine.extent2D.width, 0, tjd.engine.extent2D.height, 0.0f, 1.0f);
 
@@ -1640,16 +1364,17 @@ void weapon_selectors_right(ThreadJobData tjd)
     mat4x4_mul(mvp, gui_projection, world_transform);
 
     vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      tjd.engine.green_gui_weapon_selector_box_right_pipeline);
+                      tjd.engine.pipelines.green_gui_weapon_selector_box_right.pipeline);
+
     vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                            &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
-    vkCmdPushConstants(command, tjd.engine.green_gui_weapon_selector_box_right_pipeline_layout,
+    vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_weapon_selector_box_right.layout,
                        VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
 
     float frag_push[] = {tjd.game.current_time_sec, box_size[1] / box_size[0], transparencies[i]};
 
-    vkCmdPushConstants(command, tjd.engine.green_gui_weapon_selector_box_right_pipeline_layout,
+    vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_weapon_selector_box_right.layout,
                        VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(frag_push), &frag_push);
 
     vkCmdDraw(command, 4, 1, 0, 0);
@@ -1658,8 +1383,8 @@ void weapon_selectors_right(ThreadJobData tjd)
     // weapon description
     ////////////////////////////////////////////////////////////////////////////
 
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline);
-    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.green_gui_sdf_font_pipeline_layout, 0,
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.pipeline);
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.layout, 0,
                             1, &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
     vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                            &tjd.game.green_gui_billboard_vertex_buffer_offset);
@@ -1715,14 +1440,14 @@ void weapon_selectors_right(ThreadJobData tjd)
       VkRect2D scissor = {.extent = tjd.engine.extent2D};
       vkCmdSetScissor(command, 0, 1, &scissor);
 
-      vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+      vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                          sizeof(vpc), &vpc);
 
       fpc.color[0] = 145.0f / 255.0f;
       fpc.color[1] = 224.0f / 255.0f;
       fpc.color[2] = 194.0f / 255.0f;
 
-      vkCmdPushConstants(command, tjd.engine.green_gui_sdf_font_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+      vkCmdPushConstants(command, tjd.engine.pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                          sizeof(vpc), sizeof(fpc), &fpc);
 
       vkCmdDraw(command, 4, 1, 0, 0);
@@ -1873,28 +1598,13 @@ void imgui(ThreadJobData tjd)
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   tjd.game.gui_commands.push(command);
-
-  {
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.gui_render_pass,
-        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-  }
+  tjd.engine.render_passes.gui.begin(command, tjd.game.image_index);
 
   if (vertex_size and index_size)
   {
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.imgui_pipeline);
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.imgui.pipeline);
 
-    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.imgui_pipeline_layout, 0, 1,
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.imgui.layout, 0, 1,
                             &tjd.game.imgui_font_atlas_dset, 0, nullptr);
 
     vkCmdBindIndexBuffer(command, tjd.engine.gpu_host_coherent_memory_buffer,
@@ -1916,9 +1626,9 @@ void imgui(ThreadJobData tjd)
     float scale[]     = {2.0f / io.DisplaySize.x, 2.0f / io.DisplaySize.y};
     float translate[] = {-1.0f, -1.0f};
 
-    vkCmdPushConstants(command, tjd.engine.imgui_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float) * 2,
+    vkCmdPushConstants(command, tjd.engine.pipelines.imgui.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float) * 2,
                        scale);
-    vkCmdPushConstants(command, tjd.engine.imgui_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, sizeof(float) * 2,
+    vkCmdPushConstants(command, tjd.engine.pipelines.imgui.layout, VK_SHADER_STAGE_VERTEX_BIT, sizeof(float) * 2,
                        sizeof(float) * 2, translate);
 
     {
@@ -1966,25 +1676,8 @@ void water(ThreadJobData tjd)
 {
   VkCommandBuffer command = acquire_command_buffer(tjd);
   tjd.game.scene_rendering_commands.push(command);
-
-  {
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.color_and_depth_render_pass,
-        .framebuffer = tjd.engine.color_and_depth_framebuffers[tjd.game.image_index],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-  }
-
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pbr_water_pipeline);
-
+  tjd.engine.render_passes.color_and_depth.begin(command, tjd.game.image_index);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.pbr_water.pipeline);
   vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.regular_billboard_vertex_buffer_offset);
 
@@ -2017,13 +1710,13 @@ void water(ThreadJobData tjd)
         float  time;
       } push = {};
 
-      mat4x4_dup(push.projection, tjd.game.projection);
-      mat4x4_dup(push.view, tjd.game.view);
+      mat4x4_dup(push.projection, tjd.game.get_selected_camera_projection());
+      mat4x4_dup(push.view, tjd.game.get_selected_camera_view());
       mat4x4_mul(push.model, tmp, scale_matrix);
-      SDL_memcpy(push.camPos, tjd.game.camera_position, sizeof(vec3));
+      SDL_memcpy(push.camPos, tjd.game.get_selected_camera_position(), sizeof(vec3));
       push.time = tjd.game.current_time_sec;
 
-      vkCmdPushConstants(command, tjd.engine.pbr_water_pipeline_layout,
+      vkCmdPushConstants(command, tjd.engine.pipelines.pbr_water.layout,
                          VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
 
       VkDescriptorSet dsets[] = {tjd.game.pbr_ibl_environment_dset, tjd.game.pbr_dynamic_lights_dset,
@@ -2032,7 +1725,7 @@ void water(ThreadJobData tjd)
       uint32_t dynamic_offsets[] = {
           static_cast<uint32_t>(tjd.game.pbr_dynamic_lights_ubo_offsets[tjd.game.image_index])};
 
-      vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pbr_water_pipeline_layout, 0,
+      vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.pbr_water.layout, 0,
                               SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
 
       vkCmdDraw(command, 4, 1, 0, 0);
@@ -2045,32 +1738,16 @@ void debug_shadowmap(ThreadJobData tjd)
 {
   VkCommandBuffer command = acquire_command_buffer(tjd);
   tjd.game.gui_commands.push(command);
-
-  {
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = tjd.engine.gui_render_pass,
-        .framebuffer = tjd.engine.gui_framebuffers[tjd.game.image_index],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-  }
-
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.debug_billboard_pipeline);
+  tjd.engine.render_passes.gui.begin(command, tjd.game.image_index);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.debug_billboard.pipeline);
 
   vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
-  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.debug_billboard_pipeline_layout, 0, 1,
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.debug_billboard.layout, 0, 1,
                           &tjd.game.debug_shadow_map_dset, 0, nullptr);
 
-  for (uint32_t cascade = 0; cascade < Engine::SHADOWMAP_CASCADE_COUNT; ++cascade)
+  for (uint32_t cascade = 0; cascade < SHADOWMAP_CASCADE_COUNT; ++cascade)
   {
     mat4x4 gui_projection = {};
     mat4x4_ortho(gui_projection, 0, tjd.engine.extent2D.width, 0, tjd.engine.extent2D.height, 0.0f, 1.0f);
@@ -2109,12 +1786,43 @@ void debug_shadowmap(ThreadJobData tjd)
     mat4x4 mvp = {};
     mat4x4_mul(mvp, gui_projection, world_transform);
 
-    vkCmdPushConstants(command, tjd.engine.debug_billboard_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+    vkCmdPushConstants(command, tjd.engine.pipelines.debug_billboard.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                        sizeof(mat4x4), mvp);
-    vkCmdPushConstants(command, tjd.engine.debug_billboard_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+    vkCmdPushConstants(command, tjd.engine.pipelines.debug_billboard.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                        sizeof(mat4x4), sizeof(cascade), &cascade);
 
     vkCmdDraw(command, 4, 1, 0, 0);
+  }
+
+  vkEndCommandBuffer(command);
+}
+
+void orientation_axis(ThreadJobData tjd)
+{
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  tjd.game.scene_rendering_commands.push(command);
+  tjd.engine.render_passes.color_and_depth.begin(command, tjd.game.image_index);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.colored_geometry.pipeline);
+
+  RenderEntityParams params = {
+      .cmd             = command,
+      .pipeline_layout = tjd.engine.pipelines.colored_geometry.layout,
+  };
+
+  mat4x4_dup(params.projection, tjd.game.get_selected_camera_projection());
+  mat4x4_dup(params.view, tjd.game.get_selected_camera_view());
+  SDL_memcpy(params.camera_position, tjd.game.get_selected_camera_position(), sizeof(vec3));
+
+  vec3 colors[] = {
+      {1.0f, 0.0f, 0.0f},
+      {0.0f, 1.0f, 0.0f},
+      {0.0f, 0.0f, 1.0f},
+  };
+
+  for (int i = 0; i < SDL_arraysize(tjd.game.axis_arrow_entities); ++i)
+  {
+    SDL_memcpy(params.color, colors[i], sizeof(vec3));
+    render_entity(tjd.game.axis_arrow_entities[i], tjd.game.ecs, tjd.game.lil_arrow, tjd.engine, params);
   }
 
   vkEndCommandBuffer(command);

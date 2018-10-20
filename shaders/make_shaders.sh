@@ -42,3 +42,5 @@ compile pbr_water.vert
 compile pbr_water.frag
 compile depth_pass.vert
 compile depth_pass.frag
+compile colored_model_wireframe.frag
+compile colored_model_wireframe.vert

@@ -1,7 +1,7 @@
 @echo off
 
-call:compile triangle_push.frag
-call:compile triangle_push.vert
+call:compile colored_model_wireframe.frag
+call:compile colored_model_wireframe.vert
 goto:eof
 
 :compile

@@ -1,72 +1,79 @@
 #pragma once
 
 #include "bitfield.hh"
+#include "gltf.hh"
 #include <linmath.h>
 
-struct AnimationTranslation
+struct Incrementable
 {
-  vec3     animations[64];
-  uint64_t applicability;
-};
-
-struct AnimationRotation
-{
-  quat     rotations[64];
-  uint64_t applicability;
-};
-
-struct NodeParentHierarchy
-{
-  uint8_t hierarchy[64];
-};
-
-struct NodeTransforms
-{
-  mat4x4 transforms[64];
-};
-
-struct JointMatrices
-{
-  mat4x4 joints[64];
-};
-
-struct EntityComponentSystem
-{
-  ComponentBitfield animation_translations_usage;
-  ComponentBitfield animation_rotations_usage;
-  ComponentBitfield animation_start_times_usage;
-  ComponentBitfield node_parent_hierarchies_usage;
-  ComponentBitfield node_renderabilities_usage;
-  ComponentBitfield node_transforms_usage;
-  ComponentBitfield joint_matrices_usage;
-
-  AnimationTranslation animation_translations[64];
-  AnimationRotation    animation_rotations[64];
-  float                animation_start_times[64];
-  NodeParentHierarchy  node_parent_hierarchies[64];
-  uint64_t             node_renderabilities[64];
-  NodeTransforms       node_transforms[64];
-  JointMatrices        joint_matrices[64];
-};
-
-struct Entity
-{
-  int animation_translation;
-  int animation_rotation;
-  int animation_start_time;
-  int node_parent_hierarchy;
-  int node_renderabilities;
-  int node_transforms;
-  int joint_matrices;
-
-  void reset()
+public:
+  int increment(int inc_val)
   {
-    animation_translation = -1;
-    animation_rotation    = -1;
-    animation_start_time  = -1;
-    node_parent_hierarchy = -1;
-    node_renderabilities  = -1;
-    node_transforms       = -1;
-    joint_matrices        = -1;
+    int r = atomic_value;
+    atomic_value += inc_val;
+    return r;
   }
+
+  float usage_percent(int total) const
+  {
+    return (float)atomic_value / (float)total;
+  }
+
+private:
+  int atomic_value;
+};
+
+struct Ecs
+{
+  mat4x4  joint_matrices[512];
+  mat4x4  node_transforms[512];
+  uint8_t node_hierarchy[512];
+  quat    node_anim_rotations[512];
+  vec3    node_anim_translations[512];
+
+  Incrementable joint_matrices_stack;
+  Incrementable node_transforms_stack;
+  Incrementable node_hierarchy_stack;
+  Incrementable node_anim_rotations_stack;
+  Incrementable node_anim_translations_stack;
+};
+
+struct SimpleEntity
+{
+  void init(Ecs& ecs, const SceneGraph& model);
+  void recalculate_node_transforms(Ecs& ecs, const SceneGraph& model, mat4x4 world_transform);
+
+  // elements which will always be guaranteed to be present for entity
+  int node_parent_hierarchy;
+  int node_transforms;
+
+  // initialized at first usage in animation system
+  int node_rotations;
+  int node_translations;
+
+  // value state
+  uint64_t node_renderabilities;
+  uint64_t node_anim_rotation_applicability;
+  uint64_t node_anim_translation_applicability;
+  float    animation_start_time;
+
+  enum Property
+  {
+    NodeRotations                    = (1 << 0),
+    NodeTranslations                 = (1 << 1),
+    NodeAnimRotationApplicability    = (1 << 2),
+    NodeAnimTranslationApplicability = (1 << 3),
+    AnimationStartTime               = (1 << 4),
+  };
+
+  uint64_t flags;
+};
+
+struct SkinnedEntity
+{
+  void init(Ecs& ecs, const SceneGraph& model);
+  void recalculate_skinning_matrices(Ecs& ecs, const SceneGraph& scene_graph, mat4x4 world_transform);
+
+  SimpleEntity base;
+  int          joint_matrices;
 };

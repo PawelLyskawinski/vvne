@@ -676,7 +676,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     if (node_json.has("children"))
     {
-      node.set(Node::Property::Children);
+      node.flags |= Node::Property::Children;
       node.children.count = node_json.node("children").elements_count();
       void* allocation    = engine.allocator.allocate_front(node.children.count * sizeof(int));
       node.children.data  = reinterpret_cast<int*>(allocation);
@@ -694,7 +694,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     if (node_json.has("matrix"))
     {
-      node.set(Node::Property::Matrix);
+      node.flags |= Node::Property::Matrix;
       Seeker matrix = node_json.node("matrix");
 
       for (int row = 0; row < 4; ++row)
@@ -704,7 +704,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     if (node_json.has("rotation"))
     {
-      node.set(Node::Property::Rotation);
+      node.flags |= Node::Property::Rotation;
       Seeker rotation = node_json.node("rotation");
       for (int i = 0; i < 4; ++i)
       {
@@ -714,7 +714,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     if (node_json.has("translation"))
     {
-      node.set(Node::Property::Translation);
+      node.flags |= Node::Property::Translation;
       Seeker translation = node_json.node("translation");
       for (int i = 0; i < 3; ++i)
       {
@@ -724,7 +724,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     if (node_json.has("scale"))
     {
-      node.set(Node::Property::Scale);
+      node.flags |= Node::Property::Scale;
       Seeker scale = node_json.node("scale");
       for (int i = 0; i < 3; ++i)
       {
@@ -734,13 +734,13 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     if (node_json.has("mesh"))
     {
-      node.set(Node::Property::Mesh);
+      node.flags |= Node::Property::Mesh;
       node.mesh = node_json.integer("mesh");
     }
 
     if (node_json.has("skin"))
     {
-      node.set(Node::Property::Skin);
+      node.flags |= Node::Property::Skin;
       node.skin = node_json.integer("skin");
     }
   }
@@ -995,7 +995,8 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
   uint64_t duration_ticks = SDL_GetPerformanceCounter() - start;
   float    elapsed_ms     = 1000.0f * ((float)duration_ticks / (float)SDL_GetPerformanceFrequency());
-  SDL_Log("parsing GLB took: %.4f ms", elapsed_ms);
+  auto     align_text     = [](float in) -> const char* { return (in > 10.0f) ? ((in > 100.0f) ? " " : "  ") : "   "; };
+  SDL_Log("parsing GLB took:%s%.4f ms (%s)", align_text(elapsed_ms), elapsed_ms, path);
 
   return scene_graph;
 }

@@ -91,33 +91,6 @@ float avg(const float* values, int n)
   return sum;
 }
 
-class ScopedMemoryMap
-{
-public:
-  ScopedMemoryMap(VkDevice device, VkDeviceMemory memory, VkDeviceSize offset, VkDeviceSize size)
-      : data(nullptr)
-      , device(device)
-      , memory(memory)
-  {
-    vkMapMemory(device, memory, offset, size, 0, &data);
-  }
-
-  ~ScopedMemoryMap()
-  {
-    vkUnmapMemory(device, memory);
-  }
-
-  template <typename T> T* get()
-  {
-    return reinterpret_cast<T*>(data);
-  }
-
-private:
-  void*          data;
-  VkDevice       device;
-  VkDeviceMemory memory;
-};
-
 bool is_any(const bool* array, int n)
 {
   for (int i = 0; i < n; ++i)
@@ -140,6 +113,14 @@ struct VrLevelLoadResult
 float get_vr_level_height(float x, float y)
 {
   return 0.05f * (SDL_cosf(x * 0.5f) + SDL_cosf(y * 0.5f)) - 0.07f;
+}
+
+void update_ubo(VkDevice device, VkDeviceMemory memory, VkDeviceSize size, VkDeviceSize offset, void* src)
+{
+  void* data = nullptr;
+  vkMapMemory(device, memory, offset, size, 0, &data);
+  SDL_memcpy(data, src, size);
+  vkUnmapMemory(device, memory);
 }
 
 VrLevelLoadResult level_generator_vr(Engine* engine)
@@ -172,14 +153,12 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
 
     host_index_offset = block.stack_pointer;
     block.stack_pointer += align(total_index_count * sizeof(IndexType), block.alignment);
-  }
 
-  {
-    ScopedMemoryMap memory_map(engine->device, engine->gpu_host_visible_transfer_source_memory_block.memory,
-                               host_vertex_offset, total_vertex_count * sizeof(Vertex));
+    Vertex* vertices = nullptr;
+    vkMapMemory(engine->device, block.memory, host_vertex_offset, total_vertex_count * sizeof(Vertex), 0,
+                reinterpret_cast<void**>(&vertices));
 
-    Vertex* vertices = memory_map.get<Vertex>();
-    float   center[] = {0.5f * size[0], 0.5f * size[1]};
+    const float center[] = {0.5f * size[0], 0.5f * size[1]};
 
     for (int y = 0; y < vertex_counts[1]; ++y)
     {
@@ -199,13 +178,12 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
         vtx.normal[2] = 0.0f;
       }
     }
-  }
 
-  {
-    ScopedMemoryMap memory_map(engine->device, engine->gpu_host_visible_transfer_source_memory_block.memory,
-                               host_index_offset, total_index_count * sizeof(IndexType));
+    vkUnmapMemory(engine->device, block.memory);
 
-    uint16_t* indices = memory_map.get<uint16_t>();
+    uint16_t* indices = nullptr;
+    vkMapMemory(engine->device, block.memory, host_index_offset, total_index_count * sizeof(IndexType), 0,
+                reinterpret_cast<void**>(&indices));
 
     for (int y = 0; y < rectangles_in_column; ++y)
     {
@@ -224,6 +202,8 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
         indices += 6;
       }
     }
+
+    vkUnmapMemory(engine->device, block.memory);
   }
 
   VkDeviceSize device_vertex_offset = 0;
@@ -338,12 +318,6 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
   return result;
 }
 
-void update_ubo(VkDevice device, VkDeviceMemory memory, VkDeviceSize size, VkDeviceSize offset, void* src)
-{
-  ScopedMemoryMap memory_map(device, memory, offset, size);
-  SDL_memcpy(memory_map.get<void>(), src, size);
-}
-
 GuiLineSizeCount count_lines(const ArrayView<GuiLine>& lines, const GuiLine::Color color)
 {
   GuiLineSizeCount r = {};
@@ -378,12 +352,6 @@ GuiLineSizeCount count_lines(const ArrayView<GuiLine>& lines, const GuiLine::Col
 // game_generate_gui_lines.cc
 void generate_gui_lines(const GenerateGuiLinesCommand& cmd, GuiLine* dst, int* count);
 
-// game_recalculate_node_transforms.cc
-void recalculate_node_transforms(Entity entity, EntityComponentSystem& ecs, const SceneGraph& scene_graph,
-                                 mat4x4 world_transform);
-void recalculate_skinning_matrices(Entity entity, EntityComponentSystem& ecs, const SceneGraph& scene_graph,
-                                   mat4x4 world_transform);
-
 namespace {
 
 struct WorkerThreadData
@@ -412,17 +380,20 @@ void worker_function(WorkerThreadData td)
 
     while (job_idx < job_system.jobs_max)
     {
-      const Job&    job = job_system.jobs[job_idx];
-      ThreadJobData tjd = {threadId, td.engine, td.game, allocator};
-
-      ThreadJobStatistic& stat = job_system.profile_data[SDL_AtomicIncRef(&job_system.profile_data_count)];
-      stat.threadId            = threadId;
-      stat.name                = job.name;
+      ThreadJobData tjd = {
+          .thread_id = threadId,
+          .engine    = td.engine,
+          .game      = td.game,
+          .allocator = allocator,
+      };
 
       uint64_t ticks_start = SDL_GetPerformanceCounter();
-      job_system.jobs[job_idx].fcn(tjd);
-      stat.duration_sec = static_cast<float>(SDL_GetPerformanceCounter() - ticks_start) /
-                          static_cast<float>(SDL_GetPerformanceFrequency());
+      job_system.jobs[job_idx](tjd);
+
+      job_system.push_profile_data(threadId,
+                                   static_cast<float>(SDL_GetPerformanceCounter() - ticks_start) /
+                                       static_cast<float>(SDL_GetPerformanceFrequency()),
+                                   job_system.job_names[job_idx]);
 
       allocator.reset();
       job_idx = SDL_AtomicIncRef(&td.game.js.jobs_taken);
@@ -439,50 +410,6 @@ int worker_function_decorator(void* arg)
 {
   worker_function(*reinterpret_cast<WorkerThreadData*>(arg));
   return 0;
-}
-
-void depth_first_node_parent_hierarchy(uint8_t* hierarchy, const Node* nodes, uint8_t parent_idx, uint8_t node_idx)
-{
-  for (int child_idx : nodes[node_idx].children)
-    depth_first_node_parent_hierarchy(hierarchy, nodes, node_idx, static_cast<uint8_t>(child_idx));
-  hierarchy[node_idx] = parent_idx;
-}
-
-void setup_node_parent_hierarchy(NodeParentHierarchy& dst, const ArrayView<Node>& nodes)
-{
-  uint8_t* hierarchy = dst.hierarchy;
-
-  for (uint8_t i = 0; i < SDL_arraysize(dst.hierarchy); ++i)
-    hierarchy[i] = i;
-
-  for (uint8_t node_idx = 0; node_idx < nodes.count; ++node_idx)
-    for (int child_idx : nodes[node_idx].children)
-      depth_first_node_parent_hierarchy(hierarchy, nodes.data, node_idx, static_cast<uint8_t>(child_idx));
-}
-
-void setup_node_parent_hierarchy(const Entity entity, EntityComponentSystem& ecs, const SceneGraph& scene_graph)
-{
-  setup_node_parent_hierarchy(ecs.node_parent_hierarchies[entity.node_parent_hierarchy], scene_graph.nodes);
-}
-
-void propagate_node_renderability_hierarchy(int node_idx, uint64_t& dst, const ArrayView<Node>& nodes)
-{
-  for (int child_idx : nodes[node_idx].children)
-    propagate_node_renderability_hierarchy(child_idx, dst, nodes);
-  dst |= (1 << node_idx);
-}
-
-void setup_node_renderability_hierarchy(uint64_t& dst, const Scene& scene, const ArrayView<Node>& nodes)
-{
-  dst = 0;
-  for (int scene_node_idx : scene.nodes)
-    propagate_node_renderability_hierarchy(scene_node_idx, dst, nodes);
-}
-
-void setup_node_renderability_hierarchy(const Entity entity, EntityComponentSystem& ecs, const SceneGraph& scene_graph)
-{
-  setup_node_renderability_hierarchy(ecs.node_renderabilities[entity.node_renderabilities], scene_graph.scenes[0],
-                                     scene_graph.nodes);
 }
 
 float ease_in_out_quart(float t)
@@ -584,6 +511,12 @@ void Game::startup(Engine& engine)
     SDL_FreeSurface(surface);
 
     {
+      struct KeyMapping
+      {
+        ImGuiKey_    imgui;
+        SDL_Scancode sdl;
+      };
+
       KeyMapping mappings[] = {
           {ImGuiKey_Tab, SDL_SCANCODE_TAB},
           {ImGuiKey_LeftArrow, SDL_SCANCODE_LEFT},
@@ -618,6 +551,12 @@ void Game::startup(Engine& engine)
     io.ClipboardUserData  = nullptr;
 
     {
+      struct CursorMapping
+      {
+        ImGuiMouseCursor_ imgui;
+        SDL_SystemCursor  sdl;
+      };
+
       CursorMapping mappings[] = {
           {ImGuiMouseCursor_Arrow, SDL_SYSTEM_CURSOR_ARROW},
           {ImGuiMouseCursor_TextInput, SDL_SYSTEM_CURSOR_IBEAM},
@@ -632,7 +571,7 @@ void Game::startup(Engine& engine)
         debug_gui.mousecursors[mapping.imgui] = SDL_CreateSystemCursor(mapping.sdl);
     }
 
-    for (int i = 0; i < Engine::SWAPCHAIN_IMAGES_COUNT; ++i)
+    for (int i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
     {
       GpuMemoryBlock& block = engine.gpu_host_coherent_memory_block;
 
@@ -644,63 +583,27 @@ void Game::startup(Engine& engine)
     }
   }
 
-  helmet = loadGLB(engine, "../assets/DamagedHelmet.glb");
-  helmet_entity.reset();
-  helmet_entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
-  helmet_entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
-  helmet_entity.node_transforms       = ecs.node_transforms_usage.allocate();
-
-  setup_node_parent_hierarchy(helmet_entity, ecs, helmet);
-  setup_node_renderability_hierarchy(helmet_entity, ecs, helmet);
-
-  robot = loadGLB(engine, "../assets/su-47.glb");
-  robot_entity.reset();
-  robot_entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
-  robot_entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
-  robot_entity.node_transforms       = ecs.node_transforms_usage.allocate();
-
-  setup_node_parent_hierarchy(robot_entity, ecs, robot);
-  setup_node_renderability_hierarchy(robot_entity, ecs, robot);
-
-  monster = loadGLB(engine, "../assets/Monster.glb");
-  monster_entity.reset();
-  monster_entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
-  monster_entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
-  monster_entity.node_transforms       = ecs.node_transforms_usage.allocate();
-  monster_entity.joint_matrices        = ecs.joint_matrices_usage.allocate();
-
-  setup_node_parent_hierarchy(monster_entity, ecs, monster);
-  setup_node_renderability_hierarchy(monster_entity, ecs, monster);
-
-  box = loadGLB(engine, "../assets/Box.glb");
-  for (Entity& entity : box_entities)
-  {
-    entity.reset();
-    entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
-    entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
-    entity.node_transforms       = ecs.node_transforms_usage.allocate();
-    setup_node_parent_hierarchy(entity, ecs, box);
-    setup_node_renderability_hierarchy(entity, ecs, box);
-  }
-
-  animatedBox = loadGLB(engine, "../assets/BoxAnimated.glb");
-  matrioshka_entity.reset();
-  matrioshka_entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
-  matrioshka_entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
-  matrioshka_entity.node_transforms       = ecs.node_transforms_usage.allocate();
-
-  setup_node_parent_hierarchy(matrioshka_entity, ecs, animatedBox);
-  setup_node_renderability_hierarchy(matrioshka_entity, ecs, animatedBox);
-
+  rock         = loadGLB(engine, "../assets/rock.glb");
+  helmet       = loadGLB(engine, "../assets/DamagedHelmet.glb");
+  robot        = loadGLB(engine, "../assets/su-47.glb");
+  monster      = loadGLB(engine, "../assets/Monster.glb");
+  box          = loadGLB(engine, "../assets/Box.glb");
+  animatedBox  = loadGLB(engine, "../assets/BoxAnimated.glb");
   riggedSimple = loadGLB(engine, "../assets/RiggedSimple.glb");
-  rigged_simple_entity.reset();
-  rigged_simple_entity.node_parent_hierarchy = ecs.node_parent_hierarchies_usage.allocate();
-  rigged_simple_entity.node_renderabilities  = ecs.node_renderabilities_usage.allocate();
-  rigged_simple_entity.node_transforms       = ecs.node_transforms_usage.allocate();
-  rigged_simple_entity.joint_matrices        = ecs.joint_matrices_usage.allocate();
+  lil_arrow    = loadGLB(engine, "../assets/lil_arrow.glb");
 
-  setup_node_parent_hierarchy(rigged_simple_entity, ecs, riggedSimple);
-  setup_node_renderability_hierarchy(rigged_simple_entity, ecs, riggedSimple);
+  helmet_entity.init(ecs, helmet);
+  robot_entity.init(ecs, robot);
+  monster_entity.init(ecs, monster);
+
+  for (SimpleEntity& entity : box_entities)
+    entity.init(ecs, box);
+
+  matrioshka_entity.init(ecs, animatedBox);
+  rigged_simple_entity.init(ecs, riggedSimple);
+
+  for (SimpleEntity& entity : axis_arrow_entities)
+    entity.init(ecs, lil_arrow);
 
   {
     int cubemap_size[2] = {512, 512};
@@ -710,9 +613,7 @@ void Game::startup(Engine& engine)
     brdf_lookup         = generate_brdf_lookup(&engine, cubemap_size[0]);
   }
 
-  lucida_sans_sdf_image = engine.load_texture("../assets/lucida_sans_sdf.png");
-
-  // Sand PBR for environment
+  lucida_sans_sdf_image   = engine.load_texture("../assets/lucida_sans_sdf.png");
   sand_albedo             = engine.load_texture("../assets/pbr_sand/sand_albedo.jpg");
   sand_ambient_occlusion  = engine.load_texture("../assets/pbr_sand/sand_ambient_occlusion.jpg");
   sand_metallic_roughness = engine.load_texture("../assets/pbr_sand/sand_metallic_roughness.jpg");
@@ -754,7 +655,7 @@ void Game::startup(Engine& engine)
     for (VkDeviceSize& offset : cascade_view_proj_mat_ubo_offsets)
     {
       offset = block.stack_pointer;
-      block.stack_pointer += align(Engine::SHADOWMAP_CASCADE_COUNT * sizeof(mat4x4) + sizeof(vec4), block.alignment);
+      block.stack_pointer += align(SHADOWMAP_CASCADE_COUNT * sizeof(mat4x4) + sizeof(vec4), block.alignment);
     }
   }
 
@@ -1021,7 +922,7 @@ void Game::startup(Engine& engine)
   // Cascade shadow map projection matrices - DEPTH PASS
   // --------------------------------------------------------------- ///
 
-  for (int i = 0; i < Engine::SWAPCHAIN_IMAGES_COUNT; ++i)
+  for (int i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
   {
     VkDescriptorSetAllocateInfo allocate = {
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -1035,7 +936,7 @@ void Game::startup(Engine& engine)
     VkDescriptorBufferInfo ubo = {
         .buffer = engine.gpu_host_coherent_ubo_memory_buffer,
         .offset = cascade_view_proj_mat_ubo_offsets[i],
-        .range  = Engine::SHADOWMAP_CASCADE_COUNT * sizeof(mat4x4),
+        .range  = SHADOWMAP_CASCADE_COUNT * sizeof(mat4x4),
     };
 
     VkWriteDescriptorSet write = {
@@ -1054,7 +955,7 @@ void Game::startup(Engine& engine)
   // --------------------------------------------------------------- //
   // Cascade shadow map projection matrices - RENDERING PASSES
   // --------------------------------------------------------------- ///
-  for (int i = 0; i < Engine::SWAPCHAIN_IMAGES_COUNT; ++i)
+  for (int i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
   {
     VkDescriptorSetAllocateInfo allocate = {
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -1068,7 +969,7 @@ void Game::startup(Engine& engine)
     VkDescriptorBufferInfo ubo = {
         .buffer = engine.gpu_host_coherent_ubo_memory_buffer,
         .offset = cascade_view_proj_mat_ubo_offsets[i],
-        .range  = Engine::SHADOWMAP_CASCADE_COUNT * sizeof(mat4x4) + sizeof(vec4),
+        .range  = SHADOWMAP_CASCADE_COUNT * sizeof(mat4x4) + sizeof(vec4),
     };
 
     VkWriteDescriptorSet write = {
@@ -1087,14 +988,29 @@ void Game::startup(Engine& engine)
   vec3_set(robot_position, -2.0f, 3.0f, 3.0f);
   vec3_set(rigged_position, -2.0f, 3.0f, 3.0f);
 
-  float extent_width        = static_cast<float>(engine.extent2D.width);
-  float extent_height       = static_cast<float>(engine.extent2D.height);
-  float aspect_ratio        = extent_width / extent_height;
-  float fov                 = to_rad(90.0f);
-  float near_clipping_plane = 0.1f;
-  float far_clipping_plane  = 1000.0f;
-  mat4x4_perspective(projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
-  projection[1][1] *= -1.0f;
+  camera_state = CameraState::Gameplay;
+
+  {
+    float extent_width        = static_cast<float>(engine.extent2D.width);
+    float extent_height       = static_cast<float>(engine.extent2D.height);
+    float aspect_ratio        = extent_width / extent_height;
+    float fov                 = to_rad(90.0f);
+    float near_clipping_plane = 0.1f;
+    float far_clipping_plane  = 1000.0f;
+    mat4x4_perspective(projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
+    projection[1][1] *= -1.0f;
+  }
+
+  {
+    float extent_width        = static_cast<float>(engine.extent2D.width);
+    float extent_height       = static_cast<float>(engine.extent2D.height);
+    float aspect_ratio        = extent_width / extent_height;
+    float fov                 = to_rad(90.0f);
+    float near_clipping_plane = 0.1f;
+    float far_clipping_plane  = 1000.0f;
+    mat4x4_perspective(editor_projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
+    editor_projection[1][1] *= -1.0f;
+  }
 
   VrLevelLoadResult result = level_generator_vr(&engine);
 
@@ -1203,11 +1119,8 @@ void Game::startup(Engine& engine)
       block.stack_pointer += align(sizeof(vertices), block.alignment);
     }
 
-    {
-      ScopedMemoryMap vertices_map(engine.device, engine.gpu_host_visible_transfer_source_memory_block.memory,
-                                   vertices_host_offset, sizeof(vertices));
-      SDL_memcpy(vertices_map.get<void>(), vertices, sizeof(vertices));
-    }
+    update_ubo(engine.device, engine.gpu_host_visible_transfer_source_memory_block.memory, sizeof(vertices),
+               vertices_host_offset, vertices);
 
     VkDeviceSize cg_vertices_host_offset = 0;
 
@@ -1225,11 +1138,8 @@ void Game::startup(Engine& engine)
       block.stack_pointer += align(sizeof(cg_vertices), block.alignment);
     }
 
-    {
-      ScopedMemoryMap vertices_map(engine.device, engine.gpu_host_visible_transfer_source_memory_block.memory,
-                                   cg_vertices_host_offset, sizeof(cg_vertices));
-      SDL_memcpy(vertices_map.get<void>(), cg_vertices, sizeof(cg_vertices));
-    }
+    update_ubo(engine.device, engine.gpu_host_visible_transfer_source_memory_block.memory, sizeof(cg_vertices),
+               cg_vertices_host_offset, cg_vertices);
 
     VkCommandBuffer cmd = VK_NULL_HANDLE;
 
@@ -1378,6 +1288,10 @@ void Game::startup(Engine& engine)
 
   diagnostic_meas_scale = 1.0f;
 
+  editor_camera_position[0] = 0.0f;
+  editor_camera_position[1] = -10.0f;
+  editor_camera_position[2] = -1.0f;
+
   js.all_threads_idle_signal  = SDL_CreateSemaphore(0);
   js.new_jobs_available_cond  = SDL_CreateCond();
   js.new_jobs_available_mutex = SDL_CreateMutex();
@@ -1391,7 +1305,7 @@ void Game::startup(Engine& engine)
         .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .commandPool        = engine.graphics_command_pool,
         .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = Engine::SWAPCHAIN_IMAGES_COUNT,
+        .commandBufferCount = SWAPCHAIN_IMAGES_COUNT,
     };
 
     vkAllocateCommandBuffers(engine.device, &info, primary_command_buffers);
@@ -1407,7 +1321,7 @@ void Game::startup(Engine& engine)
     vkCreateCommandPool(engine.device, &info, nullptr, &pool);
   }
 
-  for (int swapchain_image = 0; swapchain_image < Engine::SWAPCHAIN_IMAGES_COUNT; ++swapchain_image)
+  for (int swapchain_image = 0; swapchain_image < SWAPCHAIN_IMAGES_COUNT; ++swapchain_image)
   {
     for (int worker_thread = 0; worker_thread < WORKER_THREADS_COUNT; ++worker_thread)
     {
@@ -1462,8 +1376,8 @@ namespace {
 // Based on:
 // https://github.com/SaschaWillems/Vulkan/blob/master/examples/shadowmappingcascade/shadowmappingcascade.cpp
 // -------------------------------------------------------------------------------------------------------------------
-void recalculate_cascade_view_proj_matrices(mat4x4 cascade_view_proj_mat[Engine::SHADOWMAP_CASCADE_COUNT],
-                                            float  cascade_split_depths[Engine::SHADOWMAP_CASCADE_COUNT],
+void recalculate_cascade_view_proj_matrices(mat4x4 cascade_view_proj_mat[SHADOWMAP_CASCADE_COUNT],
+                                            float  cascade_split_depths[SHADOWMAP_CASCADE_COUNT],
                                             mat4x4 camera_projection, mat4x4 camera_view, vec3 light_source_position)
 {
   constexpr float cascade_split_lambda = 0.95f;
@@ -1481,10 +1395,10 @@ void recalculate_cascade_view_proj_matrices(mat4x4 cascade_view_proj_mat[Engine:
   // far:    1000.0
   // splits: 0.013, 0.034, 0.132, 1.000
   //
-  float cascade_splits[Engine::SHADOWMAP_CASCADE_COUNT] = {};
-  for (uint32_t i = 0; i < Engine::SHADOWMAP_CASCADE_COUNT; i++)
+  float cascade_splits[SHADOWMAP_CASCADE_COUNT] = {};
+  for (uint32_t i = 0; i < SHADOWMAP_CASCADE_COUNT; i++)
   {
-    const float p       = static_cast<float>(i + 1) / static_cast<float>(Engine::SHADOWMAP_CASCADE_COUNT);
+    const float p       = static_cast<float>(i + 1) / static_cast<float>(SHADOWMAP_CASCADE_COUNT);
     const float log     = min_z * SDL_powf(ratio, p);
     const float uniform = min_z + range * p;
     const float d       = cascade_split_lambda * (log - uniform) + uniform;
@@ -1492,7 +1406,7 @@ void recalculate_cascade_view_proj_matrices(mat4x4 cascade_view_proj_mat[Engine:
   }
 
   float last_split_dist = 0.0;
-  for (uint32_t cascade_idx = 0; cascade_idx < Engine::SHADOWMAP_CASCADE_COUNT; cascade_idx++)
+  for (uint32_t cascade_idx = 0; cascade_idx < SHADOWMAP_CASCADE_COUNT; cascade_idx++)
   {
     //
     // Frustum edges overview
@@ -1654,7 +1568,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
       case SDL_MOUSEMOTION:
       {
-        if (SDL_GetRelativeMouseMode())
+        if (SDL_GetRelativeMouseMode() and (CameraState::Gameplay == camera_state))
         {
           camera_angle += (0.01f * event.motion.xrel);
 
@@ -1696,56 +1610,104 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
         io.KeyAlt   = ((SDL_GetModState() & KMOD_ALT) != 0);
         io.KeySuper = ((SDL_GetModState() & KMOD_GUI) != 0);
 
-        switch (event.key.keysym.scancode)
+        auto handle_button_press = [](uint64_t& flags, SDL_Event& event, uint64_t mask) {
+          if (SDL_KEYDOWN == event.type)
+            flags |= mask;
+          else
+            flags &= ~mask;
+        };
+
+        if (CameraState::Gameplay == camera_state)
         {
-        case SDL_SCANCODE_1:
-          weapon_selections[0].select(0);
-          break;
-        case SDL_SCANCODE_2:
-          weapon_selections[0].select(1);
-          break;
-        case SDL_SCANCODE_3:
-          weapon_selections[0].select(2);
-          break;
-        case SDL_SCANCODE_4:
-          weapon_selections[1].select(0);
-          break;
-        case SDL_SCANCODE_5:
-          weapon_selections[1].select(1);
-          break;
-        case SDL_SCANCODE_6:
-          weapon_selections[1].select(2);
-          break;
-        case SDL_SCANCODE_W:
-          player_forward_pressed = (SDL_KEYDOWN == event.type);
-          break;
-        case SDL_SCANCODE_S:
-          player_back_pressed = (SDL_KEYDOWN == event.type);
-          break;
-        case SDL_SCANCODE_A:
-          player_strafe_left_pressed = (SDL_KEYDOWN == event.type);
-          break;
-        case SDL_SCANCODE_D:
-          player_strafe_right_pressed = (SDL_KEYDOWN == event.type);
-          break;
-        case SDL_SCANCODE_LSHIFT:
-          player_booster_activated = (SDL_KEYDOWN == event.type);
-          break;
-        case SDL_SCANCODE_SPACE:
-          player_jump_pressed = (SDL_KEYDOWN == event.type);
-          break;
-        case SDL_SCANCODE_ESCAPE:
-          quit_requested = true;
-          break;
-        case SDL_SCANCODE_F1:
-          if (SDL_KEYDOWN == event.type)
-            SDL_SetRelativeMouseMode(SDL_TRUE);
-          break;
-        case SDL_SCANCODE_F2:
-          if (SDL_KEYDOWN == event.type)
-            SDL_SetRelativeMouseMode(SDL_FALSE);
-        default:
-          break;
+          switch (event.key.keysym.scancode)
+          {
+          case SDL_SCANCODE_1:
+            weapon_selections[0].select(0);
+            break;
+          case SDL_SCANCODE_2:
+            weapon_selections[0].select(1);
+            break;
+          case SDL_SCANCODE_3:
+            weapon_selections[0].select(2);
+            break;
+          case SDL_SCANCODE_4:
+            weapon_selections[1].select(0);
+            break;
+          case SDL_SCANCODE_5:
+            weapon_selections[1].select(1);
+            break;
+          case SDL_SCANCODE_6:
+            weapon_selections[1].select(2);
+            break;
+          case SDL_SCANCODE_W:
+            handle_button_press(player_key_flags, event, GameplayKeyFlags::forward_pressed);
+            break;
+          case SDL_SCANCODE_S:
+            handle_button_press(player_key_flags, event, GameplayKeyFlags::back_pressed);
+            break;
+          case SDL_SCANCODE_A:
+            handle_button_press(player_key_flags, event, GameplayKeyFlags::strafe_left_pressed);
+            break;
+          case SDL_SCANCODE_D:
+            handle_button_press(player_key_flags, event, GameplayKeyFlags::strafe_right_pressed);
+            break;
+          case SDL_SCANCODE_LSHIFT:
+            handle_button_press(player_key_flags, event, GameplayKeyFlags::booster_activated);
+            break;
+          case SDL_SCANCODE_SPACE:
+            handle_button_press(player_key_flags, event, GameplayKeyFlags::jump_pressed);
+            break;
+          case SDL_SCANCODE_ESCAPE:
+            quit_requested = true;
+            break;
+          case SDL_SCANCODE_F1:
+            if (SDL_KEYDOWN == event.type)
+              SDL_SetRelativeMouseMode(SDL_TRUE);
+            break;
+          case SDL_SCANCODE_F2:
+            if (SDL_KEYDOWN == event.type)
+              SDL_SetRelativeMouseMode(SDL_FALSE);
+            break;
+          case SDL_SCANCODE_F3:
+            if (SDL_KEYDOWN == event.type)
+            {
+              camera_state = CameraState::LevelEditor;
+              SDL_SetRelativeMouseMode(SDL_FALSE);
+              editor_camera_position[0] = player_position[0];
+              editor_camera_position[1] = player_position[1] - 20.0f;
+              editor_camera_position[2] = player_position[2];
+            }
+            break;
+          default:
+            break;
+          }
+        }
+        else if (CameraState::LevelEditor == camera_state)
+        {
+          switch (event.key.keysym.scancode)
+          {
+          case SDL_SCANCODE_W:
+            handle_button_press(editor_key_flags, event, EditorKeyFlags::up_pressed);
+            break;
+          case SDL_SCANCODE_S:
+            handle_button_press(editor_key_flags, event, EditorKeyFlags::down_pressed);
+            break;
+          case SDL_SCANCODE_A:
+            handle_button_press(editor_key_flags, event, EditorKeyFlags::left_pressed);
+            break;
+          case SDL_SCANCODE_D:
+            handle_button_press(editor_key_flags, event, EditorKeyFlags::right_pressed);
+            break;
+          case SDL_SCANCODE_ESCAPE:
+            quit_requested = true;
+            break;
+          case SDL_SCANCODE_F3:
+            if (SDL_KEYDOWN == event.type)
+              camera_state = CameraState::Gameplay;
+            break;
+          default:
+            break;
+          }
         }
       }
 
@@ -1818,18 +1780,36 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   {
     ImGui::PlotHistogram("update times", update_times, SDL_arraysize(update_times), 0, nullptr, 0.0, 0.005,
                          ImVec2(300, 20));
-    ImGui::PlotHistogram("acquire times", acquire_times, SDL_arraysize(acquire_times), 0, nullptr, 0.0, 0.02,
-                         ImVec2(300, 20));
     ImGui::PlotHistogram("render times", render_times, SDL_arraysize(render_times), 0, nullptr, 0.0, 0.01,
                          ImVec2(300, 20));
 
-    ImGui::Text("Average update time:            %.2fms", 1000.0f * avg(update_times, SDL_arraysize(update_times)));
-    ImGui::Text("Average acquire time:           %.2fms", 1000.0f * avg(acquire_times, SDL_arraysize(acquire_times)));
-    ImGui::Text("Average render time:            %.2fms", 1000.0f * avg(render_times, SDL_arraysize(render_times)));
+    ImGui::Text("Average update time: %.2fms", 1000.0f * avg(update_times, SDL_arraysize(update_times)));
+    ImGui::Text("Average render time: %.2fms", 1000.0f * avg(render_times, SDL_arraysize(render_times)));
   }
 
   if (ImGui::CollapsingHeader("Animations"))
   {
+    ImGui::Text("joint_matrices_stack        ");
+    ImGui::SameLine();
+    ImGui::ProgressBar(ecs.joint_matrices_stack.usage_percent(512));
+
+    ImGui::Text("node_transforms_stack       ");
+    ImGui::SameLine();
+    ImGui::ProgressBar(ecs.node_transforms_stack.usage_percent(512));
+
+    ImGui::Text("node_hierarchy_stack        ");
+    ImGui::SameLine();
+    ImGui::ProgressBar(ecs.node_hierarchy_stack.usage_percent(512));
+
+    ImGui::Text("node_anim_rotations_stack   ");
+    ImGui::SameLine();
+    ImGui::ProgressBar(ecs.node_anim_rotations_stack.usage_percent(512));
+
+    ImGui::Text("node_anim_translations_stack");
+    ImGui::SameLine();
+    ImGui::ProgressBar(ecs.node_anim_translations_stack.usage_percent(512));
+
+#if 0
     if (ImGui::Button("restart cube animation"))
     {
       if (-1 == matrioshka_entity.animation_start_time)
@@ -1847,13 +1827,14 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
         ecs.animation_start_times[rigged_simple_entity.animation_start_time] = current_time_sec;
       }
     }
+#endif
 
     if (ImGui::Button("monster animation"))
     {
-      if (-1 == monster_entity.animation_start_time)
+      if (0 == (monster_entity.base.flags & SimpleEntity::AnimationStartTime))
       {
-        monster_entity.animation_start_time                            = ecs.animation_start_times_usage.allocate();
-        ecs.animation_start_times[monster_entity.animation_start_time] = current_time_sec;
+        monster_entity.base.animation_start_time = current_time_sec;
+        monster_entity.base.flags |= SimpleEntity::AnimationStartTime;
       }
     }
   }
@@ -1888,9 +1869,11 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     player_acceleration[i] = 0.0f;
   }
 
-  float acceleration = 0.0002f;
-  if (player_booster_activated and
-      (player_forward_pressed or player_back_pressed or player_strafe_left_pressed or player_strafe_right_pressed))
+  float          acceleration      = 0.0002f;
+  const uint64_t any_movement_mask = GameplayKeyFlags::forward_pressed | GameplayKeyFlags::back_pressed |
+                                     GameplayKeyFlags::strafe_left_pressed | GameplayKeyFlags::strafe_right_pressed;
+
+  if ((player_key_flags & GameplayKeyFlags::booster_activated) and (player_key_flags & any_movement_mask))
   {
     if (booster_jet_fuel > 0.0f)
     {
@@ -1899,23 +1882,23 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     }
   }
 
-  if (player_forward_pressed)
+  if (player_key_flags & GameplayKeyFlags::forward_pressed)
   {
     player_acceleration[0] += SDL_sinf(camera_angle - (float)M_PI / 2) * acceleration;
     player_acceleration[2] += SDL_cosf(camera_angle - (float)M_PI / 2) * acceleration;
   }
-  else if (player_back_pressed)
+  else if (player_key_flags & GameplayKeyFlags::back_pressed)
   {
     player_acceleration[0] += SDL_sinf(camera_angle + (float)M_PI / 2) * acceleration;
     player_acceleration[2] += SDL_cosf(camera_angle + (float)M_PI / 2) * acceleration;
   }
 
-  if (player_strafe_left_pressed)
+  if (player_key_flags & GameplayKeyFlags::strafe_left_pressed)
   {
     player_acceleration[0] += SDL_sinf(camera_angle + (float)M_PI) * acceleration;
     player_acceleration[2] += SDL_cosf(camera_angle + (float)M_PI) * acceleration;
   }
-  else if (player_strafe_right_pressed)
+  else if (player_key_flags & GameplayKeyFlags::strafe_right_pressed)
   {
     player_acceleration[0] += SDL_sinf(camera_angle) * acceleration;
     player_acceleration[2] += SDL_cosf(camera_angle) * acceleration;
@@ -1948,7 +1931,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     player_position[1] =
         100.0f * get_vr_level_height(-0.1f * player_position[0] + 0.25f, -0.1f * player_position[2] + 0.25f) + 2.25f;
 
-    if (player_jump_pressed)
+    if (player_key_flags & GameplayKeyFlags::jump_pressed)
     {
       player_jumping                  = true;
       player_jump_start_timestamp_sec = current_time_sec;
@@ -1964,9 +1947,40 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   camera_position[1] = player_position[1] + y_camera_offset - 1.5f;
   camera_position[2] = player_position[2] - z_camera_offset;
 
-  vec3 center = {player_position[0], player_position[1] - 1.5f, player_position[2]};
-  vec3 up     = {0.0f, -1.0f, 0.0f};
-  mat4x4_look_at(view, camera_position, center, up);
+  //
+  // editor camera movement
+  //
+
+  if (editor_key_flags & EditorKeyFlags::up_pressed)
+  {
+    editor_camera_position[2] += (0.03f * time_delta_since_last_frame_ms);
+  }
+  else if (editor_key_flags & EditorKeyFlags::down_pressed)
+  {
+    editor_camera_position[2] -= (0.03f * time_delta_since_last_frame_ms);
+  }
+
+  if (editor_key_flags & EditorKeyFlags::right_pressed)
+  {
+    editor_camera_position[0] += (0.03f * time_delta_since_last_frame_ms);
+  }
+  else if (editor_key_flags & EditorKeyFlags::left_pressed)
+  {
+    editor_camera_position[0] -= (0.03f * time_delta_since_last_frame_ms);
+  }
+
+  if (CameraState::Gameplay == camera_state)
+  {
+    vec3 center = {player_position[0], player_position[1] - 1.5f, player_position[2]};
+    vec3 up     = {0.0f, -1.0f, 0.0f};
+    mat4x4_look_at(view, camera_position, center, up);
+  }
+  else if (CameraState::LevelEditor == camera_state)
+  {
+    vec3 center = {editor_camera_position[0], editor_camera_position[1] + 5.0f, editor_camera_position[2] + 0.1f};
+    vec3 up     = {0.0f, -1.0f, 0.0f};
+    mat4x4_look_at(editor_view, editor_camera_position, center, up);
+  }
 
   light_source_position[0] = 200.0f;
   light_source_position[1] = -100.0f;
@@ -1974,6 +1988,36 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
   if (ImGui::CollapsingHeader("Debug and info"))
   {
+    ImGui::Text("Camera mode: ");
+    ImGui::SameLine();
+
+    if (ImGui::Button("toggle"))
+    {
+      switch (camera_state)
+      {
+      case CameraState::Gameplay:
+        camera_state = CameraState::LevelEditor;
+        break;
+      case CameraState::LevelEditor:
+        camera_state = CameraState::Gameplay;
+        break;
+      }
+    }
+
+    const char* camera_state_text = nullptr;
+    switch (camera_state)
+    {
+    case CameraState::Gameplay:
+      camera_state_text = "gameplay";
+      break;
+    case CameraState::LevelEditor:
+      camera_state_text = "level editor";
+      break;
+    }
+
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.0, 1.0, 0.0, 1.0), camera_state_text);
+
     ImGui::Text("camera offsets: %.2f %.2f %.2f", x_camera_offset, y_camera_offset, z_camera_offset);
     ImGui::Text("camera angles: %.2f %.2f", camera_angle, camera_updown_angle);
 
@@ -2101,84 +2145,157 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     vec3 color    = {10.0, 0.0, 10.0};
     update_light(pbr_light_sources_cache, 4, position, color);
   }
-
   ImGui::End();
 
-  ImGui::Begin("thread profiler");
-
-  if (ImGui::Button("pause"))
+  if (CameraState::LevelEditor == camera_state)
   {
-    if (not js.is_profiling_paused)
+    ImGui::SetNextWindowSize(ImVec2(engine.extent2D.width / 5, engine.extent2D.height));
+    ImGui::SetNextWindowBgAlpha(0.4f);
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::Begin("level editor window (snap?)", nullptr,
+                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+
+    if (lmb_clicked)
     {
-      js.paused_profile_data_count = SDL_AtomicGet(&js.profile_data_count);
-      SDL_memcpy(js.paused_profile_data, js.profile_data, js.paused_profile_data_count * sizeof(ThreadJobStatistic));
+      ImGui::Text("clicked position");
+      ImGui::Text("viewport coordinates: %d %d", lmb_current_cursor_position[0], lmb_current_cursor_position[1]);
+
+      //
+      // ~ mouse picking proof of concept ~
+      // reference: http://antongerdelan.net/opengl/raycasting.html
+      //
+
+      // 3D normalised device coordinates
+      const float mouse_x = static_cast<float>(lmb_current_cursor_position[0]);
+      const float mouse_y = static_cast<float>(lmb_current_cursor_position[1]);
+      const float width   = static_cast<float>(engine.extent2D.width);
+      const float height  = static_cast<float>(engine.extent2D.height);
+      const float x       = (2.0f * mouse_x) / width - 1.0f;
+      const float y       = 1.0f - (2.0f * mouse_y) / height;
+      const float z       = 1.0f;
+      const vec3  ray_nds = {x, y, z};
+      ImGui::Text("ray_nds:  %.2f %.2f %.2f", ray_nds[0], ray_nds[1], ray_nds[2]);
+
+      // 4D homogeneous clip coordinates
+      vec4 ray_clip = {ray_nds[0], ray_nds[1], -1.0, 1.0};
+      ImGui::Text("ray_clip: %.2f %.2f %.2f %.2f", ray_clip[0], ray_clip[1], ray_clip[2], ray_clip[3]);
+
+      // 4D eye (camera) coordinates
+      vec4 ray_eye = {};
+      {
+        mat4x4 inverted_projection_matrix = {};
+        mat4x4_invert(inverted_projection_matrix, get_selected_camera_projection());
+        mat4x4_mul_vec4(ray_eye, inverted_projection_matrix, ray_clip);
+        ray_eye[2] = -1.0f;
+        ray_eye[3] = 0.0f;
+      }
+      ImGui::Text("ray_eye:  %.2f %.2f %.2f %.2f", ray_eye[0], ray_eye[1], ray_eye[2], ray_eye[3]);
+
+      // 4D world coordinates
+      vec3 ray_wor = {};
+      {
+        mat4x4 inverted_view_matrix = {};
+        mat4x4_invert(inverted_view_matrix, get_selected_camera_view());
+
+        vec4 tmp = {};
+        mat4x4_mul_vec4(tmp, inverted_view_matrix, ray_eye);
+        vec3_norm(ray_wor, tmp);
+      }
+      ImGui::Text("ray_wor:  %.2f %.2f %.2f", ray_wor[0], ray_wor[1], ray_wor[2]);
     }
 
-    js.is_profiling_paused = true;
+    ImGui::End();
   }
-
-  ImGui::SameLine();
-  if (ImGui::Button("resume"))
+  else if (CameraState::Gameplay == camera_state)
   {
-    js.is_profiling_paused = false;
-  }
-
-  ImGui::SameLine();
-  ImGui::SliderFloat("measurements scale", &diagnostic_meas_scale, 1.0f, 100.0f);
-
-  const int profile_data_count =
-      js.is_profiling_paused ? js.paused_profile_data_count : SDL_AtomicGet(&js.profile_data_count);
-  const ThreadJobStatistic* statistics = js.is_profiling_paused ? js.paused_profile_data : js.profile_data;
-
-  for (int threadId = 0; threadId < static_cast<int>(SDL_arraysize(js.worker_threads)); ++threadId)
-  {
-    ImGui::Text("worker %d", threadId);
-    float on_thread_duration     = 0.0f;
-    bool  first_element_indented = false;
-
-    for (int i = 0; i < profile_data_count; ++i)
+    ImGui::Begin("thread profiler");
+    if (ImGui::Button("pause"))
     {
-      const ThreadJobStatistic& stat = statistics[i];
-      if (threadId == stat.threadId)
+      if (not js.is_profiling_paused)
       {
-        const float scaled_duration = diagnostic_meas_scale * stat.duration_sec;
-        on_thread_duration += stat.duration_sec;
+        js.paused_profile_data_count = SDL_AtomicGet(&js.profile_each_frame_counter);
+        js.paused_profile_data.copy_from(js.profile_each_frame, js.paused_profile_data_count);
+      }
+      js.is_profiling_paused = true;
+    }
 
-        if (not first_element_indented)
-        {
-          ImGui::SameLine();
-          first_element_indented = true;
-        }
-        else
-        {
-          ImGui::SameLine(0.0f, 0.1f);
-        }
+    ImGui::SameLine();
+    if (ImGui::Button("resume"))
+      js.is_profiling_paused = false;
 
-        ImGui::ColorButton(stat.name, ImVec4((float)i / (float)profile_data_count, 0.1f, 0.1, 1.0f), 0,
-                           ImVec2(100.0f * 1000.0f * scaled_duration, 0));
-        if (ImGui::IsItemHovered())
+    ImGui::SameLine();
+    ImGui::SliderFloat("measurements scale", &diagnostic_meas_scale, 1.0f, 100.0f);
+
+    if (js.is_profiling_paused)
+    {
+      js.selected_profile_data       = &js.paused_profile_data;
+      js.selected_profile_data_count = js.paused_profile_data_count;
+    }
+    else
+    {
+      js.selected_profile_data       = &js.profile_each_frame;
+      js.selected_profile_data_count = SDL_AtomicGet(&js.profile_each_frame_counter);
+    }
+
+    for (int threadId = 0; threadId < static_cast<int>(SDL_arraysize(js.worker_threads)); ++threadId)
+    {
+      ImGui::Text("worker %d", threadId);
+      float     on_thread_duration     = 0.0f;
+      bool      first_element_indented = false;
+      const int profile_data_count     = js.selected_profile_data_count;
+      for (int i = 0; i < profile_data_count; ++i)
+      {
+        const int profile_thread_id = js.selected_profile_data->thread_ids[i];
+        if (threadId == profile_thread_id)
         {
-          ImGui::SetTooltip("name: %s\n%.8f sec\n%.2f ms", stat.name, stat.duration_sec, 1000.0f * stat.duration_sec);
+          const float profile_duration_sec = js.selected_profile_data->duration_sec[i];
+          const float scaled_duration      = diagnostic_meas_scale * profile_duration_sec;
+          on_thread_duration += profile_duration_sec;
+
+          if (not first_element_indented)
+          {
+            ImGui::SameLine();
+            first_element_indented = true;
+          }
+          else
+          {
+            ImGui::SameLine(0.0f, 0.1f);
+          }
+
+          const char* profile_job_name = js.selected_profile_data->job_names[i];
+          ImGui::ColorButton(profile_job_name, ImVec4((float)i / (float)profile_data_count, 0.1f, 0.1, 1.0f), 0,
+                             ImVec2(100.0f * 1000.0f * scaled_duration, 0));
+
+          if (ImGui::IsItemHovered())
+          {
+            ImGui::SetTooltip("name: %s\n%.8f sec\n%.2f ms", profile_job_name, profile_duration_sec,
+                              1000.0f * profile_duration_sec);
+          }
         }
       }
+      ImGui::Text("total: %.5fms", 1000.0f * on_thread_duration);
+      ImGui::Separator();
     }
-    ImGui::Text("total: %.5fms", 1000.0f * on_thread_duration);
-    ImGui::Separator();
+    ImGui::End();
   }
-  ImGui::End();
 
-  recalculate_cascade_view_proj_matrices(cascade_view_proj_mat, cascade_split_depths, projection, view,
-                                         light_source_position);
+  recalculate_cascade_view_proj_matrices(cascade_view_proj_mat, cascade_split_depths, get_selected_camera_projection(),
+                                         get_selected_camera_view(), light_source_position);
 
-  js.jobs_max            = 0;
-  js.jobs[js.jobs_max++] = {"moving lights update", update::moving_lights_job};
-  js.jobs[js.jobs_max++] = {"helmet update", update::helmet_job};
-  js.jobs[js.jobs_max++] = {"robot update", update::robot_job};
-  js.jobs[js.jobs_max++] = {"monster update", update::monster_job};
-  js.jobs[js.jobs_max++] = {"rigged simple update", update::rigged_simple_job};
-  js.jobs[js.jobs_max++] = {"matrioshka update", update::matrioshka_job};
+  js.jobs_max = 0;
+  js.push("moving lights update", update::moving_lights_job);
+  js.push("helmet update", update::helmet_job);
+  js.push("robot update", update::robot_job);
+  js.push("monster update", update::monster_job);
+  js.push("rigged simple update", update::rigged_simple_job);
+  js.push("matrioshka update", update::matrioshka_job);
 
-  SDL_AtomicSet(&js.profile_data_count, 0);
+  if (CameraState::LevelEditor == camera_state)
+  {
+    js.push("orientation axis update", update::orientation_axis_job);
+  }
+
+  SDL_AtomicSet(&js.profile_each_frame_counter, 0);
   SDL_LockMutex(js.new_jobs_available_mutex);
   SDL_CondBroadcast(js.new_jobs_available_cond);
   SDL_UnlockMutex(js.new_jobs_available_mutex);
@@ -2192,50 +2309,56 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
 void Game::render(Engine& engine)
 {
-  {
-    FunctionTimer timer(acquire_times, SDL_arraysize(acquire_times));
-    vkAcquireNextImageKHR(engine.device, engine.swapchain, UINT64_MAX, engine.image_available, VK_NULL_HANDLE,
-                          &image_index);
-    vkWaitForFences(engine.device, 1, &engine.submition_fences[image_index], VK_TRUE, UINT64_MAX);
-    vkResetFences(engine.device, 1, &engine.submition_fences[image_index]);
+  vkAcquireNextImageKHR(engine.device, engine.swapchain, UINT64_MAX, engine.image_available, VK_NULL_HANDLE,
+                        &image_index);
+  vkWaitForFences(engine.device, 1, &engine.submition_fences[image_index], VK_TRUE, UINT64_MAX);
+  vkResetFences(engine.device, 1, &engine.submition_fences[image_index]);
 
-    for (int worker_thread = 0; worker_thread < WORKER_THREADS_COUNT; ++worker_thread)
-    {
-      int count = js.submited_command_count[image_index][worker_thread];
-      for (int i = 0; i < count; ++i)
-        vkResetCommandBuffer(js.commands[image_index][worker_thread][i], 0);
-      js.submited_command_count[image_index][worker_thread] = 0;
-    }
+  for (int worker_thread = 0; worker_thread < WORKER_THREADS_COUNT; ++worker_thread)
+  {
+    int count = js.submited_command_count[image_index][worker_thread];
+    for (int i = 0; i < count; ++i)
+      vkResetCommandBuffer(js.commands[image_index][worker_thread][i], 0);
+    js.submited_command_count[image_index][worker_thread] = 0;
   }
 
   {
     FunctionTimer timer(render_times, SDL_arraysize(render_times));
 
-    js.jobs_max            = 0;
-    js.jobs[js.jobs_max++] = {"skybox", render::skybox_job};
-    js.jobs[js.jobs_max++] = {"robot", render::robot_job};
-    js.jobs[js.jobs_max++] = {"robot depth", render::robot_depth_job};
-    js.jobs[js.jobs_max++] = {"helmet", render::helmet_job};
-    js.jobs[js.jobs_max++] = {"helmet depth", render::helmet_depth_job};
-    js.jobs[js.jobs_max++] = {"point lights", render::point_light_boxes};
-    js.jobs[js.jobs_max++] = {"box", render::matrioshka_box};
-    js.jobs[js.jobs_max++] = {"vr scene", render::vr_scene};
-    // js.jobs[js.jobs_max++] = {"vr scene depth", render::vr_scene_depth};
-    js.jobs[js.jobs_max++] = {"radar", render::radar};
-    js.jobs[js.jobs_max++] = {"gui lines", render::robot_gui_lines};
-    js.jobs[js.jobs_max++] = {"gui height ruler text", render::height_ruler_text};
-    js.jobs[js.jobs_max++] = {"gui tilt ruler text", render::tilt_ruler_text};
-    js.jobs[js.jobs_max++] = {"imgui", render::imgui};
-    js.jobs[js.jobs_max++] = {"simple rigged", render::simple_rigged};
-    js.jobs[js.jobs_max++] = {"monster", render::monster_rigged};
-    js.jobs[js.jobs_max++] = {"speed meter", render::robot_gui_speed_meter_text};
-    js.jobs[js.jobs_max++] = {"speed meter triangle", render::robot_gui_speed_meter_triangle};
-    js.jobs[js.jobs_max++] = {"compass text", render::compass_text};
-    js.jobs[js.jobs_max++] = {"radar dots", render::radar_dots};
-    js.jobs[js.jobs_max++] = {"weapon selectors - left", render::weapon_selectors_left};
-    js.jobs[js.jobs_max++] = {"weapon selectors - right", render::weapon_selectors_right};
-    js.jobs[js.jobs_max++] = {"water", render::water};
-    // js.jobs[js.jobs_max++] = {"debug shadow map depth pass", render::debug_shadowmap};
+    js.jobs_max = 0;
+    js.push("skybox", render::skybox_job);
+    js.push("robot", render::robot_job);
+    js.push("helmet", render::helmet_job);
+    js.push("point lights", render::point_light_boxes);
+    js.push("box", render::matrioshka_box);
+    js.push("vr scene", render::vr_scene);
+    js.push("water", render::water);
+    js.push("simple rigged", render::simple_rigged);
+    js.push("monster", render::monster_rigged);
+    js.push("robot depth", render::robot_depth_job);
+    js.push("helmet depth", render::helmet_depth_job);
+    // js.push("vr scene depth", render::vr_scene_depth);
+
+    if (CameraState::Gameplay == camera_state)
+    {
+      js.push("radar", render::radar);
+      js.push("gui lines", render::robot_gui_lines);
+      js.push("gui height ruler text", render::height_ruler_text);
+      js.push("gui tilt ruler text", render::tilt_ruler_text);
+      js.push("speed meter", render::robot_gui_speed_meter_text);
+      js.push("speed meter triangle", render::robot_gui_speed_meter_triangle);
+      js.push("compass text", render::compass_text);
+      js.push("radar dots", render::radar_dots);
+      js.push("weapon selectors - left", render::weapon_selectors_left);
+      js.push("weapon selectors - right", render::weapon_selectors_right);
+    }
+    else
+    {
+      js.push("orientation axis", render::orientation_axis);
+    }
+
+    js.push("imgui", render::imgui);
+    // js.push("debug shadow map depth pass", render::debug_shadowmap);
 
     SDL_LockMutex(js.new_jobs_available_mutex);
     SDL_CondBroadcast(js.new_jobs_available_cond);
@@ -2248,14 +2371,14 @@ void Game::render(Engine& engine)
     {
       struct Update
       {
-        mat4x4 cascade_view_proj_mat[Engine::SHADOWMAP_CASCADE_COUNT];
+        mat4x4 cascade_view_proj_mat[SHADOWMAP_CASCADE_COUNT];
         vec4   cascade_splits;
       } ubo_update = {};
 
-      for (int i = 0; i < Engine::SHADOWMAP_CASCADE_COUNT; ++i)
+      for (int i = 0; i < SHADOWMAP_CASCADE_COUNT; ++i)
         mat4x4_dup(ubo_update.cascade_view_proj_mat[i], cascade_view_proj_mat[i]);
 
-      for (int i = 0; i < Engine::SHADOWMAP_CASCADE_COUNT; ++i)
+      for (int i = 0; i < SHADOWMAP_CASCADE_COUNT; ++i)
         ubo_update.cascade_splits[i] = cascade_split_depths[i];
 
       update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory, sizeof(ubo_update),
@@ -2272,17 +2395,15 @@ void Game::render(Engine& engine)
     // rigged simple skinning matrices
     //
     update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory,
-               SDL_arraysize(ecs.joint_matrices[0].joints) * sizeof(mat4x4),
-               rig_skinning_matrices_ubo_offsets[image_index],
-               ecs.joint_matrices[rigged_simple_entity.joint_matrices].joints);
+               riggedSimple.skins[0].joints.count * sizeof(mat4x4), rig_skinning_matrices_ubo_offsets[image_index],
+               &ecs.joint_matrices[rigged_simple_entity.joint_matrices]);
 
     //
     // monster skinning matrices
     //
     update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory,
-               SDL_arraysize(ecs.joint_matrices[0].joints) * sizeof(mat4x4),
-               monster_skinning_matrices_ubo_offsets[image_index],
-               ecs.joint_matrices[monster_entity.joint_matrices].joints);
+               monster.skins[0].joints.count * sizeof(mat4x4), monster_skinning_matrices_ubo_offsets[image_index],
+               &ecs.joint_matrices[monster_entity.joint_matrices]);
 
     {
       GenerateGuiLinesCommand cmd = {
@@ -2357,30 +2478,34 @@ void Game::render(Engine& engine)
 
     if (0 < vertex_size)
     {
-      ScopedMemoryMap memory_map(engine.device, engine.gpu_host_coherent_memory_block.memory,
-                                 debug_gui.vertex_buffer_offsets[image_index], vertex_size);
+      ImDrawVert* vtx_dst = nullptr;
+      vkMapMemory(engine.device, engine.gpu_host_coherent_memory_block.memory,
+                  debug_gui.vertex_buffer_offsets[image_index], vertex_size, 0, reinterpret_cast<void**>(&vtx_dst));
 
-      ImDrawVert* vtx_dst = memory_map.get<ImDrawVert>();
       for (int n = 0; n < draw_data->CmdListsCount; ++n)
       {
         const ImDrawList* cmd_list = draw_data->CmdLists[n];
         SDL_memcpy(vtx_dst, cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size * sizeof(ImDrawVert));
         vtx_dst += cmd_list->VtxBuffer.Size;
       }
+
+      vkUnmapMemory(engine.device, engine.gpu_host_coherent_memory_block.memory);
     }
 
     if (0 < index_size)
     {
-      ScopedMemoryMap memory_map(engine.device, engine.gpu_host_coherent_memory_block.memory,
-                                 debug_gui.index_buffer_offsets[image_index], index_size);
+      ImDrawIdx* idx_dst = nullptr;
+      vkMapMemory(engine.device, engine.gpu_host_coherent_memory_block.memory,
+                  debug_gui.index_buffer_offsets[image_index], index_size, 0, reinterpret_cast<void**>(&idx_dst));
 
-      ImDrawIdx* idx_dst = memory_map.get<ImDrawIdx>();
       for (int n = 0; n < draw_data->CmdListsCount; ++n)
       {
         const ImDrawList* cmd_list = draw_data->CmdLists[n];
         SDL_memcpy(idx_dst, cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx));
         idx_dst += cmd_list->IdxBuffer.Size;
       }
+
+      vkUnmapMemory(engine.device, engine.gpu_host_coherent_memory_block.memory);
     }
 
     SDL_SemWait(js.all_threads_idle_signal);
@@ -2398,15 +2523,15 @@ void Game::render(Engine& engine)
       // -----------------------------------------------------------------------------------------------
       // SHADOW MAPPING PASS
       // -----------------------------------------------------------------------------------------------
-      for (int cascade_idx = 0; cascade_idx < Engine::SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
+      for (int cascade_idx = 0; cascade_idx < SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
       {
         VkClearValue clear_value = {.depthStencil = {1.0, 0}};
 
         VkRenderPassBeginInfo begin = {
             .sType       = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-            .renderPass  = engine.shadowmap_render_pass,
-            .framebuffer = engine.shadowmap_framebuffers[cascade_idx],
-            .renderArea  = {.extent = {.width = Engine::SHADOWMAP_IMAGE_DIM, .height = Engine::SHADOWMAP_IMAGE_DIM}},
+            .renderPass  = engine.render_passes.shadowmap.render_pass,
+            .framebuffer = engine.render_passes.shadowmap.framebuffers[cascade_idx],
+            .renderArea  = {.extent = {.width = SHADOWMAP_IMAGE_DIM, .height = SHADOWMAP_IMAGE_DIM}},
             .clearValueCount = 1,
             .pClearValues    = &clear_value,
         };
@@ -2439,8 +2564,8 @@ void Game::render(Engine& engine)
 
         VkRenderPassBeginInfo begin = {
             .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-            .renderPass      = engine.skybox_render_pass,
-            .framebuffer     = engine.skybox_framebuffers[image_index],
+            .renderPass      = engine.render_passes.skybox.render_pass,
+            .framebuffer     = engine.render_passes.skybox.framebuffers[image_index],
             .renderArea      = {.extent = engine.extent2D},
             .clearValueCount = clear_values_count,
             .pClearValues    = clear_values,
@@ -2472,8 +2597,8 @@ void Game::render(Engine& engine)
 
         VkRenderPassBeginInfo begin = {
             .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-            .renderPass      = engine.color_and_depth_render_pass,
-            .framebuffer     = engine.color_and_depth_framebuffers[image_index],
+            .renderPass      = engine.render_passes.color_and_depth.render_pass,
+            .framebuffer     = engine.render_passes.color_and_depth.framebuffers[image_index],
             .renderArea      = {.extent = engine.extent2D},
             .clearValueCount = clear_values_count,
             .pClearValues    = clear_values,
@@ -2504,8 +2629,8 @@ void Game::render(Engine& engine)
 
         VkRenderPassBeginInfo begin = {
             .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-            .renderPass      = engine.gui_render_pass,
-            .framebuffer     = engine.gui_framebuffers[image_index],
+            .renderPass      = engine.render_passes.gui.render_pass,
+            .framebuffer     = engine.render_passes.gui.framebuffers[image_index],
             .renderArea      = {.extent = engine.extent2D},
             .clearValueCount = clear_values_count,
             .pClearValues    = clear_values,
@@ -2533,7 +2658,7 @@ void Game::render(Engine& engine)
                     .baseMipLevel   = 0,
                     .levelCount     = 1,
                     .baseArrayLayer = 0,
-                    .layerCount     = Engine::SHADOWMAP_CASCADE_COUNT,
+                    .layerCount     = SHADOWMAP_CASCADE_COUNT,
                 },
         };
 
@@ -2547,33 +2672,33 @@ void Game::render(Engine& engine)
     shadow_mapping_pass_commands.reset();
     scene_rendering_commands.reset();
     gui_commands.reset();
+  }
 
-    {
-      VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+  {
+    VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 
-      VkSubmitInfo submit = {
-          .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-          .waitSemaphoreCount   = 1,
-          .pWaitSemaphores      = &engine.image_available,
-          .pWaitDstStageMask    = &wait_stage,
-          .commandBufferCount   = 1,
-          .pCommandBuffers      = &primary_command_buffers[image_index],
-          .signalSemaphoreCount = 1,
-          .pSignalSemaphores    = &engine.render_finished,
-      };
-
-      vkQueueSubmit(engine.graphics_queue, 1, &submit, engine.submition_fences[image_index]);
-    }
-
-    VkPresentInfoKHR present = {
-        .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-        .waitSemaphoreCount = 1,
-        .pWaitSemaphores    = &engine.render_finished,
-        .swapchainCount     = 1,
-        .pSwapchains        = &engine.swapchain,
-        .pImageIndices      = &image_index,
+    VkSubmitInfo submit = {
+        .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .waitSemaphoreCount   = 1,
+        .pWaitSemaphores      = &engine.image_available,
+        .pWaitDstStageMask    = &wait_stage,
+        .commandBufferCount   = 1,
+        .pCommandBuffers      = &primary_command_buffers[image_index],
+        .signalSemaphoreCount = 1,
+        .pSignalSemaphores    = &engine.render_finished,
     };
 
-    vkQueuePresentKHR(engine.graphics_queue, &present);
+    vkQueueSubmit(engine.graphics_queue, 1, &submit, engine.submition_fences[image_index]);
   }
+
+  VkPresentInfoKHR present = {
+      .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+      .waitSemaphoreCount = 1,
+      .pWaitSemaphores    = &engine.render_finished,
+      .swapchainCount     = 1,
+      .pSwapchains        = &engine.swapchain,
+      .pImageIndices      = &image_index,
+  };
+
+  vkQueuePresentKHR(engine.graphics_queue, &present);
 }

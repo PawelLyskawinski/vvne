@@ -180,7 +180,7 @@ float filterPCF(vec4 sc, uint cascade_idx)
 
   float shadowFactor = 0.0;
   int   count        = 0;
-  int   range        = 1;
+  int   range        = 3;
 
   for (int x = -range; x <= range; x++)
   {

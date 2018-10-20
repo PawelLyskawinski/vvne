@@ -38,6 +38,8 @@ call:compile pbr_water.frag
 call:compile pbr_water.vert
 call:compile depth_pass.frag
 call:compile depth_pass.vert
+call:compile colored_model_wireframe.frag
+call:compile colored_model_wireframe.vert
 pause
 goto:eof
 

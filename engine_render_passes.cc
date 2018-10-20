@@ -54,7 +54,7 @@ void shadowmap(Engine& engine)
       .pDependencies   = dependencies,
   };
 
-  vkCreateRenderPass(engine.device, &ci, nullptr, &engine.shadowmap_render_pass);
+  vkCreateRenderPass(engine.device, &ci, nullptr, &engine.render_passes.shadowmap.render_pass);
 }
 
 void skybox(Engine& engine)
@@ -147,7 +147,7 @@ void skybox(Engine& engine)
     ci.pSubpasses      = &subpass_msaa;
   }
 
-  vkCreateRenderPass(engine.device, &ci, nullptr, &engine.skybox_render_pass);
+  vkCreateRenderPass(engine.device, &ci, nullptr, &engine.render_passes.skybox.render_pass);
 }
 
 void color_and_depth(Engine& engine)
@@ -277,7 +277,7 @@ void color_and_depth(Engine& engine)
     ci.pSubpasses      = &subpass_msaa;
   }
 
-  vkCreateRenderPass(engine.device, &ci, nullptr, &engine.color_and_depth_render_pass);
+  vkCreateRenderPass(engine.device, &ci, nullptr, &engine.render_passes.color_and_depth.render_pass);
 }
 
 void gui(Engine& engine)
@@ -381,7 +381,7 @@ void gui(Engine& engine)
     ci.pSubpasses      = &subpass_msaa;
   }
 
-  vkCreateRenderPass(engine.device, &ci, nullptr, &engine.gui_render_pass);
+  vkCreateRenderPass(engine.device, &ci, nullptr, &engine.render_passes.gui.render_pass);
 }
 
 } // namespace

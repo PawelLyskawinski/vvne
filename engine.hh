@@ -59,12 +59,83 @@ public:
   VkImageView image_views[image_view_capacity];
 };
 
+constexpr int SWAPCHAIN_IMAGES_COUNT  = 2;
+constexpr int SHADOWMAP_IMAGE_DIM     = 1024 * 2;
+constexpr int SHADOWMAP_CASCADE_COUNT = 4;
+
+struct Pipelines
+{
+  struct Coupling
+  {
+    VkPipeline       pipeline;
+    VkPipelineLayout layout;
+  };
+
+  Coupling shadowmap;
+  Coupling skybox;
+  Coupling scene3D;
+  Coupling pbr_water;
+  Coupling colored_geometry;
+  Coupling colored_geometry_triangle_strip;
+  Coupling colored_geometry_skinned;
+  Coupling green_gui;
+  Coupling green_gui_weapon_selector_box_left;
+  Coupling green_gui_weapon_selector_box_right;
+  Coupling green_gui_lines;
+  Coupling green_gui_sdf_font;
+  Coupling green_gui_triangle;
+  Coupling green_gui_radar_dots;
+  Coupling imgui;
+  Coupling debug_billboard;
+  Coupling colored_model_wireframe;
+
+  void destroy(VkDevice device);
+};
+
+struct RenderPasses
+{
+  template <uint32_t N> struct Coupling
+  {
+    VkRenderPass  render_pass;
+    VkFramebuffer framebuffers[N];
+
+    void destroy(VkDevice device)
+    {
+      vkDestroyRenderPass(device, render_pass, nullptr);
+      for (VkFramebuffer& framebuffer : framebuffers)
+        vkDestroyFramebuffer(device, framebuffer, nullptr);
+    }
+
+    void begin(VkCommandBuffer cmd, uint32_t image_index)
+    {
+      VkCommandBufferInheritanceInfo inheritance = {
+          .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+          .renderPass  = render_pass,
+          .framebuffer = framebuffers[image_index],
+      };
+
+      VkCommandBufferBeginInfo begin_info = {
+          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+          .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+          .pInheritanceInfo = &inheritance,
+      };
+
+      vkBeginCommandBuffer(cmd, &begin_info);
+    }
+  };
+
+  Coupling<SHADOWMAP_CASCADE_COUNT> shadowmap;
+  Coupling<SWAPCHAIN_IMAGES_COUNT>  skybox;
+  Coupling<SWAPCHAIN_IMAGES_COUNT>  color_and_depth;
+  Coupling<SWAPCHAIN_IMAGES_COUNT>  gui;
+
+  void destroy(VkDevice device);
+};
+
 struct Engine
 {
   // configuration
-  static constexpr int  SWAPCHAIN_IMAGES_COUNT  = 2;
-  static constexpr int  SHADOWMAP_IMAGE_DIM     = 1024 * 2;
-  static constexpr int  SHADOWMAP_CASCADE_COUNT = 4;
+
   VkSampleCountFlagBits MSAA_SAMPLE_COUNT;
 
   // data
@@ -124,15 +195,6 @@ struct Engine
   // back  : temporary allocations
   DoubleEndedStack allocator;
 
-  VkRenderPass shadowmap_render_pass;
-  VkRenderPass skybox_render_pass;
-  VkRenderPass color_and_depth_render_pass;
-  VkRenderPass gui_render_pass;
-
-  VkFramebuffer shadowmap_framebuffers[SHADOWMAP_CASCADE_COUNT];
-  VkFramebuffer skybox_framebuffers[SWAPCHAIN_IMAGES_COUNT];
-  VkFramebuffer color_and_depth_framebuffers[SWAPCHAIN_IMAGES_COUNT];
-  VkFramebuffer gui_framebuffers[SWAPCHAIN_IMAGES_COUNT];
 
   VkDescriptorSetLayout shadow_pass_descriptor_set_layout;
   VkDescriptorSetLayout pbr_metallic_workflow_material_descriptor_set_layout;
@@ -142,39 +204,8 @@ struct Engine
   VkDescriptorSetLayout skinning_matrices_descriptor_set_layout;
   VkDescriptorSetLayout cascade_shadow_map_matrices_ubo_frag_set_layout;
 
-  VkPipelineLayout shadowmap_pipeline_layout;
-  VkPipelineLayout skybox_pipeline_layout;
-  VkPipelineLayout scene3D_pipeline_layout;
-  VkPipelineLayout pbr_water_pipeline_layout;
-  VkPipelineLayout colored_geometry_pipeline_layout;
-  VkPipelineLayout colored_geometry_triangle_strip_pipeline_layout;
-  VkPipelineLayout colored_geometry_skinned_pipeline_layout;
-  VkPipelineLayout green_gui_pipeline_layout;
-  VkPipelineLayout green_gui_weapon_selector_box_left_pipeline_layout;
-  VkPipelineLayout green_gui_weapon_selector_box_right_pipeline_layout;
-  VkPipelineLayout green_gui_lines_pipeline_layout;
-  VkPipelineLayout green_gui_sdf_font_pipeline_layout;
-  VkPipelineLayout green_gui_triangle_pipeline_layout;
-  VkPipelineLayout green_gui_radar_dots_pipeline_layout;
-  VkPipelineLayout imgui_pipeline_layout;
-  VkPipelineLayout debug_billboard_pipeline_layout;
-
-  VkPipeline shadowmap_pipeline;
-  VkPipeline skybox_pipeline;
-  VkPipeline scene3D_pipeline;
-  VkPipeline pbr_water_pipeline;
-  VkPipeline colored_geometry_pipeline;
-  VkPipeline colored_geometry_triangle_strip_pipeline;
-  VkPipeline colored_geometry_skinned_pipeline;
-  VkPipeline green_gui_pipeline;
-  VkPipeline green_gui_weapon_selector_box_left_pipeline;
-  VkPipeline green_gui_weapon_selector_box_right_pipeline;
-  VkPipeline green_gui_lines_pipeline;
-  VkPipeline green_gui_sdf_font_pipeline;
-  VkPipeline green_gui_triangle_pipeline;
-  VkPipeline green_gui_radar_dots_pipeline;
-  VkPipeline imgui_pipeline;
-  VkPipeline debug_billboard_pipeline;
+  RenderPasses render_passes;
+  Pipelines    pipelines;
 
   // Live shader reloading helpers.
   //

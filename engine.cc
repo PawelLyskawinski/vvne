@@ -78,10 +78,7 @@ void* DoubleEndedStack::allocate_back(uint64_t size)
   return reinterpret_cast<void*>(&memory[MEMORY_ALLOCATOR_POOL_SIZE - stack_pointer_back]);
 }
 
-void DoubleEndedStack::reset_back()
-{
-  stack_pointer_back = 0;
-}
+void DoubleEndedStack::reset_back() { stack_pointer_back = 0; }
 
 void Engine::startup()
 {
@@ -206,6 +203,7 @@ void Engine::startup()
 
     VkPhysicalDeviceFeatures device_features = {
         .sampleRateShading = VK_TRUE,
+        .fillModeNonSolid  = VK_TRUE, // enables VK_POLYGON_MODE_LINE
         .wideLines         = VK_TRUE,
     };
 
@@ -882,22 +880,8 @@ void Engine::teardown()
 {
   vkDeviceWaitIdle(device);
 
-  vkDestroyRenderPass(device, shadowmap_render_pass, nullptr);
-  vkDestroyRenderPass(device, skybox_render_pass, nullptr);
-  vkDestroyRenderPass(device, color_and_depth_render_pass, nullptr);
-  vkDestroyRenderPass(device, gui_render_pass, nullptr);
-
-  for (int i = 0; i < SHADOWMAP_CASCADE_COUNT; ++i)
-  {
-    vkDestroyFramebuffer(device, shadowmap_framebuffers[i], nullptr);
-  }
-
-  for (int i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
-  {
-    vkDestroyFramebuffer(device, skybox_framebuffers[i], nullptr);
-    vkDestroyFramebuffer(device, color_and_depth_framebuffers[i], nullptr);
-    vkDestroyFramebuffer(device, gui_framebuffers[i], nullptr);
-  }
+  render_passes.destroy(device);
+  pipelines.destroy(device);
 
   vkDestroyDescriptorSetLayout(device, shadow_pass_descriptor_set_layout, nullptr);
   vkDestroyDescriptorSetLayout(device, pbr_metallic_workflow_material_descriptor_set_layout, nullptr);
@@ -906,40 +890,6 @@ void Engine::teardown()
   vkDestroyDescriptorSetLayout(device, single_texture_in_frag_descriptor_set_layout, nullptr);
   vkDestroyDescriptorSetLayout(device, skinning_matrices_descriptor_set_layout, nullptr);
   vkDestroyDescriptorSetLayout(device, cascade_shadow_map_matrices_ubo_frag_set_layout, nullptr);
-
-  vkDestroyPipelineLayout(device, shadowmap_pipeline_layout, nullptr);
-  vkDestroyPipelineLayout(device, skybox_pipeline_layout, nullptr);
-  vkDestroyPipelineLayout(device, scene3D_pipeline_layout, nullptr);
-  vkDestroyPipelineLayout(device, pbr_water_pipeline_layout, nullptr);
-  vkDestroyPipelineLayout(device, colored_geometry_pipeline_layout, nullptr);
-  vkDestroyPipelineLayout(device, colored_geometry_triangle_strip_pipeline_layout, nullptr);
-  vkDestroyPipelineLayout(device, colored_geometry_skinned_pipeline_layout, nullptr);
-  vkDestroyPipelineLayout(device, green_gui_pipeline_layout, nullptr);
-  vkDestroyPipelineLayout(device, green_gui_weapon_selector_box_left_pipeline_layout, nullptr);
-  vkDestroyPipelineLayout(device, green_gui_weapon_selector_box_right_pipeline_layout, nullptr);
-  vkDestroyPipelineLayout(device, green_gui_lines_pipeline_layout, nullptr);
-  vkDestroyPipelineLayout(device, green_gui_sdf_font_pipeline_layout, nullptr);
-  vkDestroyPipelineLayout(device, green_gui_triangle_pipeline_layout, nullptr);
-  vkDestroyPipelineLayout(device, green_gui_radar_dots_pipeline_layout, nullptr);
-  vkDestroyPipelineLayout(device, imgui_pipeline_layout, nullptr);
-  vkDestroyPipelineLayout(device, debug_billboard_pipeline_layout, nullptr);
-
-  vkDestroyPipeline(device, shadowmap_pipeline, nullptr);
-  vkDestroyPipeline(device, skybox_pipeline, nullptr);
-  vkDestroyPipeline(device, scene3D_pipeline, nullptr);
-  vkDestroyPipeline(device, pbr_water_pipeline, nullptr);
-  vkDestroyPipeline(device, colored_geometry_pipeline, nullptr);
-  vkDestroyPipeline(device, colored_geometry_triangle_strip_pipeline, nullptr);
-  vkDestroyPipeline(device, colored_geometry_skinned_pipeline, nullptr);
-  vkDestroyPipeline(device, green_gui_pipeline, nullptr);
-  vkDestroyPipeline(device, green_gui_weapon_selector_box_left_pipeline, nullptr);
-  vkDestroyPipeline(device, green_gui_weapon_selector_box_right_pipeline, nullptr);
-  vkDestroyPipeline(device, green_gui_lines_pipeline, nullptr);
-  vkDestroyPipeline(device, green_gui_sdf_font_pipeline, nullptr);
-  vkDestroyPipeline(device, green_gui_triangle_pipeline, nullptr);
-  vkDestroyPipeline(device, green_gui_radar_dots_pipeline, nullptr);
-  vkDestroyPipeline(device, imgui_pipeline, nullptr);
-  vkDestroyPipeline(device, debug_billboard_pipeline, nullptr);
 
   for (VkFence& fence : submition_fences)
     vkDestroyFence(device, fence, nullptr);
@@ -1018,12 +968,9 @@ VkFormat bitsPerPixelToFormat(uint8_t bpp)
   }
 }
 
-VkFormat bitsPerPixelToFormat(SDL_Surface* surface)
-{
-  return bitsPerPixelToFormat(surface->format->BitsPerPixel);
-}
+VkFormat bitsPerPixelToFormat(SDL_Surface* surface) { return bitsPerPixelToFormat(surface->format->BitsPerPixel); }
 
-} // namespace
+}  // namespace
 
 Texture Engine::load_texture_hdr(const char* filename)
 {
@@ -1637,4 +1584,24 @@ int ImageResources::add(VkImageView image)
   const int position    = image_views_bitmap.allocate();
   image_views[position] = image;
   return position;
+}
+
+void Pipelines::destroy(VkDevice device)
+{
+  const Pipelines::Coupling* pairs = reinterpret_cast<Pipelines::Coupling*>(this);
+  const int                  count = sizeof(Pipelines) / sizeof(Pipelines::Coupling);
+
+  for (int i = 0; i < count; ++i)
+  {
+    vkDestroyPipeline(device, pairs[i].pipeline, nullptr);
+    vkDestroyPipelineLayout(device, pairs[i].layout, nullptr);
+  }
+}
+
+void RenderPasses::destroy(VkDevice device)
+{
+  shadowmap.destroy(device);
+  skybox.destroy(device);
+  color_and_depth.destroy(device);
+  gui.destroy(device);
 }

@@ -17,6 +17,6 @@ BraceWrapping :
 ColumnLimit: 120
 IndentWidth : 2
 AccessModifierOffset : -2
-AllowShortFunctionsOnASingleLine : false
+AllowShortFunctionsOnASingleLine : true
 BreakConstructorInitializersBeforeComma : true
 PointerAlignment: Left

@@ -56,12 +56,12 @@ void hermite_cubic_spline_interpolation(const float a_in[], const float b_in[], 
   }
 }
 
-void animate_entity(Entity& entity, EntityComponentSystem& ecs, SceneGraph& scene_graph, float current_time_sec)
+void animate_entity(SimpleEntity& entity, Ecs& ecs, SceneGraph& scene_graph, float current_time_sec)
 {
-  if (-1 == entity.animation_start_time)
+  if (0 == (entity.flags & SimpleEntity::AnimationStartTime))
     return;
 
-  const float      animation_start_time = ecs.animation_start_times[entity.animation_start_time];
+  const float      animation_start_time = entity.animation_start_time;
   const Animation& animation            = scene_graph.animations.data[0];
   const float      animation_time       = current_time_sec - animation_start_time;
 
@@ -78,14 +78,13 @@ void animate_entity(Entity& entity, EntityComponentSystem& ecs, SceneGraph& scen
 
   if (not is_animation_still_ongoing)
   {
-    ecs.animation_start_times_usage.free(entity.animation_start_time);
-    ecs.animation_rotations_usage.free(entity.animation_rotation);
-    ecs.animation_translations_usage.free(entity.animation_translation);
+    const uint64_t clear_mask = SimpleEntity::NodeAnimRotationApplicability |
+                                SimpleEntity::NodeAnimTranslationApplicability | SimpleEntity::AnimationStartTime;
 
-    entity.animation_start_time  = -1;
-    entity.animation_rotation    = -1;
-    entity.animation_translation = -1;
-
+    entity.flags &= ~clear_mask;
+    entity.animation_start_time                = 0.0f;
+    entity.node_anim_rotation_applicability    = 0;
+    entity.node_anim_translation_applicability = 0;
     return;
   }
 
@@ -101,28 +100,27 @@ void animate_entity(Entity& entity, EntityComponentSystem& ecs, SceneGraph& scen
 
       if (AnimationChannel::Path::Rotation == channel.target_path)
       {
-        AnimationRotation* rotation_component = nullptr;
-
-        if (-1 == entity.animation_rotation)
+        if (0 == (entity.flags & SimpleEntity::NodeRotations))
         {
-          entity.animation_rotation = ecs.animation_rotations_usage.allocate();
-          rotation_component        = &ecs.animation_rotations[entity.animation_rotation];
-          SDL_memset(rotation_component, 0, sizeof(AnimationRotation));
-        }
-        else
-        {
-          rotation_component = &ecs.animation_rotations[entity.animation_rotation];
+          entity.node_rotations = ecs.node_anim_rotations_stack.increment(scene_graph.nodes.count);
+          entity.flags |= SimpleEntity::NodeRotations;
         }
 
-        rotation_component->applicability |= (1ULL << channel.target_node_idx);
+        quat* animation_rotation = &ecs.node_anim_rotations[entity.node_rotations];
 
-        float* animation_rotation = rotation_component->rotations[channel.target_node_idx];
+        if (0 == (entity.flags & SimpleEntity::NodeAnimRotationApplicability))
+        {
+          SDL_memset(animation_rotation, 0, scene_graph.nodes.count * sizeof(quat));
+          entity.flags |= SimpleEntity::NodeAnimRotationApplicability;
+        }
+
+        entity.node_anim_rotation_applicability |= (uint64_t(1) << channel.target_node_idx);
 
         if (AnimationSampler::Interpolation::Linear == sampler.interpolation)
         {
           float* a = &sampler.values[4 * keyframe_lower];
           float* b = &sampler.values[4 * keyframe_upper];
-          float* c = animation_rotation;
+          float* c = animation_rotation[channel.target_node_idx];
           lerp<4>(a, b, c, keyframe_uniform_time);
           vec4_norm(c, c);
         }
@@ -130,7 +128,7 @@ void animate_entity(Entity& entity, EntityComponentSystem& ecs, SceneGraph& scen
         {
           float* a = &sampler.values[3 * 4 * keyframe_lower];
           float* b = &sampler.values[3 * 4 * keyframe_upper];
-          float* c = animation_rotation;
+          float* c = animation_rotation[channel.target_node_idx];
           hermite_cubic_spline_interpolation(a, b, c, 4, keyframe_uniform_time,
                                              sampler.time_frame[1] - sampler.time_frame[0]);
           vec4_norm(c, c);
@@ -138,35 +136,34 @@ void animate_entity(Entity& entity, EntityComponentSystem& ecs, SceneGraph& scen
       }
       else if (AnimationChannel::Path::Translation == channel.target_path)
       {
-        AnimationTranslation* translation_component = nullptr;
-
-        if (-1 == entity.animation_translation)
+        if (0 == (entity.flags & SimpleEntity::NodeTranslations))
         {
-          entity.animation_translation = ecs.animation_translations_usage.allocate();
-          translation_component        = &ecs.animation_translations[entity.animation_translation];
-          SDL_memset(translation_component, 0, sizeof(AnimationTranslation));
-        }
-        else
-        {
-          translation_component = &ecs.animation_translations[entity.animation_translation];
+          entity.node_translations = ecs.node_anim_translations_stack.increment(scene_graph.nodes.count);
+          entity.flags |= SimpleEntity::NodeTranslations;
         }
 
-        translation_component->applicability |= (1ULL << channel.target_node_idx);
+        vec3* animation_translation = &ecs.node_anim_translations[entity.node_translations];
 
-        float* animation_translation = translation_component->animations[channel.target_node_idx];
+        if (0 == (entity.flags & SimpleEntity::NodeAnimTranslationApplicability))
+        {
+          SDL_memset(animation_translation, 0, scene_graph.nodes.count * sizeof(vec3));
+          entity.flags |= SimpleEntity::NodeAnimTranslationApplicability;
+        }
+
+        entity.node_anim_translation_applicability |= (uint64_t(1) << channel.target_node_idx);
 
         if (AnimationSampler::Interpolation::Linear == sampler.interpolation)
         {
           float* a = &sampler.values[3 * keyframe_lower];
           float* b = &sampler.values[3 * keyframe_upper];
-          float* c = animation_translation;
+          float* c = animation_translation[channel.target_node_idx];
           lerp<3>(a, b, c, keyframe_uniform_time);
         }
         else if (AnimationSampler::Interpolation::CubicSpline == sampler.interpolation)
         {
           float* a = &sampler.values[3 * 3 * keyframe_lower];
           float* b = &sampler.values[3 * 3 * keyframe_upper];
-          float* c = animation_translation;
+          float* c = animation_translation[channel.target_node_idx];
           hermite_cubic_spline_interpolation(a, b, c, 3, keyframe_uniform_time,
                                              sampler.time_frame[1] - sampler.time_frame[0]);
         }
@@ -201,17 +198,10 @@ template <typename... Args> void multiply(mat4x4 result, mat4x4 lhs, mat4x4 rhs,
 
 } // namespace
 
-// game_recalculate_node_transforms.cc
-void recalculate_node_transforms(Entity entity, EntityComponentSystem& ecs, const SceneGraph& scene_graph,
-                                 mat4x4 world_transform);
-void recalculate_skinning_matrices(Entity entity, EntityComponentSystem& ecs, const SceneGraph& scene_graph,
-                                   mat4x4 world_transform);
-
 namespace update {
 
 void helmet_job(ThreadJobData tjd)
 {
-
   quat orientation = {};
   vec3 x_axis      = {1.0, 0.0, 0.0};
   quat_rotate(orientation, to_rad(180.0), x_axis);
@@ -229,7 +219,7 @@ void helmet_job(ThreadJobData tjd)
   mat4x4 world_transform = {};
   multiply(world_transform, translation_matrix, rotation_matrix, scale_matrix);
 
-  recalculate_node_transforms(tjd.game.helmet_entity, tjd.game.ecs, tjd.game.helmet, world_transform);
+  tjd.game.helmet_entity.recalculate_node_transforms(tjd.game.ecs, tjd.game.helmet, world_transform);
 }
 
 void robot_job(ThreadJobData tjd)
@@ -283,7 +273,7 @@ void robot_job(ThreadJobData tjd)
   mat4x4 world_transform = {};
   multiply(world_transform, translation_matrix, rotation_matrix, scale_matrix);
 
-  recalculate_node_transforms(tjd.game.robot_entity, tjd.game.ecs, tjd.game.robot, world_transform);
+  tjd.game.robot_entity.recalculate_node_transforms(tjd.game.ecs, tjd.game.robot, world_transform);
 }
 
 void monster_job(ThreadJobData tjd)
@@ -309,9 +299,9 @@ void monster_job(ThreadJobData tjd)
   mat4x4 world_transform = {};
   multiply(world_transform, translation_matrix, rotation_matrix, scale_matrix);
 
-  animate_entity(tjd.game.monster_entity, tjd.game.ecs, tjd.game.monster, tjd.game.current_time_sec);
-  recalculate_node_transforms(tjd.game.monster_entity, tjd.game.ecs, tjd.game.monster, world_transform);
-  recalculate_skinning_matrices(tjd.game.monster_entity, tjd.game.ecs, tjd.game.monster, world_transform);
+  animate_entity(tjd.game.monster_entity.base, tjd.game.ecs, tjd.game.monster, tjd.game.current_time_sec);
+  tjd.game.monster_entity.base.recalculate_node_transforms(tjd.game.ecs, tjd.game.monster, world_transform);
+  tjd.game.monster_entity.recalculate_skinning_matrices(tjd.game.ecs, tjd.game.monster, world_transform);
 }
 
 void rigged_simple_job(ThreadJobData tjd)
@@ -334,9 +324,9 @@ void rigged_simple_job(ThreadJobData tjd)
   mat4x4 world_transform = {};
   multiply(world_transform, translation_matrix, rotation_matrix, scale_matrix);
 
-  animate_entity(tjd.game.rigged_simple_entity, tjd.game.ecs, tjd.game.riggedSimple, tjd.game.current_time_sec);
-  recalculate_node_transforms(tjd.game.rigged_simple_entity, tjd.game.ecs, tjd.game.riggedSimple, world_transform);
-  recalculate_skinning_matrices(tjd.game.rigged_simple_entity, tjd.game.ecs, tjd.game.riggedSimple, world_transform);
+  animate_entity(tjd.game.rigged_simple_entity.base, tjd.game.ecs, tjd.game.riggedSimple, tjd.game.current_time_sec);
+  tjd.game.rigged_simple_entity.base.recalculate_node_transforms(tjd.game.ecs, tjd.game.riggedSimple, world_transform);
+  tjd.game.rigged_simple_entity.recalculate_skinning_matrices(tjd.game.ecs, tjd.game.riggedSimple, world_transform);
 }
 
 void moving_lights_job(ThreadJobData tjd)
@@ -374,7 +364,7 @@ void moving_lights_job(ThreadJobData tjd)
     mat4x4 world_transform = {};
     multiply(world_transform, translation_matrix, rotation_matrix, scale_matrix);
 
-    recalculate_node_transforms(tjd.game.box_entities[i], tjd.game.ecs, tjd.game.box, world_transform);
+    tjd.game.box_entities[i].recalculate_node_transforms(tjd.game.ecs, tjd.game.box, world_transform);
   }
 }
 
@@ -407,7 +397,55 @@ void matrioshka_job(ThreadJobData tjd)
   mat4x4_mul(world_transform, translation_matrix, rotation_matrix);
 
   animate_entity(tjd.game.matrioshka_entity, tjd.game.ecs, tjd.game.animatedBox, tjd.game.current_time_sec);
-  recalculate_node_transforms(tjd.game.matrioshka_entity, tjd.game.ecs, tjd.game.animatedBox, world_transform);
+  tjd.game.matrioshka_entity.recalculate_node_transforms(tjd.game.ecs, tjd.game.animatedBox, world_transform);
+}
+
+void orientation_axis_job(ThreadJobData tjd)
+{
+  vec3 x_axis = {1.0, 0.0, 0.0};
+  vec3 y_axis = {0.0, 1.0, 0.0};
+
+  for (int i = 0; i < 3; ++i)
+  {
+    vec3 translation = {};
+    SDL_memcpy(translation, tjd.game.player_position, sizeof(vec3));
+
+    const vec3  scale              = {1.0f, 1.0f, 0.5f};
+    const float translation_offset = 2.0f;
+
+    quat orientation = {};
+    switch (i)
+    {
+    default:
+    case 0:
+      quat_rotate(orientation, -to_rad(90.0f), y_axis);
+      translation[0] += translation_offset;
+      break;
+    case 1:
+      quat_rotate(orientation, -to_rad(90.0f), x_axis);
+      translation[1] -= translation_offset;
+      break;
+    case 2:
+      quat_rotate(orientation, to_rad(180.0f), x_axis);
+      translation[2] += translation_offset;
+      break;
+    }
+
+    mat4x4 translation_matrix = {};
+    mat4x4_translate(translation_matrix, translation[0], translation[1], translation[2]);
+
+    mat4x4 rotation_matrix = {};
+    mat4x4_from_quat(rotation_matrix, orientation);
+
+    mat4x4 scale_matrix = {};
+    mat4x4_identity(scale_matrix);
+    mat4x4_scale_aniso(scale_matrix, scale_matrix, scale[0], scale[1], scale[2]);
+
+    mat4x4 world_transform = {};
+    multiply(world_transform, translation_matrix, rotation_matrix, scale_matrix);
+
+    tjd.game.axis_arrow_entities[i].recalculate_node_transforms(tjd.game.ecs, tjd.game.lil_arrow, world_transform);
+  }
 }
 
 } // namespace update

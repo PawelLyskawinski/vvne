@@ -154,7 +154,7 @@ static inline void mat4x4_scale_aniso(mat4x4 M, mat4x4 a, float x, float y, floa
     M[3][i] = a[3][i];
   }
 }
-static inline void mat4x4_mul(mat4x4 M, mat4x4 a, mat4x4 b)
+static inline void mat4x4_mul(mat4x4 M, const mat4x4 a, const mat4x4 b)
 {
   mat4x4 temp;
   int    k, r, c;
