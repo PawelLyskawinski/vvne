@@ -103,6 +103,8 @@ void DoubleEndedStack::reset_back() { stack_pointer_back = 0; }
 
 void Engine::startup()
 {
+  render_passes.init();
+
   {
     VkApplicationInfo ai = {
         .sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -1604,4 +1606,40 @@ void RenderPasses::destroy(VkDevice device)
   skybox.destroy(device);
   color_and_depth.destroy(device);
   gui.destroy(device);
+}
+
+void RenderPasses::init()
+{
+  shadowmap.framebuffers             = shadowmap_framebuffers;
+  shadowmap.framebuffers_count       = SDL_arraysize(shadowmap_framebuffers);
+  skybox.framebuffers                = skybox_framebuffers;
+  skybox.framebuffers_count          = SDL_arraysize(skybox_framebuffers);
+  color_and_depth.framebuffers       = color_and_depth_framebuffers;
+  color_and_depth.framebuffers_count = SDL_arraysize(color_and_depth_framebuffers);
+  gui.framebuffers                   = gui_framebuffers;
+  gui.framebuffers_count             = SDL_arraysize(gui_framebuffers);
+}
+
+void RenderPass::destroy(VkDevice device)
+{
+  vkDestroyRenderPass(device, render_pass, nullptr);
+  for (uint32_t i = 0; i < framebuffers_count; ++i)
+    vkDestroyFramebuffer(device, framebuffers[i], nullptr);
+}
+
+void RenderPass::begin(VkCommandBuffer cmd, uint32_t image_index)
+{
+  VkCommandBufferInheritanceInfo inheritance = {
+      .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+      .renderPass  = render_pass,
+      .framebuffer = framebuffers[image_index],
+  };
+
+  VkCommandBufferBeginInfo begin_info = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+      .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+      .pInheritanceInfo = &inheritance,
+  };
+
+  vkBeginCommandBuffer(cmd, &begin_info);
 }

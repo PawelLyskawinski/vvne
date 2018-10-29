@@ -92,44 +92,30 @@ struct Pipelines
   void destroy(VkDevice device);
 };
 
+struct RenderPass
+{
+  void destroy(VkDevice device);
+  void begin(VkCommandBuffer cmd, uint32_t image_index);
+
+  VkRenderPass   render_pass;
+  VkFramebuffer* framebuffers;
+  uint32_t       framebuffers_count;
+};
+
 struct RenderPasses
 {
-  template <uint32_t N> struct Coupling
-  {
-    VkRenderPass  render_pass;
-    VkFramebuffer framebuffers[N];
-
-    void destroy(VkDevice device)
-    {
-      vkDestroyRenderPass(device, render_pass, nullptr);
-      for (VkFramebuffer& framebuffer : framebuffers)
-        vkDestroyFramebuffer(device, framebuffer, nullptr);
-    }
-
-    void begin(VkCommandBuffer cmd, uint32_t image_index)
-    {
-      VkCommandBufferInheritanceInfo inheritance = {
-          .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-          .renderPass  = render_pass,
-          .framebuffer = framebuffers[image_index],
-      };
-
-      VkCommandBufferBeginInfo begin_info = {
-          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-          .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-          .pInheritanceInfo = &inheritance,
-      };
-
-      vkBeginCommandBuffer(cmd, &begin_info);
-    }
-  };
-
-  Coupling<SHADOWMAP_CASCADE_COUNT> shadowmap;
-  Coupling<SWAPCHAIN_IMAGES_COUNT>  skybox;
-  Coupling<SWAPCHAIN_IMAGES_COUNT>  color_and_depth;
-  Coupling<SWAPCHAIN_IMAGES_COUNT>  gui;
-
+  void init();
   void destroy(VkDevice device);
+
+  RenderPass shadowmap;
+  RenderPass skybox;
+  RenderPass color_and_depth;
+  RenderPass gui;
+
+  VkFramebuffer shadowmap_framebuffers[SHADOWMAP_CASCADE_COUNT];
+  VkFramebuffer skybox_framebuffers[SWAPCHAIN_IMAGES_COUNT];
+  VkFramebuffer color_and_depth_framebuffers[SWAPCHAIN_IMAGES_COUNT];
+  VkFramebuffer gui_framebuffers[SWAPCHAIN_IMAGES_COUNT];
 };
 
 struct Engine

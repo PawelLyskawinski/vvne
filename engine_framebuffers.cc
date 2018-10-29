@@ -4,11 +4,13 @@ namespace {
 
 void shadowmap(Engine& engine)
 {
-  for (unsigned i = 0; i < SHADOWMAP_CASCADE_COUNT; ++i)
+  RenderPass& render_pass = engine.render_passes.shadowmap;
+
+  for (unsigned i = 0; i < render_pass.framebuffers_count; ++i)
   {
     VkFramebufferCreateInfo ci = {
         .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-        .renderPass      = engine.render_passes.shadowmap.render_pass,
+        .renderPass      = render_pass.render_pass,
         .attachmentCount = 1,
         .pAttachments    = &engine.shadowmap_cascade_image_views[i],
         .width           = SHADOWMAP_IMAGE_DIM,
@@ -16,20 +18,22 @@ void shadowmap(Engine& engine)
         .layers          = 1,
     };
 
-    vkCreateFramebuffer(engine.device, &ci, nullptr, &engine.render_passes.shadowmap.framebuffers[i]);
+    vkCreateFramebuffer(engine.device, &ci, nullptr, &render_pass.framebuffers[i]);
   }
 }
 
 void skybox(Engine& engine)
 {
-  for (uint32_t i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
+  RenderPass& render_pass = engine.render_passes.skybox;
+
+  for (uint32_t i = 0; i < render_pass.framebuffers_count; ++i)
   {
     VkImageView attachments_msaa[]    = {engine.swapchain_image_views[i], engine.msaa_color_image_view};
     VkImageView attachments_no_msaa[] = {engine.swapchain_image_views[i]};
 
     VkFramebufferCreateInfo ci = {
         .sType      = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-        .renderPass = engine.render_passes.skybox.render_pass,
+        .renderPass = render_pass.render_pass,
         .width      = engine.extent2D.width,
         .height     = engine.extent2D.height,
         .layers     = 1,
@@ -46,13 +50,15 @@ void skybox(Engine& engine)
       ci.pAttachments    = attachments_msaa;
     }
 
-    vkCreateFramebuffer(engine.device, &ci, nullptr, &engine.render_passes.skybox.framebuffers[i]);
+    vkCreateFramebuffer(engine.device, &ci, nullptr, &render_pass.framebuffers[i]);
   }
 }
 
 void color_and_depth(Engine& engine)
 {
-  for (uint32_t i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
+  RenderPass& render_pass = engine.render_passes.color_and_depth;
+
+  for (uint32_t i = 0; i < render_pass.framebuffers_count; ++i)
   {
     VkImageView attachments_msaa[] = {engine.swapchain_image_views[i], engine.depth_image_view,
                                       engine.msaa_color_image_view};
@@ -61,7 +67,7 @@ void color_and_depth(Engine& engine)
 
     VkFramebufferCreateInfo ci = {
         .sType      = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-        .renderPass = engine.render_passes.color_and_depth.render_pass,
+        .renderPass = render_pass.render_pass,
         .width      = engine.extent2D.width,
         .height     = engine.extent2D.height,
         .layers     = 1,
@@ -78,20 +84,22 @@ void color_and_depth(Engine& engine)
       ci.pAttachments    = attachments_msaa;
     }
 
-    vkCreateFramebuffer(engine.device, &ci, nullptr, &engine.render_passes.color_and_depth.framebuffers[i]);
+    vkCreateFramebuffer(engine.device, &ci, nullptr, &render_pass.framebuffers[i]);
   }
 }
 
 void gui(Engine& engine)
 {
-  for (uint32_t i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
+  RenderPass& render_pass = engine.render_passes.gui;
+
+  for (uint32_t i = 0; i < render_pass.framebuffers_count; ++i)
   {
     VkImageView attachments_msaa[]    = {engine.swapchain_image_views[i], engine.msaa_color_image_view};
     VkImageView attachments_no_msaa[] = {engine.swapchain_image_views[i]};
 
     VkFramebufferCreateInfo ci = {
         .sType      = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-        .renderPass = engine.render_passes.gui.render_pass,
+        .renderPass = render_pass.render_pass,
         .width      = engine.extent2D.width,
         .height     = engine.extent2D.height,
         .layers     = 1,
@@ -108,7 +116,7 @@ void gui(Engine& engine)
       ci.pAttachments    = attachments_msaa;
     }
 
-    vkCreateFramebuffer(engine.device, &ci, nullptr, &engine.render_passes.gui.framebuffers[i]);
+    vkCreateFramebuffer(engine.device, &ci, nullptr, &render_pass.framebuffers[i]);
   }
 }
 
