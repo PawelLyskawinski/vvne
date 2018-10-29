@@ -20,8 +20,12 @@ Current preview (still a veeeery long road ahead)
 - Cascaded shadow mapping
 
 ### TODO - engine
+- Replace vulkan validation compilation flag with command line argument parsing
+- Refactor ECS and job system
 - DXT texture compression
 - global illumination (got to understand spherical harmonics and light probes first)
+- Occluders (AABB trees)
+- Tesselated level ground (initially from height map)
 
 ### TODO - game
 - movable tilt lines under strafe movement (gui)
@@ -40,7 +44,6 @@ Current preview (still a veeeery long road ahead)
 - designated initializers (available in C++ with GCC 8.1 c++2a flag)
 
 ### Dependencies
-- imgui (included with project)
 - SDL2 (any version with SDL_vulkan header)
 - lunarg vulkan sdk
 
