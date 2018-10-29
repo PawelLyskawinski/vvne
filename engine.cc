@@ -55,6 +55,27 @@ uint32_t find_memory_type_index(VkPhysicalDeviceMemoryProperties* properties, Vk
   return 0;
 }
 
+const char* to_cstr(VkPresentModeKHR mode)
+{
+  switch (mode)
+  {
+  case VK_PRESENT_MODE_MAILBOX_KHR:
+    return "MAILBOX (smart v-sync)";
+  case VK_PRESENT_MODE_FIFO_KHR:
+    return "FIFO (v-sync)";
+  case VK_PRESENT_MODE_IMMEDIATE_KHR:
+    return "IMMEDIATE";
+  case VK_PRESENT_MODE_FIFO_RELAXED_KHR:
+    return "FIFO RELAXED";
+  case VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR:
+    return "SHARED DEMAND REFRESH";
+  case VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR:
+    return "SHARED CONTINUOUS REFRESH";
+  default:
+    return "unknown?";
+  }
+}
+
 } // namespace
 
 VkDeviceSize align(VkDeviceSize unaligned, VkDeviceSize alignment)
@@ -253,42 +274,21 @@ void Engine::startup()
     VkPresentModeKHR* present_modes = reinterpret_cast<VkPresentModeKHR*>(allocation);
     vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, present_modes);
 
-    bool has_immediate_mode = false;
-    bool has_mailbox_mode   = false;
-
     SDL_Log("Supported presentation modes");
     for (uint32_t i = 0; i < count; ++i)
-    {
-      switch (present_modes[i])
-      {
-      case VK_PRESENT_MODE_MAILBOX_KHR:
-        has_mailbox_mode = true;
-        SDL_Log("MAILBOX (smart v-sync)");
-        break;
-      case VK_PRESENT_MODE_FIFO_KHR:
-        SDL_Log("FIFO (v-sync)");
-        break;
-      case VK_PRESENT_MODE_IMMEDIATE_KHR:
-        has_immediate_mode = true;
-        SDL_Log("IMMEDIATE");
-        break;
-      case VK_PRESENT_MODE_FIFO_RELAXED_KHR:
-        SDL_Log("FIFO RELAXED");
-        break;
-      case VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR:
-        SDL_Log("SHARED DEMAND REFRESH");
-        break;
-      case VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR:
-        SDL_Log("SHARED CONTINUOUS REFRESH");
-        break;
-      default:
-        SDL_Log("unknown?");
-        break;
-      }
-    }
+      SDL_Log("%s", to_cstr(present_modes[i]));
 
-    present_mode = has_immediate_mode ? VK_PRESENT_MODE_IMMEDIATE_KHR
-                                      : has_mailbox_mode ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_FIFO_KHR;
+    auto has = [](const VkPresentModeKHR* all, uint32_t n, VkPresentModeKHR elem) {
+      for (uint32_t i = 0; i < n; ++i)
+        if (elem == all[i])
+          return true;
+      return false;
+    };
+
+    present_mode = has(present_modes, count, VK_PRESENT_MODE_IMMEDIATE_KHR)
+                       ? VK_PRESENT_MODE_IMMEDIATE_KHR
+                       : has(present_modes, count, VK_PRESENT_MODE_MAILBOX_KHR) ? VK_PRESENT_MODE_MAILBOX_KHR
+                                                                                : VK_PRESENT_MODE_FIFO_KHR;
   }
 
   {
