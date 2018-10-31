@@ -63,33 +63,35 @@ constexpr int SWAPCHAIN_IMAGES_COUNT  = 2;
 constexpr int SHADOWMAP_IMAGE_DIM     = 1024 * 2;
 constexpr int SHADOWMAP_CASCADE_COUNT = 4;
 
+struct PipelineWithHayout
+{
+  VkPipeline       pipeline;
+  VkPipelineLayout layout;
+};
+
 struct Pipelines
 {
-  struct Coupling
-  {
-    VkPipeline       pipeline;
-    VkPipelineLayout layout;
-  };
-
-  Coupling shadowmap;
-  Coupling skybox;
-  Coupling scene3D;
-  Coupling pbr_water;
-  Coupling colored_geometry;
-  Coupling colored_geometry_triangle_strip;
-  Coupling colored_geometry_skinned;
-  Coupling green_gui;
-  Coupling green_gui_weapon_selector_box_left;
-  Coupling green_gui_weapon_selector_box_right;
-  Coupling green_gui_lines;
-  Coupling green_gui_sdf_font;
-  Coupling green_gui_triangle;
-  Coupling green_gui_radar_dots;
-  Coupling imgui;
-  Coupling debug_billboard;
-  Coupling colored_model_wireframe;
-
   void destroy(VkDevice device);
+
+  using Pair = PipelineWithHayout;
+
+  Pair shadowmap;
+  Pair skybox;
+  Pair scene3D;
+  Pair pbr_water;
+  Pair colored_geometry;
+  Pair colored_geometry_triangle_strip;
+  Pair colored_geometry_skinned;
+  Pair green_gui;
+  Pair green_gui_weapon_selector_box_left;
+  Pair green_gui_weapon_selector_box_right;
+  Pair green_gui_lines;
+  Pair green_gui_sdf_font;
+  Pair green_gui_triangle;
+  Pair green_gui_radar_dots;
+  Pair imgui;
+  Pair debug_billboard;
+  Pair colored_model_wireframe;
 };
 
 struct RenderPass
@@ -118,10 +120,22 @@ struct RenderPasses
   VkFramebuffer gui_framebuffers[SWAPCHAIN_IMAGES_COUNT];
 };
 
+struct DescriptorSetLayouts
+{
+  void destroy(VkDevice device);
+
+  VkDescriptorSetLayout shadow_pass;
+  VkDescriptorSetLayout pbr_metallic_workflow_material;
+  VkDescriptorSetLayout pbr_ibl_cubemaps_and_brdf_lut;
+  VkDescriptorSetLayout pbr_dynamic_lights;
+  VkDescriptorSetLayout single_texture_in_frag;
+  VkDescriptorSetLayout skinning_matrices;
+  VkDescriptorSetLayout cascade_shadow_map_matrices_ubo_frag;
+};
+
 struct Engine
 {
   // configuration
-
   VkSampleCountFlagBits MSAA_SAMPLE_COUNT;
 
   // data
@@ -181,17 +195,9 @@ struct Engine
   // back  : temporary allocations
   DoubleEndedStack allocator;
 
-
-  VkDescriptorSetLayout shadow_pass_descriptor_set_layout;
-  VkDescriptorSetLayout pbr_metallic_workflow_material_descriptor_set_layout;
-  VkDescriptorSetLayout pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout;
-  VkDescriptorSetLayout pbr_dynamic_lights_descriptor_set_layout;
-  VkDescriptorSetLayout single_texture_in_frag_descriptor_set_layout;
-  VkDescriptorSetLayout skinning_matrices_descriptor_set_layout;
-  VkDescriptorSetLayout cascade_shadow_map_matrices_ubo_frag_set_layout;
-
-  RenderPasses render_passes;
-  Pipelines    pipelines;
+  DescriptorSetLayouts descriptor_set_layouts;
+  RenderPasses         render_passes;
+  Pipelines            pipelines;
 
   // Live shader reloading helpers.
   //

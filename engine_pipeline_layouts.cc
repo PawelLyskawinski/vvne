@@ -16,7 +16,7 @@ void shadowmap(Engine& engine)
   VkPipelineLayoutCreateInfo ci = {
       .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
       .setLayoutCount         = 1,
-      .pSetLayouts            = &engine.shadow_pass_descriptor_set_layout,
+      .pSetLayouts            = &engine.descriptor_set_layouts.shadow_pass,
       .pushConstantRangeCount = SDL_arraysize(ranges),
       .pPushConstantRanges    = ranges,
   };
@@ -37,7 +37,7 @@ void skybox(Engine& engine)
   VkPipelineLayoutCreateInfo ci = {
       .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
       .setLayoutCount         = 1,
-      .pSetLayouts            = &engine.single_texture_in_frag_descriptor_set_layout,
+      .pSetLayouts            = &engine.descriptor_set_layouts.single_texture_in_frag,
       .pushConstantRangeCount = SDL_arraysize(ranges),
       .pPushConstantRanges    = ranges,
   };
@@ -56,11 +56,11 @@ void scene3D(Engine& engine)
   };
 
   VkDescriptorSetLayout descriptor_sets[] = {
-      engine.pbr_metallic_workflow_material_descriptor_set_layout, //
-      engine.pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout,
-      engine.single_texture_in_frag_descriptor_set_layout,
-      engine.pbr_dynamic_lights_descriptor_set_layout,
-      engine.cascade_shadow_map_matrices_ubo_frag_set_layout,
+      engine.descriptor_set_layouts.pbr_metallic_workflow_material, //
+      engine.descriptor_set_layouts.pbr_ibl_cubemaps_and_brdf_lut,
+      engine.descriptor_set_layouts.single_texture_in_frag,
+      engine.descriptor_set_layouts.pbr_dynamic_lights,
+      engine.descriptor_set_layouts.cascade_shadow_map_matrices_ubo_frag,
   };
 
   VkPipelineLayoutCreateInfo ci = {
@@ -85,9 +85,9 @@ void pbr_water(Engine& engine)
   };
 
   VkDescriptorSetLayout descriptor_sets[] = {
-      engine.pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout,
-      engine.pbr_dynamic_lights_descriptor_set_layout,
-      engine.single_texture_in_frag_descriptor_set_layout,
+      engine.descriptor_set_layouts.pbr_ibl_cubemaps_and_brdf_lut,
+      engine.descriptor_set_layouts.pbr_dynamic_lights,
+      engine.descriptor_set_layouts.single_texture_in_frag,
   };
 
   VkPipelineLayoutCreateInfo ci = {
@@ -169,7 +169,7 @@ void colored_geometry_skinned(Engine& engine)
   VkPipelineLayoutCreateInfo ci = {
       .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
       .setLayoutCount         = 1,
-      .pSetLayouts            = &engine.skinning_matrices_descriptor_set_layout,
+      .pSetLayouts            = &engine.descriptor_set_layouts.skinning_matrices,
       .pushConstantRangeCount = SDL_arraysize(ranges),
       .pPushConstantRanges    = ranges,
   };
@@ -195,7 +195,7 @@ void green_gui(Engine& engine)
   VkPipelineLayoutCreateInfo ci = {
       .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
       .setLayoutCount         = 1,
-      .pSetLayouts            = &engine.single_texture_in_frag_descriptor_set_layout,
+      .pSetLayouts            = &engine.descriptor_set_layouts.single_texture_in_frag,
       .pushConstantRangeCount = SDL_arraysize(ranges),
       .pPushConstantRanges    = ranges,
   };
@@ -221,7 +221,7 @@ void green_gui_weapon_selector_box_left(Engine& engine)
   VkPipelineLayoutCreateInfo ci = {
       .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
       .setLayoutCount         = 1,
-      .pSetLayouts            = &engine.single_texture_in_frag_descriptor_set_layout,
+      .pSetLayouts            = &engine.descriptor_set_layouts.single_texture_in_frag,
       .pushConstantRangeCount = SDL_arraysize(ranges),
       .pPushConstantRanges    = ranges,
   };
@@ -247,7 +247,7 @@ void green_gui_weapon_selector_box_right(Engine& engine)
   VkPipelineLayoutCreateInfo ci = {
       .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
       .setLayoutCount         = 1,
-      .pSetLayouts            = &engine.single_texture_in_frag_descriptor_set_layout,
+      .pSetLayouts            = &engine.descriptor_set_layouts.single_texture_in_frag,
       .pushConstantRangeCount = SDL_arraysize(ranges),
       .pPushConstantRanges    = ranges,
   };
@@ -268,7 +268,7 @@ void green_gui_lines(Engine& engine)
   VkPipelineLayoutCreateInfo ci = {
       .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
       .setLayoutCount         = 1,
-      .pSetLayouts            = &engine.single_texture_in_frag_descriptor_set_layout,
+      .pSetLayouts            = &engine.descriptor_set_layouts.single_texture_in_frag,
       .pushConstantRangeCount = SDL_arraysize(ranges),
       .pPushConstantRanges    = ranges,
   };
@@ -307,7 +307,7 @@ void green_gui_sdf_font(Engine& engine)
   VkPipelineLayoutCreateInfo ci = {
       .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
       .setLayoutCount         = 1,
-      .pSetLayouts            = &engine.single_texture_in_frag_descriptor_set_layout,
+      .pSetLayouts            = &engine.descriptor_set_layouts.single_texture_in_frag,
       .pushConstantRangeCount = SDL_arraysize(ranges),
       .pPushConstantRanges    = ranges,
   };
@@ -376,7 +376,7 @@ void imgui(Engine& engine)
   VkPipelineLayoutCreateInfo ci = {
       .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
       .setLayoutCount         = 1,
-      .pSetLayouts            = &engine.single_texture_in_frag_descriptor_set_layout,
+      .pSetLayouts            = &engine.descriptor_set_layouts.single_texture_in_frag,
       .pushConstantRangeCount = SDL_arraysize(ranges),
       .pPushConstantRanges    = ranges,
   };
@@ -402,7 +402,7 @@ void debug_shadowmap_billboard(Engine& engine)
   VkPipelineLayoutCreateInfo ci = {
       .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
       .setLayoutCount         = 1,
-      .pSetLayouts            = &engine.single_texture_in_frag_descriptor_set_layout,
+      .pSetLayouts            = &engine.descriptor_set_layouts.single_texture_in_frag,
       .pushConstantRangeCount = SDL_arraysize(ranges),
       .pPushConstantRanges    = ranges,
   };

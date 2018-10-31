@@ -882,16 +882,9 @@ void Engine::teardown()
 {
   vkDeviceWaitIdle(device);
 
+  descriptor_set_layouts.destroy(device);
   render_passes.destroy(device);
   pipelines.destroy(device);
-
-  vkDestroyDescriptorSetLayout(device, shadow_pass_descriptor_set_layout, nullptr);
-  vkDestroyDescriptorSetLayout(device, pbr_metallic_workflow_material_descriptor_set_layout, nullptr);
-  vkDestroyDescriptorSetLayout(device, pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout, nullptr);
-  vkDestroyDescriptorSetLayout(device, pbr_dynamic_lights_descriptor_set_layout, nullptr);
-  vkDestroyDescriptorSetLayout(device, single_texture_in_frag_descriptor_set_layout, nullptr);
-  vkDestroyDescriptorSetLayout(device, skinning_matrices_descriptor_set_layout, nullptr);
-  vkDestroyDescriptorSetLayout(device, cascade_shadow_map_matrices_ubo_frag_set_layout, nullptr);
 
   for (VkFence& fence : submition_fences)
     vkDestroyFence(device, fence, nullptr);
@@ -972,7 +965,7 @@ VkFormat bitsPerPixelToFormat(uint8_t bpp)
 
 VkFormat bitsPerPixelToFormat(SDL_Surface* surface) { return bitsPerPixelToFormat(surface->format->BitsPerPixel); }
 
-}  // namespace
+} // namespace
 
 Texture Engine::load_texture_hdr(const char* filename)
 {
@@ -1590,14 +1583,28 @@ int ImageResources::add(VkImageView image)
 
 void Pipelines::destroy(VkDevice device)
 {
-  const Pipelines::Coupling* pairs = reinterpret_cast<Pipelines::Coupling*>(this);
-  const int                  count = sizeof(Pipelines) / sizeof(Pipelines::Coupling);
+  auto destroy = [device](const Pipelines::Pair& in) {
+    vkDestroyPipeline(device, in.pipeline, nullptr);
+    vkDestroyPipelineLayout(device, in.layout, nullptr);
+  };
 
-  for (int i = 0; i < count; ++i)
-  {
-    vkDestroyPipeline(device, pairs[i].pipeline, nullptr);
-    vkDestroyPipelineLayout(device, pairs[i].layout, nullptr);
-  }
+  destroy(shadowmap);
+  destroy(skybox);
+  destroy(scene3D);
+  destroy(pbr_water);
+  destroy(colored_geometry);
+  destroy(colored_geometry_triangle_strip);
+  destroy(colored_geometry_skinned);
+  destroy(green_gui);
+  destroy(green_gui_weapon_selector_box_left);
+  destroy(green_gui_weapon_selector_box_right);
+  destroy(green_gui_lines);
+  destroy(green_gui_sdf_font);
+  destroy(green_gui_triangle);
+  destroy(green_gui_radar_dots);
+  destroy(imgui);
+  destroy(debug_billboard);
+  destroy(colored_model_wireframe);
 }
 
 void RenderPasses::destroy(VkDevice device)
@@ -1642,4 +1649,16 @@ void RenderPass::begin(VkCommandBuffer cmd, uint32_t image_index)
   };
 
   vkBeginCommandBuffer(cmd, &begin_info);
+}
+
+void DescriptorSetLayouts::destroy(VkDevice device)
+{
+  auto destroy = [device](VkDescriptorSetLayout layout) { vkDestroyDescriptorSetLayout(device, layout, nullptr); };
+  destroy(shadow_pass);
+  destroy(pbr_metallic_workflow_material);
+  destroy(pbr_ibl_cubemaps_and_brdf_lut);
+  destroy(pbr_dynamic_lights);
+  destroy(single_texture_in_frag);
+  destroy(skinning_matrices);
+  destroy(cascade_shadow_map_matrices_ubo_frag);
 }

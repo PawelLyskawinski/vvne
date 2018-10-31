@@ -16,7 +16,7 @@ void Engine::setup_descriptor_set_layouts()
         .pBindings    = &binding,
     };
 
-    vkCreateDescriptorSetLayout(device, &ci, nullptr, &shadow_pass_descriptor_set_layout);
+    vkCreateDescriptorSetLayout(device, &ci, nullptr, &descriptor_set_layouts.shadow_pass);
   }
 
   // --------------------------------------------------------------- //
@@ -43,7 +43,7 @@ void Engine::setup_descriptor_set_layouts()
         .pBindings    = &binding,
     };
 
-    vkCreateDescriptorSetLayout(device, &ci, nullptr, &pbr_metallic_workflow_material_descriptor_set_layout);
+    vkCreateDescriptorSetLayout(device, &ci, nullptr, &descriptor_set_layouts.pbr_metallic_workflow_material);
   }
 
   // --------------------------------------------------------------- //
@@ -76,7 +76,7 @@ void Engine::setup_descriptor_set_layouts()
         .pBindings    = bindings,
     };
 
-    vkCreateDescriptorSetLayout(device, &ci, nullptr, &pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout);
+    vkCreateDescriptorSetLayout(device, &ci, nullptr, &descriptor_set_layouts.pbr_ibl_cubemaps_and_brdf_lut);
   }
 
   // --------------------------------------------------------------- //
@@ -96,7 +96,7 @@ void Engine::setup_descriptor_set_layouts()
         .pBindings    = &binding,
     };
 
-    vkCreateDescriptorSetLayout(device, &ci, nullptr, &pbr_dynamic_lights_descriptor_set_layout);
+    vkCreateDescriptorSetLayout(device, &ci, nullptr, &descriptor_set_layouts.pbr_dynamic_lights);
   }
 
   // --------------------------------------------------------------- //
@@ -116,7 +116,7 @@ void Engine::setup_descriptor_set_layouts()
         .pBindings    = &binding,
     };
 
-    vkCreateDescriptorSetLayout(device, &ci, nullptr, &single_texture_in_frag_descriptor_set_layout);
+    vkCreateDescriptorSetLayout(device, &ci, nullptr, &descriptor_set_layouts.single_texture_in_frag);
   }
 
   // --------------------------------------------------------------- //
@@ -136,7 +136,7 @@ void Engine::setup_descriptor_set_layouts()
         .pBindings    = &binding,
     };
 
-    vkCreateDescriptorSetLayout(device, &ci, nullptr, &skinning_matrices_descriptor_set_layout);
+    vkCreateDescriptorSetLayout(device, &ci, nullptr, &descriptor_set_layouts.skinning_matrices);
   }
 
   // --------------------------------------------------------------- //
@@ -157,6 +157,6 @@ void Engine::setup_descriptor_set_layouts()
     };
 
     binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-    vkCreateDescriptorSetLayout(device, &ci, nullptr, &cascade_shadow_map_matrices_ubo_frag_set_layout);
+    vkCreateDescriptorSetLayout(device, &ci, nullptr, &descriptor_set_layouts.cascade_shadow_map_matrices_ubo_frag);
   }
 }

@@ -677,7 +677,7 @@ void Game::startup(Engine& engine)
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool     = engine.descriptor_pool,
         .descriptorSetCount = 1,
-        .pSetLayouts        = &engine.pbr_metallic_workflow_material_descriptor_set_layout,
+        .pSetLayouts        = &engine.descriptor_set_layouts.pbr_metallic_workflow_material,
     };
 
     vkAllocateDescriptorSets(engine.device, &allocate, &helmet_pbr_material_dset);
@@ -738,7 +738,7 @@ void Game::startup(Engine& engine)
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool     = engine.descriptor_pool,
         .descriptorSetCount = 1,
-        .pSetLayouts        = &engine.pbr_ibl_cubemaps_and_brdf_lut_descriptor_set_layout,
+        .pSetLayouts        = &engine.descriptor_set_layouts.pbr_ibl_cubemaps_and_brdf_lut,
     };
 
     vkAllocateDescriptorSets(engine.device, &allocate, &pbr_ibl_environment_dset);
@@ -797,7 +797,7 @@ void Game::startup(Engine& engine)
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool     = engine.descriptor_pool,
         .descriptorSetCount = 1,
-        .pSetLayouts        = &engine.pbr_dynamic_lights_descriptor_set_layout,
+        .pSetLayouts        = &engine.descriptor_set_layouts.pbr_dynamic_lights,
     };
 
     vkAllocateDescriptorSets(engine.device, &allocate, &pbr_dynamic_lights_dset);
@@ -832,7 +832,7 @@ void Game::startup(Engine& engine)
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool     = engine.descriptor_pool,
         .descriptorSetCount = 1,
-        .pSetLayouts        = &engine.single_texture_in_frag_descriptor_set_layout,
+        .pSetLayouts        = &engine.descriptor_set_layouts.single_texture_in_frag,
     };
 
     vkAllocateDescriptorSets(engine.device, &allocate, &skybox_cubemap_dset);
@@ -888,7 +888,7 @@ void Game::startup(Engine& engine)
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool     = engine.descriptor_pool,
         .descriptorSetCount = 1,
-        .pSetLayouts        = &engine.skinning_matrices_descriptor_set_layout,
+        .pSetLayouts        = &engine.descriptor_set_layouts.skinning_matrices,
     };
 
     vkAllocateDescriptorSets(engine.device, &allocate, &monster_skinning_matrices_dset);
@@ -928,7 +928,7 @@ void Game::startup(Engine& engine)
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool     = engine.descriptor_pool,
         .descriptorSetCount = 1,
-        .pSetLayouts        = &engine.shadow_pass_descriptor_set_layout,
+        .pSetLayouts        = &engine.descriptor_set_layouts.shadow_pass,
     };
 
     vkAllocateDescriptorSets(engine.device, &allocate, &cascade_view_proj_matrices_depth_pass_dset[i]);
@@ -961,7 +961,7 @@ void Game::startup(Engine& engine)
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool     = engine.descriptor_pool,
         .descriptorSetCount = 1,
-        .pSetLayouts        = &engine.cascade_shadow_map_matrices_ubo_frag_set_layout,
+        .pSetLayouts        = &engine.descriptor_set_layouts.cascade_shadow_map_matrices_ubo_frag,
     };
 
     vkAllocateDescriptorSets(engine.device, &allocate, &cascade_view_proj_matrices_render_dset[i]);
