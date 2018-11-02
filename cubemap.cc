@@ -6,34 +6,33 @@
 
 namespace {
 
-constexpr float to_rad(float deg) noexcept
-{
-  return (static_cast<float>(M_PI) * deg) / 180.0f;
-}
+constexpr float to_rad(float deg) noexcept { return (static_cast<float>(M_PI) * deg) / 180.0f; }
 
 constexpr float calculate_mip_divisor(int mip_level)
 {
   return static_cast<float>(mip_level ? SDL_pow(2, mip_level) : 1);
 }
 
+void generate_cubemap_views(mat4x4 views[], vec3 centers[], vec3 ups[], uint32_t count)
+{
+  vec3 eye = {0.0f, 0.0f, 0.0f};
+  for (uint32_t i = 0; i < count; ++i)
+    mat4x4_look_at(views[i], eye, centers[i], ups[i]);
+}
+
 void generate_cubemap_views(mat4x4 views[6])
 {
-  struct V3
-  {
-    vec3 data;
+  vec3 centers[] = {
+      {1.0f, 0.0f, 0.0f},  {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f},
+      {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f},  {0.0f, 0.0f, -1.0f},
   };
 
-  auto look_at = [](mat4x4 result, V3 center, V3 up) {
-    vec3 eye = {0.0f, 0.0f, 0.0f};
-    mat4x4_look_at(result, eye, center.data, up.data);
+  vec3 ups[] = {
+      {0.0f, -1.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f},
+      {0.0f, 0.0f, -1.0f}, {0.0f, -1.0f, 0.0f}, {0.0f, -1.0f, 0.0f},
   };
 
-  look_at(views[0], {1.0f, 0.0f, 0.0f}, {0.0f, -1.0f, 0.0f});
-  look_at(views[1], {-1.0f, 0.0f, 0.0f}, {0.0f, -1.0f, 0.0f});
-  look_at(views[2], {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f});
-  look_at(views[3], {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f, -1.0f});
-  look_at(views[4], {0.0f, 0.0f, 1.0f}, {0.0f, -1.0f, 0.0f});
-  look_at(views[5], {0.0f, 0.0f, -1.0f}, {0.0f, -1.0f, 0.0f});
+  generate_cubemap_views(views, centers, ups, 6);
 }
 
 } // namespace
@@ -74,11 +73,11 @@ Texture generate_cubemap(Engine* engine, Game* game, const char* equirectangular
   {
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(engine->device, cubemap_image, &reqs);
-    vkBindImageMemory(engine->device, cubemap_image, engine->gpu_device_images_memory_block.memory,
-                      engine->gpu_device_images_memory_block.stack_pointer);
+    vkBindImageMemory(engine->device, cubemap_image, engine->memory_blocks.device_images.memory,
+                      engine->memory_blocks.device_images.stack_pointer);
 
-    engine->gpu_device_images_memory_block.stack_pointer +=
-        align(reqs.size, engine->gpu_device_images_memory_block.alignment);
+    engine->memory_blocks.device_images.stack_pointer +=
+        align(reqs.size, engine->memory_blocks.device_images.alignment);
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -613,11 +612,11 @@ Texture generate_irradiance_cubemap(Engine* engine, Game* game, Texture environm
   {
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(engine->device, cubemap_image, &reqs);
-    vkBindImageMemory(engine->device, cubemap_image, engine->gpu_device_images_memory_block.memory,
-                      engine->gpu_device_images_memory_block.stack_pointer);
+    vkBindImageMemory(engine->device, cubemap_image, engine->memory_blocks.device_images.memory,
+                      engine->memory_blocks.device_images.stack_pointer);
 
-    engine->gpu_device_images_memory_block.stack_pointer +=
-        align(reqs.size, engine->gpu_device_images_memory_block.alignment);
+    engine->memory_blocks.device_images.stack_pointer +=
+        align(reqs.size, engine->memory_blocks.device_images.alignment);
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -1122,11 +1121,11 @@ Texture generate_prefiltered_cubemap(Engine* engine, Game* game, Texture environ
   {
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(engine->device, cubemap_image, &reqs);
-    vkBindImageMemory(engine->device, cubemap_image, engine->gpu_device_images_memory_block.memory,
-                      engine->gpu_device_images_memory_block.stack_pointer);
+    vkBindImageMemory(engine->device, cubemap_image, engine->memory_blocks.device_images.memory,
+                      engine->memory_blocks.device_images.stack_pointer);
 
-    engine->gpu_device_images_memory_block.stack_pointer +=
-        align(reqs.size, engine->gpu_device_images_memory_block.alignment);
+    engine->memory_blocks.device_images.stack_pointer +=
+        align(reqs.size, engine->memory_blocks.device_images.alignment);
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -1644,11 +1643,11 @@ Texture generate_brdf_lookup(Engine* engine, int size)
   {
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(engine->device, brdf_image, &reqs);
-    vkBindImageMemory(engine->device, brdf_image, engine->gpu_device_images_memory_block.memory,
-                      engine->gpu_device_images_memory_block.stack_pointer);
+    vkBindImageMemory(engine->device, brdf_image, engine->memory_blocks.device_images.memory,
+                      engine->memory_blocks.device_images.stack_pointer);
 
-    engine->gpu_device_images_memory_block.stack_pointer +=
-        align(reqs.size, engine->gpu_device_images_memory_block.alignment);
+    engine->memory_blocks.device_images.stack_pointer +=
+        align(reqs.size, engine->memory_blocks.device_images.alignment);
   }
 
   VkImageView brdf_image_view = VK_NULL_HANDLE;

@@ -133,6 +133,17 @@ struct DescriptorSetLayouts
   VkDescriptorSetLayout cascade_shadow_map_matrices_ubo_frag;
 };
 
+struct MemoryBlocks
+{
+  void destroy(VkDevice device);
+
+  GpuMemoryBlock device_local;
+  GpuMemoryBlock host_visible_transfer_source;
+  GpuMemoryBlock device_images;
+  GpuMemoryBlock host_coherent;
+  GpuMemoryBlock host_coherent_ubo;
+};
+
 struct Engine
 {
   // configuration
@@ -170,25 +181,14 @@ struct Engine
   VkImageView                shadowmap_cascade_image_views[SHADOWMAP_CASCADE_COUNT];
   VkFence                    submition_fences[SWAPCHAIN_IMAGES_COUNT];
 
-  // Used for vertex / index data which will be reused all the time
-  GpuMemoryBlock gpu_device_local_memory_block;
-  VkBuffer       gpu_device_local_memory_buffer;
+  MemoryBlocks memory_blocks;
 
-  // Used for data transfers to device local memory
-  GpuMemoryBlock gpu_host_visible_transfer_source_memory_block;
-  VkBuffer       gpu_host_visible_transfer_source_memory_buffer;
-
-  // Used for dynamic vertex/index data updates (for example imgui, dynamic draws)
-  GpuMemoryBlock gpu_host_coherent_memory_block;
-  VkBuffer       gpu_host_coherent_memory_buffer;
-
-  // Image memory with images in use list
-  GpuMemoryBlock gpu_device_images_memory_block;
-  ImageResources image_resources;
-
-  // Used for universal buffer objects
-  GpuMemoryBlock gpu_host_coherent_ubo_memory_block;
-  VkBuffer       gpu_host_coherent_ubo_memory_buffer;
+  VkBuffer gpu_device_local_memory_buffer; // Used for vertex / index data which will be reused all the time
+  VkBuffer gpu_host_visible_transfer_source_memory_buffer; // Used for data transfers to device local memory
+  VkBuffer
+                 gpu_host_coherent_memory_buffer; // Used for dynamic vertex/index data updates (for example imgui, dynamic draws)
+  ImageResources image_resources;                 // Image memory with images in use list
+  VkBuffer       gpu_host_coherent_ubo_memory_buffer; // Used for universal buffer objects
 
   // General purpose allocator for application resources.
   // front : permanent allocations

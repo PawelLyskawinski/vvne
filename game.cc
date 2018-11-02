@@ -146,7 +146,7 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
   VkDeviceSize host_index_offset  = 0;
 
   {
-    GpuMemoryBlock& block = engine->gpu_host_visible_transfer_source_memory_block;
+    GpuMemoryBlock& block = engine->memory_blocks.host_visible_transfer_source;
 
     host_vertex_offset = block.stack_pointer;
     block.stack_pointer += align(total_vertex_count * sizeof(Vertex), block.alignment);
@@ -210,7 +210,7 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
   VkDeviceSize device_index_offset  = 0;
 
   {
-    GpuMemoryBlock& block = engine->gpu_device_local_memory_block;
+    GpuMemoryBlock& block = engine->memory_blocks.device_local;
 
     device_vertex_offset = block.stack_pointer;
     block.stack_pointer += align(total_vertex_count * sizeof(Vertex), block.alignment);
@@ -312,7 +312,7 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
     vkFreeCommandBuffers(engine->device, engine->graphics_command_pool, 1, &cmd);
   }
 
-  engine->gpu_host_visible_transfer_source_memory_block.stack_pointer = 0;
+  engine->memory_blocks.host_visible_transfer_source.stack_pointer = 0;
   engine->allocator.reset_back();
 
   return result;
@@ -573,7 +573,7 @@ void Game::startup(Engine& engine)
 
     for (int i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
     {
-      GpuMemoryBlock& block = engine.gpu_host_coherent_memory_block;
+      GpuMemoryBlock& block = engine.memory_blocks.host_coherent;
 
       debug_gui.vertex_buffer_offsets[i] = block.stack_pointer;
       block.stack_pointer += align(DebugGui::VERTEX_BUFFER_CAPACITY_BYTES, block.alignment);
@@ -626,7 +626,7 @@ void Game::startup(Engine& engine)
   const VkDeviceSize skinning_matrices_ubo_size = 64 * sizeof(mat4x4);
 
   {
-    GpuMemoryBlock& block = engine.gpu_host_coherent_ubo_memory_block;
+    GpuMemoryBlock& block = engine.memory_blocks.host_coherent_ubo;
 
     for (VkDeviceSize& offset : pbr_dynamic_lights_ubo_offsets)
     {
@@ -660,7 +660,7 @@ void Game::startup(Engine& engine)
   }
 
   {
-    GpuMemoryBlock& block = engine.gpu_host_coherent_memory_block;
+    GpuMemoryBlock& block = engine.memory_blocks.host_coherent;
     for (VkDeviceSize& offset : green_gui_rulers_buffer_offsets)
     {
       offset = block.stack_pointer;
@@ -1101,44 +1101,44 @@ void Game::startup(Engine& engine)
         },
     };
 
-    engine.gpu_host_visible_transfer_source_memory_block.stack_pointer = 0;
+    engine.memory_blocks.host_visible_transfer_source.stack_pointer = 0;
 
     VkDeviceSize vertices_host_offset = 0;
 
     {
-      GpuMemoryBlock& block = engine.gpu_host_visible_transfer_source_memory_block;
+      GpuMemoryBlock& block = engine.memory_blocks.host_visible_transfer_source;
 
       vertices_host_offset = block.stack_pointer;
       block.stack_pointer += align(sizeof(vertices), block.alignment);
     }
 
     {
-      GpuMemoryBlock& block = engine.gpu_device_local_memory_block;
+      GpuMemoryBlock& block = engine.memory_blocks.device_local;
 
       green_gui_billboard_vertex_buffer_offset = block.stack_pointer;
       block.stack_pointer += align(sizeof(vertices), block.alignment);
     }
 
-    update_ubo(engine.device, engine.gpu_host_visible_transfer_source_memory_block.memory, sizeof(vertices),
+    update_ubo(engine.device, engine.memory_blocks.host_visible_transfer_source.memory, sizeof(vertices),
                vertices_host_offset, vertices);
 
     VkDeviceSize cg_vertices_host_offset = 0;
 
     {
-      GpuMemoryBlock& block = engine.gpu_host_visible_transfer_source_memory_block;
+      GpuMemoryBlock& block = engine.memory_blocks.host_visible_transfer_source;
 
       cg_vertices_host_offset = block.stack_pointer;
       block.stack_pointer += align(sizeof(cg_vertices), block.alignment);
     }
 
     {
-      GpuMemoryBlock& block = engine.gpu_device_local_memory_block;
+      GpuMemoryBlock& block = engine.memory_blocks.device_local;
 
       regular_billboard_vertex_buffer_offset = block.stack_pointer;
       block.stack_pointer += align(sizeof(cg_vertices), block.alignment);
     }
 
-    update_ubo(engine.device, engine.gpu_host_visible_transfer_source_memory_block.memory, sizeof(cg_vertices),
+    update_ubo(engine.device, engine.memory_blocks.host_visible_transfer_source.memory, sizeof(cg_vertices),
                cg_vertices_host_offset, cg_vertices);
 
     VkCommandBuffer cmd = VK_NULL_HANDLE;
@@ -1218,7 +1218,7 @@ void Game::startup(Engine& engine)
     vkWaitForFences(engine.device, 1, &data_upload_fence, VK_TRUE, UINT64_MAX);
     vkDestroyFence(engine.device, data_upload_fence, nullptr);
     vkFreeCommandBuffers(engine.device, engine.graphics_command_pool, 1, &cmd);
-    engine.gpu_host_visible_transfer_source_memory_block.stack_pointer = 0;
+    engine.memory_blocks.host_visible_transfer_source.stack_pointer = 0;
   }
 
   {
@@ -2074,19 +2074,19 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
     ImGui::Text("image memory (%uMB pool)", bytes_as_mb(GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE));
     ImGui::ProgressBar(
-        calc_frac(engine.gpu_device_images_memory_block.stack_pointer, GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE));
+        calc_frac(engine.memory_blocks.device_images.stack_pointer, GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE));
 
     ImGui::Text("device-visible memory (%uMB pool)", bytes_as_mb(GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE));
     ImGui::ProgressBar(
-        calc_frac(engine.gpu_device_local_memory_block.stack_pointer, GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE));
+        calc_frac(engine.memory_blocks.device_local.stack_pointer, GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE));
 
     ImGui::Text("host-visible memory (%uMB pool)", bytes_as_mb(GPU_HOST_COHERENT_MEMORY_POOL_SIZE));
     ImGui::ProgressBar(
-        calc_frac(engine.gpu_host_coherent_memory_block.stack_pointer, GPU_HOST_COHERENT_MEMORY_POOL_SIZE));
+        calc_frac(engine.memory_blocks.host_coherent.stack_pointer, GPU_HOST_COHERENT_MEMORY_POOL_SIZE));
 
     ImGui::Text("UBO memory (%uMB pool)", bytes_as_mb(GPU_HOST_COHERENT_UBO_MEMORY_POOL_SIZE));
     ImGui::ProgressBar(
-        calc_frac(engine.gpu_host_coherent_ubo_memory_block.stack_pointer, GPU_HOST_COHERENT_UBO_MEMORY_POOL_SIZE));
+        calc_frac(engine.memory_blocks.host_coherent_ubo.stack_pointer, GPU_HOST_COHERENT_UBO_MEMORY_POOL_SIZE));
 
     ImGui::Text("double ended stack memory (%uMB pool)", bytes_as_mb(MEMORY_ALLOCATOR_POOL_SIZE));
     ImGui::ProgressBar(
@@ -2381,27 +2381,27 @@ void Game::render(Engine& engine)
       for (int i = 0; i < SHADOWMAP_CASCADE_COUNT; ++i)
         ubo_update.cascade_splits[i] = cascade_split_depths[i];
 
-      update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory, sizeof(ubo_update),
+      update_ubo(engine.device, engine.memory_blocks.host_coherent_ubo.memory, sizeof(ubo_update),
                  cascade_view_proj_mat_ubo_offsets[image_index], &ubo_update);
     }
 
     //
     // light sources
     //
-    update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory, sizeof(LightSources),
+    update_ubo(engine.device, engine.memory_blocks.host_coherent_ubo.memory, sizeof(LightSources),
                pbr_dynamic_lights_ubo_offsets[image_index], &pbr_light_sources_cache);
 
     //
     // rigged simple skinning matrices
     //
-    update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory,
+    update_ubo(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
                riggedSimple.skins[0].joints.count * sizeof(mat4x4), rig_skinning_matrices_ubo_offsets[image_index],
                &ecs.joint_matrices[rigged_simple_entity.joint_matrices]);
 
     //
     // monster skinning matrices
     //
-    update_ubo(engine.device, engine.gpu_host_coherent_ubo_memory_block.memory,
+    update_ubo(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
                monster.skins[0].joints.count * sizeof(mat4x4), monster_skinning_matrices_ubo_offsets[image_index],
                &ecs.joint_matrices[monster_entity.joint_matrices]);
 
@@ -2463,7 +2463,7 @@ void Game::render(Engine& engine)
         }
       }
 
-      update_ubo(engine.device, engine.gpu_host_coherent_memory_block.memory, r.count * 2 * sizeof(vec2),
+      update_ubo(engine.device, engine.memory_blocks.host_coherent.memory, r.count * 2 * sizeof(vec2),
                  green_gui_rulers_buffer_offsets[image_index], pushed_lines_data);
       engine.allocator.reset_back();
     }
@@ -2479,7 +2479,7 @@ void Game::render(Engine& engine)
     if (0 < vertex_size)
     {
       ImDrawVert* vtx_dst = nullptr;
-      vkMapMemory(engine.device, engine.gpu_host_coherent_memory_block.memory,
+      vkMapMemory(engine.device, engine.memory_blocks.host_coherent.memory,
                   debug_gui.vertex_buffer_offsets[image_index], vertex_size, 0, reinterpret_cast<void**>(&vtx_dst));
 
       for (int n = 0; n < draw_data->CmdListsCount; ++n)
@@ -2489,13 +2489,13 @@ void Game::render(Engine& engine)
         vtx_dst += cmd_list->VtxBuffer.Size;
       }
 
-      vkUnmapMemory(engine.device, engine.gpu_host_coherent_memory_block.memory);
+      vkUnmapMemory(engine.device, engine.memory_blocks.host_coherent.memory);
     }
 
     if (0 < index_size)
     {
       ImDrawIdx* idx_dst = nullptr;
-      vkMapMemory(engine.device, engine.gpu_host_coherent_memory_block.memory,
+      vkMapMemory(engine.device, engine.memory_blocks.host_coherent.memory,
                   debug_gui.index_buffer_offsets[image_index], index_size, 0, reinterpret_cast<void**>(&idx_dst));
 
       for (int n = 0; n < draw_data->CmdListsCount; ++n)
@@ -2505,7 +2505,7 @@ void Game::render(Engine& engine)
         idx_dst += cmd_list->IdxBuffer.Size;
       }
 
-      vkUnmapMemory(engine.device, engine.gpu_host_coherent_memory_block.memory);
+      vkUnmapMemory(engine.device, engine.memory_blocks.host_coherent.memory);
     }
 
     SDL_SemWait(js.all_threads_idle_signal);

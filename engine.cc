@@ -501,7 +501,7 @@ void Engine::startup()
   {
     VkMemoryRequirements reqs = {};
     vkGetBufferMemoryRequirements(device, gpu_device_local_memory_buffer, &reqs);
-    gpu_device_local_memory_block.alignment = reqs.alignment;
+    memory_blocks.device_local.alignment = reqs.alignment;
 
     VkPhysicalDeviceMemoryProperties properties = {};
     vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
@@ -512,8 +512,8 @@ void Engine::startup()
         .memoryTypeIndex = find_memory_type_index(&properties, &reqs, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
     };
 
-    vkAllocateMemory(device, &allocate, nullptr, &gpu_device_local_memory_block.memory);
-    vkBindBufferMemory(device, gpu_device_local_memory_buffer, gpu_device_local_memory_block.memory, 0);
+    vkAllocateMemory(device, &allocate, nullptr, &memory_blocks.device_local.memory);
+    vkBindBufferMemory(device, gpu_device_local_memory_buffer, memory_blocks.device_local.memory, 0);
   }
 
   // STATIC_GEOMETRY_TRANSFER
@@ -531,7 +531,7 @@ void Engine::startup()
   {
     VkMemoryRequirements reqs = {};
     vkGetBufferMemoryRequirements(device, gpu_host_visible_transfer_source_memory_buffer, &reqs);
-    gpu_host_visible_transfer_source_memory_block.alignment = reqs.alignment;
+    memory_blocks.host_visible_transfer_source.alignment = reqs.alignment;
 
     VkPhysicalDeviceMemoryProperties properties{};
     vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
@@ -543,9 +543,9 @@ void Engine::startup()
             &properties, &reqs, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
     };
 
-    vkAllocateMemory(device, &allocate, nullptr, &gpu_host_visible_transfer_source_memory_block.memory);
+    vkAllocateMemory(device, &allocate, nullptr, &memory_blocks.host_visible_transfer_source.memory);
     vkBindBufferMemory(device, gpu_host_visible_transfer_source_memory_buffer,
-                       gpu_host_visible_transfer_source_memory_block.memory, 0);
+                       memory_blocks.host_visible_transfer_source.memory, 0);
   }
 
   // HOST VISIBLE
@@ -564,7 +564,7 @@ void Engine::startup()
   {
     VkMemoryRequirements reqs = {};
     vkGetBufferMemoryRequirements(device, gpu_host_coherent_memory_buffer, &reqs);
-    gpu_host_coherent_memory_block.alignment = reqs.alignment;
+    memory_blocks.host_coherent.alignment = reqs.alignment;
 
     VkPhysicalDeviceMemoryProperties properties = {};
     vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
@@ -575,15 +575,15 @@ void Engine::startup()
         .memoryTypeIndex = find_memory_type_index(&properties, &reqs, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT),
     };
 
-    vkAllocateMemory(device, &allocate, nullptr, &gpu_host_coherent_memory_block.memory);
-    vkBindBufferMemory(device, gpu_host_coherent_memory_buffer, gpu_host_coherent_memory_block.memory, 0);
+    vkAllocateMemory(device, &allocate, nullptr, &memory_blocks.host_coherent.memory);
+    vkBindBufferMemory(device, gpu_host_coherent_memory_buffer, memory_blocks.host_coherent.memory, 0);
   }
 
   // IMAGES
   {
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(device, depth_image, &reqs);
-    gpu_device_images_memory_block.alignment = reqs.alignment;
+    memory_blocks.device_images.alignment = reqs.alignment;
 
     VkPhysicalDeviceMemoryProperties properties = {};
     vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
@@ -594,27 +594,27 @@ void Engine::startup()
         .memoryTypeIndex = find_memory_type_index(&properties, &reqs, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
     };
 
-    vkAllocateMemory(device, &allocate, nullptr, &gpu_device_images_memory_block.memory);
-    vkBindImageMemory(device, depth_image, gpu_device_images_memory_block.memory,
-                      gpu_device_images_memory_block.stack_pointer);
-    gpu_device_images_memory_block.stack_pointer += align(reqs.size, reqs.alignment);
+    vkAllocateMemory(device, &allocate, nullptr, &memory_blocks.device_images.memory);
+    vkBindImageMemory(device, depth_image, memory_blocks.device_images.memory,
+                      memory_blocks.device_images.stack_pointer);
+    memory_blocks.device_images.stack_pointer += align(reqs.size, reqs.alignment);
   }
 
   if (VK_SAMPLE_COUNT_1_BIT != MSAA_SAMPLE_COUNT)
   {
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(device, msaa_color_image, &reqs);
-    vkBindImageMemory(device, msaa_color_image, gpu_device_images_memory_block.memory,
-                      gpu_device_images_memory_block.stack_pointer);
-    gpu_device_images_memory_block.stack_pointer += align(reqs.size, reqs.alignment);
+    vkBindImageMemory(device, msaa_color_image, memory_blocks.device_images.memory,
+                      memory_blocks.device_images.stack_pointer);
+    memory_blocks.device_images.stack_pointer += align(reqs.size, reqs.alignment);
   }
 
   {
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(device, shadowmap_image, &reqs);
-    vkBindImageMemory(device, shadowmap_image, gpu_device_images_memory_block.memory,
-                      gpu_device_images_memory_block.stack_pointer);
-    gpu_device_images_memory_block.stack_pointer += align(reqs.size, reqs.alignment);
+    vkBindImageMemory(device, shadowmap_image, memory_blocks.device_images.memory,
+                      memory_blocks.device_images.stack_pointer);
+    memory_blocks.device_images.stack_pointer += align(reqs.size, reqs.alignment);
   }
 
   // image views can only be created when memory is bound to the image handle
@@ -740,8 +740,8 @@ void Engine::startup()
     image_resources.add(shadowmap_image);
     image_resources.add(shadowmap_image_view);
 
-    for (int i = 0; i < SHADOWMAP_CASCADE_COUNT; ++i)
-      image_resources.add(shadowmap_cascade_image_views[i]);
+    for (VkImageView& image_view : shadowmap_cascade_image_views)
+      image_resources.add(image_view);
   }
 
   // UBO HOST VISIBLE
@@ -759,7 +759,7 @@ void Engine::startup()
   {
     VkMemoryRequirements reqs = {};
     vkGetBufferMemoryRequirements(device, gpu_host_coherent_ubo_memory_buffer, &reqs);
-    gpu_host_coherent_ubo_memory_block.alignment = reqs.alignment;
+    memory_blocks.host_coherent_ubo.alignment = reqs.alignment;
 
     VkPhysicalDeviceMemoryProperties properties = {};
     vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
@@ -771,8 +771,8 @@ void Engine::startup()
             &properties, &reqs, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
     };
 
-    vkAllocateMemory(device, &allocate, nullptr, &gpu_host_coherent_ubo_memory_block.memory);
-    vkBindBufferMemory(device, gpu_host_coherent_ubo_memory_buffer, gpu_host_coherent_ubo_memory_block.memory, 0);
+    vkAllocateMemory(device, &allocate, nullptr, &memory_blocks.host_coherent_ubo.memory);
+    vkBindBufferMemory(device, gpu_host_coherent_ubo_memory_buffer, memory_blocks.host_coherent_ubo.memory, 0);
   }
 
   //
@@ -897,11 +897,7 @@ void Engine::teardown()
     if (image_resources.image_views_bitmap.is_used(i))
       vkDestroyImageView(device, image_resources.image_views[i], nullptr);
 
-  vkFreeMemory(device, gpu_device_local_memory_block.memory, nullptr);
-  vkFreeMemory(device, gpu_host_visible_transfer_source_memory_block.memory, nullptr);
-  vkFreeMemory(device, gpu_host_coherent_memory_block.memory, nullptr);
-  vkFreeMemory(device, gpu_device_images_memory_block.memory, nullptr);
-  vkFreeMemory(device, gpu_host_coherent_ubo_memory_block.memory, nullptr);
+  memory_blocks.destroy(device);
 
   vkDestroyBuffer(device, gpu_device_local_memory_buffer, nullptr);
   vkDestroyBuffer(device, gpu_host_visible_transfer_source_memory_buffer, nullptr);
@@ -1063,9 +1059,9 @@ Texture Engine::load_texture_hdr(const char* filename)
   {
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(device, result_image, &reqs);
-    vkBindImageMemory(device, result_image, gpu_device_images_memory_block.memory,
-                      gpu_device_images_memory_block.stack_pointer);
-    gpu_device_images_memory_block.stack_pointer += align(reqs.size, gpu_device_images_memory_block.alignment);
+    vkBindImageMemory(device, result_image, memory_blocks.device_images.memory,
+                      memory_blocks.device_images.stack_pointer);
+    memory_blocks.device_images.stack_pointer += align(reqs.size, memory_blocks.device_images.alignment);
   }
 
   {
@@ -1340,9 +1336,9 @@ Texture Engine::load_texture(SDL_Surface* surface)
   {
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(device, result_image, &reqs);
-    vkBindImageMemory(device, result_image, gpu_device_images_memory_block.memory,
-                      gpu_device_images_memory_block.stack_pointer);
-    gpu_device_images_memory_block.stack_pointer += align(reqs.size, gpu_device_images_memory_block.alignment);
+    vkBindImageMemory(device, result_image, memory_blocks.device_images.memory,
+                      memory_blocks.device_images.stack_pointer);
+    memory_blocks.device_images.stack_pointer += align(reqs.size, memory_blocks.device_images.alignment);
   }
 
   {
@@ -1661,4 +1657,14 @@ void DescriptorSetLayouts::destroy(VkDevice device)
   destroy(single_texture_in_frag);
   destroy(skinning_matrices);
   destroy(cascade_shadow_map_matrices_ubo_frag);
+}
+
+void MemoryBlocks::destroy(VkDevice device)
+{
+  auto destroy = [device](const GpuMemoryBlock& block) { vkFreeMemory(device, block.memory, nullptr); };
+  destroy(device_local);
+  destroy(host_visible_transfer_source);
+  destroy(device_images);
+  destroy(host_coherent);
+  destroy(host_coherent_ubo);
 }
