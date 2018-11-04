@@ -10,6 +10,18 @@ template <typename T> struct ArrayView
   T*  data;
   int count;
 
+  void alloc(Stack& stack, int new_count)
+  {
+    data  = stack.alloc<T>(new_count);
+    count = new_count;
+  }
+
+  void reset()
+  {
+    data  = nullptr;
+    count = 0;
+  }
+
   T& operator[](int idx)
   {
     return data[idx];

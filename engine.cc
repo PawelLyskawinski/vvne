@@ -86,23 +86,10 @@ VkDeviceSize align(VkDeviceSize unaligned, VkDeviceSize alignment)
   return result;
 }
 
-void* DoubleEndedStack::allocate_front(uint64_t size)
-{
-  void* result = reinterpret_cast<void*>(&memory[stack_pointer_front]);
-  stack_pointer_front += align(size, 8);
-  return result;
-}
-
-void* DoubleEndedStack::allocate_back(uint64_t size)
-{
-  stack_pointer_back += align(size, 8);
-  return reinterpret_cast<void*>(&memory[MEMORY_ALLOCATOR_POOL_SIZE - stack_pointer_back]);
-}
-
-void DoubleEndedStack::reset_back() { stack_pointer_back = 0; }
-
 void Engine::startup()
 {
+  permanent_stack.setup(HOST_PERMANENT_ALLOCATOR_POOL_SIZE);
+  dirty_stack.setup(HOST_DIRTY_ALLOCATOR_POOL_SIZE);
   render_passes.init();
 
   {
@@ -169,8 +156,7 @@ void Engine::startup()
   {
     uint32_t count = 0;
     vkEnumeratePhysicalDevices(instance, &count, nullptr);
-    void*             allocation = allocator.allocate_back(count * sizeof(VkPhysicalDevice));
-    VkPhysicalDevice* handles    = reinterpret_cast<VkPhysicalDevice*>(allocation);
+    VkPhysicalDevice* handles = dirty_stack.alloc<VkPhysicalDevice>(count);
     vkEnumeratePhysicalDevices(instance, &count, handles);
 
     physical_device = handles[0];
@@ -191,8 +177,7 @@ void Engine::startup()
   {
     uint32_t count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, nullptr);
-    void*                    allocation     = allocator.allocate_back(count * sizeof(VkQueueFamilyProperties));
-    VkQueueFamilyProperties* all_properties = reinterpret_cast<VkQueueFamilyProperties*>(allocation);
+    VkQueueFamilyProperties* all_properties = dirty_stack.alloc<VkQueueFamilyProperties>(count);
     vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, all_properties);
 
     for (uint32_t i = 0; i < count; ++i)
@@ -251,8 +236,7 @@ void Engine::startup()
   {
     uint32_t count = 0;
     vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, nullptr);
-    void*               allocation = allocator.allocate_back(count * sizeof(VkSurfaceFormatKHR));
-    VkSurfaceFormatKHR* formats    = reinterpret_cast<VkSurfaceFormatKHR*>(allocation);
+    VkSurfaceFormatKHR* formats = dirty_stack.alloc<VkSurfaceFormatKHR>(count);
     vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, formats);
 
     surface_format = formats[0];
@@ -272,8 +256,7 @@ void Engine::startup()
   {
     uint32_t count = 0;
     vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, nullptr);
-    void*             allocation    = allocator.allocate_back(count * sizeof(VkPresentModeKHR));
-    VkPresentModeKHR* present_modes = reinterpret_cast<VkPresentModeKHR*>(allocation);
+    VkPresentModeKHR* present_modes = dirty_stack.alloc<VkPresentModeKHR>(count);
     vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, present_modes);
 
     SDL_Log("Supported presentation modes");
@@ -863,7 +846,7 @@ void Engine::startup()
     }
   }
 
-  allocator.reset_back();
+  dirty_stack.reset();
 
   setup_render_passes();
   setup_framebuffers();
@@ -926,6 +909,9 @@ void Engine::teardown()
 #endif
 
   vkDestroyInstance(instance, nullptr);
+
+  dirty_stack.teardown();
+  permanent_stack.teardown();
 }
 
 Texture Engine::load_texture(const char* filepath)

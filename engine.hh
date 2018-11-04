@@ -6,35 +6,36 @@
 
 VkDeviceSize align(VkDeviceSize unaligned, VkDeviceSize alignment);
 
-struct ScheduledPipelineDestruction
+constexpr uint32_t operator"" _KB(unsigned long long in) { return 1024u * static_cast<uint32_t>(in); }
+constexpr uint32_t operator"" _MB(unsigned long long in) { return 1024u * 1024u * static_cast<uint32_t>(in); }
+constexpr uint32_t GPU_DEVICE_LOCAL_MEMORY_POOL_SIZE                 = 5_MB;
+constexpr uint32_t GPU_HOST_VISIBLE_TRANSFER_SOURCE_MEMORY_POOL_SIZE = 5_MB;
+constexpr uint32_t GPU_HOST_COHERENT_MEMORY_POOL_SIZE                = 1_MB;
+constexpr uint32_t GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE           = 500_MB;
+constexpr uint32_t GPU_HOST_COHERENT_UBO_MEMORY_POOL_SIZE            = 1_MB;
+constexpr uint32_t HOST_PERMANENT_ALLOCATOR_POOL_SIZE                = 3_MB;
+constexpr uint32_t HOST_DIRTY_ALLOCATOR_POOL_SIZE                    = 5_MB;
+
+struct Stack
 {
-  int        frame_countdown;
-  VkPipeline pipeline;
-};
+  void setup(uint64_t capacity)
+  {
+    data = reinterpret_cast<uint8_t*>(SDL_malloc(capacity));
+    sp   = 0;
+  }
 
-struct GpuMemoryBlock
-{
-  VkDeviceMemory memory;
-  VkDeviceSize   alignment;
-  VkDeviceSize   stack_pointer;
-};
+  template <typename T> T* alloc(int count = 1)
+  {
+    T* r = reinterpret_cast<T*>(&data[sp]);
+    sp += align(count * sizeof(T), 8);
+    return r;
+  }
 
-#define GPU_DEVICE_LOCAL_MEMORY_POOL_SIZE (5 * 1024 * 1024)
-#define GPU_HOST_VISIBLE_TRANSFER_SOURCE_MEMORY_POOL_SIZE (5 * 1024 * 1024)
-#define GPU_HOST_COHERENT_MEMORY_POOL_SIZE (1 * 1024 * 1024)
-#define GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE (500 * 1024 * 1024)
-#define GPU_HOST_COHERENT_UBO_MEMORY_POOL_SIZE (1 * 1024 * 1024)
-#define MEMORY_ALLOCATOR_POOL_SIZE (5 * 1024 * 1024)
+  void reset() { sp = 0; }
+  void teardown() { SDL_free(data); }
 
-struct DoubleEndedStack
-{
-  void* allocate_front(uint64_t size);
-  void* allocate_back(uint64_t size);
-  void  reset_back();
-
-  uint8_t  memory[MEMORY_ALLOCATOR_POOL_SIZE];
-  uint64_t stack_pointer_front;
-  uint64_t stack_pointer_back;
+  uint8_t* data;
+  uint64_t sp;
 };
 
 struct Texture
@@ -133,6 +134,13 @@ struct DescriptorSetLayouts
   VkDescriptorSetLayout cascade_shadow_map_matrices_ubo_frag;
 };
 
+struct GpuMemoryBlock
+{
+  VkDeviceMemory memory;
+  VkDeviceSize   alignment;
+  VkDeviceSize   stack_pointer;
+};
+
 struct MemoryBlocks
 {
   void destroy(VkDevice device);
@@ -190,23 +198,12 @@ struct Engine
   ImageResources image_resources;                 // Image memory with images in use list
   VkBuffer       gpu_host_coherent_ubo_memory_buffer; // Used for universal buffer objects
 
-  // General purpose allocator for application resources.
-  // front : permanent allocations
-  // back  : temporary allocations
-  DoubleEndedStack allocator;
+  Stack permanent_stack;
+  Stack dirty_stack;
 
   DescriptorSetLayouts descriptor_set_layouts;
   RenderPasses         render_passes;
   Pipelines            pipelines;
-
-  // Live shader reloading helpers.
-  //
-  // Each time pipeline is recreated the previous one has to be destroyed to release memory / gpu resources.
-  // Unfortunately the pipeline can't be destroyed when in use, so the safest bet is to wait until any potential
-  // command buffer finishes executing and then safely calling vkDestroyPipeline on the obsolete pipeline.
-  // The list below stores both pipeline handles and the frame countdowns until the destruction can happen.
-  ScheduledPipelineDestruction scheduled_pipelines_destruction[16];
-  int                          scheduled_pipelines_destruction_count;
 
   void           startup();
   void           teardown();

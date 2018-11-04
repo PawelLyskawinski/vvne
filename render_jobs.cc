@@ -50,18 +50,6 @@ VkCommandBuffer acquire_command_buffer(ThreadJobData& tjd)
   return acquire_command_buffer(tjd.thread_id, tjd.game);
 }
 
-void multiply(mat4x4 result, mat4x4 lhs, mat4x4 rhs)
-{
-  mat4x4_mul(result, lhs, rhs);
-}
-
-template <typename... Args> void multiply(mat4x4 result, mat4x4 lhs, mat4x4 rhs, Args... args)
-{
-  mat4x4 tmp = {};
-  mat4x4_mul(tmp, lhs, rhs);
-  multiply(result, tmp, args...);
-}
-
 } // namespace
 
 namespace render {
@@ -1819,7 +1807,7 @@ void orientation_axis(ThreadJobData tjd)
       {0.0f, 0.0f, 1.0f},
   };
 
-  for (int i = 0; i < SDL_arraysize(tjd.game.axis_arrow_entities); ++i)
+  for (uint32_t i = 0; i < SDL_arraysize(tjd.game.axis_arrow_entities); ++i)
   {
     SDL_memcpy(params.color, colors[i], sizeof(vec3));
     render_entity(tjd.game.axis_arrow_entities[i], tjd.game.ecs, tjd.game.lil_arrow, tjd.engine, params);

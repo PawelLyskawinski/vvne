@@ -313,7 +313,7 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
   }
 
   engine->memory_blocks.host_visible_transfer_source.stack_pointer = 0;
-  engine->allocator.reset_back();
+  engine->dirty_stack.reset();
 
   return result;
 }
@@ -1224,8 +1224,7 @@ void Game::startup(Engine& engine)
   {
     SDL_RWops* ctx              = SDL_RWFromFile("../assets/lucida_sans_sdf.fnt", "r");
     int        fnt_file_size    = static_cast<int>(SDL_RWsize(ctx));
-    void*      allocation       = engine.allocator.allocate_back(fnt_file_size);
-    char*      fnt_file_content = reinterpret_cast<char*>(allocation);
+    char*      fnt_file_content = engine.dirty_stack.alloc<char>(fnt_file_size);
     SDL_RWread(ctx, fnt_file_content, sizeof(char), static_cast<size_t>(fnt_file_size));
     SDL_RWclose(ctx);
 
@@ -1266,7 +1265,7 @@ void Game::startup(Engine& engine)
       cursor        = forward_right_after(cursor, '\n');
     }
 
-    engine.allocator.reset_back();
+    engine.dirty_stack.reset();
   }
 
   DEBUG_VEC2[0] = 96.0f;
@@ -2047,26 +2046,6 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     SDL_PushEvent(&event);
   }
 
-  //
-  // Aging and final destruction of scheduled pipelines
-  //
-  for (int i = 0; i < engine.scheduled_pipelines_destruction_count; ++i)
-  {
-    ScheduledPipelineDestruction& schedule = engine.scheduled_pipelines_destruction[i];
-    schedule.frame_countdown -= 1;
-    if (0 == schedule.frame_countdown)
-    {
-      vkDestroyPipeline(engine.device, schedule.pipeline, nullptr);
-      engine.scheduled_pipelines_destruction_count -= 1;
-
-      if (i != engine.scheduled_pipelines_destruction_count)
-      {
-        schedule = engine.scheduled_pipelines_destruction[engine.scheduled_pipelines_destruction_count + 1];
-        i -= 1;
-      }
-    }
-  }
-
   if (ImGui::CollapsingHeader("Memory"))
   {
     auto bytes_as_mb = [](uint32_t in) { return in / (1024u * 1024u); };
@@ -2088,9 +2067,9 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     ImGui::ProgressBar(
         calc_frac(engine.memory_blocks.host_coherent_ubo.stack_pointer, GPU_HOST_COHERENT_UBO_MEMORY_POOL_SIZE));
 
-    ImGui::Text("double ended stack memory (%uMB pool)", bytes_as_mb(MEMORY_ALLOCATOR_POOL_SIZE));
+    ImGui::Text("permanent stack memory (%uMB pool)", bytes_as_mb(HOST_PERMANENT_ALLOCATOR_POOL_SIZE));
     ImGui::ProgressBar(
-        calc_frac(static_cast<VkDeviceSize>(engine.allocator.stack_pointer_front), MEMORY_ALLOCATOR_POOL_SIZE));
+        calc_frac(static_cast<VkDeviceSize>(engine.permanent_stack.sp), HOST_PERMANENT_ALLOCATOR_POOL_SIZE));
   }
 
   if (ImGui::RadioButton("debug flag 1", DEBUG_FLAG_1))
@@ -2413,20 +2392,16 @@ void Game::render(Engine& engine)
       };
 
       ArrayView<GuiLine> r = {};
+
       {
         generate_gui_lines(cmd, nullptr, &r.count);
-        void* allocation = engine.allocator.allocate_back(r.count * sizeof(GuiLine));
-        r.data           = reinterpret_cast<GuiLine*>(allocation);
+        r.data = engine.dirty_stack.alloc<GuiLine>(r.count);
         generate_gui_lines(cmd, r.data, &r.count);
       }
 
       float* pushed_lines_data    = nullptr;
       int    pushed_lines_counter = 0;
-
-      {
-        void* allocation  = engine.allocator.allocate_back(4 * r.count * sizeof(float));
-        pushed_lines_data = reinterpret_cast<float*>(allocation);
-      }
+      pushed_lines_data           = engine.dirty_stack.alloc<float>(4 * r.count);
 
       gui_green_lines_count  = count_lines(r, GuiLine::Color::Green);
       gui_red_lines_count    = count_lines(r, GuiLine::Color::Red);
@@ -2465,7 +2440,7 @@ void Game::render(Engine& engine)
 
       update_ubo(engine.device, engine.memory_blocks.host_coherent.memory, r.count * 2 * sizeof(vec2),
                  green_gui_rulers_buffer_offsets[image_index], pushed_lines_data);
-      engine.allocator.reset_back();
+      engine.dirty_stack.reset();
     }
 
     ImDrawData* draw_data = ImGui::GetDrawData();
