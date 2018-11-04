@@ -576,10 +576,10 @@ void Game::startup(Engine& engine)
       GpuMemoryBlock& block = engine.memory_blocks.host_coherent;
 
       debug_gui.vertex_buffer_offsets[i] = block.stack_pointer;
-      block.stack_pointer += align(DebugGui::VERTEX_BUFFER_CAPACITY_BYTES, block.alignment);
+      block.stack_pointer += align<VkDeviceSize>(DebugGui::VERTEX_BUFFER_CAPACITY_BYTES, block.alignment);
 
       debug_gui.index_buffer_offsets[i] = block.stack_pointer;
-      block.stack_pointer += align(DebugGui::INDEX_BUFFER_CAPACITY_BYTES, block.alignment);
+      block.stack_pointer += align<VkDeviceSize>(DebugGui::INDEX_BUFFER_CAPACITY_BYTES, block.alignment);
     }
   }
 

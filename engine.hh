@@ -4,8 +4,6 @@
 #include <SDL2/SDL_video.h>
 #include <vulkan/vulkan.h>
 
-VkDeviceSize align(VkDeviceSize unaligned, VkDeviceSize alignment);
-
 constexpr uint32_t operator"" _KB(unsigned long long in) { return 1024u * static_cast<uint32_t>(in); }
 constexpr uint32_t operator"" _MB(unsigned long long in) { return 1024u * 1024u * static_cast<uint32_t>(in); }
 constexpr uint32_t GPU_DEVICE_LOCAL_MEMORY_POOL_SIZE                 = 5_MB;
@@ -15,6 +13,14 @@ constexpr uint32_t GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE           = 500_MB;
 constexpr uint32_t GPU_HOST_COHERENT_UBO_MEMORY_POOL_SIZE            = 1_MB;
 constexpr uint32_t HOST_PERMANENT_ALLOCATOR_POOL_SIZE                = 3_MB;
 constexpr uint32_t HOST_DIRTY_ALLOCATOR_POOL_SIZE                    = 5_MB;
+
+template <typename T> T align(T unaligned, T alignment)
+{
+  T result = unaligned;
+  if (unaligned % alignment)
+    result = unaligned + alignment - (unaligned % alignment);
+  return result;
+}
 
 struct Stack
 {
@@ -27,7 +33,7 @@ struct Stack
   template <typename T> T* alloc(int count = 1)
   {
     T* r = reinterpret_cast<T*>(&data[sp]);
-    sp += align(count * sizeof(T), 8);
+    sp += align<uint64_t>(count * sizeof(T), 8);
     return r;
   }
 

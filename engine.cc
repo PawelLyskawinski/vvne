@@ -78,14 +78,6 @@ const char* to_cstr(VkPresentModeKHR mode)
 
 } // namespace
 
-VkDeviceSize align(VkDeviceSize unaligned, VkDeviceSize alignment)
-{
-  VkDeviceSize result = unaligned;
-  if (unaligned % alignment)
-    result = unaligned + alignment - (unaligned % alignment);
-  return result;
-}
-
 void Engine::startup()
 {
   permanent_stack.setup(HOST_PERMANENT_ALLOCATOR_POOL_SIZE);
