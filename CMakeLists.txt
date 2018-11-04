@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.9)
 project(vvne CXX)
 
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -std=c++2a -g -fno-exceptions -fno-rtti -Wall -pedantic -DENABLE_VK_VALIDATION -DSDL_ASSERT_LEVEL=0")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -std=c++2a -g -fno-exceptions -fno-rtti -Wall -pedantic -DSDL_ASSERT_LEVEL=3")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -std=c++2a -O2 -fno-exceptions -fno-rtti -Wall -pedantic")
 
 include_directories(${CMAKE_CURRENT_LIST_DIR}/thirdparty)

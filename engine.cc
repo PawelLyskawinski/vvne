@@ -1,9 +1,3 @@
-#ifdef __linux__
-#define VK_USE_PLATFORM_XCB_KHR
-#else
-#define VK_USE_PLATFORM_WIN32_KHR
-#endif
-
 #include "engine.hh"
 #include "linmath.h"
 #include "sha256.h"
@@ -18,8 +12,8 @@
 #include <stb_image.h>
 #pragma GCC diagnostic pop
 
-#define INITIAL_WINDOW_WIDTH 1200
-#define INITIAL_WINDOW_HEIGHT 900
+constexpr uint32_t INITIAL_WINDOW_WIDTH  = 1200;
+constexpr uint32_t INITIAL_WINDOW_HEIGHT = 900;
 
 VkBool32
 #ifndef __linux__
@@ -78,11 +72,14 @@ const char* to_cstr(VkPresentModeKHR mode)
 
 } // namespace
 
-void Engine::startup()
+void Engine::startup(bool vulkan_validation_enabled)
 {
   permanent_stack.setup(HOST_PERMANENT_ALLOCATOR_POOL_SIZE);
   dirty_stack.setup(HOST_DIRTY_ALLOCATOR_POOL_SIZE);
   render_passes.init();
+
+  window = SDL_CreateWindow("vvne", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, INITIAL_WINDOW_WIDTH,
+                            INITIAL_WINDOW_HEIGHT, SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
 
   {
     VkApplicationInfo ai = {
@@ -95,40 +92,33 @@ void Engine::startup()
         .apiVersion         = VK_API_VERSION_1_0,
     };
 
-#ifdef ENABLE_VK_VALIDATION
     const char* instance_layers[] = {"VK_LAYER_LUNARG_standard_validation"};
-#endif
 
-    const char* instance_extensions[] = {
-        VK_KHR_SURFACE_EXTENSION_NAME,
-#ifdef __linux__
-        "VK_KHR_xlib_surface",
-#else
-        VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
-#endif
-
-#ifdef ENABLE_VK_VALIDATION
-        VK_EXT_DEBUG_REPORT_EXTENSION_NAME,
-#endif
-    };
+    uint32_t count = 0;
+    SDL_Vulkan_GetInstanceExtensions(window, &count, nullptr);
+    const char** extensions = dirty_stack.alloc<const char*>(vulkan_validation_enabled ? count + 1 : count);
+    SDL_Vulkan_GetInstanceExtensions(window, &count, extensions);
+    if (vulkan_validation_enabled)
+    {
+      extensions[count] = VK_EXT_DEBUG_REPORT_EXTENSION_NAME;
+      count += 1;
+    }
 
     VkInstanceCreateInfo ci = {
-        .sType            = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-        .pNext            = nullptr,
-        .flags            = 0,
-        .pApplicationInfo = &ai,
-#ifdef ENABLE_VK_VALIDATION
-        .enabledLayerCount   = SDL_arraysize(instance_layers),
-        .ppEnabledLayerNames = instance_layers,
-#endif
-        .enabledExtensionCount   = SDL_arraysize(instance_extensions),
-        .ppEnabledExtensionNames = instance_extensions,
+        .sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+        .pNext                   = nullptr,
+        .flags                   = 0,
+        .pApplicationInfo        = &ai,
+        .enabledLayerCount       = vulkan_validation_enabled ? 1u : 0u,
+        .ppEnabledLayerNames     = vulkan_validation_enabled ? instance_layers : nullptr,
+        .enabledExtensionCount   = count,
+        .ppEnabledExtensionNames = extensions,
     };
 
     vkCreateInstance(&ci, nullptr, &instance);
   }
 
-#ifdef ENABLE_VK_VALIDATION
+  if (vulkan_validation_enabled)
   {
     VkDebugReportCallbackCreateInfoEXT ci = {
         .sType       = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT,
@@ -140,10 +130,6 @@ void Engine::startup()
     auto fcn = (PFN_vkCreateDebugReportCallbackEXT)(vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT"));
     fcn(instance, &ci, nullptr, &debug_callback);
   }
-#endif
-
-  window = SDL_CreateWindow("vvne", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, INITIAL_WINDOW_WIDTH,
-                            INITIAL_WINDOW_HEIGHT, SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
 
   {
     uint32_t count = 0;
@@ -187,10 +173,7 @@ void Engine::startup()
   }
 
   {
-#ifdef ENABLE_VK_VALIDATION
-    const char* device_layers[] = {"VK_LAYER_LUNARG_standard_validation"};
-#endif
-
+    const char* device_layers[]     = {"VK_LAYER_LUNARG_standard_validation"};
     const char* device_extensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
     float       queue_priorities[]  = {1.0f};
 
@@ -208,13 +191,11 @@ void Engine::startup()
     };
 
     VkDeviceCreateInfo ci = {
-        .sType                = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .queueCreateInfoCount = 1,
-        .pQueueCreateInfos    = &graphics,
-#ifdef ENABLE_VK_VALIDATION
-        .enabledLayerCount   = SDL_arraysize(device_layers),
-        .ppEnabledLayerNames = device_layers,
-#endif
+        .sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .queueCreateInfoCount    = 1,
+        .pQueueCreateInfos       = &graphics,
+        .enabledLayerCount       = vulkan_validation_enabled ? 1u : 0u,
+        .ppEnabledLayerNames     = vulkan_validation_enabled ? device_layers : nullptr,
         .enabledExtensionCount   = SDL_arraysize(device_extensions),
         .ppEnabledExtensionNames = device_extensions,
         .pEnabledFeatures        = &device_features,
@@ -894,11 +875,12 @@ void Engine::teardown()
   vkDestroySurfaceKHR(instance, surface, nullptr);
   SDL_DestroyWindow(window);
 
-#ifdef ENABLE_VK_VALIDATION
-  using Fcn = PFN_vkDestroyDebugReportCallbackEXT;
-  auto fcn  = (Fcn)(vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT"));
-  fcn(instance, debug_callback, nullptr);
-#endif
+  if(VK_NULL_HANDLE != debug_callback)
+  {
+    using Fcn = PFN_vkDestroyDebugReportCallbackEXT;
+    auto fcn  = (Fcn)(vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT"));
+    fcn(instance, debug_callback, nullptr);
+  }
 
   vkDestroyInstance(instance, nullptr);
 

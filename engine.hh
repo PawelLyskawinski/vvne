@@ -211,7 +211,7 @@ struct Engine
   RenderPasses         render_passes;
   Pipelines            pipelines;
 
-  void           startup();
+  void           startup(bool vulkan_validation_enabled);
   void           teardown();
   VkShaderModule load_shader(const char* file_path);
   Texture        load_texture(const char* filepath);

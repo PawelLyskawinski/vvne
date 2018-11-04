@@ -21,7 +21,23 @@ int main(int argc, char* argv[])
   constexpr int desired_frames_per_sec = 60;
   // ---------------------------
 
-  engine->startup();
+  {
+    bool vulkan_validation = false;
+    if (argc > 1)
+    {
+      for (int i = 1; i < argc; ++i)
+      {
+        if (0 == SDL_strcmp(argv[i], "--validate"))
+        {
+          vulkan_validation = true;
+          break;
+        }
+      }
+    }
+
+    engine->startup(vulkan_validation);
+  }
+
   game->startup(*engine);
 
   uint64_t        performance_frequency     = SDL_GetPerformanceFrequency();
