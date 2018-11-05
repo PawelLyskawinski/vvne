@@ -684,20 +684,20 @@ void Engine::startup(bool vulkan_validation_enabled)
   }
 
   {
-    image_resources.add(depth_image);
-    image_resources.add(depth_image_view);
+    autoclean_images.push(depth_image);
+    autoclean_image_views.push(depth_image_view);
 
     if (VK_SAMPLE_COUNT_1_BIT != MSAA_SAMPLE_COUNT)
     {
-      image_resources.add(msaa_color_image);
-      image_resources.add(msaa_color_image_view);
+      autoclean_images.push(msaa_color_image);
+      autoclean_image_views.push(msaa_color_image_view);
     }
 
-    image_resources.add(shadowmap_image);
-    image_resources.add(shadowmap_image_view);
+    autoclean_images.push(shadowmap_image);
+    autoclean_image_views.push(shadowmap_image_view);
 
-    for (VkImageView& image_view : shadowmap_cascade_image_views)
-      image_resources.add(image_view);
+    for (auto& image_view : shadowmap_cascade_image_views)
+      autoclean_image_views.push(image_view);
   }
 
   // UBO HOST VISIBLE
@@ -845,13 +845,11 @@ void Engine::teardown()
   for (VkFence& fence : submition_fences)
     vkDestroyFence(device, fence, nullptr);
 
-  for (int i = 0; i < ImageResources::image_capacity; ++i)
-    if (image_resources.images_bitmap.is_used(i))
-      vkDestroyImage(device, image_resources.images[i], nullptr);
+  for (auto& image : autoclean_images)
+    vkDestroyImage(device, image, nullptr);
 
-  for (int i = 0; i < ImageResources::image_view_capacity; ++i)
-    if (image_resources.image_views_bitmap.is_used(i))
-      vkDestroyImageView(device, image_resources.image_views[i], nullptr);
+  for (auto& image_view : autoclean_image_views)
+    vkDestroyImageView(device, image_view, nullptr);
 
   memory_blocks.destroy(device);
 
@@ -875,7 +873,7 @@ void Engine::teardown()
   vkDestroySurfaceKHR(instance, surface, nullptr);
   SDL_DestroyWindow(window);
 
-  if(VK_NULL_HANDLE != debug_callback)
+  if (VK_NULL_HANDLE != debug_callback)
   {
     using Fcn = PFN_vkDestroyDebugReportCallbackEXT;
     auto fcn  = (Fcn)(vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT"));
@@ -888,7 +886,7 @@ void Engine::teardown()
   permanent_stack.teardown();
 }
 
-Texture Engine::load_texture(const char* filepath)
+Texture Engine::load_texture(const char* filepath, bool register_for_destruction)
 {
   int             x           = 0;
   int             y           = 0;
@@ -899,7 +897,7 @@ Texture Engine::load_texture(const char* filepath)
   SDL_assert(nullptr != pixels);
 
   SDL_Surface surface = {.format = &format, .w = x, .h = y, .pitch = 4 * x, .pixels = pixels};
-  Texture     result  = load_texture(&surface);
+  Texture     result  = load_texture(&surface, register_for_destruction);
   stbi_image_free(pixels);
 
   return result;
@@ -991,9 +989,7 @@ Texture Engine::load_texture_hdr(const char* filename)
 
   vkUnmapMemory(device, staging_memory);
 
-  Texture  result = {.image_idx = image_resources.add(VkImage{}), .image_view_idx = image_resources.add(VkImageView{})};
-  VkImage& result_image    = image_resources.images[result.image_idx];
-  VkImageView& result_view = image_resources.image_views[result.image_view_idx];
+  Texture result = {};
 
   {
     VkImageCreateInfo ci = {
@@ -1010,16 +1006,16 @@ Texture Engine::load_texture_hdr(const char* filename)
         .initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED,
     };
 
-    vkCreateImage(device, &ci, nullptr, &result_image);
+    vkCreateImage(device, &ci, nullptr, &result.image);
   }
 
   VkMemoryRequirements result_image_reqs = {};
-  vkGetImageMemoryRequirements(device, result_image, &result_image_reqs);
+  vkGetImageMemoryRequirements(device, result.image, &result_image_reqs);
 
   {
     VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(device, result_image, &reqs);
-    vkBindImageMemory(device, result_image, memory_blocks.device_images.memory,
+    vkGetImageMemoryRequirements(device, result.image, &reqs);
+    vkBindImageMemory(device, result.image, memory_blocks.device_images.memory,
                       memory_blocks.device_images.stack_pointer);
     memory_blocks.device_images.stack_pointer += align(reqs.size, memory_blocks.device_images.alignment);
   }
@@ -1035,14 +1031,17 @@ Texture Engine::load_texture_hdr(const char* filename)
 
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = result_image,
+        .image            = result.image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D,
         .format           = dst_format,
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(device, &ci, nullptr, &result_view);
+    vkCreateImageView(device, &ci, nullptr, &result.image_view);
   }
+
+  autoclean_images.push(result.image);
+  autoclean_image_views.push(result.image_view);
 
   VkCommandBuffer command_buffer = VK_NULL_HANDLE;
 
@@ -1094,7 +1093,7 @@ Texture Engine::load_texture_hdr(const char* filename)
             .newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image               = result_image,
+            .image               = result.image,
             .subresourceRange    = sr,
         },
     };
@@ -1117,7 +1116,7 @@ Texture Engine::load_texture_hdr(const char* filename)
         .extent         = {.width = static_cast<uint32_t>(x), .height = static_cast<uint32_t>(y), .depth = 1},
     };
 
-    vkCmdCopyImage(command_buffer, staging_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, result_image,
+    vkCmdCopyImage(command_buffer, staging_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, result.image,
                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
   }
 
@@ -1138,7 +1137,7 @@ Texture Engine::load_texture_hdr(const char* filename)
         .newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image               = result_image,
+        .image               = result.image,
         .subresourceRange    = sr,
     };
 
@@ -1174,7 +1173,7 @@ Texture Engine::load_texture_hdr(const char* filename)
   return result;
 }
 
-Texture Engine::load_texture(SDL_Surface* surface)
+Texture Engine::load_texture(SDL_Surface* surface, bool register_for_destruction)
 {
   VkImage        staging_image  = VK_NULL_HANDLE;
   VkDeviceMemory staging_memory = VK_NULL_HANDLE;
@@ -1271,9 +1270,7 @@ Texture Engine::load_texture(SDL_Surface* surface)
 
   vkUnmapMemory(device, staging_memory);
 
-  Texture  result = {.image_idx = image_resources.add(VkImage{}), .image_view_idx = image_resources.add(VkImageView{})};
-  VkImage& result_image    = image_resources.images[result.image_idx];
-  VkImageView& result_view = image_resources.image_views[result.image_view_idx];
+  Texture  result = {};
 
   {
     VkImageCreateInfo ci = {
@@ -1290,13 +1287,13 @@ Texture Engine::load_texture(SDL_Surface* surface)
         .initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED,
     };
 
-    vkCreateImage(device, &ci, nullptr, &result_image);
+    vkCreateImage(device, &ci, nullptr, &result.image);
   }
 
   {
     VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(device, result_image, &reqs);
-    vkBindImageMemory(device, result_image, memory_blocks.device_images.memory,
+    vkGetImageMemoryRequirements(device, result.image, &reqs);
+    vkBindImageMemory(device, result.image, memory_blocks.device_images.memory,
                       memory_blocks.device_images.stack_pointer);
     memory_blocks.device_images.stack_pointer += align(reqs.size, memory_blocks.device_images.alignment);
   }
@@ -1312,13 +1309,19 @@ Texture Engine::load_texture(SDL_Surface* surface)
 
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = result_image,
+        .image            = result.image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D,
         .format           = bitsPerPixelToFormat(surface),
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(device, &ci, nullptr, &result_view);
+    vkCreateImageView(device, &ci, nullptr, &result.image_view);
+  }
+
+  if(register_for_destruction)
+  {
+    autoclean_images.push(result.image);
+    autoclean_image_views.push(result.image_view);
   }
 
   VkCommandBuffer command_buffer = VK_NULL_HANDLE;
@@ -1372,7 +1375,7 @@ Texture Engine::load_texture(SDL_Surface* surface)
             .newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image               = result_image,
+            .image               = result.image,
             .subresourceRange    = sr,
         },
     };
@@ -1395,7 +1398,7 @@ Texture Engine::load_texture(SDL_Surface* surface)
         .extent         = {.width = texture_width, .height = texture_height, .depth = 1},
     };
 
-    vkCmdCopyImage(command_buffer, staging_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, result_image,
+    vkCmdCopyImage(command_buffer, staging_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, result.image,
                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
   }
 
@@ -1416,7 +1419,7 @@ Texture Engine::load_texture(SDL_Surface* surface)
         .newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image               = result_image,
+        .image               = result.image,
         .subresourceRange    = sr,
     };
 
@@ -1521,20 +1524,6 @@ VkShaderModule Engine::load_shader(const char* file_path)
   SDL_free(buffer);
 
   return result;
-}
-
-int ImageResources::add(VkImage image)
-{
-  const int position = images_bitmap.allocate();
-  images[position]   = image;
-  return position;
-}
-
-int ImageResources::add(VkImageView image)
-{
-  const int position    = image_views_bitmap.allocate();
-  image_views[position] = image;
-  return position;
 }
 
 void Pipelines::destroy(VkDevice device)

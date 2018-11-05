@@ -12,20 +12,11 @@
 
 namespace {
 
-constexpr float to_rad(float deg) noexcept
-{
-  return (float(M_PI) * deg) / 180.0f;
-}
+constexpr float to_rad(float deg) noexcept { return (float(M_PI) * deg) / 180.0f; }
 
-constexpr float to_deg(float rad) noexcept
-{
-  return (180.0f * rad) / float(M_PI);
-}
+constexpr float to_deg(float rad) noexcept { return (180.0f * rad) / float(M_PI); }
 
-float clamp(float val, float min, float max)
-{
-  return (val < min) ? min : (val > max) ? max : val;
-}
+float clamp(float val, float min, float max) { return (val < min) ? min : (val > max) ? max : val; }
 
 void vec3_set(float* vec, float x, float y, float z)
 {
@@ -110,10 +101,7 @@ struct VrLevelLoadResult
   VkIndexType  index_type;
 };
 
-float get_vr_level_height(float x, float y)
-{
-  return 0.05f * (SDL_cosf(x * 0.5f) + SDL_cosf(y * 0.5f)) - 0.07f;
-}
+float get_vr_level_height(float x, float y) { return 0.05f * (SDL_cosf(x * 0.5f) + SDL_cosf(y * 0.5f)) - 0.07f; }
 
 void update_ubo(VkDevice device, VkDeviceMemory memory, VkDeviceSize size, VkDeviceSize offset, void* src)
 {
@@ -686,12 +674,12 @@ void Game::startup(Engine& engine)
   }
 
   {
-    auto fill_infos = [](const Material& material, VkImageView* views, VkDescriptorImageInfo infos[5]) {
-      infos[0].imageView = views[material.albedo_texture.image_view_idx];
-      infos[1].imageView = views[material.metal_roughness_texture.image_view_idx];
-      infos[2].imageView = views[material.emissive_texture.image_view_idx];
-      infos[3].imageView = views[material.AO_texture.image_view_idx];
-      infos[4].imageView = views[material.normal_texture.image_view_idx];
+    auto fill_infos = [](const Material& material, VkDescriptorImageInfo infos[5]) {
+      infos[0].imageView = material.albedo_texture.image_view;
+      infos[1].imageView = material.metal_roughness_texture.image_view;
+      infos[2].imageView = material.emissive_texture.image_view;
+      infos[3].imageView = material.AO_texture.image_view;
+      infos[4].imageView = material.normal_texture.image_view;
     };
 
     VkDescriptorImageInfo images[5] = {};
@@ -710,10 +698,10 @@ void Game::startup(Engine& engine)
         .pImageInfo      = images,
     };
 
-    fill_infos(helmet.materials[0], engine.image_resources.image_views, images);
+    fill_infos(helmet.materials[0], images);
     update.dstSet = helmet_pbr_material_dset, vkUpdateDescriptorSets(engine.device, 1, &update, 0, nullptr);
 
-    fill_infos(robot.materials[0], engine.image_resources.image_views, images);
+    fill_infos(robot.materials[0], images);
     update.dstSet = robot_pbr_material_dset, vkUpdateDescriptorSets(engine.device, 1, &update, 0, nullptr);
 
     Material sand_material = {
@@ -724,7 +712,7 @@ void Game::startup(Engine& engine)
         .normal_texture          = sand_normal,
     };
 
-    fill_infos(sand_material, engine.image_resources.image_views, images);
+    fill_infos(sand_material, images);
     update.dstSet = sandy_level_pbr_material_dset;
     vkUpdateDescriptorSets(engine.device, 1, &update, 0, nullptr);
   }
@@ -748,19 +736,19 @@ void Game::startup(Engine& engine)
     VkDescriptorImageInfo cubemap_images[] = {
         {
             .sampler     = engine.texture_sampler,
-            .imageView   = engine.image_resources.image_views[irradiance_cubemap.image_view_idx],
+            .imageView   = irradiance_cubemap.image_view,
             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         },
         {
             .sampler     = engine.texture_sampler,
-            .imageView   = engine.image_resources.image_views[prefiltered_cubemap.image_view_idx],
+            .imageView   = prefiltered_cubemap.image_view,
             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         },
     };
 
     VkDescriptorImageInfo brdf_lut_image = {
         .sampler     = engine.texture_sampler,
-        .imageView   = engine.image_resources.image_views[brdf_lookup.image_view_idx],
+        .imageView   = brdf_lookup.image_view,
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
 
@@ -857,19 +845,19 @@ void Game::startup(Engine& engine)
         .pImageInfo      = &image,
     };
 
-    image.imageView = engine.image_resources.image_views[debug_gui.font_texture.image_view_idx];
+    image.imageView = debug_gui.font_texture.image_view;
     write.dstSet    = imgui_font_atlas_dset;
     vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
 
-    image.imageView = engine.image_resources.image_views[environment_cubemap.image_view_idx];
+    image.imageView = environment_cubemap.image_view;
     write.dstSet    = skybox_cubemap_dset;
     vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
 
-    image.imageView = engine.image_resources.image_views[lucida_sans_sdf_image.image_view_idx];
+    image.imageView = lucida_sans_sdf_image.image_view;
     write.dstSet    = lucida_sans_sdf_dset;
     vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
 
-    image.imageView = engine.image_resources.image_views[water_normal.image_view_idx];
+    image.imageView = water_normal.image_view;
     write.dstSet    = pbr_water_material_dset;
     vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
 
@@ -2060,8 +2048,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
         calc_frac(engine.memory_blocks.device_local.stack_pointer, GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE));
 
     ImGui::Text("host-visible memory (%uMB pool)", bytes_as_mb(GPU_HOST_COHERENT_MEMORY_POOL_SIZE));
-    ImGui::ProgressBar(
-        calc_frac(engine.memory_blocks.host_coherent.stack_pointer, GPU_HOST_COHERENT_MEMORY_POOL_SIZE));
+    ImGui::ProgressBar(calc_frac(engine.memory_blocks.host_coherent.stack_pointer, GPU_HOST_COHERENT_MEMORY_POOL_SIZE));
 
     ImGui::Text("UBO memory (%uMB pool)", bytes_as_mb(GPU_HOST_COHERENT_UBO_MEMORY_POOL_SIZE));
     ImGui::ProgressBar(
@@ -2470,8 +2457,8 @@ void Game::render(Engine& engine)
     if (0 < index_size)
     {
       ImDrawIdx* idx_dst = nullptr;
-      vkMapMemory(engine.device, engine.memory_blocks.host_coherent.memory,
-                  debug_gui.index_buffer_offsets[image_index], index_size, 0, reinterpret_cast<void**>(&idx_dst));
+      vkMapMemory(engine.device, engine.memory_blocks.host_coherent.memory, debug_gui.index_buffer_offsets[image_index],
+                  index_size, 0, reinterpret_cast<void**>(&idx_dst));
 
       for (int n = 0; n < draw_data->CmdListsCount; ++n)
       {
@@ -2503,10 +2490,10 @@ void Game::render(Engine& engine)
         VkClearValue clear_value = {.depthStencil = {1.0, 0}};
 
         VkRenderPassBeginInfo begin = {
-            .sType       = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-            .renderPass  = engine.render_passes.shadowmap.render_pass,
-            .framebuffer = engine.render_passes.shadowmap.framebuffers[cascade_idx],
-            .renderArea  = {.extent = {.width = SHADOWMAP_IMAGE_DIM, .height = SHADOWMAP_IMAGE_DIM}},
+            .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+            .renderPass      = engine.render_passes.shadowmap.render_pass,
+            .framebuffer     = engine.render_passes.shadowmap.framebuffers[cascade_idx],
+            .renderArea      = {.extent = {.width = SHADOWMAP_IMAGE_DIM, .height = SHADOWMAP_IMAGE_DIM}},
             .clearValueCount = 1,
             .pClearValues    = &clear_value,
         };

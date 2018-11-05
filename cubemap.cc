@@ -1,17 +1,13 @@
 #include "cubemap.hh"
 #include "engine.hh"
 #include "game.hh"
+#include "linmath.h"
 #include <SDL2/SDL_log.h>
-#include <linmath.h>
 
 namespace {
 
 constexpr float to_rad(float deg) noexcept { return (static_cast<float>(M_PI) * deg) / 180.0f; }
-
-constexpr float calculate_mip_divisor(int mip_level)
-{
-  return static_cast<float>(mip_level ? SDL_pow(2, mip_level) : 1);
-}
+constexpr float calculate_mip_divisor(int mip_level) { return mip_level ? SDL_powf(2, mip_level) : 1.0f; }
 
 void generate_cubemap_views(mat4x4 views[], vec3 centers[], vec3 ups[], uint32_t count)
 {
@@ -134,15 +130,14 @@ Texture generate_cubemap(Engine* engine, Game* game, const char* equirectangular
   //////////////////////////////////////////////////////////////////////////////
   // Push image and image view handles to engine list
   //////////////////////////////////////////////////////////////////////////////
-  Texture result = {
-      .image_idx      = engine->image_resources.add(cubemap_image),
-      .image_view_idx = engine->image_resources.add(cubemap_image_view),
-  };
+  Texture result = {cubemap_image, cubemap_image_view};
+  engine->autoclean_images.push(cubemap_image);
+  engine->autoclean_image_views.push(cubemap_image_view);
 
   //////////////////////////////////////////////////////////////////////////////
   // Load 2D equirectangular image from file
   //////////////////////////////////////////////////////////////////////////////
-  Texture plain_texture_idx = engine->load_texture(equirectangular_filepath);
+  Texture plain_texture_idx = engine->load_texture(equirectangular_filepath, false);
 
   //////////////////////////////////////////////////////////////////////////////
   // cubemap creation plan:
@@ -234,7 +229,7 @@ Texture generate_cubemap(Engine* engine, Game* game, const char* equirectangular
   {
     VkDescriptorImageInfo image = {
         .sampler     = engine->texture_sampler,
-        .imageView   = engine->image_resources.image_views[plain_texture_idx.image_view_idx],
+        .imageView   = plain_texture_idx.image_view,
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
 
@@ -567,11 +562,8 @@ Texture generate_cubemap(Engine* engine, Game* game, const char* equirectangular
   vkDestroyRenderPass(engine->device, render_pass, nullptr);
 
   // original equirectangular image is no longer needed
-  vkDestroyImage(engine->device, engine->image_resources.images[plain_texture_idx.image_idx], nullptr);
-  vkDestroyImageView(engine->device, engine->image_resources.image_views[plain_texture_idx.image_view_idx], nullptr);
-
-  engine->image_resources.images_bitmap.free(plain_texture_idx.image_idx);
-  engine->image_resources.image_views_bitmap.free(plain_texture_idx.image_view_idx);
+  vkDestroyImage(engine->device, plain_texture_idx.image, nullptr);
+  vkDestroyImageView(engine->device, plain_texture_idx.image_view, nullptr);
 
   return result;
 }
@@ -667,10 +659,9 @@ Texture generate_irradiance_cubemap(Engine* engine, Game* game, Texture environm
     vkCreateImageView(engine->device, &ci, nullptr, &cubemap_image_side_views[i]);
   }
 
-  Texture result = {
-      .image_idx      = engine->image_resources.add(cubemap_image),
-      .image_view_idx = engine->image_resources.add(cubemap_image_view),
-  };
+  Texture result = {cubemap_image, cubemap_image_view};
+  engine->autoclean_images.push(cubemap_image);
+  engine->autoclean_image_views.push(cubemap_image_view);
 
   VkRenderPass render_pass = VK_NULL_HANDLE;
 
@@ -749,7 +740,7 @@ Texture generate_irradiance_cubemap(Engine* engine, Game* game, Texture environm
   {
     VkDescriptorImageInfo image = {
         .sampler     = engine->texture_sampler,
-        .imageView   = engine->image_resources.image_views[environment_cubemap_idx.image_view_idx],
+        .imageView   = environment_cubemap_idx.image_view,
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
 
@@ -1179,10 +1170,9 @@ Texture generate_prefiltered_cubemap(Engine* engine, Game* game, Texture environ
     }
   }
 
-  Texture result = {
-      .image_idx      = engine->image_resources.add(cubemap_image),
-      .image_view_idx = engine->image_resources.add(cubemap_image_view),
-  };
+  Texture result = {cubemap_image, cubemap_image_view};
+  engine->autoclean_images.push(cubemap_image);
+  engine->autoclean_image_views.push(cubemap_image_view);
 
   VkRenderPass render_pass = VK_NULL_HANDLE;
 
@@ -1261,7 +1251,7 @@ Texture generate_prefiltered_cubemap(Engine* engine, Game* game, Texture environ
   {
     VkDescriptorImageInfo image = {
         .sampler     = engine->texture_sampler,
-        .imageView   = engine->image_resources.image_views[environment_cubemap_idx.image_view_idx],
+        .imageView   = environment_cubemap_idx.image_view,
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
 
@@ -1672,10 +1662,9 @@ Texture generate_brdf_lookup(Engine* engine, int size)
     vkCreateImageView(engine->device, &info, nullptr, &brdf_image_view);
   }
 
-  Texture result = {
-      .image_idx      = engine->image_resources.add(brdf_image),
-      .image_view_idx = engine->image_resources.add(brdf_image_view),
-  };
+  Texture result = {brdf_image, brdf_image_view};
+  engine->autoclean_images.push(brdf_image);
+  engine->autoclean_image_views.push(brdf_image_view);
 
   VkRenderPass render_pass = VK_NULL_HANDLE;
 

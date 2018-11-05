@@ -1,5 +1,6 @@
 #pragma once
 
+#include "allocators.hh"
 #include "bitfield.hh"
 #include <SDL2/SDL_video.h>
 #include <vulkan/vulkan.h>
@@ -14,61 +15,15 @@ constexpr uint32_t GPU_HOST_COHERENT_UBO_MEMORY_POOL_SIZE            = 1_MB;
 constexpr uint32_t HOST_PERMANENT_ALLOCATOR_POOL_SIZE                = 3_MB;
 constexpr uint32_t HOST_DIRTY_ALLOCATOR_POOL_SIZE                    = 5_MB;
 
-template <typename T> T align(T unaligned, T alignment)
-{
-  T result = unaligned;
-  if (unaligned % alignment)
-    result = unaligned + alignment - (unaligned % alignment);
-  return result;
-}
-
-struct Stack
-{
-  void setup(uint64_t capacity)
-  {
-    data = reinterpret_cast<uint8_t*>(SDL_malloc(capacity));
-    sp   = 0;
-  }
-
-  template <typename T> T* alloc(int count = 1)
-  {
-    T* r = reinterpret_cast<T*>(&data[sp]);
-    sp += align<uint64_t>(count * sizeof(T), 8);
-    return r;
-  }
-
-  void reset() { sp = 0; }
-  void teardown() { SDL_free(data); }
-
-  uint8_t* data;
-  uint64_t sp;
-};
-
-struct Texture
-{
-  int image_idx;
-  int image_view_idx;
-};
-
-class ImageResources
-{
-public:
-  int add(VkImage image);
-  int add(VkImageView image);
-
-  static constexpr int image_capacity      = 64;
-  static constexpr int image_view_capacity = 64;
-
-  ComponentBitfield images_bitmap;
-  ComponentBitfield image_views_bitmap;
-
-  VkImage     images[image_capacity];
-  VkImageView image_views[image_view_capacity];
-};
-
 constexpr int SWAPCHAIN_IMAGES_COUNT  = 2;
 constexpr int SHADOWMAP_IMAGE_DIM     = 1024 * 2;
 constexpr int SHADOWMAP_CASCADE_COUNT = 4;
+
+struct Texture
+{
+  VkImage     image;
+  VkImageView image_view;
+};
 
 struct PipelineWithHayout
 {
@@ -197,12 +152,21 @@ struct Engine
 
   MemoryBlocks memory_blocks;
 
-  VkBuffer gpu_device_local_memory_buffer; // Used for vertex / index data which will be reused all the time
-  VkBuffer gpu_host_visible_transfer_source_memory_buffer; // Used for data transfers to device local memory
-  VkBuffer
-                 gpu_host_coherent_memory_buffer; // Used for dynamic vertex/index data updates (for example imgui, dynamic draws)
-  ImageResources image_resources;                 // Image memory with images in use list
-  VkBuffer       gpu_host_coherent_ubo_memory_buffer; // Used for universal buffer objects
+  // Used for vertex / index data which will be reused all the time
+  VkBuffer gpu_device_local_memory_buffer;
+
+  // Used for data transfers to device local memory
+  VkBuffer gpu_host_visible_transfer_source_memory_buffer;
+
+  // Used for dynamic vertex/index data updates (for example imgui, dynamic draws)
+  VkBuffer gpu_host_coherent_memory_buffer;
+
+  // Lazy "to by removed at the end of program" lists.
+  ElementStack<VkImage>     autoclean_images;
+  ElementStack<VkImageView> autoclean_image_views;
+
+  // Used for universal buffer objects
+  VkBuffer gpu_host_coherent_ubo_memory_buffer;
 
   Stack permanent_stack;
   Stack dirty_stack;
@@ -214,9 +178,9 @@ struct Engine
   void           startup(bool vulkan_validation_enabled);
   void           teardown();
   VkShaderModule load_shader(const char* file_path);
-  Texture        load_texture(const char* filepath);
   Texture        load_texture_hdr(const char* filename);
-  Texture        load_texture(SDL_Surface* surface);
+  Texture        load_texture(const char* filepath, bool register_for_destruction = true);
+  Texture        load_texture(SDL_Surface* surface, bool register_for_destruction = true);
 
 private:
   void setup_render_passes();
