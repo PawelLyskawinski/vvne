@@ -350,7 +350,8 @@ void worker_function(WorkerThreadData td)
   if ((SDL_arraysize(job_system.worker_threads) - 1) == threadId)
     SDL_SemPost(job_system.all_threads_idle_signal);
 
-  LinearAllocator allocator(1024);
+  Stack allocator{};
+  allocator.setup(1024);
 
   SDL_LockMutex(job_system.new_jobs_available_mutex);
   while (not job_system.thread_end_requested)
@@ -386,6 +387,7 @@ void worker_function(WorkerThreadData td)
       SDL_SemPost(job_system.all_threads_idle_signal);
   }
   SDL_UnlockMutex(job_system.new_jobs_available_mutex);
+  allocator.teardown();
 }
 
 int worker_function_decorator(void* arg)

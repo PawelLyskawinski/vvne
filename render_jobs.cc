@@ -735,7 +735,7 @@ void height_ruler_text(ThreadJobData tjd)
     };
 
     generate_gui_height_ruler_text(cmd, nullptr, &scheduled_text_data.count);
-    scheduled_text_data.data = tjd.allocator.allocate<GuiHeightRulerText>(scheduled_text_data.count);
+    scheduled_text_data.data = tjd.allocator.alloc<GuiHeightRulerText>(scheduled_text_data.count);
     generate_gui_height_ruler_text(cmd, scheduled_text_data.data, &scheduled_text_data.count);
   }
 
@@ -831,7 +831,7 @@ void tilt_ruler_text(ThreadJobData tjd)
     };
 
     generate_gui_tilt_ruler_text(cmd, nullptr, &scheduled_text_data.count);
-    scheduled_text_data.data = tjd.allocator.allocate<GuiHeightRulerText>(scheduled_text_data.count);
+    scheduled_text_data.data = tjd.allocator.alloc<GuiHeightRulerText>(scheduled_text_data.count);
     generate_gui_tilt_ruler_text(cmd, scheduled_text_data.data, &scheduled_text_data.count);
   }
 

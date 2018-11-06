@@ -11,34 +11,6 @@
 
 #define WORKER_THREADS_COUNT 3
 
-class LinearAllocator
-{
-public:
-  explicit LinearAllocator(size_t size)
-      : memory(reinterpret_cast<uint8_t*>(SDL_malloc(size)))
-      , bytes_used(0)
-  {
-  }
-
-  ~LinearAllocator() { SDL_free(memory); }
-
-  template <typename T> T* allocate(int count = 1)
-  {
-    T*  result         = reinterpret_cast<T*>(&memory[bytes_used]);
-    int size           = count * sizeof(T);
-    int padding        = (size % 8) ? 8 - (size % 8) : 0;
-    int corrected_size = size + padding;
-    bytes_used += corrected_size;
-    return result;
-  }
-
-  void reset() { bytes_used = 0; }
-
-private:
-  uint8_t* memory;
-  int      bytes_used;
-};
-
 struct LightSources
 {
   vec4 positions[64];
@@ -141,10 +113,10 @@ template <typename T, int SIZE> struct AtomicStack
 
 struct ThreadJobData
 {
-  int              thread_id;
-  Engine&          engine;
-  Game&            game;
-  LinearAllocator& allocator;
+  int     thread_id;
+  Engine& engine;
+  Game&   game;
+  Stack&  allocator;
 };
 
 struct JobSystem
