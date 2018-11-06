@@ -12,12 +12,6 @@
 
 namespace {
 
-constexpr float to_rad(float deg) noexcept { return (float(M_PI) * deg) / 180.0f; }
-
-constexpr float to_deg(float rad) noexcept { return (180.0f * rad) / float(M_PI); }
-
-float clamp(float val, float min, float max) { return (val < min) ? min : (val > max) ? max : val; }
-
 void vec3_set(float* vec, float x, float y, float z)
 {
   vec[0] = x;
@@ -976,7 +970,7 @@ void Game::startup(Engine& engine)
   vec3_set(robot_position, -2.0f, 3.0f, 3.0f);
   vec3_set(rigged_position, -2.0f, 3.0f, 3.0f);
 
-  camera_state = CameraState::Gameplay;
+  cameras.bind_gameplay();
 
   {
     float extent_width        = static_cast<float>(engine.extent2D.width);
@@ -985,8 +979,8 @@ void Game::startup(Engine& engine)
     float fov                 = to_rad(90.0f);
     float near_clipping_plane = 0.1f;
     float far_clipping_plane  = 1000.0f;
-    mat4x4_perspective(projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
-    projection[1][1] *= -1.0f;
+    mat4x4_perspective(cameras.gameplay.projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
+    cameras.gameplay.projection[1][1] *= -1.0f;
   }
 
   {
@@ -996,8 +990,8 @@ void Game::startup(Engine& engine)
     float fov                 = to_rad(90.0f);
     float near_clipping_plane = 0.1f;
     float far_clipping_plane  = 1000.0f;
-    mat4x4_perspective(editor_projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
-    editor_projection[1][1] *= -1.0f;
+    mat4x4_perspective(cameras.editor.projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
+    cameras.editor.projection[1][1] *= -1.0f;
   }
 
   VrLevelLoadResult result = level_generator_vr(&engine);
@@ -1267,17 +1261,13 @@ void Game::startup(Engine& engine)
   DEBUG_LIGHT_ORTHO_PARAMS[2] = -10.0f;
   DEBUG_LIGHT_ORTHO_PARAMS[3] = 10.0f;
 
-  light_source_position[0] = -30.0f;
-  light_source_position[1] = -10.0f;
-  light_source_position[2] = 10.0f;
+  vec3_set(light_source_position, -30.0f, -10.0f, 10.0f);
 
   radar_scale = 0.75f;
 
   diagnostic_meas_scale = 1.0f;
 
-  editor_camera_position[0] = 0.0f;
-  editor_camera_position[1] = -10.0f;
-  editor_camera_position[2] = -1.0f;
+  vec3_set(cameras.editor.position, 0.0f, -10.0f, -1.0f);
 
   js.all_threads_idle_signal  = SDL_CreateSemaphore(0);
   js.new_jobs_available_cond  = SDL_CreateCond();
@@ -1555,7 +1545,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
       case SDL_MOUSEMOTION:
       {
-        if (SDL_GetRelativeMouseMode() and (CameraState::Gameplay == camera_state))
+        if (SDL_GetRelativeMouseMode() and cameras.is_gameplay_bound())
         {
           camera_angle += (0.01f * event.motion.xrel);
 
@@ -1604,7 +1594,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
             flags &= ~mask;
         };
 
-        if (CameraState::Gameplay == camera_state)
+        if (cameras.is_gameplay_bound())
         {
           switch (event.key.keysym.scancode)
           {
@@ -1658,18 +1648,16 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
           case SDL_SCANCODE_F3:
             if (SDL_KEYDOWN == event.type)
             {
-              camera_state = CameraState::LevelEditor;
+              cameras.bind_editor();
               SDL_SetRelativeMouseMode(SDL_FALSE);
-              editor_camera_position[0] = player_position[0];
-              editor_camera_position[1] = player_position[1] - 20.0f;
-              editor_camera_position[2] = player_position[2];
+              vec3_set(cameras.editor.position, player_position[0], player_position[1] - 20.0f, player_position[2]);
             }
             break;
           default:
             break;
           }
         }
-        else if (CameraState::LevelEditor == camera_state)
+        else if (cameras.is_editor_bound())
         {
           switch (event.key.keysym.scancode)
           {
@@ -1690,7 +1678,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
             break;
           case SDL_SCANCODE_F3:
             if (SDL_KEYDOWN == event.type)
-              camera_state = CameraState::Gameplay;
+              cameras.bind_gameplay();
             break;
           default:
             break;
@@ -1930,9 +1918,9 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   float       y_camera_offset = SDL_sinf(clamp(camera_updown_angle, -1.5f, 1.5f)) * camera_distance;
   float       z_camera_offset = SDL_sinf(camera_angle) * camera_distance;
 
-  camera_position[0] = player_position[0] + x_camera_offset;
-  camera_position[1] = player_position[1] + y_camera_offset - 1.5f;
-  camera_position[2] = player_position[2] - z_camera_offset;
+  cameras.gameplay.position[0] = player_position[0] + x_camera_offset;
+  cameras.gameplay.position[1] = player_position[1] + y_camera_offset - 1.5f;
+  cameras.gameplay.position[2] = player_position[2] - z_camera_offset;
 
   //
   // editor camera movement
@@ -1940,33 +1928,33 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
   if (editor_key_flags & EditorKeyFlags::up_pressed)
   {
-    editor_camera_position[2] += (0.03f * time_delta_since_last_frame_ms);
+    cameras.editor.position[2] += (0.03f * time_delta_since_last_frame_ms);
   }
   else if (editor_key_flags & EditorKeyFlags::down_pressed)
   {
-    editor_camera_position[2] -= (0.03f * time_delta_since_last_frame_ms);
+    cameras.editor.position[2] -= (0.03f * time_delta_since_last_frame_ms);
   }
 
   if (editor_key_flags & EditorKeyFlags::right_pressed)
   {
-    editor_camera_position[0] += (0.03f * time_delta_since_last_frame_ms);
+    cameras.editor.position[0] += (0.03f * time_delta_since_last_frame_ms);
   }
   else if (editor_key_flags & EditorKeyFlags::left_pressed)
   {
-    editor_camera_position[0] -= (0.03f * time_delta_since_last_frame_ms);
+    cameras.editor.position[0] -= (0.03f * time_delta_since_last_frame_ms);
   }
 
-  if (CameraState::Gameplay == camera_state)
+  if (cameras.is_gameplay_bound())
   {
     vec3 center = {player_position[0], player_position[1] - 1.5f, player_position[2]};
     vec3 up     = {0.0f, -1.0f, 0.0f};
-    mat4x4_look_at(view, camera_position, center, up);
+    mat4x4_look_at(cameras.gameplay.view, cameras.gameplay.position, center, up);
   }
-  else if (CameraState::LevelEditor == camera_state)
+  else if (cameras.is_editor_bound())
   {
-    vec3 center = {editor_camera_position[0], editor_camera_position[1] + 5.0f, editor_camera_position[2] + 0.1f};
+    vec3 center = {cameras.editor.position[0], cameras.editor.position[1] + 5.0f, cameras.editor.position[2] + 0.1f};
     vec3 up     = {0.0f, -1.0f, 0.0f};
-    mat4x4_look_at(editor_view, editor_camera_position, center, up);
+    mat4x4_look_at(cameras.editor.view, cameras.editor.position, center, up);
   }
 
   light_source_position[0] = 200.0f;
@@ -1979,27 +1967,16 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     ImGui::SameLine();
 
     if (ImGui::Button("toggle"))
-    {
-      switch (camera_state)
-      {
-      case CameraState::Gameplay:
-        camera_state = CameraState::LevelEditor;
-        break;
-      case CameraState::LevelEditor:
-        camera_state = CameraState::Gameplay;
-        break;
-      }
-    }
+      cameras.toggle();
 
     const char* camera_state_text = nullptr;
-    switch (camera_state)
+    if (cameras.is_gameplay_bound())
     {
-    case CameraState::Gameplay:
       camera_state_text = "gameplay";
-      break;
-    case CameraState::LevelEditor:
+    }
+    else if (cameras.is_editor_bound())
+    {
       camera_state_text = "level editor";
-      break;
     }
 
     ImGui::SameLine();
@@ -2009,7 +1986,8 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     ImGui::Text("camera angles: %.2f %.2f", camera_angle, camera_updown_angle);
 
     ImGui::Text("position:     %.2f %.2f %.2f", player_position[0], player_position[1], player_position[2]);
-    ImGui::Text("camera:       %.2f %.2f %.2f", camera_position[0], camera_position[1], camera_position[2]);
+    ImGui::Text("camera:       %.2f %.2f %.2f", cameras.gameplay.position[0], cameras.gameplay.position[1],
+                cameras.gameplay.position[2]);
     ImGui::Text("acceleration: %.2f %.2f %.2f", player_acceleration[0], player_acceleration[1], player_acceleration[2]);
     ImGui::Text("velocity:     %.2f %.2f %.2f", player_velocity[0], player_velocity[1], player_velocity[2]);
     ImGui::Text("Light:        %.2f %.2f %.2f", light_source_position[0], light_source_position[1],
@@ -2111,9 +2089,10 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     vec3 color    = {10.0, 0.0, 10.0};
     update_light(pbr_light_sources_cache, 4, position, color);
   }
+
   ImGui::End();
 
-  if (CameraState::LevelEditor == camera_state)
+  if (cameras.is_editor_bound())
   {
     ImGui::SetNextWindowSize(ImVec2(engine.extent2D.width / 5, engine.extent2D.height));
     ImGui::SetNextWindowBgAlpha(0.4f);
@@ -2150,7 +2129,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
       vec4 ray_eye = {};
       {
         mat4x4 inverted_projection_matrix = {};
-        mat4x4_invert(inverted_projection_matrix, get_selected_camera_projection());
+        mat4x4_invert(inverted_projection_matrix, cameras.editor.projection);
         mat4x4_mul_vec4(ray_eye, inverted_projection_matrix, ray_clip);
         ray_eye[2] = -1.0f;
         ray_eye[3] = 0.0f;
@@ -2161,7 +2140,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
       vec3 ray_wor = {};
       {
         mat4x4 inverted_view_matrix = {};
-        mat4x4_invert(inverted_view_matrix, get_selected_camera_view());
+        mat4x4_invert(inverted_view_matrix, cameras.editor.view);
 
         vec4 tmp = {};
         mat4x4_mul_vec4(tmp, inverted_view_matrix, ray_eye);
@@ -2172,7 +2151,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
     ImGui::End();
   }
-  else if (CameraState::Gameplay == camera_state)
+  else if (cameras.is_gameplay_bound())
   {
     ImGui::Begin("thread profiler");
     if (ImGui::Button("pause"))
@@ -2245,8 +2224,8 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     ImGui::End();
   }
 
-  recalculate_cascade_view_proj_matrices(cascade_view_proj_mat, cascade_split_depths, get_selected_camera_projection(),
-                                         get_selected_camera_view(), light_source_position);
+  recalculate_cascade_view_proj_matrices(cascade_view_proj_mat, cascade_split_depths, cameras.current->projection,
+                                         cameras.current->view, light_source_position);
 
   js.jobs_max = 0;
   js.push("moving lights update", update::moving_lights_job);
@@ -2256,10 +2235,8 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   js.push("rigged simple update", update::rigged_simple_job);
   js.push("matrioshka update", update::matrioshka_job);
 
-  if (CameraState::LevelEditor == camera_state)
-  {
+  if (cameras.is_editor_bound())
     js.push("orientation axis update", update::orientation_axis_job);
-  }
 
   SDL_AtomicSet(&js.profile_each_frame_counter, 0);
   SDL_LockMutex(js.new_jobs_available_mutex);
@@ -2305,7 +2282,7 @@ void Game::render(Engine& engine)
     js.push("helmet depth", render::helmet_depth_job);
     // js.push("vr scene depth", render::vr_scene_depth);
 
-    if (CameraState::Gameplay == camera_state)
+    if (cameras.is_gameplay_bound())
     {
       js.push("radar", render::radar);
       js.push("gui lines", render::robot_gui_lines);

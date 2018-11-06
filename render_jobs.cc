@@ -29,16 +29,6 @@ float pixels_to_line_length(int pixels, int pixels_max_size)
   return static_cast<float>(2 * pixels) / static_cast<float>(pixels_max_size);
 }
 
-constexpr float to_rad(float deg) noexcept
-{
-  return (float(M_PI) * deg) / 180.0f;
-}
-
-constexpr float to_deg(float rad) noexcept
-{
-  return (180.0f * rad) / float(M_PI);
-}
-
 VkCommandBuffer acquire_command_buffer(int thread_id, Game& game)
 {
   int index = game.js.submited_command_count[game.image_index][thread_id]++;
@@ -67,8 +57,8 @@ void skybox_job(ThreadJobData tjd)
     mat4x4 view;
   } push = {};
 
-  mat4x4_dup(push.projection, tjd.game.get_selected_camera_projection());
-  mat4x4_dup(push.view, tjd.game.get_selected_camera_view());
+  mat4x4_dup(push.projection, tjd.game.cameras.current->projection);
+  mat4x4_dup(push.view, tjd.game.cameras.current->view);
 
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.skybox.pipeline);
   vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.skybox.layout, 0, 1,
@@ -129,9 +119,9 @@ void robot_job(ThreadJobData tjd)
       .pipeline_layout = tjd.engine.pipelines.scene3D.layout,
   };
 
-  mat4x4_dup(params.projection, tjd.game.get_selected_camera_projection());
-  mat4x4_dup(params.view, tjd.game.get_selected_camera_view());
-  SDL_memcpy(params.camera_position, tjd.game.get_selected_camera_position(), sizeof(vec3));
+  mat4x4_dup(params.projection, tjd.game.cameras.current->projection);
+  mat4x4_dup(params.view, tjd.game.cameras.current->view);
+  SDL_memcpy(params.camera_position, tjd.game.cameras.current->position, sizeof(vec3));
   render_pbr_entity(tjd.game.robot_entity, tjd.game.ecs, tjd.game.robot, tjd.engine, params);
 
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.colored_model_wireframe.pipeline);
@@ -190,9 +180,9 @@ void helmet_job(ThreadJobData tjd)
       .pipeline_layout = tjd.engine.pipelines.scene3D.layout,
   };
 
-  mat4x4_dup(params.projection, tjd.game.get_selected_camera_projection());
-  mat4x4_dup(params.view, tjd.game.get_selected_camera_view());
-  SDL_memcpy(params.camera_position, tjd.game.get_selected_camera_position(), sizeof(vec3));
+  mat4x4_dup(params.projection, tjd.game.cameras.current->projection);
+  mat4x4_dup(params.view, tjd.game.cameras.current->view);
+  SDL_memcpy(params.camera_position, tjd.game.cameras.current->position, sizeof(vec3));
   render_pbr_entity(tjd.game.helmet_entity, tjd.game.ecs, tjd.game.helmet, tjd.engine, params);
 
   vkEndCommandBuffer(command);
@@ -211,9 +201,9 @@ void point_light_boxes(ThreadJobData tjd)
       .pipeline_layout = tjd.engine.pipelines.colored_geometry.layout,
   };
 
-  mat4x4_dup(params.projection, tjd.game.get_selected_camera_projection());
-  mat4x4_dup(params.view, tjd.game.get_selected_camera_view());
-  SDL_memcpy(params.camera_position, tjd.game.get_selected_camera_position(), sizeof(vec3));
+  mat4x4_dup(params.projection, tjd.game.cameras.current->projection);
+  mat4x4_dup(params.view, tjd.game.cameras.current->view);
+  SDL_memcpy(params.camera_position, tjd.game.cameras.current->position, sizeof(vec3));
 
   for (unsigned i = 0; i < SDL_arraysize(tjd.game.box_entities); ++i)
   {
@@ -237,9 +227,9 @@ void matrioshka_box(ThreadJobData tjd)
       .pipeline_layout = tjd.engine.pipelines.colored_geometry.layout,
   };
 
-  mat4x4_dup(params.projection, tjd.game.get_selected_camera_projection());
-  mat4x4_dup(params.view, tjd.game.get_selected_camera_view());
-  SDL_memcpy(params.camera_position, tjd.game.get_selected_camera_position(), sizeof(vec3));
+  mat4x4_dup(params.projection, tjd.game.cameras.current->projection);
+  mat4x4_dup(params.view, tjd.game.cameras.current->view);
+  SDL_memcpy(params.camera_position, tjd.game.cameras.current->position, sizeof(vec3));
   render_entity(tjd.game.matrioshka_entity, tjd.game.ecs, tjd.game.animatedBox, tjd.engine, params);
 
   vkEndCommandBuffer(command);
@@ -295,10 +285,10 @@ void vr_scene(ThreadJobData tjd)
     vec3   camera_position;
   } ubo = {};
 
-  mat4x4_dup(ubo.projection, tjd.game.get_selected_camera_projection());
-  mat4x4_dup(ubo.view, tjd.game.get_selected_camera_view());
+  mat4x4_dup(ubo.projection, tjd.game.cameras.current->projection);
+  mat4x4_dup(ubo.view, tjd.game.cameras.current->view);
   mat4x4_mul(ubo.model, tmp, scale_matrix);
-  SDL_memcpy(ubo.camera_position, tjd.game.get_selected_camera_position(), sizeof(vec3));
+  SDL_memcpy(ubo.camera_position, tjd.game.cameras.current->position, sizeof(vec3));
 
   vkCmdPushConstants(command, tjd.engine.pipelines.scene3D.layout,
                      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ubo), &ubo);
@@ -385,9 +375,9 @@ void simple_rigged(ThreadJobData tjd)
       .pipeline_layout = tjd.engine.pipelines.colored_geometry_skinned.layout,
   };
 
-  mat4x4_dup(params.projection, tjd.game.get_selected_camera_projection());
-  mat4x4_dup(params.view, tjd.game.get_selected_camera_view());
-  SDL_memcpy(params.camera_position, tjd.game.get_selected_camera_position(), sizeof(vec3));
+  mat4x4_dup(params.projection, tjd.game.cameras.current->projection);
+  mat4x4_dup(params.view, tjd.game.cameras.current->view);
+  SDL_memcpy(params.camera_position, tjd.game.cameras.current->position, sizeof(vec3));
   render_entity(tjd.game.rigged_simple_entity.base, tjd.game.ecs, tjd.game.riggedSimple, tjd.engine, params);
 
   vkEndCommandBuffer(command);
@@ -413,9 +403,9 @@ void monster_rigged(ThreadJobData tjd)
       .pipeline_layout = tjd.engine.pipelines.colored_geometry_skinned.layout,
   };
 
-  mat4x4_dup(params.projection, tjd.game.get_selected_camera_projection());
-  mat4x4_dup(params.view, tjd.game.get_selected_camera_view());
-  SDL_memcpy(params.camera_position, tjd.game.get_selected_camera_position(), sizeof(vec3));
+  mat4x4_dup(params.projection, tjd.game.cameras.current->projection);
+  mat4x4_dup(params.view, tjd.game.cameras.current->view);
+  SDL_memcpy(params.camera_position, tjd.game.cameras.current->position, sizeof(vec3));
   render_entity(tjd.game.monster_entity.base, tjd.game.ecs, tjd.game.monster, tjd.engine, params);
 
   vkEndCommandBuffer(command);
@@ -1698,10 +1688,10 @@ void water(ThreadJobData tjd)
         float  time;
       } push = {};
 
-      mat4x4_dup(push.projection, tjd.game.get_selected_camera_projection());
-      mat4x4_dup(push.view, tjd.game.get_selected_camera_view());
+      mat4x4_dup(push.projection, tjd.game.cameras.current->projection);
+      mat4x4_dup(push.view, tjd.game.cameras.current->view);
       mat4x4_mul(push.model, tmp, scale_matrix);
-      SDL_memcpy(push.camPos, tjd.game.get_selected_camera_position(), sizeof(vec3));
+      SDL_memcpy(push.camPos, tjd.game.cameras.current->position, sizeof(vec3));
       push.time = tjd.game.current_time_sec;
 
       vkCmdPushConstants(command, tjd.engine.pipelines.pbr_water.layout,
@@ -1797,9 +1787,9 @@ void orientation_axis(ThreadJobData tjd)
       .pipeline_layout = tjd.engine.pipelines.colored_geometry.layout,
   };
 
-  mat4x4_dup(params.projection, tjd.game.get_selected_camera_projection());
-  mat4x4_dup(params.view, tjd.game.get_selected_camera_view());
-  SDL_memcpy(params.camera_position, tjd.game.get_selected_camera_position(), sizeof(vec3));
+  mat4x4_dup(params.projection, tjd.game.cameras.current->projection);
+  mat4x4_dup(params.view, tjd.game.cameras.current->view);
+  SDL_memcpy(params.camera_position, tjd.game.cameras.current->position, sizeof(vec3));
 
   vec3 colors[] = {
       {1.0f, 0.0f, 0.0f},

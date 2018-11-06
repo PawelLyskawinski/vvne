@@ -20,10 +20,7 @@ public:
   {
   }
 
-  ~LinearAllocator()
-  {
-    SDL_free(memory);
-  }
+  ~LinearAllocator() { SDL_free(memory); }
 
   template <typename T> T* allocate(int count = 1)
   {
@@ -35,10 +32,7 @@ public:
     return result;
   }
 
-  void reset()
-  {
-    bytes_used = 0;
-  }
+  void reset() { bytes_used = 0; }
 
 private:
   uint8_t* memory;
@@ -133,25 +127,13 @@ struct Game;
 
 template <typename T, int SIZE> struct AtomicStack
 {
-  void push(const T& in)
-  {
-    stack[SDL_AtomicIncRef(&count)] = in;
-  }
+  void push(const T& in) { stack[SDL_AtomicIncRef(&count)] = in; }
 
-  T* begin()
-  {
-    return stack;
-  }
+  T* begin() { return stack; }
 
-  T* end()
-  {
-    return &stack[SDL_AtomicGet(&count)];
-  }
+  T* end() { return &stack[SDL_AtomicGet(&count)]; }
 
-  void reset()
-  {
-    SDL_AtomicSet(&count, 0);
-  }
+  void reset() { SDL_AtomicSet(&count, 0); }
 
   T            stack[SIZE];
   SDL_atomic_t count;
@@ -268,6 +250,26 @@ private:
   int   dst;
   bool  switch_animation;
   float switch_animation_time;
+};
+
+struct Camera
+{
+  mat4x4 projection;
+  mat4x4 view;
+  vec3   position;
+};
+
+struct Cameras
+{
+  bool is_gameplay_bound() const { return &gameplay == current; }
+  bool is_editor_bound() const { return &editor == current; }
+  void bind_gameplay() { current = &gameplay; }
+  void bind_editor() { current = &editor; }
+  void toggle() { current = is_gameplay_bound() ? &editor : &gameplay; }
+
+  Camera* current;
+  Camera  gameplay; // behind the robot
+  Camera  editor;   // birds eye
 };
 
 struct Game
@@ -407,59 +409,7 @@ struct Game
   float update_times[50];
   float render_times[50];
 
-  enum class CameraState
-  {
-    Gameplay,
-    LevelEditor,
-  };
-
-  CameraState camera_state;
-
-  mat4x4& get_selected_camera_projection()
-  {
-    switch (camera_state)
-    {
-    default:
-    case CameraState::Gameplay:
-      return projection;
-    case CameraState::LevelEditor:
-      return editor_projection;
-    }
-  }
-
-  mat4x4& get_selected_camera_view()
-  {
-    switch (camera_state)
-    {
-    default:
-    case CameraState::Gameplay:
-      return view;
-    case CameraState::LevelEditor:
-      return editor_view;
-    }
-  }
-
-  vec3& get_selected_camera_position()
-  {
-    switch (camera_state)
-    {
-    default:
-    case CameraState::Gameplay:
-      return camera_position;
-    case CameraState::LevelEditor:
-      return editor_camera_position;
-    }
-  }
-
-  // gameplay "behind the robot" view
-  mat4x4 projection;
-  mat4x4 view;
-  vec3   camera_position;
-
-  // editor view and camera
-  mat4x4 editor_projection;
-  mat4x4 editor_view;
-  vec3   editor_camera_position;
+  Cameras cameras;
 
   vec3  player_position;
   vec3  player_velocity;

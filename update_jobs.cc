@@ -2,16 +2,6 @@
 
 namespace {
 
-constexpr float to_rad(float deg) noexcept
-{
-  return (static_cast<float>(M_PI) * deg) / 180.0f;
-}
-
-constexpr float to_deg(float rad) noexcept
-{
-  return (180.0f * rad) / static_cast<float>(M_PI);
-}
-
 int find_first_higher(const float times[], float current)
 {
   int iter = 0;
@@ -232,11 +222,11 @@ void robot_job(ThreadJobData tjd)
   quat_rotate(standing_pose, to_rad(180.0), x_axis);
 
   quat rotate_back = {};
-  quat_rotate(rotate_back, tjd.game.player_position[0] < tjd.game.camera_position[0] ? to_rad(180.0f) : to_rad(0.0f),
+  quat_rotate(rotate_back, tjd.game.player_position[0] < tjd.game.cameras.gameplay.position[0] ? to_rad(180.0f) : to_rad(0.0f),
               y_axis);
 
-  float x_delta = tjd.game.player_position[0] - tjd.game.camera_position[0];
-  float z_delta = tjd.game.player_position[2] - tjd.game.camera_position[2];
+  float x_delta = tjd.game.player_position[0] - tjd.game.cameras.gameplay.position[0];
+  float z_delta = tjd.game.player_position[2] - tjd.game.cameras.gameplay.position[2];
 
   quat camera = {};
   quat_rotate(camera, static_cast<float>(SDL_atan(z_delta / x_delta)), y_axis);

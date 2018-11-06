@@ -6,7 +6,6 @@
 
 namespace {
 
-constexpr float to_rad(float deg) noexcept { return (static_cast<float>(M_PI) * deg) / 180.0f; }
 constexpr float calculate_mip_divisor(int mip_level) { return mip_level ? SDL_powf(2, mip_level) : 1.0f; }
 
 void generate_cubemap_views(mat4x4 views[], vec3 centers[], vec3 ups[], uint32_t count)
