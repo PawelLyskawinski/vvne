@@ -1,7 +1,6 @@
 #pragma once
 
 #include "allocators.hh"
-#include "bitfield.hh"
 #include <SDL2/SDL_video.h>
 #include <vulkan/vulkan.h>
 

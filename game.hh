@@ -9,7 +9,7 @@
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_thread.h>
 
-#define WORKER_THREADS_COUNT 3
+constexpr uint32_t WORKER_THREADS_COUNT = 3;
 
 struct LightSources
 {

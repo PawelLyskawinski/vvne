@@ -1,6 +1,5 @@
 #pragma once
 
-#include "bitfield.hh"
 #include "gltf.hh"
 #include <linmath.h>
 
