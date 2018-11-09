@@ -25,10 +25,11 @@ template <uint32_t DIM> struct Vec
     return r;
   }
 
-  void scale(float s)
+  Vec<DIM>& scale(float s)
   {
     for (uint32_t i = 0; i < DIM; ++i)
       data[i] *= s;
+    return *this;
   }
 
   Vec<DIM> mul_cross(const Vec<DIM>& rhs)
@@ -49,14 +50,30 @@ template <uint32_t DIM> struct Vec
     return p;
   }
 
+  Vec<DIM> lerp(const Vec<DIM>& b, float t)
+  {
+    Vec<DIM> r;
+    for (int i = 0; i < DIM; ++i)
+    {
+      float distance = b[i] - data[i];
+      float progress = distance * t;
+      r[i]           = data[i] + progress;
+    }
+    return r;
+  }
+
   float data[DIM] = {};
 };
+
+using Vec4 = Vec<4>;
+using Vec3 = Vec<3>;
+using Vec2 = Vec<2>;
 
 struct Quaternion
 {
   Quaternion() = default;
 
-  Quaternion& rotate(Vec<3> axis, float angle)
+  Quaternion& rotate(Vec3 axis, float angle)
   {
     axis.scale(SDL_sinf(angle / 2));
     a = axis[0];
@@ -66,18 +83,11 @@ struct Quaternion
     return *this;
   }
 
-  Vec<3> as_vec3() const { return {a, b, c}; }
+  Vec3 as_vec3() const { return {a, b, c}; }
 
   Quaternion operator*(const Quaternion& rhs)
   {
-    Vec<3> r = as_vec3().mul_cross(rhs.as_vec3());
-    Vec<3> w = as_vec3();
-
-    w.scale(rhs.d);
-    r = r + w;
-    w.scale(d);
-    r = r + w;
-
+    Vec3 r = as_vec3().mul_cross(rhs.as_vec3()) + as_vec3().scale(rhs.d) + rhs.as_vec3().scale(d);
     return {r[0], r[1], r[2], (d * rhs.d) - as_vec3().mul_inner(rhs.as_vec3())};
   }
 
@@ -128,7 +138,7 @@ struct Mat4
     M[3][3] = 1.0f;
   }
 
-  Mat4& translate(const Vec<3>& in)
+  Mat4& translate(const Vec3& in)
   {
     identity();
     M[3][0] = in[0];
@@ -167,5 +177,5 @@ struct Mat4
 
   float* data() { return M[0].data; }
 
-  Vec<4> M[4] = {};
+  Vec4 M[4] = {};
 };
