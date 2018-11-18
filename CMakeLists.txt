@@ -42,7 +42,6 @@ set(SOURCES
         cubemap.cc
         render_jobs.cc
         update_jobs.cc
-        bitfield.cc
         ecs.cc
         thirdparty/imgui.cpp
         thirdparty/imgui_draw.cpp
