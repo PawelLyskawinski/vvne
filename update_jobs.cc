@@ -346,7 +346,7 @@ void rigged_simple_job(ThreadJobData tjd)
 {
   Operation ops[] = {
       // clang-format off
-      { .translation         = { Operation::Type::Translation,        {tjd.game.rigged_position[0], tjd.game.rigged_position[1], tjd.game.rigged_position[2]} } },
+      { .translation         = { Operation::Type::Translation,        {-2.0f, 3.0f, 3.0f} } },
       { .quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(45.0), {1.0f, 0.0f, 0.0f} }                                                        },
       { .scale               = { Operation::Type::Scale,              {0.5f, 0.5f, 0.5f} }                                                                      },
       // clang-format on
@@ -406,7 +406,7 @@ void matrioshka_job(ThreadJobData tjd)
 
   Operation ops[] = {
       // clang-format off
-      { .translation = { Operation::Type::Translation, {tjd.game.robot_position[0], tjd.game.robot_position[1], tjd.game.robot_position[2]} } },
+      { .translation = { Operation::Type::Translation, {-2.0f, 3.0f, 3.0f} } },
       { .quaternion  = { Operation::Type::Quaternion,  {orientation[0],orientation[1], orientation[2], orientation[3]} }                      },
       // clang-format on
   };

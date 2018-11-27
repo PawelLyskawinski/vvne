@@ -44,6 +44,12 @@ template <typename T, uint32_t N = 64> struct ElementStack
     data[count++] = input;
   }
 
+  const T& operator[](const uint32_t idx) const
+  {
+    SDL_assert(count > idx);
+    return data[idx];
+  }
+
   void remove(const T& input)
   {
     uint32_t offset = 0;
@@ -58,6 +64,8 @@ template <typename T, uint32_t N = 64> struct ElementStack
       count -= 1;
     }
   }
+
+  void reset() { count = 0; }
 
   T* begin() { return &data[0]; }
   T* end() { return &data[count]; }

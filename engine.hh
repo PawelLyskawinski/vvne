@@ -1,6 +1,5 @@
 #pragma once
 
-#define M_PI 3.14f
 #include "allocators.hh"
 #include <SDL2/SDL_video.h>
 #include <vulkan/vulkan.h>

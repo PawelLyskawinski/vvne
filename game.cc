@@ -361,8 +361,11 @@ void worker_function(WorkerThreadData td)
 
     int job_idx = SDL_AtomicIncRef(&td.game.js.jobs_taken);
 
-    while (job_idx < job_system.jobs_max)
+    while (job_idx < job_system.jobs.count)
     {
+      uint64_t   ticks_start = SDL_GetPerformanceCounter();
+      const Job& job         = job_system.jobs[job_idx];
+
       ThreadJobData tjd = {
           .thread_id = threadId,
           .engine    = td.engine,
@@ -370,13 +373,10 @@ void worker_function(WorkerThreadData td)
           .allocator = allocator,
       };
 
-      uint64_t ticks_start = SDL_GetPerformanceCounter();
-      job_system.jobs[job_idx](tjd);
-
-      job_system.push_profile_data(threadId,
-                                   static_cast<float>(SDL_GetPerformanceCounter() - ticks_start) /
-                                       static_cast<float>(SDL_GetPerformanceFrequency()),
-                                   job_system.job_names[job_idx]);
+      job.execute(tjd);
+      const uint64_t ticks_delta  = SDL_GetPerformanceCounter() - ticks_start;
+      const float    duration_sec = static_cast<float>(ticks_delta) / static_cast<float>(SDL_GetPerformanceFrequency());
+      job_system.push_profile_data(threadId, duration_sec, job.name);
 
       allocator.reset();
       job_idx = SDL_AtomicIncRef(&td.game.js.jobs_taken);
@@ -969,9 +969,6 @@ void Game::startup(Engine& engine)
     vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
   }
 
-  vec3_set(robot_position, -2.0f, 3.0f, 3.0f);
-  vec3_set(rigged_position, -2.0f, 3.0f, 3.0f);
-
   cameras.bind_gameplay();
 
   {
@@ -1021,10 +1018,6 @@ void Game::startup(Engine& engine)
   camera_updown_angle = -1.2f;
 
   booster_jet_fuel = 1.0f;
-
-  green_gui_radar_position[0] = -10.2f;
-  green_gui_radar_position[1] = -7.3f;
-  green_gui_radar_rotation    = -6.0f;
 
   //
   // billboard vertex data (triangle strip topology)
@@ -1265,8 +1258,6 @@ void Game::startup(Engine& engine)
 
   vec3_set(light_source_position, -30.0f, -10.0f, 10.0f);
 
-  radar_scale = 0.75f;
-
   diagnostic_meas_scale = 1.0f;
 
   vec3_set(cameras.editor.position, 0.0f, -10.0f, -1.0f);
@@ -1327,7 +1318,7 @@ void Game::teardown(Engine& engine)
   vkDeviceWaitIdle(engine.device);
 
   js.thread_end_requested = true;
-  js.jobs_max             = 0;
+  js.jobs.reset();
   SDL_AtomicSet(&js.jobs_taken, 0);
 
   SDL_CondBroadcast(js.new_jobs_available_cond);
@@ -1475,9 +1466,8 @@ void recalculate_cascade_view_proj_matrices(mat4x4 cascade_view_proj_mat[SHADOWM
       mat4x4_look_at(light_view_mat, eye, frustum_center, up);
     }
 
-    // I don't know why the near clipping plane has to be a huge negative number! If used with 0 as in tutorials,
-    // the depth is not calculated properly.. I guess for now it'll have to be this way.
-    // @todo: investigate someday (low priority)
+    // todo: I don't know why the near clipping plane has to be a huge negative number! If used with 0 as in tutorials,
+    //       the depth is not calculated properly.. I guess for now it'll have to be this way.
     mat4x4 light_ortho_mat = {};
     mat4x4_ortho(light_ortho_mat, min_extents[0], max_extents[0], min_extents[1], max_extents[1], -400.0f,
                  max_extents[2] - min_extents[2]);
@@ -1959,9 +1949,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     mat4x4_look_at(cameras.editor.view, cameras.editor.position, center, up);
   }
 
-  light_source_position[0] = 200.0f;
-  light_source_position[1] = -100.0f;
-  light_source_position[2] = 0; // player_position[2];
+  vec3_set(light_source_position, 200.0f, -100.0f, 0.0f);
 
   if (ImGui::CollapsingHeader("Debug and info"))
   {
@@ -2001,10 +1989,6 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     ImGui::Text("F1 - enable first person view");
     ImGui::Text("F2 - disable first person view");
     ImGui::Text("ESC - exit");
-
-    ImGui::InputFloat2("green_gui_radar_position", green_gui_radar_position);
-    ImGui::InputFloat("green_gui_radar_rotation", &green_gui_radar_rotation);
-    ImGui::InputFloat("radar scale", &radar_scale);
   }
 
   if (ImGui::Button("quit"))
@@ -2051,7 +2035,6 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
   ImGui::InputFloat2("debug vec2", DEBUG_VEC2);
   ImGui::InputFloat2("debug vec2 additional", DEBUG_VEC2_ADDITIONAL);
-  ImGui::InputFloat3("light source position", light_source_position);
   ImGui::InputFloat4("light ortho projection", DEBUG_LIGHT_ORTHO_PARAMS);
 
   pbr_light_sources_cache.count = 5;
@@ -2229,16 +2212,16 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   recalculate_cascade_view_proj_matrices(cascade_view_proj_mat, cascade_split_depths, cameras.current->projection,
                                          cameras.current->view, light_source_position);
 
-  js.jobs_max = 0;
-  js.push("moving lights update", update::moving_lights_job);
-  js.push("helmet update", update::helmet_job);
-  js.push("robot update", update::robot_job);
-  js.push("monster update", update::monster_job);
-  js.push("rigged simple update", update::rigged_simple_job);
-  js.push("matrioshka update", update::matrioshka_job);
+  js.jobs.reset();
+  js.jobs.push("moving lights update", update::moving_lights_job);
+  js.jobs.push("helmet update", update::helmet_job);
+  js.jobs.push("robot update", update::robot_job);
+  js.jobs.push("monster update", update::monster_job);
+  js.jobs.push("rigged simple update", update::rigged_simple_job);
+  js.jobs.push("matrioshka update", update::matrioshka_job);
 
   if (cameras.is_editor_bound())
-    js.push("orientation axis update", update::orientation_axis_job);
+    js.jobs.push("orientation axis update", update::orientation_axis_job);
 
   SDL_AtomicSet(&js.profile_each_frame_counter, 0);
   SDL_LockMutex(js.new_jobs_available_mutex);
@@ -2270,40 +2253,40 @@ void Game::render(Engine& engine)
   {
     FunctionTimer timer(render_times, SDL_arraysize(render_times));
 
-    js.jobs_max = 0;
-    js.push("skybox", render::skybox_job);
-    js.push("robot", render::robot_job);
-    js.push("helmet", render::helmet_job);
-    js.push("point lights", render::point_light_boxes);
-    js.push("box", render::matrioshka_box);
-    js.push("vr scene", render::vr_scene);
-    js.push("water", render::water);
-    js.push("simple rigged", render::simple_rigged);
-    js.push("monster", render::monster_rigged);
-    js.push("robot depth", render::robot_depth_job);
-    js.push("helmet depth", render::helmet_depth_job);
+    js.jobs.reset();
+    js.jobs.push("skybox", render::skybox_job);
+    js.jobs.push("robot", render::robot_job);
+    js.jobs.push("helmet", render::helmet_job);
+    js.jobs.push("point lights", render::point_light_boxes);
+    js.jobs.push("box", render::matrioshka_box);
+    js.jobs.push("vr scene", render::vr_scene);
+    js.jobs.push("water", render::water);
+    js.jobs.push("simple rigged", render::simple_rigged);
+    js.jobs.push("monster", render::monster_rigged);
+    js.jobs.push("robot depth", render::robot_depth_job);
+    js.jobs.push("helmet depth", render::helmet_depth_job);
     // js.push("vr scene depth", render::vr_scene_depth);
 
     if (cameras.is_gameplay_bound())
     {
-      js.push("radar", render::radar);
-      js.push("gui lines", render::robot_gui_lines);
-      js.push("gui height ruler text", render::height_ruler_text);
-      js.push("gui tilt ruler text", render::tilt_ruler_text);
-      js.push("speed meter", render::robot_gui_speed_meter_text);
-      js.push("speed meter triangle", render::robot_gui_speed_meter_triangle);
-      js.push("compass text", render::compass_text);
-      js.push("radar dots", render::radar_dots);
-      js.push("weapon selectors - left", render::weapon_selectors_left);
-      js.push("weapon selectors - right", render::weapon_selectors_right);
+      js.jobs.push("radar", render::radar);
+      js.jobs.push("gui lines", render::robot_gui_lines);
+      js.jobs.push("gui height ruler text", render::height_ruler_text);
+      js.jobs.push("gui tilt ruler text", render::tilt_ruler_text);
+      js.jobs.push("speed meter", render::robot_gui_speed_meter_text);
+      js.jobs.push("speed meter triangle", render::robot_gui_speed_meter_triangle);
+      js.jobs.push("compass text", render::compass_text);
+      js.jobs.push("radar dots", render::radar_dots);
+      js.jobs.push("weapon selectors - left", render::weapon_selectors_left);
+      js.jobs.push("weapon selectors - right", render::weapon_selectors_right);
     }
     else
     {
-      js.push("orientation axis", render::orientation_axis);
+      js.jobs.push("orientation axis", render::orientation_axis);
     }
 
-    js.push("imgui", render::imgui);
-    // js.push("debug shadow map depth pass", render::debug_shadowmap);
+    js.jobs.push("imgui", render::imgui);
+    // js.jobs.push("debug shadow map depth pass", render::debug_shadowmap);
 
     SDL_LockMutex(js.new_jobs_available_mutex);
     SDL_CondBroadcast(js.new_jobs_available_cond);

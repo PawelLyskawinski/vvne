@@ -100,11 +100,8 @@ struct Game;
 template <typename T, int SIZE> struct AtomicStack
 {
   void push(const T& in) { stack[SDL_AtomicIncRef(&count)] = in; }
-
-  T* begin() { return stack; }
-
-  T* end() { return &stack[SDL_AtomicGet(&count)]; }
-
+  T*   begin() { return stack; }
+  T*   end() { return &stack[SDL_AtomicGet(&count)]; }
   void reset() { SDL_AtomicSet(&count, 0); }
 
   T            stack[SIZE];
@@ -119,6 +116,21 @@ struct ThreadJobData
   Stack&  allocator;
 };
 
+struct Job
+{
+  const char* name;
+  void (*execute)(ThreadJobData tjd);
+};
+
+struct Jobs : public ElementStack<Job, 128>
+{
+  void push(const char* name, void (*fcn)(ThreadJobData tjd))
+  {
+    Job job = {name, fcn};
+    ElementStack<Job, 128>::push(job);
+  }
+};
+
 struct JobSystem
 {
   using JobFunction = void (*)(ThreadJobData tjd);
@@ -127,17 +139,8 @@ struct JobSystem
   bool thread_end_requested;
 
   // Workload dispatching
-  const char*  job_names[128];
-  JobFunction  jobs[128];
-  int          jobs_max;
+  Jobs         jobs;
   SDL_atomic_t jobs_taken;
-
-  void push(const char* name, JobFunction job)
-  {
-    job_names[jobs_max] = name;
-    jobs[jobs_max]      = job;
-    jobs_max += 1;
-  }
 
   // Synchronization
   SDL_cond*    new_jobs_available_cond;
@@ -159,14 +162,9 @@ struct JobSystem
 
     void copy_from(const ProfileData& other, const int count)
     {
-      for (int i = 0; i < count; ++i)
-        thread_ids[i] = other.thread_ids[i];
-
-      for (int i = 0; i < count; ++i)
-        duration_sec[i] = other.duration_sec[i];
-
-      for (int i = 0; i < count; ++i)
-        job_names[i] = other.job_names[i];
+      SDL_memcpy(thread_ids, other.thread_ids, count * sizeof(int));
+      SDL_memcpy(duration_sec, other.duration_sec, count * sizeof(float));
+      SDL_memcpy(job_names, other.job_names, count * sizeof(const char*));
     }
   };
 
@@ -358,12 +356,8 @@ struct Game
 
   Ecs ecs;
 
-  //////////////////////////////////////////////////////////////////////////////
-  // Gameplay logic
-  //////////////////////////////////////////////////////////////////////////////
-
-  vec2 vr_level_entry;
-  vec2 vr_level_goal;
+  float update_times[50];
+  float render_times[50];
 
   bool DEBUG_FLAG_1;
   bool DEBUG_FLAG_2;
@@ -371,15 +365,17 @@ struct Game
   vec2 DEBUG_VEC2_ADDITIONAL;
   vec4 DEBUG_LIGHT_ORTHO_PARAMS;
 
-  vec2  green_gui_radar_position;
-  float green_gui_radar_rotation;
+  bool lmb_clicked;
+  int  lmb_last_cursor_position[2];
+  int  lmb_current_cursor_position[2];
 
-  float robot_position[3];
-  float rigged_position[3];
-  float light_source_position[3];
+  //////////////////////////////////////////////////////////////////////////////
+  // Gameplay logic
+  //////////////////////////////////////////////////////////////////////////////
 
-  float update_times[50];
-  float render_times[50];
+  vec2 vr_level_entry;
+  vec2 vr_level_goal;
+  vec3 light_source_position;
 
   Cameras cameras;
 
@@ -390,7 +386,6 @@ struct Game
   float camera_updown_angle;
   bool  player_jumping;
   float player_jump_start_timestamp_sec;
-  float radar_scale;
 
   struct GameplayKeyFlags
   {
@@ -407,6 +402,22 @@ struct Game
 
   uint64_t player_key_flags;
 
+  // gameplay mechanics
+  float booster_jet_fuel;
+  WeaponSelection weapon_selections[2];
+
+  SimpleEntity  helmet_entity;
+  SimpleEntity  robot_entity;
+  SimpleEntity  box_entities[6];
+  SimpleEntity  matrioshka_entity;
+  SkinnedEntity monster_entity;
+  SkinnedEntity rigged_simple_entity;
+  SimpleEntity  axis_arrow_entities[3];
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Editor logic
+  //////////////////////////////////////////////////////////////////////////////
+
   struct EditorKeyFlags
   {
     enum : uint64_t
@@ -419,23 +430,7 @@ struct Game
   };
 
   uint64_t editor_key_flags;
-
-  // gameplay mechanics
-  float booster_jet_fuel;
-
-  bool lmb_clicked;
-  int  lmb_last_cursor_position[2];
-  int  lmb_current_cursor_position[2];
-
-  SimpleEntity  helmet_entity;
-  SimpleEntity  robot_entity;
-  SimpleEntity  box_entities[6];
-  SimpleEntity  matrioshka_entity;
-  SkinnedEntity monster_entity;
-  SkinnedEntity rigged_simple_entity;
-  SimpleEntity  axis_arrow_entities[3];
-
-  WeaponSelection weapon_selections[2];
+  bool     camera_relocation_in_progress;
 
   void startup(Engine& engine);
   void teardown(Engine& engine);
