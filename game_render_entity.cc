@@ -20,10 +20,7 @@ struct SkinningUbo
   vec3   camera_position;
 };
 
-void multiply(mat4x4 result, const mat4x4 lhs, const mat4x4 rhs)
-{
-  mat4x4_mul(result, lhs, rhs);
-}
+void multiply(mat4x4 result, const mat4x4 lhs, const mat4x4 rhs) { mat4x4_mul(result, lhs, rhs); }
 
 template <typename... Args> void multiply(mat4x4 result, const mat4x4 lhs, const mat4x4 rhs, Args... args)
 {

@@ -1,14 +1,14 @@
 cmake_minimum_required(VERSION 3.9)
 project(vvne CXX)
 
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -std=c++2a -g -fno-exceptions -fno-rtti -Wall -pedantic -DSDL_ASSERT_LEVEL=3")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -std=c++2a -O2 -fno-exceptions -fno-rtti -Wall -pedantic")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -std=c++2a -g -fno-exceptions -fno-rtti -Wall -DSDL_ASSERT_LEVEL=3")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -std=c++2a -O2 -fno-exceptions -fno-rtti -Wall")
 
 include_directories(${CMAKE_CURRENT_LIST_DIR}/thirdparty)
 
 if(WIN32)
-include_directories(C:/Users/pawel.lyskawinski/Downloads/MinGW/include
-                    C:/VulkanSDK/1.0.65.0/Include)
+include_directories(C:/Users/plyskawinski/Downloads/MinGW/include
+                    C:/VulkanSDK/1.1.85.0/Include)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libstdc++ -static-libgcc")
 set(SDL_LIBRARY    ${CMAKE_CURRENT_LIST_DIR}/bin/SDL2.dll)
@@ -46,7 +46,9 @@ set(SOURCES
         thirdparty/imgui.cpp
         thirdparty/imgui_draw.cpp
         thirdparty/imgui_widgets.cpp
-        thirdparty/sha256.cpp)
+        thirdparty/sha256.cpp
+        allocators.hh
+        )
 
 if(WIN32)
 add_executable(${PROJECT_NAME} ${SOURCES} assets/applicationIcon.rc)

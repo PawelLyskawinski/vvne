@@ -13,10 +13,7 @@ public:
     return r;
   }
 
-  float usage_percent(int total) const
-  {
-    return (float)atomic_value / (float)total;
-  }
+  float usage_percent(int total) const { return (float)atomic_value / (float)total; }
 
 private:
   int atomic_value;

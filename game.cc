@@ -332,7 +332,7 @@ GuiLineSizeCount count_lines(const ArrayView<GuiLine>& lines, const GuiLine::Col
 } // namespace
 
 // game_generate_gui_lines.cc
-void generate_gui_lines(const GenerateGuiLinesCommand& cmd, GuiLine* dst, int* count);
+ArrayView<GuiLine> generate_gui_lines(const GenerateGuiLinesCommand& cmd, Stack& allocator);
 
 namespace {
 
@@ -2357,13 +2357,7 @@ void Game::render(Engine& engine)
           .camera_y_pitch_radians = camera_updown_angle,
       };
 
-      ArrayView<GuiLine> r = {};
-
-      {
-        generate_gui_lines(cmd, nullptr, &r.count);
-        r.data = engine.dirty_stack.alloc<GuiLine>(r.count);
-        generate_gui_lines(cmd, r.data, &r.count);
-      }
+      ArrayView<GuiLine> r = generate_gui_lines(cmd, engine.dirty_stack);
 
       float* pushed_lines_data    = nullptr;
       int    pushed_lines_counter = 0;

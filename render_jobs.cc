@@ -11,8 +11,8 @@ void render_entity(const SimpleEntity& entity, const Ecs& ecs, const SceneGraph&
                    const RenderEntityParams& p);
 
 // game_generate_gui_lines.cc
-void generate_gui_height_ruler_text(struct GenerateGuiLinesCommand& cmd, GuiHeightRulerText* dst, int* count);
-void generate_gui_tilt_ruler_text(struct GenerateGuiLinesCommand& cmd, GuiHeightRulerText* dst, int* count);
+ArrayView<GuiHeightRulerText> generate_gui_height_ruler_text(struct GenerateGuiLinesCommand& cmd, Stack& allocator);
+ArrayView<GuiHeightRulerText> generate_gui_tilt_ruler_text(struct GenerateGuiLinesCommand& cmd, Stack& allocator);
 
 // game_generate_sdf_font.cc
 GenerateSdfFontCommandResult generate_sdf_font(const GenerateSdfFontCommand& cmd);
@@ -35,10 +35,7 @@ VkCommandBuffer acquire_command_buffer(int thread_id, Game& game)
   return game.js.commands[game.image_index][thread_id][index];
 }
 
-VkCommandBuffer acquire_command_buffer(ThreadJobData& tjd)
-{
-  return acquire_command_buffer(tjd.thread_id, tjd.game);
-}
+VkCommandBuffer acquire_command_buffer(ThreadJobData& tjd) { return acquire_command_buffer(tjd.thread_id, tjd.game); }
 
 } // namespace
 
@@ -366,8 +363,9 @@ void simple_rigged(ThreadJobData tjd)
   uint32_t dynamic_offsets[] = {
       static_cast<uint32_t>(tjd.game.rig_skinning_matrices_ubo_offsets[tjd.game.image_index])};
 
-  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.colored_geometry_skinned.layout,
-                          0, 1, &tjd.game.rig_skinning_matrices_dset, SDL_arraysize(dynamic_offsets), dynamic_offsets);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          tjd.engine.pipelines.colored_geometry_skinned.layout, 0, 1,
+                          &tjd.game.rig_skinning_matrices_dset, SDL_arraysize(dynamic_offsets), dynamic_offsets);
 
   RenderEntityParams params = {
       .cmd             = command,
@@ -393,9 +391,9 @@ void monster_rigged(ThreadJobData tjd)
   uint32_t dynamic_offsets[] = {
       static_cast<uint32_t>(tjd.game.monster_skinning_matrices_ubo_offsets[tjd.game.image_index])};
 
-  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.colored_geometry_skinned.layout,
-                          0, 1, &tjd.game.monster_skinning_matrices_dset, SDL_arraysize(dynamic_offsets),
-                          dynamic_offsets);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          tjd.engine.pipelines.colored_geometry_skinned.layout, 0, 1,
+                          &tjd.game.monster_skinning_matrices_dset, SDL_arraysize(dynamic_offsets), dynamic_offsets);
 
   RenderEntityParams params = {
       .cmd             = command,
@@ -442,7 +440,8 @@ void radar(ThreadJobData tjd)
   mat4x4 mvp = {};
   mat4x4_mul(mvp, gui_projection, world_transform);
 
-  vkCmdPushConstants(command, tjd.engine.pipelines.green_gui.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
+  vkCmdPushConstants(command, tjd.engine.pipelines.green_gui.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4),
+                     mvp);
   vkCmdPushConstants(command, tjd.engine.pipelines.green_gui.layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4),
                      sizeof(float), &tjd.game.current_time_sec);
 
@@ -550,8 +549,8 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
   tjd.game.gui_commands.push(command);
   tjd.engine.render_passes.gui.begin(command, tjd.game.image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.pipeline);
-  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.layout, 0, 1,
-                          &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.layout, 0,
+                          1, &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
 
   vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.green_gui_billboard_vertex_buffer_offset);
@@ -700,8 +699,8 @@ void height_ruler_text(ThreadJobData tjd)
   tjd.game.gui_commands.push(command);
   tjd.engine.render_passes.gui.begin(command, tjd.game.image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.pipeline);
-  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.layout, 0, 1,
-                          &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.layout, 0,
+                          1, &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
 
   vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.green_gui_billboard_vertex_buffer_offset);
@@ -724,20 +723,15 @@ void height_ruler_text(ThreadJobData tjd)
   //--------------------------------------------------------------------------
   // height rulers values
   //--------------------------------------------------------------------------
-  ArrayView<GuiHeightRulerText> scheduled_text_data = {};
 
-  {
-    GenerateGuiLinesCommand cmd = {
-        .player_y_location_meters = -(2.0f - tjd.game.player_position[1]),
-        .camera_x_pitch_radians   = tjd.game.camera_angle,
-        .camera_y_pitch_radians   = tjd.game.camera_updown_angle,
-        .screen_extent2D          = tjd.engine.extent2D,
-    };
+  GenerateGuiLinesCommand cmd = {
+      .player_y_location_meters = -(2.0f - tjd.game.player_position[1]),
+      .camera_x_pitch_radians   = tjd.game.camera_angle,
+      .camera_y_pitch_radians   = tjd.game.camera_updown_angle,
+      .screen_extent2D          = tjd.engine.extent2D,
+  };
 
-    generate_gui_height_ruler_text(cmd, nullptr, &scheduled_text_data.count);
-    scheduled_text_data.data = tjd.allocator.alloc<GuiHeightRulerText>(scheduled_text_data.count);
-    generate_gui_height_ruler_text(cmd, scheduled_text_data.data, &scheduled_text_data.count);
-  }
+  ArrayView<GuiHeightRulerText> scheduled_text_data = generate_gui_height_ruler_text(cmd, tjd.allocator);
 
   char buffer[256];
   for (GuiHeightRulerText& text : scheduled_text_data)
@@ -797,8 +791,8 @@ void tilt_ruler_text(ThreadJobData tjd)
   tjd.game.gui_commands.push(command);
   tjd.engine.render_passes.gui.begin(command, tjd.game.image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.pipeline);
-  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.layout, 0, 1,
-                          &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.layout, 0,
+                          1, &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
   vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
@@ -820,20 +814,15 @@ void tilt_ruler_text(ThreadJobData tjd)
   //--------------------------------------------------------------------------
   // tilt rulers values
   //--------------------------------------------------------------------------
-  ArrayView<GuiHeightRulerText> scheduled_text_data = {};
 
-  {
-    GenerateGuiLinesCommand cmd = {
-        .player_y_location_meters = -(2.0f - tjd.game.player_position[1]),
-        .camera_x_pitch_radians   = tjd.game.camera_angle,
-        .camera_y_pitch_radians   = tjd.game.camera_updown_angle,
-        .screen_extent2D          = tjd.engine.extent2D,
-    };
+  GenerateGuiLinesCommand cmd = {
+      .player_y_location_meters = -(2.0f - tjd.game.player_position[1]),
+      .camera_x_pitch_radians   = tjd.game.camera_angle,
+      .camera_y_pitch_radians   = tjd.game.camera_updown_angle,
+      .screen_extent2D          = tjd.engine.extent2D,
+  };
 
-    generate_gui_tilt_ruler_text(cmd, nullptr, &scheduled_text_data.count);
-    scheduled_text_data.data = tjd.allocator.alloc<GuiHeightRulerText>(scheduled_text_data.count);
-    generate_gui_tilt_ruler_text(cmd, scheduled_text_data.data, &scheduled_text_data.count);
-  }
+  ArrayView<GuiHeightRulerText> scheduled_text_data = generate_gui_tilt_ruler_text(cmd, tjd.allocator);
 
   char buffer[256];
   for (GuiHeightRulerText& text : scheduled_text_data)
@@ -894,8 +883,8 @@ void compass_text(ThreadJobData tjd)
   tjd.game.gui_commands.push(command);
   tjd.engine.render_passes.gui.begin(command, tjd.game.image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.pipeline);
-  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.layout, 0, 1,
-                          &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_sdf_font.layout, 0,
+                          1, &tjd.game.lucida_sans_sdf_dset, 0, nullptr);
   vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                          &tjd.game.green_gui_billboard_vertex_buffer_offset);
 
@@ -1212,7 +1201,8 @@ void weapon_selectors_left(ThreadJobData tjd)
     mat4x4 mvp = {};
     mat4x4_mul(mvp, gui_projection, world_transform);
 
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_weapon_selector_box_left.pipeline);
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      tjd.engine.pipelines.green_gui_weapon_selector_box_left.pipeline);
 
     vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_device_local_memory_buffer,
                            &tjd.game.green_gui_billboard_vertex_buffer_offset);

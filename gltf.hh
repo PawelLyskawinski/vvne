@@ -1,62 +1,10 @@
 #pragma once
 
+#include "allocators.hh"
 #include "engine.hh"
 #include "linmath.h"
 #include <SDL2/SDL_stdinc.h>
 #include <vulkan/vulkan.h>
-
-template <typename T> struct ArrayView
-{
-  T*  data;
-  int count;
-
-  void alloc(Stack& stack, int new_count)
-  {
-    data  = stack.alloc<T>(new_count);
-    count = new_count;
-  }
-
-  void reset()
-  {
-    data  = nullptr;
-    count = 0;
-  }
-
-  T& operator[](int idx)
-  {
-    return data[idx];
-  }
-
-  const T& operator[](int idx) const
-  {
-    return data[idx];
-  }
-
-  T* begin()
-  {
-    return data;
-  }
-
-  T* end()
-  {
-    return &data[count];
-  }
-
-  T* begin() const
-  {
-    return data;
-  }
-
-  T* end() const
-  {
-    return &data[count];
-  }
-
-  bool empty() const
-  {
-    return 0 == count;
-  }
-};
 
 struct Material
 {

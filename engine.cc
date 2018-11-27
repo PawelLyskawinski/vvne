@@ -1270,7 +1270,7 @@ Texture Engine::load_texture(SDL_Surface* surface, bool register_for_destruction
 
   vkUnmapMemory(device, staging_memory);
 
-  Texture  result = {};
+  Texture result = {};
 
   {
     VkImageCreateInfo ci = {
@@ -1318,7 +1318,7 @@ Texture Engine::load_texture(SDL_Surface* surface, bool register_for_destruction
     vkCreateImageView(device, &ci, nullptr, &result.image_view);
   }
 
-  if(register_for_destruction)
+  if (register_for_destruction)
   {
     autoclean_images.push(result.image);
     autoclean_image_views.push(result.image_view);

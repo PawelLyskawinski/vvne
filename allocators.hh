@@ -65,3 +65,29 @@ template <typename T, uint32_t N = 64> struct ElementStack
   T        data[N];
   uint32_t count;
 };
+
+template <typename T> struct ArrayView
+{
+  T*  data;
+  int count;
+
+  void alloc(Stack& stack, int new_count)
+  {
+    data  = stack.alloc<T>(new_count);
+    count = new_count;
+  }
+
+  void reset()
+  {
+    data  = nullptr;
+    count = 0;
+  }
+
+  T&       operator[](int idx) { return data[idx]; }
+  const T& operator[](int idx) const { return data[idx]; }
+  T*       begin() { return data; }
+  T*       end() { return &data[count]; }
+  T*       begin() const { return data; }
+  T*       end() const { return &data[count]; }
+  bool     empty() const { return 0 == count; }
+};
