@@ -12,9 +12,6 @@
 #include <stb_image.h>
 #pragma GCC diagnostic pop
 
-constexpr uint32_t INITIAL_WINDOW_WIDTH  = 1200;
-constexpr uint32_t INITIAL_WINDOW_HEIGHT = 900;
-
 VkBool32
 #ifndef __linux__
     __stdcall
@@ -28,6 +25,9 @@ VkBool32
 
 namespace {
 
+const uint32_t initial_window_width  = 1200u;
+const uint32_t initial_window_height = 900u;
+
 uint32_t find_memory_type_index(VkPhysicalDeviceMemoryProperties* properties, VkMemoryRequirements* reqs,
                                 VkMemoryPropertyFlags searched)
 {
@@ -39,9 +39,7 @@ uint32_t find_memory_type_index(VkPhysicalDeviceMemoryProperties* properties, Vk
     VkMemoryPropertyFlags memory_type_properties = properties->memoryTypes[i].propertyFlags;
 
     if (searched == (memory_type_properties & searched))
-    {
       return i;
-    }
   }
 
   // this code fragment should never be reached!
@@ -51,23 +49,8 @@ uint32_t find_memory_type_index(VkPhysicalDeviceMemoryProperties* properties, Vk
 
 const char* to_cstr(VkPresentModeKHR mode)
 {
-  switch (mode)
-  {
-  case VK_PRESENT_MODE_MAILBOX_KHR:
-    return "MAILBOX (smart v-sync)";
-  case VK_PRESENT_MODE_FIFO_KHR:
-    return "FIFO (v-sync)";
-  case VK_PRESENT_MODE_IMMEDIATE_KHR:
-    return "IMMEDIATE";
-  case VK_PRESENT_MODE_FIFO_RELAXED_KHR:
-    return "FIFO RELAXED";
-  case VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR:
-    return "SHARED DEMAND REFRESH";
-  case VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR:
-    return "SHARED CONTINUOUS REFRESH";
-  default:
-    return "unknown?";
-  }
+  const char* modes[] = {"IMMEDIATE", "MAILBOX (smart v-sync)", "FIFO (v-sync)", "FIFO RELAXED", "unknown?"};
+  return modes[clamp(mode, VK_PRESENT_MODE_IMMEDIATE_KHR, VK_PRESENT_MODE_RANGE_SIZE_KHR)];
 }
 
 } // namespace
@@ -78,13 +61,12 @@ void Engine::startup(bool vulkan_validation_enabled)
   dirty_stack.setup(HOST_DIRTY_ALLOCATOR_POOL_SIZE);
   render_passes.init();
 
-  window = SDL_CreateWindow("vvne", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, INITIAL_WINDOW_WIDTH,
-                            INITIAL_WINDOW_HEIGHT, SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
+  window = SDL_CreateWindow("vvne", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, initial_window_width,
+                            initial_window_height, SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
 
   {
     VkApplicationInfo ai = {
         .sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        .pNext              = nullptr,
         .pApplicationName   = "vvne",
         .applicationVersion = 1,
         .pEngineName        = "vvne_engine",

@@ -8,7 +8,7 @@ constexpr uint32_t operator"" _KB(unsigned long long in) { return 1024u * static
 constexpr uint32_t operator"" _MB(unsigned long long in) { return 1024u * 1024u * static_cast<uint32_t>(in); }
 constexpr float    to_rad(float deg) noexcept { return (float(M_PI) * deg) / 180.0f; }
 constexpr float    to_deg(float rad) noexcept { return (180.0f * rad) / float(M_PI); }
-constexpr float    clamp(float val, float min, float max) { return (val < min) ? min : (val > max) ? max : val; }
+template <typename T> constexpr T clamp(T val, T min, T max) { return (val < min) ? min : (val > max) ? max : val; }
 
 constexpr uint32_t GPU_DEVICE_LOCAL_MEMORY_POOL_SIZE                 = 5_MB;
 constexpr uint32_t GPU_HOST_VISIBLE_TRANSFER_SOURCE_MEMORY_POOL_SIZE = 5_MB;
