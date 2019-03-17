@@ -27,27 +27,26 @@ add_executable(sandbox unit_tests/sandbox.cc)
 add_executable(jobsytem unit_tests/JobSystem.cc)
 
 set(SOURCES
-        main.cc
-        engine.cc
-        engine_render_passes.cc
-        engine_framebuffers.cc
-        engine_descriptor_set_layouts.cc
-        engine_pipeline_layouts.cc
-        engine_pipelines.cc
-        game.cc
-        game_generate_gui_lines.cc
-        game_generate_sdf_font.cc
-        game_render_entity.cc
-        gltf.cc
-        cubemap.cc
-        render_jobs.cc
-        update_jobs.cc
-        ecs.cc
+        sources/main.cc
+        sources/engine/engine.cc
+        sources/engine/engine_render_passes.cc
+        sources/engine/engine_framebuffers.cc
+        sources/engine/engine_descriptor_set_layouts.cc
+        sources/engine/engine_pipeline_layouts.cc
+        sources/engine/engine_pipelines.cc
+        sources/game.cc
+        sources/game_generate_gui_lines.cc
+        sources/game_generate_sdf_font.cc
+        sources/game_render_entity.cc
+        sources/engine/gltf.cc
+        sources/engine/cubemap.cc
+        sources/render_jobs.cc
+        sources/update_jobs.cc
+        sources/ecs.cc
         thirdparty/imgui.cpp
         thirdparty/imgui_draw.cpp
         thirdparty/imgui_widgets.cpp
         thirdparty/sha256.cpp
-        allocators.hh
         )
 
 if(WIN32)

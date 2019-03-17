@@ -1,6 +1,6 @@
 #pragma once
 
-#include "gltf.hh"
+#include "engine/gltf.hh"
 #include <linmath.h>
 
 struct Incrementable

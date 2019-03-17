@@ -1,5 +1,5 @@
 #define SDL_MAIN_HANDLED
-#include "engine.hh"
+#include "engine/engine.hh"
 #include "game.hh"
 #include <SDL2/SDL.h>
 
@@ -73,6 +73,7 @@ int main(int argc, char* argv[])
 
   SDL_free(game);
   SDL_free(engine);
+
   SDL_Quit();
   return 0;
 }

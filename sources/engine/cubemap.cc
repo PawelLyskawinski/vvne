@@ -1,6 +1,6 @@
 #include "cubemap.hh"
 #include "engine.hh"
-#include "game.hh"
+#include "../game.hh"
 #include "linmath.h"
 #include <SDL2/SDL_log.h>
 

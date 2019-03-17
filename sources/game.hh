@@ -1,8 +1,8 @@
 #pragma once
 
 #include "ecs.hh"
-#include "engine.hh"
-#include "gltf.hh"
+#include "engine/engine.hh"
+#include "engine/gltf.hh"
 #include "imgui.h"
 #include <SDL2/SDL_mouse.h>
 #include <SDL2/SDL_mutex.h>

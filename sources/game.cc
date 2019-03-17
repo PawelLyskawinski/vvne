@@ -1,5 +1,5 @@
 #include "game.hh"
-#include "cubemap.hh"
+#include "engine/cubemap.hh"
 #include "render_jobs.hh"
 #include "update_jobs.hh"
 #include <SDL2/SDL_assert.h>
