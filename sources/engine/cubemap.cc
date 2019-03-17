@@ -1,21 +1,19 @@
 #include "cubemap.hh"
-#include "engine.hh"
 #include "../game.hh"
+#include "engine.hh"
 #include "linmath.h"
 #include <SDL2/SDL_log.h>
 
-namespace {
+static constexpr float calculate_mip_divisor(int mip_level) { return mip_level ? SDL_powf(2, mip_level) : 1.0f; }
 
-constexpr float calculate_mip_divisor(int mip_level) { return mip_level ? SDL_powf(2, mip_level) : 1.0f; }
-
-void generate_cubemap_views(mat4x4 views[], vec3 centers[], vec3 ups[], uint32_t count)
+static void generate_cubemap_views(mat4x4 views[], vec3 centers[], vec3 ups[], uint32_t count)
 {
   vec3 eye = {0.0f, 0.0f, 0.0f};
   for (uint32_t i = 0; i < count; ++i)
     mat4x4_look_at(views[i], eye, centers[i], ups[i]);
 }
 
-void generate_cubemap_views(mat4x4 views[6])
+static void generate_cubemap_views(mat4x4 views[6])
 {
   vec3 centers[] = {
       {1.0f, 0.0f, 0.0f},  {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f},
@@ -30,7 +28,23 @@ void generate_cubemap_views(mat4x4 views[6])
   generate_cubemap_views(views, centers, ups, 6);
 }
 
-} // namespace
+static VkExtent3D create_flat_extent(int size[2])
+{
+  return {
+      .width  = static_cast<uint32_t>(size[0]),
+      .height = static_cast<uint32_t>(size[1]),
+      .depth  = 1,
+  };
+}
+
+static VkExtent3D create_flat_extent(int size)
+{
+  return {
+      .width  = static_cast<uint32_t>(size),
+      .height = static_cast<uint32_t>(size),
+      .depth  = 1,
+  };
+}
 
 Texture generate_cubemap(Engine* engine, Game* game, const char* equirectangular_filepath, int desired_size[2])
 {
@@ -43,16 +57,11 @@ Texture generate_cubemap(Engine* engine, Game* game, const char* equirectangular
 
   {
     VkImageCreateInfo ci = {
-        .sType     = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .flags     = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
-        .imageType = VK_IMAGE_TYPE_2D,
-        .format    = surface_format,
-        .extent =
-            {
-                .width  = static_cast<uint32_t>(desired_size[0]),
-                .height = static_cast<uint32_t>(desired_size[1]),
-                .depth  = 1,
-            },
+        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .flags         = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
+        .imageType     = VK_IMAGE_TYPE_2D,
+        .format        = surface_format,
+        .extent        = create_flat_extent(desired_size),
         .mipLevels     = 1,
         .arrayLayers   = 6,
         .samples       = VK_SAMPLE_COUNT_1_BIT,
@@ -578,16 +587,11 @@ Texture generate_irradiance_cubemap(Engine* engine, Game* game, Texture environm
 
   {
     VkImageCreateInfo ci = {
-        .sType     = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .flags     = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
-        .imageType = VK_IMAGE_TYPE_2D,
-        .format    = surface_format,
-        .extent =
-            {
-                .width  = static_cast<uint32_t>(desired_size[0]),
-                .height = static_cast<uint32_t>(desired_size[1]),
-                .depth  = 1,
-            },
+        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .flags         = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
+        .imageType     = VK_IMAGE_TYPE_2D,
+        .format        = surface_format,
+        .extent        = create_flat_extent(desired_size),
         .mipLevels     = 1,
         .arrayLayers   = 6,
         .samples       = VK_SAMPLE_COUNT_1_BIT,
@@ -1086,16 +1090,11 @@ Texture generate_prefiltered_cubemap(Engine* engine, Game* game, Texture environ
 
   {
     VkImageCreateInfo ci = {
-        .sType     = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .flags     = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
-        .imageType = VK_IMAGE_TYPE_2D,
-        .format    = surface_format,
-        .extent =
-            {
-                .width  = static_cast<uint32_t>(desired_size[0]),
-                .height = static_cast<uint32_t>(desired_size[1]),
-                .depth  = 1,
-            },
+        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .flags         = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
+        .imageType     = VK_IMAGE_TYPE_2D,
+        .format        = surface_format,
+        .extent        = create_flat_extent(desired_size),
         .mipLevels     = DESIRED_MIP_LEVELS,
         .arrayLayers   = CUBE_SIDES,
         .samples       = VK_SAMPLE_COUNT_1_BIT,
@@ -1611,15 +1610,10 @@ Texture generate_brdf_lookup(Engine* engine, int size)
 
   {
     VkImageCreateInfo info = {
-        .sType     = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType = VK_IMAGE_TYPE_2D,
-        .format    = VK_FORMAT_R16G16_SFLOAT,
-        .extent =
-            {
-                .width  = static_cast<uint32_t>(size),
-                .height = static_cast<uint32_t>(size),
-                .depth  = 1,
-            },
+        .sType       = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType   = VK_IMAGE_TYPE_2D,
+        .format      = VK_FORMAT_R16G16_SFLOAT,
+        .extent      = create_flat_extent(size),
         .mipLevels   = 1,
         .arrayLayers = 1,
         .samples     = VK_SAMPLE_COUNT_1_BIT,
