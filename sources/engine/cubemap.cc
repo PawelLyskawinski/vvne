@@ -1,7 +1,6 @@
 #include "cubemap.hh"
 #include "../game.hh"
 #include "engine.hh"
-#include "linmath.h"
 #include <SDL2/SDL_log.h>
 
 static constexpr float calculate_mip_divisor(int mip_level) { return mip_level ? SDL_powf(2, mip_level) : 1.0f; }
@@ -46,6 +45,16 @@ static VkExtent3D create_flat_extent(int size)
   };
 }
 
+static void allocate_memory(Engine* engine, VkImage image)
+{
+  VkMemoryRequirements reqs = {};
+  vkGetImageMemoryRequirements(engine->device, image, &reqs);
+  vkBindImageMemory(engine->device, image, engine->memory_blocks.device_images.memory,
+                    engine->memory_blocks.device_images.stack_pointer);
+
+  engine->memory_blocks.device_images.stack_pointer += align(reqs.size, engine->memory_blocks.device_images.alignment);
+}
+
 Texture generate_cubemap(Engine* engine, Game* game, const char* equirectangular_filepath, int desired_size[2])
 {
   const VkFormat surface_format = engine->surface_format.format;
@@ -74,15 +83,7 @@ Texture generate_cubemap(Engine* engine, Game* game, const char* equirectangular
     vkCreateImage(engine->device, &ci, nullptr, &cubemap_image);
   }
 
-  {
-    VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(engine->device, cubemap_image, &reqs);
-    vkBindImageMemory(engine->device, cubemap_image, engine->memory_blocks.device_images.memory,
-                      engine->memory_blocks.device_images.stack_pointer);
-
-    engine->memory_blocks.device_images.stack_pointer +=
-        align(reqs.size, engine->memory_blocks.device_images.alignment);
-  }
+  allocate_memory(engine, cubemap_image);
 
   //////////////////////////////////////////////////////////////////////////////
   // Image view containing all 6 cubemap layers
@@ -604,15 +605,7 @@ Texture generate_irradiance_cubemap(Engine* engine, Game* game, Texture environm
     vkCreateImage(engine->device, &ci, nullptr, &cubemap_image);
   }
 
-  {
-    VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(engine->device, cubemap_image, &reqs);
-    vkBindImageMemory(engine->device, cubemap_image, engine->memory_blocks.device_images.memory,
-                      engine->memory_blocks.device_images.stack_pointer);
-
-    engine->memory_blocks.device_images.stack_pointer +=
-        align(reqs.size, engine->memory_blocks.device_images.alignment);
-  }
+  allocate_memory(engine, cubemap_image);
 
   //////////////////////////////////////////////////////////////////////////////
   // Image views creation
@@ -1107,15 +1100,7 @@ Texture generate_prefiltered_cubemap(Engine* engine, Game* game, Texture environ
     vkCreateImage(engine->device, &ci, nullptr, &cubemap_image);
   }
 
-  {
-    VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(engine->device, cubemap_image, &reqs);
-    vkBindImageMemory(engine->device, cubemap_image, engine->memory_blocks.device_images.memory,
-                      engine->memory_blocks.device_images.stack_pointer);
-
-    engine->memory_blocks.device_images.stack_pointer +=
-        align(reqs.size, engine->memory_blocks.device_images.alignment);
-  }
+  allocate_memory(engine, cubemap_image);
 
   //////////////////////////////////////////////////////////////////////////////
   // Image view creation
@@ -1623,15 +1608,7 @@ Texture generate_brdf_lookup(Engine* engine, int size)
     vkCreateImage(engine->device, &info, nullptr, &brdf_image);
   }
 
-  {
-    VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(engine->device, brdf_image, &reqs);
-    vkBindImageMemory(engine->device, brdf_image, engine->memory_blocks.device_images.memory,
-                      engine->memory_blocks.device_images.stack_pointer);
-
-    engine->memory_blocks.device_images.stack_pointer +=
-        align(reqs.size, engine->memory_blocks.device_images.alignment);
-  }
+  allocate_memory(engine, brdf_image);
 
   VkImageView brdf_image_view = VK_NULL_HANDLE;
 
