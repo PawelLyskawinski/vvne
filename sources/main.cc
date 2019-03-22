@@ -5,9 +5,6 @@
 
 int main(int argc, char* argv[])
 {
-  (void)argc;
-  (void)argv;
-
   SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_VERBOSE);
   SDL_SetHint(SDL_HINT_WINDOWS_DISABLE_THREAD_NAMING, "1");
   SDL_SetHint(SDL_HINT_FRAMEBUFFER_ACCELERATION, "1");

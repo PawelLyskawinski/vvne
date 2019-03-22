@@ -28,35 +28,33 @@ void depth_first_node_transform(mat4x4* transforms, Node* nodes, const int paren
 
 void SimpleEntity::init(Ecs& ecs, const SceneGraph& model)
 {
-  const int nodes_count = model.nodes.count;
+  const uint32_t nodes_count = static_cast<const uint32_t>(model.nodes.count);
   SDL_assert(nodes_count < 64);
 
-  node_parent_hierarchy = ecs.node_hierarchy_stack.increment(nodes_count);
-  node_transforms       = ecs.node_transforms_stack.increment(nodes_count);
+  node_parent_hierarchy = ecs.allocator.allocate<uint8_t>(nodes_count);
+  node_transforms       = ecs.allocator.allocate<mat4x4>(nodes_count);
 
   for (int scene_node_idx : model.scenes[0].nodes)
     propagate_node_renderability_hierarchy(scene_node_idx, node_renderabilities, model.nodes);
 
-  uint8_t* hierarchy = &ecs.node_hierarchy[node_parent_hierarchy];
-
   for (uint8_t i = 0; i < nodes_count; ++i)
-    hierarchy[i] = i;
+    node_parent_hierarchy[i] = i;
 
   for (uint8_t node_idx = 0; node_idx < nodes_count; ++node_idx)
     for (int child_idx : model.nodes[node_idx].children)
-      depth_first_node_parent_hierarchy(hierarchy, model.nodes.data, node_idx, static_cast<uint8_t>(child_idx));
+      depth_first_node_parent_hierarchy(node_parent_hierarchy, model.nodes.data, node_idx,
+                                        static_cast<uint8_t>(child_idx));
 }
 
 void SkinnedEntity::init(Ecs& ecs, const SceneGraph& model)
 {
   base.init(ecs, model);
-  joint_matrices = ecs.joint_matrices_stack.increment(model.skins[0].joints.count);
+  joint_matrices = ecs.allocator.allocate<mat4x4>(static_cast<uint32_t>(model.skins[0].joints.count));
 }
 
 void SimpleEntity::recalculate_node_transforms(Ecs& ecs, const SceneGraph& model, mat4x4 world_transform)
 {
-  const uint8_t*         hierarchy = &ecs.node_hierarchy[node_parent_hierarchy];
-  const ArrayView<Node>& nodes     = model.nodes;
+  const ArrayView<Node>& nodes = model.nodes;
 
   mat4x4 transforms[64] = {};
 
@@ -69,7 +67,7 @@ void SimpleEntity::recalculate_node_transforms(Ecs& ecs, const SceneGraph& model
   if (not model.skins.empty())
   {
     int skeleton_node_idx   = model.skins[0].skeleton;
-    int skeleton_parent_idx = hierarchy[skeleton_node_idx];
+    int skeleton_parent_idx = node_parent_hierarchy[skeleton_node_idx];
     mat4x4_dup(transforms[skeleton_parent_idx], world_transform);
   }
 
@@ -85,7 +83,7 @@ void SimpleEntity::recalculate_node_transforms(Ecs& ecs, const SceneGraph& model
     {
       if (node_anim_translation_applicability & (uint64_t(1) << i))
       {
-        const float* t = ecs.node_anim_translations[node_translations + i];
+        const float* t = node_translations[i];
         mat4x4_translate(translation_matrix, t[0], t[1], t[2]);
       }
       else if (nodes[i].flags & Node::Property::Translation)
@@ -115,7 +113,7 @@ void SimpleEntity::recalculate_node_transforms(Ecs& ecs, const SceneGraph& model
     {
       if (node_anim_rotation_applicability & (uint64_t(1) << i))
       {
-        const float* r   = ecs.node_anim_rotations[node_rotations + i];
+        const float* r   = node_rotations[i];
         quat         tmp = {r[0], r[1], r[2], r[3]};
         mat4x4_from_quat(rotation_matrix, tmp);
       }
@@ -155,12 +153,12 @@ void SimpleEntity::recalculate_node_transforms(Ecs& ecs, const SceneGraph& model
 
   for (uint8_t node_idx = 0; node_idx < nodes.count; ++node_idx)
   {
-    if (node_idx == hierarchy[node_idx])
+    if (node_idx == node_parent_hierarchy[node_idx])
       for (int child_idx : nodes[node_idx].children)
         depth_first_node_transform(transforms, nodes.data, node_idx, child_idx);
   }
 
-  SDL_memcpy(&ecs.node_transforms[node_transforms], transforms, sizeof(mat4x4) * nodes.count);
+  SDL_memcpy(node_transforms, transforms, sizeof(mat4x4) * nodes.count);
 }
 
 void SkinnedEntity::recalculate_skinning_matrices(Ecs& ecs, const SceneGraph& scene_graph, mat4x4 world_transform)
@@ -170,17 +168,14 @@ void SkinnedEntity::recalculate_skinning_matrices(Ecs& ecs, const SceneGraph& sc
   mat4x4 inverted_world_transform = {};
   mat4x4_invert(inverted_world_transform, world_transform);
 
-  mat4x4* transforms = &ecs.node_transforms[base.node_transforms];
-  mat4x4* skinning   = &ecs.joint_matrices[joint_matrices];
-
   for (int joint_id = 0; joint_id < skin.joints.count; ++joint_id)
   {
     mat4x4 transform = {};
-    mat4x4_dup(transform, transforms[skin.joints[joint_id]]);
+    mat4x4_dup(transform, base.node_transforms[skin.joints[joint_id]]);
 
     mat4x4 tmp = {};
     mat4x4_mul(tmp, inverted_world_transform, transform);
 
-    mat4x4_mul(skinning[joint_id], tmp, skin.inverse_bind_matrices[joint_id]);
+    mat4x4_mul(joint_matrices[joint_id], tmp, skin.inverse_bind_matrices[joint_id]);
   }
 }

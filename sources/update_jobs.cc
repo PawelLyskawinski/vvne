@@ -92,15 +92,13 @@ void animate_entity(SimpleEntity& entity, Ecs& ecs, SceneGraph& scene_graph, flo
       {
         if (0 == (entity.flags & SimpleEntity::NodeRotations))
         {
-          entity.node_rotations = ecs.node_anim_rotations_stack.increment(scene_graph.nodes.count);
+          entity.node_rotations = ecs.allocator.allocate<quat>(static_cast<uint32_t>(scene_graph.nodes.count));
           entity.flags |= SimpleEntity::NodeRotations;
         }
 
-        quat* animation_rotation = &ecs.node_anim_rotations[entity.node_rotations];
-
         if (0 == (entity.flags & SimpleEntity::NodeAnimRotationApplicability))
         {
-          SDL_memset(animation_rotation, 0, scene_graph.nodes.count * sizeof(quat));
+          SDL_memset(entity.node_rotations, 0, scene_graph.nodes.count * sizeof(quat));
           entity.flags |= SimpleEntity::NodeAnimRotationApplicability;
         }
 
@@ -110,7 +108,7 @@ void animate_entity(SimpleEntity& entity, Ecs& ecs, SceneGraph& scene_graph, flo
         {
           float* a = &sampler.values[4 * keyframe_lower];
           float* b = &sampler.values[4 * keyframe_upper];
-          float* c = animation_rotation[channel.target_node_idx];
+          float* c = entity.node_rotations[channel.target_node_idx];
           lerp<4>(a, b, c, keyframe_uniform_time);
           vec4_norm(c, c);
         }
@@ -118,7 +116,7 @@ void animate_entity(SimpleEntity& entity, Ecs& ecs, SceneGraph& scene_graph, flo
         {
           float* a = &sampler.values[3 * 4 * keyframe_lower];
           float* b = &sampler.values[3 * 4 * keyframe_upper];
-          float* c = animation_rotation[channel.target_node_idx];
+          float* c = entity.node_rotations[channel.target_node_idx];
           hermite_cubic_spline_interpolation(a, b, c, 4, keyframe_uniform_time,
                                              sampler.time_frame[1] - sampler.time_frame[0]);
           vec4_norm(c, c);
@@ -128,15 +126,13 @@ void animate_entity(SimpleEntity& entity, Ecs& ecs, SceneGraph& scene_graph, flo
       {
         if (0 == (entity.flags & SimpleEntity::NodeTranslations))
         {
-          entity.node_translations = ecs.node_anim_translations_stack.increment(scene_graph.nodes.count);
+          entity.node_translations = ecs.allocator.allocate<vec3>(scene_graph.nodes.count);
           entity.flags |= SimpleEntity::NodeTranslations;
         }
 
-        vec3* animation_translation = &ecs.node_anim_translations[entity.node_translations];
-
         if (0 == (entity.flags & SimpleEntity::NodeAnimTranslationApplicability))
         {
-          SDL_memset(animation_translation, 0, scene_graph.nodes.count * sizeof(vec3));
+          SDL_memset(entity.node_translations, 0, scene_graph.nodes.count * sizeof(vec3));
           entity.flags |= SimpleEntity::NodeAnimTranslationApplicability;
         }
 
@@ -146,14 +142,14 @@ void animate_entity(SimpleEntity& entity, Ecs& ecs, SceneGraph& scene_graph, flo
         {
           float* a = &sampler.values[3 * keyframe_lower];
           float* b = &sampler.values[3 * keyframe_upper];
-          float* c = animation_translation[channel.target_node_idx];
+          float* c = entity.node_translations[channel.target_node_idx];
           lerp<3>(a, b, c, keyframe_uniform_time);
         }
         else if (AnimationSampler::Interpolation::CubicSpline == sampler.interpolation)
         {
           float* a = &sampler.values[3 * 3 * keyframe_lower];
           float* b = &sampler.values[3 * 3 * keyframe_upper];
-          float* c = animation_translation[channel.target_node_idx];
+          float* c = entity.node_translations[channel.target_node_idx];
           hermite_cubic_spline_interpolation(a, b, c, 3, keyframe_uniform_time,
                                              sampler.time_frame[1] - sampler.time_frame[0]);
         }

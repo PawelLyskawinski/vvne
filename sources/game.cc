@@ -567,6 +567,8 @@ void Game::startup(Engine& engine)
     }
   }
 
+  ecs.allocator.init();
+
   rock         = loadGLB(engine, "../assets/rock.glb");
   helmet       = loadGLB(engine, "../assets/DamagedHelmet.glb");
   robot        = loadGLB(engine, "../assets/su-47.glb");
@@ -1756,6 +1758,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
   if (ImGui::CollapsingHeader("Animations"))
   {
+#if 0
     ImGui::Text("joint_matrices_stack        ");
     ImGui::SameLine();
     ImGui::ProgressBar(ecs.joint_matrices_stack.usage_percent(512));
@@ -1775,6 +1778,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     ImGui::Text("node_anim_translations_stack");
     ImGui::SameLine();
     ImGui::ProgressBar(ecs.node_anim_translations_stack.usage_percent(512));
+#endif
 
 #if 0
     if (ImGui::Button("restart cube animation"))
@@ -2324,14 +2328,14 @@ void Game::render(Engine& engine)
     //
     update_ubo(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
                riggedSimple.skins[0].joints.count * sizeof(mat4x4), rig_skinning_matrices_ubo_offsets[image_index],
-               &ecs.joint_matrices[rigged_simple_entity.joint_matrices]);
+               rigged_simple_entity.joint_matrices);
 
     //
     // monster skinning matrices
     //
     update_ubo(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
                monster.skins[0].joints.count * sizeof(mat4x4), monster_skinning_matrices_ubo_offsets[image_index],
-               &ecs.joint_matrices[monster_entity.joint_matrices]);
+               monster_entity.joint_matrices);
 
     {
       GenerateGuiLinesCommand cmd = {

@@ -36,7 +36,6 @@ void render_pbr_entity_shadow(const SimpleEntity& entity, const Ecs& ecs, const 
 {
   const uint64_t nodes_with_mesh_bitmap = filter_nodes_with_mesh(scene_graph.nodes);
   const uint64_t bitmap                 = entity.node_renderabilities & nodes_with_mesh_bitmap;
-  const mat4x4*  transforms             = &ecs.node_transforms[entity.node_transforms];
 
   struct Push
   {
@@ -53,7 +52,7 @@ void render_pbr_entity_shadow(const SimpleEntity& entity, const Ecs& ecs, const 
       const int   mesh_idx = scene_graph.nodes.data[node_idx].mesh;
       const Mesh& mesh     = scene_graph.meshes.data[mesh_idx];
 
-      SDL_memcpy(push.model, transforms[node_idx], sizeof(mat4x4));
+      SDL_memcpy(push.model, entity.node_transforms[node_idx], sizeof(mat4x4));
 
       vkCmdBindIndexBuffer(cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
@@ -68,7 +67,6 @@ void render_pbr_entity(const SimpleEntity& entity, const Ecs& ecs, const SceneGr
 {
   const uint64_t nodes_with_mesh_bitmap = filter_nodes_with_mesh(scene_graph.nodes);
   const uint64_t bitmap                 = entity.node_renderabilities & nodes_with_mesh_bitmap;
-  const mat4x4*  transforms             = &ecs.node_transforms[entity.node_transforms];
   SkinningUbo    ubo                    = {};
 
   SDL_memcpy(ubo.projection, p.projection, sizeof(mat4x4));
@@ -81,7 +79,7 @@ void render_pbr_entity(const SimpleEntity& entity, const Ecs& ecs, const SceneGr
     {
       const int   mesh_idx = scene_graph.nodes.data[node_idx].mesh;
       const Mesh& mesh     = scene_graph.meshes.data[mesh_idx];
-      SDL_memcpy(ubo.model, transforms[node_idx], sizeof(mat4x4));
+      SDL_memcpy(ubo.model, entity.node_transforms[node_idx], sizeof(mat4x4));
 
       vkCmdBindIndexBuffer(p.cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(p.cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
@@ -97,7 +95,6 @@ void render_wireframe_entity(const SimpleEntity& entity, const Ecs& ecs, const S
 {
   const uint64_t nodes_with_mesh_bitmap = filter_nodes_with_mesh(scene_graph.nodes);
   const uint64_t bitmap                 = entity.node_renderabilities & nodes_with_mesh_bitmap;
-  const mat4x4*  transforms             = &ecs.node_transforms[entity.node_transforms];
 
   for (int node_idx = 0; node_idx < scene_graph.nodes.count; ++node_idx)
   {
@@ -106,7 +103,7 @@ void render_wireframe_entity(const SimpleEntity& entity, const Ecs& ecs, const S
       const int   mesh_idx = scene_graph.nodes.data[node_idx].mesh;
       const Mesh& mesh     = scene_graph.meshes.data[mesh_idx];
       mat4x4      mvp      = {};
-      multiply(mvp, p.projection, p.view, transforms[node_idx]);
+      multiply(mvp, p.projection, p.view, entity.node_transforms[node_idx]);
 
       vkCmdBindIndexBuffer(p.cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(p.cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
@@ -123,8 +120,7 @@ void render_entity(const SimpleEntity& entity, const Ecs& ecs, const SceneGraph&
   mat4x4 projection_view = {};
   mat4x4_mul(projection_view, p.projection, p.view);
 
-  const uint64_t bitmap     = entity.node_renderabilities & filter_nodes_with_mesh(scene_graph.nodes);
-  const mat4x4*  transforms = &ecs.node_transforms[entity.node_transforms];
+  const uint64_t bitmap = entity.node_renderabilities & filter_nodes_with_mesh(scene_graph.nodes);
 
   for (int node_idx = 0; node_idx < scene_graph.nodes.count; ++node_idx)
   {
@@ -137,7 +133,7 @@ void render_entity(const SimpleEntity& entity, const Ecs& ecs, const SceneGraph&
       vkCmdBindVertexBuffers(p.cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
 
       mat4x4 calculated_mvp = {};
-      mat4x4_mul(calculated_mvp, projection_view, transforms[node_idx]);
+      mat4x4_mul(calculated_mvp, projection_view, entity.node_transforms[node_idx]);
 
       vkCmdPushConstants(p.cmd, p.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), calculated_mvp);
       vkCmdPushConstants(p.cmd, p.pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(vec3), p.color);

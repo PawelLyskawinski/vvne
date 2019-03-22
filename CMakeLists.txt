@@ -34,6 +34,7 @@ set(SOURCES
         sources/engine/engine_descriptor_set_layouts.cc
         sources/engine/engine_pipeline_layouts.cc
         sources/engine/engine_pipelines.cc
+        sources/engine/free_list_allocator.cc
         sources/game.cc
         sources/game_generate_gui_lines.cc
         sources/game_generate_sdf_font.cc
