@@ -333,10 +333,9 @@ void monster_job(ThreadJobData tjd)
   mat4x4 world_transform;
   calculate_matrix(world_transform, ops, SDL_arraysize(ops));
 
-  animate_entity(tjd.game.monster_entity.base, tjd.game.generic_allocator, tjd.game.monster, tjd.game.current_time_sec);
-  tjd.game.monster_entity.base.recalculate_node_transforms(tjd.game.generic_allocator, tjd.game.monster,
+  animate_entity(tjd.game.monster_entity, tjd.game.generic_allocator, tjd.game.monster, tjd.game.current_time_sec);
+  tjd.game.monster_entity.recalculate_node_transforms(tjd.game.generic_allocator, tjd.game.monster,
                                                            world_transform);
-  tjd.game.monster_entity.recalculate_skinning_matrices(tjd.game.generic_allocator, tjd.game.monster, world_transform);
 }
 
 void rigged_simple_job(ThreadJobData tjd)
@@ -352,12 +351,10 @@ void rigged_simple_job(ThreadJobData tjd)
   mat4x4 world_transform;
   calculate_matrix(world_transform, ops, SDL_arraysize(ops));
 
-  animate_entity(tjd.game.rigged_simple_entity.base, tjd.game.generic_allocator, tjd.game.riggedSimple,
+  animate_entity(tjd.game.rigged_simple_entity, tjd.game.generic_allocator, tjd.game.riggedSimple,
                  tjd.game.current_time_sec);
-  tjd.game.rigged_simple_entity.base.recalculate_node_transforms(tjd.game.generic_allocator, tjd.game.riggedSimple,
+  tjd.game.rigged_simple_entity.recalculate_node_transforms(tjd.game.generic_allocator, tjd.game.riggedSimple,
                                                                  world_transform);
-  tjd.game.rigged_simple_entity.recalculate_skinning_matrices(tjd.game.generic_allocator, tjd.game.riggedSimple,
-                                                              world_transform);
 }
 
 void moving_lights_job(ThreadJobData tjd)

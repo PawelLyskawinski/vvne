@@ -43,7 +43,7 @@ set(SOURCES
         sources/engine/cubemap.cc
         sources/render_jobs.cc
         sources/update_jobs.cc
-        sources/ecs.cc
+        sources/SimpleEntity.cc
         thirdparty/imgui.cpp
         thirdparty/imgui_draw.cpp
         thirdparty/imgui_widgets.cpp

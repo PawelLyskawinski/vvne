@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ecs.hh"
+#include "SimpleEntity.hh"
 #include "engine/engine.hh"
 #include "engine/gltf.hh"
 #include "imgui.h"
@@ -403,16 +403,16 @@ struct Game
   uint64_t player_key_flags;
 
   // gameplay mechanics
-  float booster_jet_fuel;
+  float           booster_jet_fuel;
   WeaponSelection weapon_selections[2];
 
-  SimpleEntity  helmet_entity;
-  SimpleEntity  robot_entity;
-  SimpleEntity  box_entities[6];
-  SimpleEntity  matrioshka_entity;
-  SkinnedEntity monster_entity;
-  SkinnedEntity rigged_simple_entity;
-  SimpleEntity  axis_arrow_entities[3];
+  SimpleEntity helmet_entity;
+  SimpleEntity robot_entity;
+  SimpleEntity box_entities[6];
+  SimpleEntity matrioshka_entity;
+  SimpleEntity monster_entity;
+  SimpleEntity rigged_simple_entity;
+  SimpleEntity axis_arrow_entities[3];
 
   //////////////////////////////////////////////////////////////////////////////
   // Editor logic

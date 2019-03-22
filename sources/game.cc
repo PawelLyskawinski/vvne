@@ -1780,32 +1780,30 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     ImGui::ProgressBar(ecs.node_anim_translations_stack.usage_percent(512));
 #endif
 
-#if 0
     if (ImGui::Button("restart cube animation"))
     {
-      if (-1 == matrioshka_entity.animation_start_time)
+      if (0 == (matrioshka_entity.flags & SimpleEntity::AnimationStartTime))
       {
-        matrioshka_entity.animation_start_time                            = ecs.animation_start_times_usage.allocate();
-        ecs.animation_start_times[matrioshka_entity.animation_start_time] = current_time_sec;
+        matrioshka_entity.animation_start_time = current_time_sec;
+        matrioshka_entity.flags |= SimpleEntity::AnimationStartTime;
       }
     }
 
     if (ImGui::Button("restart rigged animation"))
     {
-      if (-1 == rigged_simple_entity.animation_start_time)
+      if (0 == (rigged_simple_entity.flags & SimpleEntity::AnimationStartTime))
       {
-        rigged_simple_entity.animation_start_time = ecs.animation_start_times_usage.allocate();
-        ecs.animation_start_times[rigged_simple_entity.animation_start_time] = current_time_sec;
+        rigged_simple_entity.animation_start_time = current_time_sec;
+        rigged_simple_entity.flags |= SimpleEntity::AnimationStartTime;
       }
     }
-#endif
 
     if (ImGui::Button("monster animation"))
     {
-      if (0 == (monster_entity.base.flags & SimpleEntity::AnimationStartTime))
+      if (0 == (monster_entity.flags & SimpleEntity::AnimationStartTime))
       {
-        monster_entity.base.animation_start_time = current_time_sec;
-        monster_entity.base.flags |= SimpleEntity::AnimationStartTime;
+        monster_entity.animation_start_time = current_time_sec;
+        monster_entity.flags |= SimpleEntity::AnimationStartTime;
       }
     }
   }

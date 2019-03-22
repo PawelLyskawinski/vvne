@@ -1,4 +1,4 @@
-#include "ecs.hh"
+#include "SimpleEntity.hh"
 #include <SDL2/SDL_assert.h>
 
 namespace {
@@ -44,12 +44,9 @@ void SimpleEntity::init(FreeListAllocator& allocator, const SceneGraph& model)
     for (int child_idx : model.nodes[node_idx].children)
       depth_first_node_parent_hierarchy(node_parent_hierarchy, model.nodes.data, node_idx,
                                         static_cast<uint8_t>(child_idx));
-}
 
-void SkinnedEntity::init(FreeListAllocator& allocator, const SceneGraph& model)
-{
-  base.init(allocator, model);
-  joint_matrices = allocator.allocate<mat4x4>(static_cast<uint32_t>(model.skins[0].joints.count));
+  if (model.skins.count)
+    joint_matrices = allocator.allocate<mat4x4>(static_cast<uint32_t>(model.skins[0].joints.count));
 }
 
 void SimpleEntity::recalculate_node_transforms(FreeListAllocator& allocator, const SceneGraph& model,
@@ -160,24 +157,24 @@ void SimpleEntity::recalculate_node_transforms(FreeListAllocator& allocator, con
   }
 
   SDL_memcpy(node_transforms, transforms, sizeof(mat4x4) * nodes.count);
-}
 
-void SkinnedEntity::recalculate_skinning_matrices(FreeListAllocator& allocator, const SceneGraph& scene_graph,
-                                                  mat4x4 world_transform)
-{
-  Skin skin = scene_graph.skins[0];
-
-  mat4x4 inverted_world_transform = {};
-  mat4x4_invert(inverted_world_transform, world_transform);
-
-  for (int joint_id = 0; joint_id < skin.joints.count; ++joint_id)
+  // recalculate_skinning_matrices
+  if (joint_matrices)
   {
-    mat4x4 transform = {};
-    mat4x4_dup(transform, base.node_transforms[skin.joints[joint_id]]);
+    Skin skin = model.skins[0];
 
-    mat4x4 tmp = {};
-    mat4x4_mul(tmp, inverted_world_transform, transform);
+    mat4x4 inverted_world_transform = {};
+    mat4x4_invert(inverted_world_transform, world_transform);
 
-    mat4x4_mul(joint_matrices[joint_id], tmp, skin.inverse_bind_matrices[joint_id]);
+    for (int joint_id = 0; joint_id < skin.joints.count; ++joint_id)
+    {
+      mat4x4 transform = {};
+      mat4x4_dup(transform, node_transforms[skin.joints[joint_id]]);
+
+      mat4x4 tmp = {};
+      mat4x4_mul(tmp, inverted_world_transform, transform);
+
+      mat4x4_mul(joint_matrices[joint_id], tmp, skin.inverse_bind_matrices[joint_id]);
+    }
   }
 }

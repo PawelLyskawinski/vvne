@@ -12,6 +12,7 @@ struct SimpleEntity
   // elements which will always be guaranteed to be present for entity
   uint8_t* node_parent_hierarchy;
   mat4x4*  node_transforms;
+  mat4x4*  joint_matrices;
 
   // initialized at first usage in animation system
   quat* node_rotations;
@@ -33,13 +34,4 @@ struct SimpleEntity
   };
 
   uint64_t flags;
-};
-
-struct SkinnedEntity
-{
-  void init(FreeListAllocator& allocator, const SceneGraph& model);
-  void recalculate_skinning_matrices(FreeListAllocator& allocator, const SceneGraph& scene_graph, mat4x4 world_transform);
-
-  SimpleEntity base;
-  mat4x4*      joint_matrices;
 };

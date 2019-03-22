@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ecs.hh"
+#include "SimpleEntity.hh"
 #include "game.hh"
 
 void render_pbr_entity_shadow(const SimpleEntity& entity, const SceneGraph& scene_graph, const Engine& engine,

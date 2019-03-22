@@ -365,7 +365,7 @@ void simple_rigged(ThreadJobData tjd)
   mat4x4_dup(params.projection, tjd.game.cameras.current->projection);
   mat4x4_dup(params.view, tjd.game.cameras.current->view);
   SDL_memcpy(params.camera_position, tjd.game.cameras.current->position, sizeof(vec3));
-  render_entity(tjd.game.rigged_simple_entity.base, tjd.game.riggedSimple, tjd.engine, params);
+  render_entity(tjd.game.rigged_simple_entity, tjd.game.riggedSimple, tjd.engine, params);
 
   vkEndCommandBuffer(command);
 }
@@ -393,7 +393,7 @@ void monster_rigged(ThreadJobData tjd)
   mat4x4_dup(params.projection, tjd.game.cameras.current->projection);
   mat4x4_dup(params.view, tjd.game.cameras.current->view);
   SDL_memcpy(params.camera_position, tjd.game.cameras.current->position, sizeof(vec3));
-  render_entity(tjd.game.monster_entity.base, tjd.game.monster, tjd.engine, params);
+  render_entity(tjd.game.monster_entity, tjd.game.monster, tjd.engine, params);
 
   vkEndCommandBuffer(command);
 }
