@@ -31,8 +31,8 @@ template <typename... Args> void multiply(mat4x4 result, const mat4x4 lhs, const
 
 } // namespace
 
-void render_pbr_entity_shadow(const SimpleEntity& entity, const Ecs& ecs, const SceneGraph& scene_graph,
-                              const Engine& engine, const Game& game, VkCommandBuffer cmd, const int cascade_idx)
+void render_pbr_entity_shadow(const SimpleEntity& entity, const SceneGraph& scene_graph, const Engine& engine,
+                              const Game& game, VkCommandBuffer cmd, const int cascade_idx)
 {
   const uint64_t nodes_with_mesh_bitmap = filter_nodes_with_mesh(scene_graph.nodes);
   const uint64_t bitmap                 = entity.node_renderabilities & nodes_with_mesh_bitmap;
@@ -62,7 +62,7 @@ void render_pbr_entity_shadow(const SimpleEntity& entity, const Ecs& ecs, const 
   }
 }
 
-void render_pbr_entity(const SimpleEntity& entity, const Ecs& ecs, const SceneGraph& scene_graph, const Engine& engine,
+void render_pbr_entity(const SimpleEntity& entity, const SceneGraph& scene_graph, const Engine& engine,
                        const RenderEntityParams& p)
 {
   const uint64_t nodes_with_mesh_bitmap = filter_nodes_with_mesh(scene_graph.nodes);
@@ -90,8 +90,8 @@ void render_pbr_entity(const SimpleEntity& entity, const Ecs& ecs, const SceneGr
   }
 }
 
-void render_wireframe_entity(const SimpleEntity& entity, const Ecs& ecs, const SceneGraph& scene_graph,
-                             const Engine& engine, const RenderEntityParams& p)
+void render_wireframe_entity(const SimpleEntity& entity, const SceneGraph& scene_graph, const Engine& engine,
+                             const RenderEntityParams& p)
 {
   const uint64_t nodes_with_mesh_bitmap = filter_nodes_with_mesh(scene_graph.nodes);
   const uint64_t bitmap                 = entity.node_renderabilities & nodes_with_mesh_bitmap;
@@ -114,7 +114,7 @@ void render_wireframe_entity(const SimpleEntity& entity, const Ecs& ecs, const S
   }
 }
 
-void render_entity(const SimpleEntity& entity, const Ecs& ecs, const SceneGraph& scene_graph, const Engine& engine,
+void render_entity(const SimpleEntity& entity, const SceneGraph& scene_graph, const Engine& engine,
                    const RenderEntityParams& p)
 {
   mat4x4 projection_view = {};

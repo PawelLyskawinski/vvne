@@ -4,15 +4,10 @@
 #include "engine/gltf.hh"
 #include <linmath.h>
 
-struct Ecs
-{
-  FreeListAllocator allocator;
-};
-
 struct SimpleEntity
 {
-  void init(Ecs& ecs, const SceneGraph& model);
-  void recalculate_node_transforms(Ecs& ecs, const SceneGraph& model, mat4x4 world_transform);
+  void init(FreeListAllocator& allocator, const SceneGraph& model);
+  void recalculate_node_transforms(FreeListAllocator& allocator, const SceneGraph& model, mat4x4 world_transform);
 
   // elements which will always be guaranteed to be present for entity
   uint8_t* node_parent_hierarchy;
@@ -42,8 +37,8 @@ struct SimpleEntity
 
 struct SkinnedEntity
 {
-  void init(Ecs& ecs, const SceneGraph& model);
-  void recalculate_skinning_matrices(Ecs& ecs, const SceneGraph& scene_graph, mat4x4 world_transform);
+  void init(FreeListAllocator& allocator, const SceneGraph& model);
+  void recalculate_skinning_matrices(FreeListAllocator& allocator, const SceneGraph& scene_graph, mat4x4 world_transform);
 
   SimpleEntity base;
   mat4x4*      joint_matrices;

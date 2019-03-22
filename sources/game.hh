@@ -354,7 +354,7 @@ struct Game
   float                                   current_time_sec;
   float                                   diagnostic_meas_scale;
 
-  Ecs ecs;
+  FreeListAllocator generic_allocator;
 
   float update_times[50];
   float render_times[50];

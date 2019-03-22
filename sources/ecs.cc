@@ -26,13 +26,13 @@ void depth_first_node_transform(mat4x4* transforms, Node* nodes, const int paren
 
 } // namespace
 
-void SimpleEntity::init(Ecs& ecs, const SceneGraph& model)
+void SimpleEntity::init(FreeListAllocator& allocator, const SceneGraph& model)
 {
   const uint32_t nodes_count = static_cast<const uint32_t>(model.nodes.count);
   SDL_assert(nodes_count < 64);
 
-  node_parent_hierarchy = ecs.allocator.allocate<uint8_t>(nodes_count);
-  node_transforms       = ecs.allocator.allocate<mat4x4>(nodes_count);
+  node_parent_hierarchy = allocator.allocate<uint8_t>(nodes_count);
+  node_transforms       = allocator.allocate<mat4x4>(nodes_count);
 
   for (int scene_node_idx : model.scenes[0].nodes)
     propagate_node_renderability_hierarchy(scene_node_idx, node_renderabilities, model.nodes);
@@ -46,13 +46,14 @@ void SimpleEntity::init(Ecs& ecs, const SceneGraph& model)
                                         static_cast<uint8_t>(child_idx));
 }
 
-void SkinnedEntity::init(Ecs& ecs, const SceneGraph& model)
+void SkinnedEntity::init(FreeListAllocator& allocator, const SceneGraph& model)
 {
-  base.init(ecs, model);
-  joint_matrices = ecs.allocator.allocate<mat4x4>(static_cast<uint32_t>(model.skins[0].joints.count));
+  base.init(allocator, model);
+  joint_matrices = allocator.allocate<mat4x4>(static_cast<uint32_t>(model.skins[0].joints.count));
 }
 
-void SimpleEntity::recalculate_node_transforms(Ecs& ecs, const SceneGraph& model, mat4x4 world_transform)
+void SimpleEntity::recalculate_node_transforms(FreeListAllocator& allocator, const SceneGraph& model,
+                                               mat4x4 world_transform)
 {
   const ArrayView<Node>& nodes = model.nodes;
 
@@ -161,7 +162,8 @@ void SimpleEntity::recalculate_node_transforms(Ecs& ecs, const SceneGraph& model
   SDL_memcpy(node_transforms, transforms, sizeof(mat4x4) * nodes.count);
 }
 
-void SkinnedEntity::recalculate_skinning_matrices(Ecs& ecs, const SceneGraph& scene_graph, mat4x4 world_transform)
+void SkinnedEntity::recalculate_skinning_matrices(FreeListAllocator& allocator, const SceneGraph& scene_graph,
+                                                  mat4x4 world_transform)
 {
   Skin skin = scene_graph.skins[0];
 

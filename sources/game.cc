@@ -567,7 +567,7 @@ void Game::startup(Engine& engine)
     }
   }
 
-  ecs.allocator.init();
+  generic_allocator.init();
 
   rock         = loadGLB(engine, "../assets/rock.glb");
   helmet       = loadGLB(engine, "../assets/DamagedHelmet.glb");
@@ -578,18 +578,18 @@ void Game::startup(Engine& engine)
   riggedSimple = loadGLB(engine, "../assets/RiggedSimple.glb");
   lil_arrow    = loadGLB(engine, "../assets/lil_arrow.glb");
 
-  helmet_entity.init(ecs, helmet);
-  robot_entity.init(ecs, robot);
-  monster_entity.init(ecs, monster);
+  helmet_entity.init(generic_allocator, helmet);
+  robot_entity.init(generic_allocator, robot);
+  monster_entity.init(generic_allocator, monster);
 
   for (SimpleEntity& entity : box_entities)
-    entity.init(ecs, box);
+    entity.init(generic_allocator, box);
 
-  matrioshka_entity.init(ecs, animatedBox);
-  rigged_simple_entity.init(ecs, riggedSimple);
+  matrioshka_entity.init(generic_allocator, animatedBox);
+  rigged_simple_entity.init(generic_allocator, riggedSimple);
 
   for (SimpleEntity& entity : axis_arrow_entities)
-    entity.init(ecs, lil_arrow);
+    entity.init(generic_allocator, lil_arrow);
 
   {
     int cubemap_size[2] = {512, 512};

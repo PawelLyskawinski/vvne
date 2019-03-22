@@ -1,14 +1,5 @@
 #include "render_jobs.hh"
-
-// game_render_entity.cc
-void render_pbr_entity_shadow(const SimpleEntity& entity, const Ecs& ecs, const SceneGraph& scene_graph,
-                              const Engine& engine, const Game& game, VkCommandBuffer cmd, const int cascade_idx);
-void render_pbr_entity(const SimpleEntity& entity, const Ecs& ecs, const SceneGraph& scene_graph, const Engine& engine,
-                       const RenderEntityParams& p);
-void render_wireframe_entity(const SimpleEntity& entity, const Ecs& ecs, const SceneGraph& scene_graph,
-                             const Engine& engine, const RenderEntityParams& p);
-void render_entity(const SimpleEntity& entity, const Ecs& ecs, const SceneGraph& scene_graph, const Engine& engine,
-                   const RenderEntityParams& p);
+#include "game_render_entity.hh"
 
 // game_generate_gui_lines.cc
 ArrayView<GuiHeightRulerText> generate_gui_height_ruler_text(struct GenerateGuiLinesCommand& cmd, Stack& allocator);
@@ -82,8 +73,7 @@ void robot_depth_job(ThreadJobData tjd)
     vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.shadowmap.pipeline);
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.shadowmap.layout, 0, 1,
                             &tjd.game.cascade_view_proj_matrices_depth_pass_dset[tjd.game.image_index], 0, nullptr);
-    render_pbr_entity_shadow(tjd.game.robot_entity, tjd.game.ecs, tjd.game.robot, tjd.engine, tjd.game, command,
-                             cascade_idx);
+    render_pbr_entity_shadow(tjd.game.robot_entity, tjd.game.robot, tjd.engine, tjd.game, command, cascade_idx);
     vkEndCommandBuffer(command);
   }
 }
@@ -119,7 +109,7 @@ void robot_job(ThreadJobData tjd)
   mat4x4_dup(params.projection, tjd.game.cameras.current->projection);
   mat4x4_dup(params.view, tjd.game.cameras.current->view);
   SDL_memcpy(params.camera_position, tjd.game.cameras.current->position, sizeof(vec3));
-  render_pbr_entity(tjd.game.robot_entity, tjd.game.ecs, tjd.game.robot, tjd.engine, params);
+  render_pbr_entity(tjd.game.robot_entity, tjd.game.robot, tjd.engine, params);
 
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.colored_model_wireframe.pipeline);
   params.pipeline_layout = tjd.engine.pipelines.colored_model_wireframe.layout;
@@ -128,7 +118,7 @@ void robot_job(ThreadJobData tjd)
   params.color[1] = SDL_fabsf(SDL_cosf(tjd.game.current_time_sec * 1.2f));
   params.color[2] = SDL_fabsf(SDL_sinf(1.0f * tjd.game.current_time_sec * 1.5f));
 
-  render_wireframe_entity(tjd.game.robot_entity, tjd.game.ecs, tjd.game.robot, tjd.engine, params);
+  render_wireframe_entity(tjd.game.robot_entity, tjd.game.robot, tjd.engine, params);
 
   vkEndCommandBuffer(command);
 }
@@ -143,8 +133,7 @@ void helmet_depth_job(ThreadJobData tjd)
     vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.shadowmap.pipeline);
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.shadowmap.layout, 0, 1,
                             &tjd.game.cascade_view_proj_matrices_depth_pass_dset[tjd.game.image_index], 0, nullptr);
-    render_pbr_entity_shadow(tjd.game.helmet_entity, tjd.game.ecs, tjd.game.helmet, tjd.engine, tjd.game, command,
-                             cascade_idx);
+    render_pbr_entity_shadow(tjd.game.helmet_entity, tjd.game.helmet, tjd.engine, tjd.game, command, cascade_idx);
     vkEndCommandBuffer(command);
   }
 }
@@ -180,7 +169,7 @@ void helmet_job(ThreadJobData tjd)
   mat4x4_dup(params.projection, tjd.game.cameras.current->projection);
   mat4x4_dup(params.view, tjd.game.cameras.current->view);
   SDL_memcpy(params.camera_position, tjd.game.cameras.current->position, sizeof(vec3));
-  render_pbr_entity(tjd.game.helmet_entity, tjd.game.ecs, tjd.game.helmet, tjd.engine, params);
+  render_pbr_entity(tjd.game.helmet_entity, tjd.game.helmet, tjd.engine, params);
 
   vkEndCommandBuffer(command);
 }
@@ -205,7 +194,7 @@ void point_light_boxes(ThreadJobData tjd)
   for (unsigned i = 0; i < SDL_arraysize(tjd.game.box_entities); ++i)
   {
     SDL_memcpy(params.color, tjd.game.pbr_light_sources_cache.colors[i], sizeof(vec3));
-    render_entity(tjd.game.box_entities[i], tjd.game.ecs, tjd.game.box, tjd.engine, params);
+    render_entity(tjd.game.box_entities[i], tjd.game.box, tjd.engine, params);
   }
 
   vkEndCommandBuffer(command);
@@ -227,7 +216,7 @@ void matrioshka_box(ThreadJobData tjd)
   mat4x4_dup(params.projection, tjd.game.cameras.current->projection);
   mat4x4_dup(params.view, tjd.game.cameras.current->view);
   SDL_memcpy(params.camera_position, tjd.game.cameras.current->position, sizeof(vec3));
-  render_entity(tjd.game.matrioshka_entity, tjd.game.ecs, tjd.game.animatedBox, tjd.engine, params);
+  render_entity(tjd.game.matrioshka_entity, tjd.game.animatedBox, tjd.engine, params);
 
   vkEndCommandBuffer(command);
 }
@@ -376,7 +365,7 @@ void simple_rigged(ThreadJobData tjd)
   mat4x4_dup(params.projection, tjd.game.cameras.current->projection);
   mat4x4_dup(params.view, tjd.game.cameras.current->view);
   SDL_memcpy(params.camera_position, tjd.game.cameras.current->position, sizeof(vec3));
-  render_entity(tjd.game.rigged_simple_entity.base, tjd.game.ecs, tjd.game.riggedSimple, tjd.engine, params);
+  render_entity(tjd.game.rigged_simple_entity.base, tjd.game.riggedSimple, tjd.engine, params);
 
   vkEndCommandBuffer(command);
 }
@@ -404,7 +393,7 @@ void monster_rigged(ThreadJobData tjd)
   mat4x4_dup(params.projection, tjd.game.cameras.current->projection);
   mat4x4_dup(params.view, tjd.game.cameras.current->view);
   SDL_memcpy(params.camera_position, tjd.game.cameras.current->position, sizeof(vec3));
-  render_entity(tjd.game.monster_entity.base, tjd.game.ecs, tjd.game.monster, tjd.engine, params);
+  render_entity(tjd.game.monster_entity.base, tjd.game.monster, tjd.engine, params);
 
   vkEndCommandBuffer(command);
 }
@@ -1790,7 +1779,7 @@ void orientation_axis(ThreadJobData tjd)
   for (uint32_t i = 0; i < SDL_arraysize(tjd.game.axis_arrow_entities); ++i)
   {
     SDL_memcpy(params.color, colors[i], sizeof(vec3));
-    render_entity(tjd.game.axis_arrow_entities[i], tjd.game.ecs, tjd.game.lil_arrow, tjd.engine, params);
+    render_entity(tjd.game.axis_arrow_entities[i], tjd.game.lil_arrow, tjd.engine, params);
   }
 
   vkEndCommandBuffer(command);
