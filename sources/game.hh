@@ -260,8 +260,8 @@ struct Game
 
     enum
     {
-      VERTEX_BUFFER_CAPACITY_BYTES = 100 * 1024,
-      INDEX_BUFFER_CAPACITY_BYTES  = 80 * 1024
+      VERTEX_BUFFER_CAPACITY_BYTES = 200 * 1024,
+      INDEX_BUFFER_CAPACITY_BYTES  = 160 * 1024
     };
 
     VkDeviceSize vertex_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
@@ -356,8 +356,8 @@ struct Game
 
   FreeListAllocator generic_allocator;
 
-  float update_times[50];
-  float render_times[50];
+  float update_times[200];
+  float render_times[200];
 
   bool DEBUG_FLAG_1;
   bool DEBUG_FLAG_2;

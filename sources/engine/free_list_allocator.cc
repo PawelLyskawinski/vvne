@@ -1,5 +1,7 @@
 #include "free_list_allocator.hh"
 
+// @TODO: handle edge cases for situations when we end up with segments smalled then sizeof(FreeListAllocator::Node)
+
 using Node = FreeListAllocator::Node;
 
 static void push_node(uint8_t* new_node, unsigned new_node_size, Node* previous)
@@ -76,36 +78,56 @@ void FreeListAllocator::free_bytes(uint8_t* free_me, unsigned count)
   // we don't want to free pointers not in this memory pool
   SDL_assert((free_me >= pool) and (&free_me[count] <= &pool[FREELIST_ALLOCATOR_CAPACITY_BYTES]));
 
-  Node* previous       = &head;
-  Node* current        = previous->next;
-  Node* potential_node = reinterpret_cast<Node*>(free_me);
+  Node* previous = &head;
+  Node* current  = previous->next;
 
-  while (nullptr != current)
+  // deallocation occured before first free node!
+  if (free_me < reinterpret_cast<uint8_t*>(current))
   {
-    uint8_t* begin_address = reinterpret_cast<uint8_t*>(current);
-    uint8_t* end_address   = &begin_address[current->size];
+    Node* new_node = reinterpret_cast<Node*>(free_me);
 
-    // de-allocation can't happen inside the already freed memory!
-    SDL_assert(end_address >= free_me);
-
-    uint8_t* next_address = reinterpret_cast<uint8_t*>(current->next);
-
-    if (current->next)
+    // are the two free list nodes mergable?
+    if ((free_me + count) == reinterpret_cast<uint8_t*>(current))
     {
-      if (free_me > next_address)
-      {
-        push_node(free_me, count, current);
-        return;
-      }
+      new_node->size = count + current->size;
+      new_node->next = current->next;
     }
     else
     {
-      // End of the line, it has to be it!
-      push_node(free_me, count, current);
-      return;
+      new_node->size = count;
+      new_node->next = current;
     }
+    previous->next = new_node;
+  }
+  else
+  {
+    while (nullptr != current)
+    {
+      uint8_t* begin_address = reinterpret_cast<uint8_t*>(current);
+      uint8_t* end_address   = &begin_address[current->size];
 
-    previous = current;
-    current  = previous->next;
+      // de-allocation can't happen inside the already freed memory!
+      SDL_assert(end_address >= free_me);
+
+      uint8_t* next_address = reinterpret_cast<uint8_t*>(current->next);
+
+      if (current->next)
+      {
+        if (free_me > next_address)
+        {
+          push_node(free_me, count, current);
+          return;
+        }
+      }
+      else
+      {
+        // End of the line, it has to be it!
+        push_node(free_me, count, current);
+        return;
+      }
+
+      previous = current;
+      current  = previous->next;
+    }
   }
 }

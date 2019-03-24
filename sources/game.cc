@@ -1,5 +1,6 @@
 #include "game.hh"
 #include "engine/cubemap.hh"
+#include "engine/free_list_visualizer.hh"
 #include "render_jobs.hh"
 #include "update_jobs.hh"
 #include <SDL2/SDL_assert.h>
@@ -1748,9 +1749,9 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   if (ImGui::CollapsingHeader("Timings"))
   {
     ImGui::PlotHistogram("update times", update_times, SDL_arraysize(update_times), 0, nullptr, 0.0, 0.005,
-                         ImVec2(300, 20));
+                         ImVec2(500, 20));
     ImGui::PlotHistogram("render times", render_times, SDL_arraysize(render_times), 0, nullptr, 0.0, 0.01,
-                         ImVec2(300, 20));
+                         ImVec2(500, 20));
 
     ImGui::Text("Average update time: %.2fms", 1000.0f * avg(update_times, SDL_arraysize(update_times)));
     ImGui::Text("Average render time: %.2fms", 1000.0f * avg(render_times, SDL_arraysize(render_times)));
@@ -1758,52 +1759,23 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
   if (ImGui::CollapsingHeader("Animations"))
   {
-#if 0
-    ImGui::Text("joint_matrices_stack        ");
-    ImGui::SameLine();
-    ImGui::ProgressBar(ecs.joint_matrices_stack.usage_percent(512));
+    const char*   names[]    = {"CUBE", "RIGGED", "MONSTER"};
+    SimpleEntity* entities[] = {&matrioshka_entity, &rigged_simple_entity, &monster_entity};
 
-    ImGui::Text("node_transforms_stack       ");
-    ImGui::SameLine();
-    ImGui::ProgressBar(ecs.node_transforms_stack.usage_percent(512));
-
-    ImGui::Text("node_hierarchy_stack        ");
-    ImGui::SameLine();
-    ImGui::ProgressBar(ecs.node_hierarchy_stack.usage_percent(512));
-
-    ImGui::Text("node_anim_rotations_stack   ");
-    ImGui::SameLine();
-    ImGui::ProgressBar(ecs.node_anim_rotations_stack.usage_percent(512));
-
-    ImGui::Text("node_anim_translations_stack");
-    ImGui::SameLine();
-    ImGui::ProgressBar(ecs.node_anim_translations_stack.usage_percent(512));
-#endif
-
-    if (ImGui::Button("restart cube animation"))
+    for (uint32_t i = 0; i < 3; ++i)
     {
-      if (0 == (matrioshka_entity.flags & SimpleEntity::AnimationStartTime))
+      SimpleEntity* e = entities[i];
+      if (i > 0)
       {
-        matrioshka_entity.animation_start_time = current_time_sec;
-        matrioshka_entity.flags |= SimpleEntity::AnimationStartTime;
+        ImGui::SameLine();
       }
-    }
-
-    if (ImGui::Button("restart rigged animation"))
-    {
-      if (0 == (rigged_simple_entity.flags & SimpleEntity::AnimationStartTime))
+      if (ImGui::Button(names[i]))
       {
-        rigged_simple_entity.animation_start_time = current_time_sec;
-        rigged_simple_entity.flags |= SimpleEntity::AnimationStartTime;
-      }
-    }
-
-    if (ImGui::Button("monster animation"))
-    {
-      if (0 == (monster_entity.flags & SimpleEntity::AnimationStartTime))
-      {
-        monster_entity.animation_start_time = current_time_sec;
-        monster_entity.flags |= SimpleEntity::AnimationStartTime;
+        if (0 == (e->flags & SimpleEntity::AnimationStartTime))
+        {
+          e->animation_start_time = current_time_sec;
+          e->flags |= SimpleEntity::AnimationStartTime;
+        }
       }
     }
   }
@@ -2023,6 +1995,8 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     ImGui::Text("permanent stack memory (%uMB pool)", bytes_as_mb(HOST_PERMANENT_ALLOCATOR_POOL_SIZE));
     ImGui::ProgressBar(
         calc_frac(static_cast<VkDeviceSize>(engine.permanent_stack.sp), HOST_PERMANENT_ALLOCATOR_POOL_SIZE));
+
+    free_list_visualize(generic_allocator);
   }
 
   if (ImGui::RadioButton("debug flag 1", DEBUG_FLAG_1))
