@@ -13,7 +13,7 @@ struct FreeListAllocator
 
   enum
   {
-    FREELIST_ALLOCATOR_CAPACITY_BYTES = 10000
+    FREELIST_ALLOCATOR_CAPACITY_BYTES = 10 * 1024 * 1024
   };
 
   uint8_t pool[FREELIST_ALLOCATOR_CAPACITY_BYTES];
@@ -21,7 +21,7 @@ struct FreeListAllocator
 
   void     init();
   uint8_t* allocate_bytes(unsigned size);
-  void     free_bytes(uint8_t* free_me, unsigned count);
+  void     free_bytes(uint8_t* free_me, unsigned size);
 
   template <typename T> T*   allocate(uint32_t n = 1) { return reinterpret_cast<T*>(allocate_bytes(sizeof(T) * n)); }
   template <typename T> void free(T* ptr, uint32_t n = 1)

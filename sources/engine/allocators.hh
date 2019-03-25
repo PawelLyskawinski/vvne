@@ -79,17 +79,13 @@ template <typename T> struct ArrayView
   T*  data;
   int count;
 
-  void alloc(Stack& stack, int new_count)
-  {
-    data  = stack.alloc<T>(new_count);
-    count = new_count;
-  }
-
   void reset()
   {
     data  = nullptr;
     count = 0;
   }
+
+  void fill_with_zeros() { SDL_memset(data, 0, sizeof(T) * count); }
 
   T&       operator[](int idx) { return data[idx]; }
   const T& operator[](int idx) const { return data[idx]; }

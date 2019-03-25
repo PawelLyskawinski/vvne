@@ -296,8 +296,6 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
   }
 
   engine->memory_blocks.host_visible_transfer_source.stack_pointer = 0;
-  engine->dirty_stack.reset();
-
   return result;
 }
 
@@ -568,8 +566,6 @@ void Game::startup(Engine& engine)
     }
   }
 
-  generic_allocator.init();
-
   rock         = loadGLB(engine, "../assets/rock.glb");
   helmet       = loadGLB(engine, "../assets/DamagedHelmet.glb");
   robot        = loadGLB(engine, "../assets/su-47.glb");
@@ -579,18 +575,18 @@ void Game::startup(Engine& engine)
   riggedSimple = loadGLB(engine, "../assets/RiggedSimple.glb");
   lil_arrow    = loadGLB(engine, "../assets/lil_arrow.glb");
 
-  helmet_entity.init(generic_allocator, helmet);
-  robot_entity.init(generic_allocator, robot);
-  monster_entity.init(generic_allocator, monster);
+  helmet_entity.init(engine.generic_allocator, helmet);
+  robot_entity.init(engine.generic_allocator, robot);
+  monster_entity.init(engine.generic_allocator, monster);
 
   for (SimpleEntity& entity : box_entities)
-    entity.init(generic_allocator, box);
+    entity.init(engine.generic_allocator, box);
 
-  matrioshka_entity.init(generic_allocator, animatedBox);
-  rigged_simple_entity.init(generic_allocator, riggedSimple);
+  matrioshka_entity.init(engine.generic_allocator, animatedBox);
+  rigged_simple_entity.init(engine.generic_allocator, riggedSimple);
 
   for (SimpleEntity& entity : axis_arrow_entities)
-    entity.init(generic_allocator, lil_arrow);
+    entity.init(engine.generic_allocator, lil_arrow);
 
   {
     int cubemap_size[2] = {512, 512};
@@ -1204,7 +1200,7 @@ void Game::startup(Engine& engine)
   {
     SDL_RWops* ctx              = SDL_RWFromFile("../assets/lucida_sans_sdf.fnt", "r");
     int        fnt_file_size    = static_cast<int>(SDL_RWsize(ctx));
-    char*      fnt_file_content = engine.dirty_stack.alloc<char>(fnt_file_size);
+    char*      fnt_file_content = engine.generic_allocator.allocate<char>(static_cast<uint32_t>(fnt_file_size));
     SDL_RWread(ctx, fnt_file_content, sizeof(char), static_cast<size_t>(fnt_file_size));
     SDL_RWclose(ctx);
 
@@ -1245,7 +1241,7 @@ void Game::startup(Engine& engine)
       cursor        = forward_right_after(cursor, '\n');
     }
 
-    engine.dirty_stack.reset();
+    engine.generic_allocator.free(fnt_file_content, static_cast<uint32_t>(fnt_file_size));
   }
 
   DEBUG_VEC2[0] = 96.0f;
@@ -1992,11 +1988,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     ImGui::ProgressBar(
         calc_frac(engine.memory_blocks.host_coherent_ubo.stack_pointer, GPU_HOST_COHERENT_UBO_MEMORY_POOL_SIZE));
 
-    ImGui::Text("permanent stack memory (%uMB pool)", bytes_as_mb(HOST_PERMANENT_ALLOCATOR_POOL_SIZE));
-    ImGui::ProgressBar(
-        calc_frac(static_cast<VkDeviceSize>(engine.permanent_stack.sp), HOST_PERMANENT_ALLOCATOR_POOL_SIZE));
-
-    free_list_visualize(generic_allocator);
+    free_list_visualize(engine.generic_allocator);
   }
 
   if (ImGui::RadioButton("debug flag 1", DEBUG_FLAG_1))
@@ -2309,6 +2301,7 @@ void Game::render(Engine& engine)
                monster.skins[0].joints.count * sizeof(mat4x4), monster_skinning_matrices_ubo_offsets[image_index],
                monster_entity.joint_matrices);
 
+#if 0
     {
       GenerateGuiLinesCommand cmd = {
           .player_y_location_meters = -(2.0f - player_position[1]),
@@ -2361,6 +2354,7 @@ void Game::render(Engine& engine)
                  green_gui_rulers_buffer_offsets[image_index], pushed_lines_data);
       engine.dirty_stack.reset();
     }
+#endif
 
     ImDrawData* draw_data = ImGui::GetDrawData();
 

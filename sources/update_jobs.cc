@@ -277,7 +277,7 @@ void helmet_job(ThreadJobData tjd)
 
   mat4x4 world_transform;
   calculate_matrix(world_transform, ops, SDL_arraysize(ops));
-  tjd.game.helmet_entity.recalculate_node_transforms(tjd.game.generic_allocator, tjd.game.helmet, world_transform);
+  tjd.game.helmet_entity.recalculate_node_transforms(tjd.game.helmet, world_transform);
 }
 
 void robot_job(ThreadJobData tjd)
@@ -315,7 +315,7 @@ void robot_job(ThreadJobData tjd)
 
   mat4x4 world_transform;
   calculate_matrix(world_transform, ops, SDL_arraysize(ops));
-  tjd.game.robot_entity.recalculate_node_transforms(tjd.game.generic_allocator, tjd.game.robot, world_transform);
+  tjd.game.robot_entity.recalculate_node_transforms(tjd.game.robot, world_transform);
 }
 
 void monster_job(ThreadJobData tjd)
@@ -333,9 +333,8 @@ void monster_job(ThreadJobData tjd)
   mat4x4 world_transform;
   calculate_matrix(world_transform, ops, SDL_arraysize(ops));
 
-  animate_entity(tjd.game.monster_entity, tjd.game.generic_allocator, tjd.game.monster, tjd.game.current_time_sec);
-  tjd.game.monster_entity.recalculate_node_transforms(tjd.game.generic_allocator, tjd.game.monster,
-                                                           world_transform);
+  animate_entity(tjd.game.monster_entity, tjd.engine.generic_allocator, tjd.game.monster, tjd.game.current_time_sec);
+  tjd.game.monster_entity.recalculate_node_transforms(tjd.game.monster, world_transform);
 }
 
 void rigged_simple_job(ThreadJobData tjd)
@@ -351,10 +350,9 @@ void rigged_simple_job(ThreadJobData tjd)
   mat4x4 world_transform;
   calculate_matrix(world_transform, ops, SDL_arraysize(ops));
 
-  animate_entity(tjd.game.rigged_simple_entity, tjd.game.generic_allocator, tjd.game.riggedSimple,
+  animate_entity(tjd.game.rigged_simple_entity, tjd.engine.generic_allocator, tjd.game.riggedSimple,
                  tjd.game.current_time_sec);
-  tjd.game.rigged_simple_entity.recalculate_node_transforms(tjd.game.generic_allocator, tjd.game.riggedSimple,
-                                                                 world_transform);
+  tjd.game.rigged_simple_entity.recalculate_node_transforms(tjd.game.riggedSimple, world_transform);
 }
 
 void moving_lights_job(ThreadJobData tjd)
@@ -384,7 +382,7 @@ void moving_lights_job(ThreadJobData tjd)
 
     mat4x4 world_transform;
     calculate_matrix(world_transform, ops, SDL_arraysize(ops));
-    tjd.game.box_entities[i].recalculate_node_transforms(tjd.game.generic_allocator, tjd.game.box, world_transform);
+    tjd.game.box_entities[i].recalculate_node_transforms(tjd.game.box, world_transform);
   }
 }
 
@@ -411,10 +409,9 @@ void matrioshka_job(ThreadJobData tjd)
   mat4x4 world_transform;
   calculate_matrix(world_transform, ops, SDL_arraysize(ops));
 
-  animate_entity(tjd.game.matrioshka_entity, tjd.game.generic_allocator, tjd.game.animatedBox,
+  animate_entity(tjd.game.matrioshka_entity, tjd.engine.generic_allocator, tjd.game.animatedBox,
                  tjd.game.current_time_sec);
-  tjd.game.matrioshka_entity.recalculate_node_transforms(tjd.game.generic_allocator, tjd.game.animatedBox,
-                                                         world_transform);
+  tjd.game.matrioshka_entity.recalculate_node_transforms(tjd.game.animatedBox, world_transform);
 }
 
 void orientation_axis_job(ThreadJobData tjd)
@@ -440,8 +437,7 @@ void orientation_axis_job(ThreadJobData tjd)
 
     mat4x4 world_transform;
     calculate_matrix(world_transform, ops, SDL_arraysize(ops));
-    tjd.game.axis_arrow_entities[i].recalculate_node_transforms(tjd.game.generic_allocator, tjd.game.lil_arrow,
-                                                                world_transform);
+    tjd.game.axis_arrow_entities[i].recalculate_node_transforms(tjd.game.lil_arrow, world_transform);
   }
 }
 

@@ -49,8 +49,7 @@ void SimpleEntity::init(FreeListAllocator& allocator, const SceneGraph& model)
     joint_matrices = allocator.allocate<mat4x4>(static_cast<uint32_t>(model.skins[0].joints.count));
 }
 
-void SimpleEntity::recalculate_node_transforms(FreeListAllocator& allocator, const SceneGraph& model,
-                                               mat4x4 world_transform)
+void SimpleEntity::recalculate_node_transforms(const SceneGraph& model, mat4x4 world_transform)
 {
   const ArrayView<Node>& nodes = model.nodes;
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "allocators.hh"
+#include "free_list_allocator.hh"
 #include <SDL2/SDL_video.h>
 #include <vulkan/vulkan.h>
 
@@ -171,12 +172,11 @@ struct Engine
   // Used for universal buffer objects
   VkBuffer gpu_host_coherent_ubo_memory_buffer;
 
-  Stack permanent_stack;
-  Stack dirty_stack;
-
   DescriptorSetLayouts descriptor_set_layouts;
   RenderPasses         render_passes;
   Pipelines            pipelines;
+
+  FreeListAllocator generic_allocator;
 
   void           startup(bool vulkan_validation_enabled);
   void           teardown();

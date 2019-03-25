@@ -217,7 +217,7 @@ struct Seeker
 class SceneGraphAllocator
 {
 public:
-  SceneGraphAllocator(Seeker document_node, Stack& allocator)
+  SceneGraphAllocator(Seeker document_node, FreeListAllocator& allocator)
       : document_node(document_node)
       , allocator(allocator)
   {
@@ -227,15 +227,17 @@ public:
   {
     if (document_node.has(name))
     {
-      arrayview.alloc(allocator, document_node.node(name).elements_count());
+      arrayview.count = document_node.node(name).elements_count();
+      arrayview.data  = allocator.allocate<T>(static_cast<uint32_t>(arrayview.count));
+      arrayview.fill_with_zeros();
     }
 
     return *this;
   }
 
 private:
-  Seeker document_node;
-  Stack& allocator;
+  Seeker             document_node;
+  FreeListAllocator& allocator;
 };
 
 class MaterialTextureLoader
@@ -292,7 +294,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
   SDL_RWops* ctx              = SDL_RWFromFile(path, "rb");
   uint64_t   glb_file_size    = static_cast<uint64_t>(SDL_RWsize(ctx));
-  uint8_t*   glb_file_content = engine.dirty_stack.alloc<uint8_t>(glb_file_size);
+  uint8_t*   glb_file_content = engine.generic_allocator.allocate<uint8_t>(static_cast<uint32_t>(glb_file_size));
 
   SDL_RWread(ctx, glb_file_content, sizeof(char), static_cast<size_t>(glb_file_size));
   SDL_RWclose(ctx);
@@ -309,7 +311,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
   SceneGraph scene_graph = {};
 
-  SceneGraphAllocator(document, engine.permanent_stack)
+  SceneGraphAllocator(document, engine.generic_allocator)
       .allocate(scene_graph.materials, "materials")
       .allocate(scene_graph.meshes, "meshes")
       .allocate(scene_graph.nodes, "nodes")
@@ -398,7 +400,8 @@ SceneGraph loadGLB(Engine& engine, const char* path)
     const int required_index_space  = mesh.indices_count * (is_index_type_uint16 ? sizeof(uint16_t) : sizeof(uint32_t));
     const int required_vertex_space = position_count * (is_skinning_used ? sizeof(SkinnedVertex) : sizeof(Vertex));
     const int total_upload_buffer_size = required_index_space + required_vertex_space;
-    uint8_t*  upload_buffer            = engine.dirty_stack.alloc<uint8_t>(total_upload_buffer_size);
+    uint8_t*  upload_buffer            = engine.generic_allocator.allocate<uint8_t>(
+        static_cast<uint32_t>(total_upload_buffer_size)); // @todo: is this cleaned up?
     const int index_buffer_glb_offset =
         buffer_views.idx(index_buffer_view).integer("byteOffset") + index_accessor.integer("byteOffset");
 
@@ -655,6 +658,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
     vkFreeCommandBuffers(engine.device, engine.graphics_command_pool, 1, &cmd);
 
     engine.memory_blocks.host_visible_transfer_source.stack_pointer = 0;
+    engine.generic_allocator.free(upload_buffer, total_upload_buffer_size);
   }
 
   // ---------------------------------------------------------------------------
@@ -669,7 +673,9 @@ SceneGraph loadGLB(Engine& engine, const char* path)
     if (node_json.has("children"))
     {
       node.flags |= Node::Property::Children;
-      node.children.alloc(engine.permanent_stack, node_json.node("children").elements_count());
+      node.children.count = node_json.node("children").elements_count();
+      node.children.data  = engine.generic_allocator.allocate<int>(static_cast<uint32_t>(node.children.count));
+      node.children.fill_with_zeros();
 
       for (int child_idx = 0; child_idx < node.children.count; ++child_idx)
       {
@@ -744,7 +750,10 @@ SceneGraph loadGLB(Engine& engine, const char* path)
     Seeker scene_json = document.node("scenes").idx(scene_idx);
     Seeker nodes_json = scene_json.node("nodes");
 
-    scene.nodes.alloc(engine.permanent_stack, nodes_json.elements_count());
+    scene.nodes.count = nodes_json.elements_count();
+    scene.nodes.data  = engine.generic_allocator.allocate<int>(scene.nodes.count);
+    scene.nodes.fill_with_zeros();
+
     for (int node_idx = 0; node_idx < scene.nodes.count; ++node_idx)
     {
       scene.nodes.data[node_idx] = nodes_json.idx_integer(node_idx);
@@ -766,8 +775,15 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     Animation& current_animation = scene_graph.animations.data[animation_idx];
 
-    current_animation.channels.alloc(engine.permanent_stack, channels_count);
-    current_animation.samplers.alloc(engine.permanent_stack, samplers_count);
+    current_animation.channels.count = channels_count;
+    current_animation.channels.data =
+        engine.generic_allocator.allocate<AnimationChannel>(static_cast<uint32_t>(channels_count));
+    current_animation.channels.fill_with_zeros();
+
+    current_animation.samplers.count = samplers_count;
+    current_animation.samplers.data =
+        engine.generic_allocator.allocate<AnimationSampler>(static_cast<uint32_t>(samplers_count));
+    current_animation.samplers.fill_with_zeros();
 
     for (int channel_idx = 0; channel_idx < channels_count; ++channel_idx)
     {
@@ -870,9 +886,9 @@ SceneGraph loadGLB(Engine& engine, const char* path)
         SDL_assert(false);
       }
 
-      current_sampler.times = engine.permanent_stack.alloc<float>(input_elements);
+      current_sampler.times = engine.generic_allocator.allocate<float>(static_cast<uint32_t>(input_elements));
       current_sampler.values =
-          engine.permanent_stack.alloc<float>(static_cast<unsigned>(output_type) * output_elements);
+          engine.generic_allocator.allocate<float>(static_cast<unsigned>(output_type) * output_elements);
 
       {
         const int input_view_glb_offset     = input_buffer_view.integer("byteOffset");
@@ -927,7 +943,9 @@ SceneGraph loadGLB(Engine& engine, const char* path)
     skin.skeleton = skin_json.integer("skeleton");
 
     Seeker joints_json = skin_json.node("joints");
-    skin.joints.alloc(engine.permanent_stack, joints_json.elements_count());
+
+    skin.joints.count = joints_json.elements_count();
+    skin.joints.data  = engine.generic_allocator.allocate<int>(static_cast<uint32_t>(skin.joints.count));
 
     for (int i = 0; i < skin.joints.count; ++i)
     {
@@ -936,7 +954,10 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     int    inverse_bind_matrices_accessor_idx = skin_json.integer("inverseBindMatrices");
     Seeker accessor                           = accessors.idx(inverse_bind_matrices_accessor_idx);
-    skin.inverse_bind_matrices.alloc(engine.permanent_stack, accessor.integer("count"));
+
+    skin.inverse_bind_matrices.count = accessor.integer("count");
+    skin.inverse_bind_matrices.data =
+        engine.generic_allocator.allocate<mat4x4>(static_cast<uint32_t>(skin.inverse_bind_matrices.count));
 
     Seeker buffer_view = buffer_views.idx(accessor.integer("bufferView"));
 
@@ -951,7 +972,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
     }
   }
 
-  engine.dirty_stack.reset();
+  engine.generic_allocator.free(glb_file_content, static_cast<uint32_t>(glb_file_size));
 
   uint64_t duration_ticks = SDL_GetPerformanceCounter() - start;
   float    elapsed_ms     = 1000.0f * ((float)duration_ticks / (float)SDL_GetPerformanceFrequency());

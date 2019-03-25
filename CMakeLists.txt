@@ -25,6 +25,7 @@ add_executable(tests unit_tests/SeekerTests.cc)
 add_executable(level_generator_tests unit_tests/LevelGenerator.cc)
 add_executable(sandbox unit_tests/sandbox.cc)
 add_executable(jobsytem unit_tests/JobSystem.cc)
+add_Executable(allocator_tests unit_tests/AllocatorTest.cc sources/engine/free_list_allocator.cc)
 
 set(SOURCES
         sources/main.cc
@@ -66,4 +67,5 @@ target_link_libraries(${PROJECT_NAME} ${SDL_LIBRARY} ${VULKAN_LIBRARY})
 target_link_libraries(tests ${SDL_LIBRARY})
 target_link_libraries(level_generator_tests ${SDL_LIBRARY})
 target_link_libraries(jobsytem ${SDL_LIBRARY})
+target_link_libraries(allocator_tests ${SDL_LIBRARY})
 

@@ -57,8 +57,7 @@ const char* to_cstr(VkPresentModeKHR mode)
 
 void Engine::startup(bool vulkan_validation_enabled)
 {
-  permanent_stack.setup(HOST_PERMANENT_ALLOCATOR_POOL_SIZE);
-  dirty_stack.setup(HOST_DIRTY_ALLOCATOR_POOL_SIZE);
+  generic_allocator.init();
   render_passes.init();
 
   window = SDL_CreateWindow("vvne", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, initial_window_width,
@@ -78,7 +77,7 @@ void Engine::startup(bool vulkan_validation_enabled)
 
     uint32_t count = 0;
     SDL_Vulkan_GetInstanceExtensions(window, &count, nullptr);
-    const char** extensions = dirty_stack.alloc<const char*>(vulkan_validation_enabled ? count + 1 : count);
+    const char** extensions = generic_allocator.allocate<const char*>(vulkan_validation_enabled ? count + 1 : count);
     SDL_Vulkan_GetInstanceExtensions(window, &count, extensions);
     if (vulkan_validation_enabled)
     {
@@ -98,6 +97,7 @@ void Engine::startup(bool vulkan_validation_enabled)
     };
 
     vkCreateInstance(&ci, nullptr, &instance);
+    generic_allocator.free(extensions, count);
   }
 
   if (vulkan_validation_enabled)
@@ -116,12 +116,13 @@ void Engine::startup(bool vulkan_validation_enabled)
   {
     uint32_t count = 0;
     vkEnumeratePhysicalDevices(instance, &count, nullptr);
-    VkPhysicalDevice* handles = dirty_stack.alloc<VkPhysicalDevice>(count);
+    VkPhysicalDevice* handles = generic_allocator.allocate<VkPhysicalDevice>(count);
     vkEnumeratePhysicalDevices(instance, &count, handles);
 
     physical_device = handles[0];
     vkGetPhysicalDeviceProperties(physical_device, &physical_device_properties);
     SDL_Log("Selecting graphics card: %s", physical_device_properties.deviceName);
+    generic_allocator.free(handles, count);
   }
 
   SDL_bool surface_result = SDL_Vulkan_CreateSurface(window, instance, &surface);
@@ -137,7 +138,7 @@ void Engine::startup(bool vulkan_validation_enabled)
   {
     uint32_t count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, nullptr);
-    VkQueueFamilyProperties* all_properties = dirty_stack.alloc<VkQueueFamilyProperties>(count);
+    VkQueueFamilyProperties* all_properties = generic_allocator.allocate<VkQueueFamilyProperties>(count);
     vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, all_properties);
 
     for (uint32_t i = 0; i < count; ++i)
@@ -152,6 +153,8 @@ void Engine::startup(bool vulkan_validation_enabled)
         break;
       }
     }
+
+    generic_allocator.free(all_properties, count);
   }
 
   {
@@ -191,7 +194,7 @@ void Engine::startup(bool vulkan_validation_enabled)
   {
     uint32_t count = 0;
     vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, nullptr);
-    VkSurfaceFormatKHR* formats = dirty_stack.alloc<VkSurfaceFormatKHR>(count);
+    VkSurfaceFormatKHR* formats = generic_allocator.allocate<VkSurfaceFormatKHR>(count);
     vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, formats);
 
     surface_format = formats[0];
@@ -206,12 +209,13 @@ void Engine::startup(bool vulkan_validation_enabled)
       surface_format = formats[i];
       break;
     }
+    generic_allocator.free(formats, count);
   }
 
   {
     uint32_t count = 0;
     vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, nullptr);
-    VkPresentModeKHR* present_modes = dirty_stack.alloc<VkPresentModeKHR>(count);
+    VkPresentModeKHR* present_modes = generic_allocator.allocate<VkPresentModeKHR>(count);
     vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, present_modes);
 
     SDL_Log("Supported presentation modes");
@@ -229,6 +233,8 @@ void Engine::startup(bool vulkan_validation_enabled)
                        ? VK_PRESENT_MODE_IMMEDIATE_KHR
                        : has(present_modes, count, VK_PRESENT_MODE_MAILBOX_KHR) ? VK_PRESENT_MODE_MAILBOX_KHR
                                                                                 : VK_PRESENT_MODE_FIFO_KHR;
+
+    generic_allocator.free(present_modes, count);
   }
 
   {
@@ -801,8 +807,6 @@ void Engine::startup(bool vulkan_validation_enabled)
     }
   }
 
-  dirty_stack.reset();
-
   setup_render_passes();
   setup_framebuffers();
   setup_descriptor_set_layouts();
@@ -863,9 +867,6 @@ void Engine::teardown()
   }
 
   vkDestroyInstance(instance, nullptr);
-
-  dirty_stack.teardown();
-  permanent_stack.teardown();
 }
 
 Texture Engine::load_texture(const char* filepath, bool register_for_destruction)
