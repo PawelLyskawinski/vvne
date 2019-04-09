@@ -4,12 +4,14 @@
 #include "engine/engine.hh"
 #include "engine/gltf.hh"
 #include "imgui.h"
+#include "game_generate_gui_lines.hh"
 #include <SDL2/SDL_mouse.h>
 #include <SDL2/SDL_mutex.h>
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_thread.h>
 
 constexpr uint32_t WORKER_THREADS_COUNT = 3;
+constexpr uint32_t MAX_ROBOT_GUI_LINES = 400;
 
 struct LightSources
 {
@@ -27,44 +29,6 @@ struct SdfChar
   int8_t   xoffset;
   int8_t   yoffset;
   uint8_t  xadvance;
-};
-
-struct GuiLine
-{
-  enum class Size
-  {
-    Big,
-    Normal,
-    Small,
-    Tiny
-  };
-
-  enum class Color
-  {
-    Green,
-    Red,
-    Yellow
-  };
-
-  vec2  a;
-  vec2  b;
-  Size  size;
-  Color color;
-};
-
-struct GuiLineSizeCount
-{
-  int big;
-  int normal;
-  int small;
-  int tiny;
-};
-
-struct GuiHeightRulerText
-{
-  vec2 offset;
-  int  size;
-  int  value;
 };
 
 struct GenerateSdfFontCommand
@@ -85,14 +49,6 @@ struct GenerateSdfFontCommandResult
   vec2   character_size;
   mat4x4 transform;
   float  cursor_movement;
-};
-
-struct GenerateGuiLinesCommand
-{
-  float      player_y_location_meters;
-  float      camera_x_pitch_radians;
-  float      camera_y_pitch_radians;
-  VkExtent2D screen_extent2D;
 };
 
 struct Game;

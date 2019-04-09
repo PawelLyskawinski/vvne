@@ -1,10 +1,6 @@
 #include "render_jobs.hh"
 #include "game_render_entity.hh"
 
-// game_generate_gui_lines.cc
-ArrayView<GuiHeightRulerText> generate_gui_height_ruler_text(struct GenerateGuiLinesCommand& cmd, Stack& allocator);
-ArrayView<GuiHeightRulerText> generate_gui_tilt_ruler_text(struct GenerateGuiLinesCommand& cmd, Stack& allocator);
-
 // game_generate_sdf_font.cc
 GenerateSdfFontCommandResult generate_sdf_font(const GenerateSdfFontCommand& cmd);
 
@@ -446,6 +442,24 @@ void robot_gui_lines(ThreadJobData tjd)
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, tjd.engine.pipelines.green_gui_lines.pipeline);
   vkCmdBindVertexBuffers(command, 0, 1, &tjd.engine.gpu_host_coherent_memory_buffer,
                          &tjd.game.green_gui_rulers_buffer_offsets[tjd.game.image_index]);
+
+  {
+    GenerateGuiLinesCommand cmd = {
+        .player_y_location_meters = -(2.0f - tjd.game.player_position[1]),
+        .camera_x_pitch_radians   = 0.0f, // to_rad(10) * SDL_sinf(current_time_sec), // simulating future strafe tilts,
+        .camera_y_pitch_radians   = tjd.game.camera_updown_angle,
+    };
+
+    void* data = nullptr;
+    vkMapMemory(tjd.engine.device, tjd.engine.memory_blocks.host_coherent.memory,
+                tjd.game.green_gui_rulers_buffer_offsets[tjd.game.image_index], MAX_ROBOT_GUI_LINES * sizeof(vec2), 0,
+                &data);
+
+    generate_gui_lines(cmd, reinterpret_cast<vec2*>(data), MAX_ROBOT_GUI_LINES, tjd.game.gui_green_lines_count,
+                       tjd.game.gui_red_lines_count, tjd.game.gui_yellow_lines_count);
+
+    vkUnmapMemory(tjd.engine.device, tjd.engine.memory_blocks.host_coherent.memory);
+  }
 
   uint32_t offset = 0;
 

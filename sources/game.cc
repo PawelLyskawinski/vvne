@@ -299,39 +299,7 @@ VrLevelLoadResult level_generator_vr(Engine* engine)
   return result;
 }
 
-GuiLineSizeCount count_lines(const ArrayView<GuiLine>& lines, const GuiLine::Color color)
-{
-  GuiLineSizeCount r = {};
-
-  for (const GuiLine& line : lines)
-  {
-    if (color == line.color)
-    {
-      switch (line.size)
-      {
-      case GuiLine::Size::Big:
-        r.big++;
-        break;
-      case GuiLine::Size::Normal:
-        r.normal++;
-        break;
-      case GuiLine::Size::Small:
-        r.small++;
-        break;
-      case GuiLine::Size::Tiny:
-        r.tiny++;
-        break;
-      }
-    }
-  }
-
-  return r;
-}
-
 } // namespace
-
-// game_generate_gui_lines.cc
-ArrayView<GuiLine> generate_gui_lines(const GenerateGuiLinesCommand& cmd, Stack& allocator);
 
 namespace {
 
@@ -647,7 +615,7 @@ void Game::startup(Engine& engine)
     for (VkDeviceSize& offset : green_gui_rulers_buffer_offsets)
     {
       offset = block.stack_pointer;
-      block.stack_pointer += align(200 * sizeof(vec2), block.alignment);
+      block.stack_pointer += align(MAX_ROBOT_GUI_LINES * sizeof(vec2), block.alignment);
     }
   }
 
@@ -2301,16 +2269,26 @@ void Game::render(Engine& engine)
                monster.skins[0].joints.count * sizeof(mat4x4), monster_skinning_matrices_ubo_offsets[image_index],
                monster_entity.joint_matrices);
 
-#if 0
     {
+#if 0
       GenerateGuiLinesCommand cmd = {
           .player_y_location_meters = -(2.0f - player_position[1]),
           .camera_x_pitch_radians = 0.0f, // to_rad(10) * SDL_sinf(current_time_sec), // simulating future strafe tilts,
           .camera_y_pitch_radians = camera_updown_angle,
       };
 
-      ArrayView<GuiLine> r = generate_gui_lines(cmd, engine.dirty_stack);
+      // void generate_gui_lines(const GenerateGuiLinesCommand& cmd, vec2 dst[], uint32_t dst_capacity, GuiLineSizeCount& green_counter, GuiLineSizeCount& red_counter, GuiLineSizeCount& yellow_counter);
 
+      void* data = nullptr;
+      vkMapMemory(engine.device, engine.memory_blocks.host_coherent.memory, green_gui_rulers_buffer_offsets[image_index],
+                  200 * sizeof(vec2), 0, &data);
+      generate_gui_lines(cmd, reinterpret_cast<vec2*>(data), 200, gui_green_lines_count, gui_red_lines_count, gui_yellow_lines_count);
+      vkUnmapMemory(engine.device, engine.memory_blocks.host_coherent.memory);
+
+      // update_ubo(engine.device, engine.memory_blocks.host_coherent.memory, r.count * 2 * sizeof(vec2), green_gui_rulers_buffer_offsets[image_index], pushed_lines_data);
+#endif
+
+#if 0
       float* pushed_lines_data    = nullptr;
       int    pushed_lines_counter = 0;
       pushed_lines_data           = engine.dirty_stack.alloc<float>(4 * r.count);
@@ -2352,9 +2330,9 @@ void Game::render(Engine& engine)
 
       update_ubo(engine.device, engine.memory_blocks.host_coherent.memory, r.count * 2 * sizeof(vec2),
                  green_gui_rulers_buffer_offsets[image_index], pushed_lines_data);
-      engine.dirty_stack.reset();
-    }
+      // engine.dirty_stack.reset();
 #endif
+    }
 
     ImDrawData* draw_data = ImGui::GetDrawData();
 
