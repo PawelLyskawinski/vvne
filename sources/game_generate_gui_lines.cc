@@ -221,11 +221,17 @@ void generate_gui_lines(const GenerateGuiLinesCommand& cmd, vec2 dst[], uint32_t
 
   for (int side = 0; side < 2; ++side)
   {
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < 5; ++i)
     {
-      const float side_mod   = (0 < side) ? -1.0f : 1.0f;
-      const vec2 base_offset = {side_mod * height_ruler_left_x_position, -1.2f - (cmd.player_y_location_meters / 8.0f)};
-      const vec2 size        = {side_mod * height_ruler_length, 0.2f};
+      const float side_mod = (0 < side) ? -1.0f : 1.0f;
+
+      vec2 base_offset = {side_mod * height_ruler_left_x_position, cmd.player_y_location_meters / 8.0f};
+
+      // endless repetition
+      while (base_offset[1] > -0.5f)
+        base_offset[1] -= 0.8f;
+
+      const vec2 size = {side_mod * height_ruler_length, 0.2f};
 
       vec2 offset     = {};
       vec2 correction = {0.0f, i * 0.4f};
@@ -291,26 +297,30 @@ private:
 
 ArrayView<GuiHeightRulerText> generate_gui_height_ruler_text(struct GenerateGuiLinesCommand& cmd, Stack& allocator)
 {
-  float y_zeroed      = line_to_pixel_length(0.88f - (cmd.player_y_location_meters / 8.0f), cmd.screen_extent2D.height);
-  float y_step        = line_to_pixel_length(0.2f, cmd.screen_extent2D.height);
-  float x_offset_left = line_to_pixel_length(0.74f, cmd.screen_extent2D.width);
+  float y_zeroed = line_to_pixel_length(-(cmd.player_y_location_meters / 8.0f - 1.23f), cmd.screen_extent2D.height);
+  float y_step   = line_to_pixel_length(0.2f, cmd.screen_extent2D.height);
+  float x_offset_left  = line_to_pixel_length(0.74f, cmd.screen_extent2D.width);
   float x_offset_right = x_offset_left + line_to_pixel_length(0.51f, cmd.screen_extent2D.width);
   int   size           = line_to_pixel_length(0.5f, cmd.screen_extent2D.height);
 
   StackAdapter<GuiHeightRulerText> stack(allocator);
 
   // -------- left side --------
-  for (int i = 0; i < 6; ++i)
+  for (int i = 0; i < 7; ++i)
   {
-    const int          y_step_modifier = (i < 4) ? (-1 * i) : (i - 3);
+    int y_step_modifier = (i < 4) ? (-1 * i) : (i - 3);
+    y_step_modifier += static_cast<int>(cmd.player_y_location_meters * 0.6f) - 2;
+
     GuiHeightRulerText item = {{x_offset_left, y_zeroed + (y_step_modifier * y_step)}, size, -5 * y_step_modifier};
     stack.push(&item, 1);
   }
 
   // -------- right side --------
-  for (int i = 0; i < 6; ++i)
+  for (int i = 0; i < 7; ++i)
   {
-    const int   y_step_modifier             = (i < 4) ? (-1 * i) : (i - 3);
+    int y_step_modifier = (i < 4) ? (-1 * i) : (i - 3);
+    y_step_modifier += static_cast<int>(cmd.player_y_location_meters * 0.6f) - 2;
+
     const int   value                       = -5 * y_step_modifier;
     const float additional_character_offset = ((SDL_abs(value) > 9) ? 6.0f : 0.0f) + ((value < 0) ? 6.8f : 0.0f);
 

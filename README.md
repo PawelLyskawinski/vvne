@@ -8,33 +8,28 @@ Current preview (still a veeeery long road ahead)
 ![status preview image](assets/current_status.jpg)
 
 ### Features
-- handmade gltf2.0 glb model importer (nodes, animations, skinning)
-- integrated imgui
-- support for both windows (mingw) and linux
-- custom vulkan memory allocators
-- hdr skybox (although not used yet)
+- Handmade gltf2.0 glb model importer (nodes, animations, skinning)
+- Integrated imgui
+- Support for both windows (mingw) and linux
+- Custom memory allocators (host and device)
 - PBR with IBL (huge thanks to Sascha Willems vulkan examples and https://learnopengl.com/PBR/Theory)
-- MSAA
-- Signed Distance Field font rendering
+- Signed distance field font rendering
 - Multithreaded rendering / job system
 - Cascaded shadow mapping
 
 ### TODO - engine
-- Replace vulkan validation compilation flag with command line argument parsing
-- Refactor ECS and job system
+- Editor for level design
 - DXT texture compression
-- global illumination (got to understand spherical harmonics and light probes first)
+- Global illumination (got to understand spherical harmonics and light probes first)
 - Occluders (AABB trees)
 - Tesselated level ground (initially from height map)
 
 ### TODO - game
 - movable tilt lines under strafe movement (gui)
 - health bar / resource indicator (gui)
-- better model
-- better model animations (while only using keyframes from glb)
+- better model and animations (while only using keyframes from glb)
 - particles from engine when using boost
-- refactor height calculation
-- fix the height ruler (implement endless repetition)
+- refactor height calculation (basic physics and collision systems)
 
 ### Used C++ subset
 - no stl

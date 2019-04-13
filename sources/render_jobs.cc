@@ -444,8 +444,10 @@ void robot_gui_lines(ThreadJobData tjd)
                          &tjd.game.green_gui_rulers_buffer_offsets[tjd.game.image_index]);
 
   {
+    // in vulkan coordinate system Y axis is pointing down, so we'll have to invert the value to get
+    // something more reasonable
     GenerateGuiLinesCommand cmd = {
-        .player_y_location_meters = -(2.0f - tjd.game.player_position[1]),
+        .player_y_location_meters = -tjd.game.player_position[1],
         .camera_x_pitch_radians   = 0.0f, // to_rad(10) * SDL_sinf(current_time_sec), // simulating future strafe tilts,
         .camera_y_pitch_radians   = tjd.game.camera_updown_angle,
     };
