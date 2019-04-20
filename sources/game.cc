@@ -1,6 +1,7 @@
 #include "game.hh"
 #include "engine/cubemap.hh"
 #include "engine/free_list_visualizer.hh"
+#include "engine/gpu_memory_visualizer.hh"
 #include "render_jobs.hh"
 #include "update_jobs.hh"
 #include <SDL2/SDL_assert.h>
@@ -10,6 +11,7 @@
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_stdinc.h>
 #include <SDL2/SDL_timer.h>
+#include <SDL2/SDL_vulkan.h>
 
 namespace {
 
@@ -825,7 +827,7 @@ void Game::startup(Engine& engine)
     vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
 
     image.sampler   = engine.shadowmap_sampler;
-    image.imageView = engine.shadowmap_image_view;
+    image.imageView = engine.shadowmap_image.image_view;
     write.dstSet    = debug_shadow_map_dset;
     vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
   }
@@ -1922,6 +1924,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
                 light_source_position[2]);
     ImGui::Text("time:         %.4f", current_time_sec);
     ImGui::Text("camera angle: %.2f", to_deg(camera_angle));
+    ImGui::Text("Resulotion:   %u %u", engine.extent2D.width, engine.extent2D.height);
 
     ImGui::Text("WASD - movement");
     ImGui::Text("F1 - enable first person view");
@@ -1929,21 +1932,18 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     ImGui::Text("ESC - exit");
   }
 
-  if (ImGui::Button("quit"))
-  {
-    SDL_Event event;
-    event.type = SDL_QUIT;
-    SDL_PushEvent(&event);
-  }
-
   if (ImGui::CollapsingHeader("Memory"))
   {
     auto bytes_as_mb = [](uint32_t in) { return in / (1024u * 1024u); };
     auto calc_frac   = [](VkDeviceSize part, VkDeviceSize max) { return ((float)part / (float)max); };
 
+#if 0
     ImGui::Text("image memory (%uMB pool)", bytes_as_mb(GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE));
     ImGui::ProgressBar(
         calc_frac(engine.memory_blocks.device_images.stack_pointer, GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE));
+#else
+    gpu_memory_visualize(engine.gpu_image_memory_allocator);
+#endif
 
     ImGui::Text("device-visible memory (%uMB pool)", bytes_as_mb(GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE));
     ImGui::ProgressBar(
@@ -2009,6 +2009,43 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     vec3 position = {0.0f, 3.0f, -4.0f};
     vec3 color    = {10.0, 0.0, 10.0};
     update_light(pbr_light_sources_cache, 4, position, color);
+  }
+
+  // Resolution change
+  {
+    static int         current_resolution = 0;
+    static const char* resolution_names[] = {"1200x900  (custom dev)", "1280x720  (HD)", "1366x768  (WXGA)",
+                                             "1600x900  (HD+)", "1920x1080 (Full HD)"};
+    if (ImGui::Combo("resolutions", &current_resolution, resolution_names, SDL_arraysize(resolution_names)))
+    {
+      SDL_Log("Resolution change: %s", resolution_names[current_resolution]);
+      static const VkExtent2D resolutions[] = {
+          {1200, 900}, {1280, 720}, {1366, 768}, {1600, 900}, {1920, 1080},
+      };
+      engine.change_resolution(resolutions[current_resolution]);
+
+      {
+        float extent_width        = static_cast<float>(engine.extent2D.width);
+        float extent_height       = static_cast<float>(engine.extent2D.height);
+        float aspect_ratio        = extent_width / extent_height;
+        float fov                 = to_rad(90.0f);
+        float near_clipping_plane = 0.1f;
+        float far_clipping_plane  = 1000.0f;
+        mat4x4_perspective(cameras.gameplay.projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
+        cameras.gameplay.projection[1][1] *= -1.0f;
+      }
+
+      {
+        float extent_width        = static_cast<float>(engine.extent2D.width);
+        float extent_height       = static_cast<float>(engine.extent2D.height);
+        float aspect_ratio        = extent_width / extent_height;
+        float fov                 = to_rad(90.0f);
+        float near_clipping_plane = 0.1f;
+        float far_clipping_plane  = 1000.0f;
+        mat4x4_perspective(cameras.editor.projection, fov, aspect_ratio, near_clipping_plane, far_clipping_plane);
+        cameras.editor.projection[1][1] *= -1.0f;
+      }
+    }
   }
 
   ImGui::End();
@@ -2269,6 +2306,10 @@ void Game::render(Engine& engine)
                monster.skins[0].joints.count * sizeof(mat4x4), monster_skinning_matrices_ubo_offsets[image_index],
                monster_entity.joint_matrices);
 
+    SDL_SemWait(js.all_threads_idle_signal);
+    SDL_AtomicSet(&js.threads_finished_work, 0);
+    SDL_AtomicSet(&js.jobs_taken, 0);
+
     ImDrawData* draw_data = ImGui::GetDrawData();
 
     size_t vertex_size = draw_data->TotalVtxCount * sizeof(ImDrawVert);
@@ -2308,10 +2349,6 @@ void Game::render(Engine& engine)
 
       vkUnmapMemory(engine.device, engine.memory_blocks.host_coherent.memory);
     }
-
-    SDL_SemWait(js.all_threads_idle_signal);
-    SDL_AtomicSet(&js.threads_finished_work, 0);
-    SDL_AtomicSet(&js.jobs_taken, 0);
 
     {
       VkCommandBuffer cmd = primary_command_buffers[image_index];
@@ -2452,7 +2489,7 @@ void Game::render(Engine& engine)
             .newLayout           = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image               = engine.shadowmap_image,
+            .image               = engine.shadowmap_image.image,
             .subresourceRange =
                 {
                     .aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT,

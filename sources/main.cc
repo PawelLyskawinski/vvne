@@ -14,7 +14,7 @@ int main(int argc, char* argv[])
   Game*   game   = reinterpret_cast<Game*>(SDL_calloc(1, sizeof(Game)));
 
   // ----- DEFAULT CONFIGS -----
-  engine->MSAA_SAMPLE_COUNT            = VK_SAMPLE_COUNT_8_BIT;
+  engine->MSAA_SAMPLE_COUNT            = VK_SAMPLE_COUNT_2_BIT;
   constexpr int desired_frames_per_sec = 60;
   // ---------------------------
 

@@ -37,6 +37,8 @@ set(SOURCES
         sources/engine/engine_pipelines.cc
         sources/engine/free_list_allocator.cc
         sources/engine/free_list_visualizer.cc
+        sources/engine/gpu_memory_allocator.cc
+        sources/engine/gpu_memory_visualizer.cc
         sources/game.cc
         sources/game_generate_gui_lines.cc
         sources/game_generate_sdf_font.cc

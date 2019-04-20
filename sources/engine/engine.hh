@@ -2,6 +2,7 @@
 
 #include "allocators.hh"
 #include "free_list_allocator.hh"
+#include "gpu_memory_allocator.hh"
 #include <SDL2/SDL_video.h>
 #include <vulkan/vulkan.h>
 
@@ -22,12 +23,6 @@ constexpr uint32_t HOST_DIRTY_ALLOCATOR_POOL_SIZE                    = 5_MB;
 constexpr int SWAPCHAIN_IMAGES_COUNT  = 2;
 constexpr int SHADOWMAP_IMAGE_DIM     = 1024 * 2;
 constexpr int SHADOWMAP_CASCADE_COUNT = 4;
-
-struct Texture
-{
-  VkImage     image;
-  VkImageView image_view;
-};
 
 struct PipelineWithHayout
 {
@@ -112,9 +107,16 @@ struct MemoryBlocks
 
   GpuMemoryBlock device_local;
   GpuMemoryBlock host_visible_transfer_source;
-  GpuMemoryBlock device_images;
+  VkDeviceMemory device_images;
   GpuMemoryBlock host_coherent;
   GpuMemoryBlock host_coherent_ubo;
+};
+
+struct Texture
+{
+  VkImage      image;
+  VkImageView  image_view;
+  VkDeviceSize memory_offset;
 };
 
 struct Engine
@@ -141,16 +143,13 @@ struct Engine
   VkImageView                swapchain_image_views[SWAPCHAIN_IMAGES_COUNT];
   VkCommandPool              graphics_command_pool;
   VkDescriptorPool           descriptor_pool;
-  VkImage                    msaa_color_image;
-  VkImageView                msaa_color_image_view;
-  VkImage                    depth_image;
-  VkImageView                depth_image_view;
+  Texture                    msaa_color_image;
+  Texture                    depth_image;
   VkSemaphore                image_available;
   VkSemaphore                render_finished;
   VkSampler                  texture_sampler;
   VkSampler                  shadowmap_sampler;
-  VkImage                    shadowmap_image;
-  VkImageView                shadowmap_image_view;
+  Texture                    shadowmap_image;
   VkImageView                shadowmap_cascade_image_views[SHADOWMAP_CASCADE_COUNT];
   VkFence                    submition_fences[SWAPCHAIN_IMAGES_COUNT];
 
@@ -176,10 +175,12 @@ struct Engine
   RenderPasses         render_passes;
   Pipelines            pipelines;
 
-  FreeListAllocator generic_allocator;
+  GpuMemoryAllocator gpu_image_memory_allocator;
+  FreeListAllocator  generic_allocator;
 
   void           startup(bool vulkan_validation_enabled);
   void           teardown();
+  void           change_resolution(VkExtent2D new_size);
   VkShaderModule load_shader(const char* file_path);
   Texture        load_texture_hdr(const char* filename);
   Texture        load_texture(const char* filepath, bool register_for_destruction = true);

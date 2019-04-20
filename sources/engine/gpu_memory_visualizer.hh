@@ -1,10 +1,10 @@
 #pragma once
 
-#include "free_list_allocator.hh"
+#include "gpu_memory_allocator.hh"
 
 //
 // Renders the allocation visualization bar in current imgui window
 // Red   - used memory
 // Black - free memory
 //
-void free_list_visualize(const FreeListAllocator& allocator);
+void gpu_memory_visualize(const GpuMemoryAllocator& allocator);

@@ -25,8 +25,8 @@ VkBool32
 
 namespace {
 
-const uint32_t initial_window_width  = 1200u;
-const uint32_t initial_window_height = 900u;
+const uint32_t initial_window_width  = 1900u;
+const uint32_t initial_window_height = 1200u;
 
 uint32_t find_memory_type_index(VkPhysicalDeviceMemoryProperties* properties, VkMemoryRequirements* reqs,
                                 VkMemoryPropertyFlags searched)
@@ -341,7 +341,7 @@ void Engine::startup(bool vulkan_validation_enabled)
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
 
-    vkCreateImage(device, &ci, nullptr, &msaa_color_image);
+    vkCreateImage(device, &ci, nullptr, &msaa_color_image.image);
   }
 
   {
@@ -359,7 +359,7 @@ void Engine::startup(bool vulkan_validation_enabled)
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
 
-    vkCreateImage(device, &ci, nullptr, &depth_image);
+    vkCreateImage(device, &ci, nullptr, &depth_image.image);
   }
 
   {
@@ -377,7 +377,7 @@ void Engine::startup(bool vulkan_validation_enabled)
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
 
-    vkCreateImage(device, &ci, nullptr, &shadowmap_image);
+    vkCreateImage(device, &ci, nullptr, &shadowmap_image.image);
   }
 
   {
@@ -525,9 +525,11 @@ void Engine::startup(bool vulkan_validation_enabled)
 
   // IMAGES
   {
+    gpu_image_memory_allocator.init(GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE);
+
     VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(device, depth_image, &reqs);
-    memory_blocks.device_images.alignment = reqs.alignment;
+    vkGetImageMemoryRequirements(device, depth_image.image, &reqs);
+    depth_image.memory_offset = gpu_image_memory_allocator.allocate_bytes(align(reqs.size, reqs.alignment));
 
     VkPhysicalDeviceMemoryProperties properties = {};
     vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
@@ -538,27 +540,23 @@ void Engine::startup(bool vulkan_validation_enabled)
         .memoryTypeIndex = find_memory_type_index(&properties, &reqs, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
     };
 
-    vkAllocateMemory(device, &allocate, nullptr, &memory_blocks.device_images.memory);
-    vkBindImageMemory(device, depth_image, memory_blocks.device_images.memory,
-                      memory_blocks.device_images.stack_pointer);
-    memory_blocks.device_images.stack_pointer += align(reqs.size, reqs.alignment);
+    vkAllocateMemory(device, &allocate, nullptr, &memory_blocks.device_images);
+    vkBindImageMemory(device, depth_image.image, memory_blocks.device_images, depth_image.memory_offset);
   }
 
   if (VK_SAMPLE_COUNT_1_BIT != MSAA_SAMPLE_COUNT)
   {
     VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(device, msaa_color_image, &reqs);
-    vkBindImageMemory(device, msaa_color_image, memory_blocks.device_images.memory,
-                      memory_blocks.device_images.stack_pointer);
-    memory_blocks.device_images.stack_pointer += align(reqs.size, reqs.alignment);
+    vkGetImageMemoryRequirements(device, msaa_color_image.image, &reqs);
+    msaa_color_image.memory_offset = gpu_image_memory_allocator.allocate_bytes(align(reqs.size, reqs.alignment));
+    vkBindImageMemory(device, msaa_color_image.image, memory_blocks.device_images, msaa_color_image.memory_offset);
   }
 
   {
     VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(device, shadowmap_image, &reqs);
-    vkBindImageMemory(device, shadowmap_image, memory_blocks.device_images.memory,
-                      memory_blocks.device_images.stack_pointer);
-    memory_blocks.device_images.stack_pointer += align(reqs.size, reqs.alignment);
+    vkGetImageMemoryRequirements(device, shadowmap_image.image, &reqs);
+    shadowmap_image.memory_offset = gpu_image_memory_allocator.allocate_bytes(align(reqs.size, reqs.alignment));
+    vkBindImageMemory(device, shadowmap_image.image, memory_blocks.device_images, shadowmap_image.memory_offset);
   }
 
   // image views can only be created when memory is bound to the image handle
@@ -580,14 +578,14 @@ void Engine::startup(bool vulkan_validation_enabled)
 
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = msaa_color_image,
+        .image            = msaa_color_image.image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D,
         .format           = surface_format.format,
         .components       = comp,
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(device, &ci, nullptr, &msaa_color_image_view);
+    vkCreateImageView(device, &ci, nullptr, &msaa_color_image.image_view);
   }
 
   {
@@ -606,14 +604,14 @@ void Engine::startup(bool vulkan_validation_enabled)
 
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = depth_image,
+        .image            = depth_image.image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D,
         .format           = VK_FORMAT_D32_SFLOAT,
         .components       = comp,
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(device, &ci, nullptr, &depth_image_view);
+    vkCreateImageView(device, &ci, nullptr, &depth_image.image_view);
   }
 
   {
@@ -633,14 +631,14 @@ void Engine::startup(bool vulkan_validation_enabled)
 
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = shadowmap_image,
+        .image            = shadowmap_image.image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D_ARRAY,
         .format           = VK_FORMAT_D32_SFLOAT,
         .components       = comp,
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(device, &ci, nullptr, &shadowmap_image_view);
+    vkCreateImageView(device, &ci, nullptr, &shadowmap_image.image_view);
   }
 
   for (int cascade_idx = 0; cascade_idx < SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
@@ -661,7 +659,7 @@ void Engine::startup(bool vulkan_validation_enabled)
 
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = shadowmap_image,
+        .image            = shadowmap_image.image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D,
         .format           = VK_FORMAT_D32_SFLOAT,
         .components       = comp,
@@ -672,17 +670,8 @@ void Engine::startup(bool vulkan_validation_enabled)
   }
 
   {
-    autoclean_images.push(depth_image);
-    autoclean_image_views.push(depth_image_view);
-
-    if (VK_SAMPLE_COUNT_1_BIT != MSAA_SAMPLE_COUNT)
-    {
-      autoclean_images.push(msaa_color_image);
-      autoclean_image_views.push(msaa_color_image_view);
-    }
-
-    autoclean_images.push(shadowmap_image);
-    autoclean_image_views.push(shadowmap_image_view);
+    autoclean_images.push(shadowmap_image.image);
+    autoclean_image_views.push(shadowmap_image.image_view);
 
     for (auto& image_view : shadowmap_cascade_image_views)
       autoclean_image_views.push(image_view);
@@ -754,7 +743,7 @@ void Engine::startup(bool vulkan_validation_enabled)
               .newLayout           = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
               .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
               .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-              .image               = shadowmap_image,
+              .image               = shadowmap_image.image,
               .subresourceRange =
                   {
                       .aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT,
@@ -774,7 +763,7 @@ void Engine::startup(bool vulkan_validation_enabled)
               .newLayout           = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
               .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
               .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-              .image               = depth_image,
+              .image               = depth_image.image,
               .subresourceRange =
                   {
                       .aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT,
@@ -837,6 +826,15 @@ void Engine::teardown()
   for (auto& image_view : autoclean_image_views)
     vkDestroyImageView(device, image_view, nullptr);
 
+  if (VK_SAMPLE_COUNT_1_BIT != MSAA_SAMPLE_COUNT)
+  {
+    vkDestroyImageView(device, msaa_color_image.image_view, nullptr);
+    vkDestroyImage(device, msaa_color_image.image, nullptr);
+  }
+
+  vkDestroyImageView(device, depth_image.image_view, nullptr);
+  vkDestroyImage(device, depth_image.image, nullptr);
+
   memory_blocks.destroy(device);
 
   vkDestroyBuffer(device, gpu_device_local_memory_buffer, nullptr);
@@ -846,8 +844,10 @@ void Engine::teardown()
 
   vkDestroySampler(device, shadowmap_sampler, nullptr);
   vkDestroySampler(device, texture_sampler, nullptr);
+
   vkDestroySemaphore(device, image_available, nullptr);
   vkDestroySemaphore(device, render_finished, nullptr);
+
   vkDestroyCommandPool(device, graphics_command_pool, nullptr);
   vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
 
@@ -855,6 +855,7 @@ void Engine::teardown()
     vkDestroyImageView(device, swapchain_image_view, nullptr);
 
   vkDestroySwapchainKHR(device, swapchain, nullptr);
+
   vkDestroyDevice(device, nullptr);
   vkDestroySurfaceKHR(instance, surface, nullptr);
   SDL_DestroyWindow(window);
@@ -904,6 +905,7 @@ VkFormat bitsPerPixelToFormat(SDL_Surface* surface) { return bitsPerPixelToForma
 
 } // namespace
 
+#if 0
 Texture Engine::load_texture_hdr(const char* filename)
 {
   int x           = 0;
@@ -998,8 +1000,7 @@ Texture Engine::load_texture_hdr(const char* filename)
   {
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(device, result.image, &reqs);
-    vkBindImageMemory(device, result.image, memory_blocks.device_images.memory,
-                      memory_blocks.device_images.stack_pointer);
+    vkBindImageMemory(device, result.image, memory_blocks.device_images.memory, memory_blocks.device_images.stack_pointer);
     memory_blocks.device_images.stack_pointer += align(reqs.size, memory_blocks.device_images.alignment);
   }
 
@@ -1155,6 +1156,7 @@ Texture Engine::load_texture_hdr(const char* filename)
 
   return result;
 }
+#endif
 
 Texture Engine::load_texture(SDL_Surface* surface, bool register_for_destruction)
 {
@@ -1276,9 +1278,8 @@ Texture Engine::load_texture(SDL_Surface* surface, bool register_for_destruction
   {
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(device, result.image, &reqs);
-    vkBindImageMemory(device, result.image, memory_blocks.device_images.memory,
-                      memory_blocks.device_images.stack_pointer);
-    memory_blocks.device_images.stack_pointer += align(reqs.size, memory_blocks.device_images.alignment);
+    result.memory_offset = gpu_image_memory_allocator.allocate_bytes(align(reqs.size, reqs.alignment));
+    vkBindImageMemory(device, result.image, memory_blocks.device_images, result.memory_offset);
   }
 
   {
@@ -1596,7 +1597,265 @@ void MemoryBlocks::destroy(VkDevice device)
   auto destroy = [device](const GpuMemoryBlock& block) { vkFreeMemory(device, block.memory, nullptr); };
   destroy(device_local);
   destroy(host_visible_transfer_source);
-  destroy(device_images);
+  vkFreeMemory(device, device_images, nullptr);
   destroy(host_coherent);
   destroy(host_coherent_ubo);
+}
+
+void Engine::change_resolution(const VkExtent2D new_size)
+{
+  extent2D = new_size;
+
+  vkDeviceWaitIdle(device);
+  SDL_SetWindowSize(window, extent2D.width, extent2D.height);
+
+  render_passes.destroy(device);
+  pipelines.destroy(device);
+
+  vkDestroySwapchainKHR(device, swapchain, nullptr);
+  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &surface_capabilities);
+
+  // re-creating new swapchain
+  {
+    VkSwapchainCreateInfoKHR ci = {
+        .sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .surface          = surface,
+        .minImageCount    = SWAPCHAIN_IMAGES_COUNT,
+        .imageFormat      = surface_format.format,
+        .imageColorSpace  = surface_format.colorSpace,
+        .imageExtent      = extent2D,
+        .imageArrayLayers = 1,
+        .imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .preTransform     = surface_capabilities.currentTransform,
+        .compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+        .presentMode      = present_mode,
+        .clipped          = VK_TRUE,
+    };
+
+    vkCreateSwapchainKHR(device, &ci, nullptr, &swapchain);
+
+    uint32_t swapchain_images_count = 0;
+    vkGetSwapchainImagesKHR(device, swapchain, &swapchain_images_count, nullptr);
+    SDL_assert(SWAPCHAIN_IMAGES_COUNT == swapchain_images_count);
+    vkGetSwapchainImagesKHR(device, swapchain, &swapchain_images_count, swapchain_images);
+  }
+
+  // new image views for swapchain
+  {
+    VkComponentMapping cm = {
+        .r = VK_COMPONENT_SWIZZLE_IDENTITY,
+        .g = VK_COMPONENT_SWIZZLE_IDENTITY,
+        .b = VK_COMPONENT_SWIZZLE_IDENTITY,
+        .a = VK_COMPONENT_SWIZZLE_IDENTITY,
+    };
+
+    VkImageSubresourceRange sr = {
+        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .levelCount = 1,
+        .layerCount = 1,
+    };
+
+    for (uint32_t i = 0; i < SWAPCHAIN_IMAGES_COUNT; ++i)
+    {
+      VkImageViewCreateInfo ci = {
+          .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+          .image            = swapchain_images[i],
+          .viewType         = VK_IMAGE_VIEW_TYPE_2D,
+          .format           = surface_format.format,
+          .components       = cm,
+          .subresourceRange = sr,
+      };
+
+      vkDestroyImageView(device, swapchain_image_views[i], nullptr);
+      vkCreateImageView(device, &ci, nullptr, &swapchain_image_views[i]);
+    }
+  }
+
+  // re-creating render pass images
+  if (VK_SAMPLE_COUNT_1_BIT != MSAA_SAMPLE_COUNT)
+  {
+    VkMemoryRequirements reqs = {};
+    vkGetImageMemoryRequirements(device, msaa_color_image.image, &reqs);
+    gpu_image_memory_allocator.free_bytes(msaa_color_image.memory_offset, align(reqs.size, reqs.alignment));
+  }
+
+  {
+    VkMemoryRequirements reqs = {};
+    vkGetImageMemoryRequirements(device, depth_image.image, &reqs);
+    gpu_image_memory_allocator.free_bytes(depth_image.memory_offset, align(reqs.size, reqs.alignment));
+  }
+
+  if (VK_SAMPLE_COUNT_1_BIT != MSAA_SAMPLE_COUNT)
+  {
+    VkImageCreateInfo ci = {
+        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType     = VK_IMAGE_TYPE_2D,
+        .format        = surface_format.format,
+        .extent        = {.width = extent2D.width, .height = extent2D.height, .depth = 1},
+        .mipLevels     = 1,
+        .arrayLayers   = 1,
+        .samples       = MSAA_SAMPLE_COUNT,
+        .tiling        = VK_IMAGE_TILING_OPTIMAL,
+        .usage         = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+
+    vkDestroyImage(device, msaa_color_image.image, nullptr);
+    vkCreateImage(device, &ci, nullptr, &msaa_color_image.image);
+
+    VkMemoryRequirements reqs = {};
+    vkGetImageMemoryRequirements(device, msaa_color_image.image, &reqs);
+    msaa_color_image.memory_offset = gpu_image_memory_allocator.allocate_bytes(align(reqs.size, reqs.alignment));
+    vkBindImageMemory(device, msaa_color_image.image, memory_blocks.device_images, msaa_color_image.memory_offset);
+  }
+
+  {
+    VkImageCreateInfo ci = {
+        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType     = VK_IMAGE_TYPE_2D,
+        .format        = VK_FORMAT_D32_SFLOAT,
+        .extent        = {.width = extent2D.width, .height = extent2D.height, .depth = 1},
+        .mipLevels     = 1,
+        .arrayLayers   = 1,
+        .samples       = MSAA_SAMPLE_COUNT,
+        .tiling        = VK_IMAGE_TILING_OPTIMAL,
+        .usage         = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+
+    vkDestroyImage(device, depth_image.image, nullptr);
+    vkCreateImage(device, &ci, nullptr, &depth_image.image);
+
+    VkMemoryRequirements reqs = {};
+    vkGetImageMemoryRequirements(device, depth_image.image, &reqs);
+    depth_image.memory_offset = gpu_image_memory_allocator.allocate_bytes(align(reqs.size, reqs.alignment));
+    vkBindImageMemory(device, depth_image.image, memory_blocks.device_images, depth_image.memory_offset);
+  }
+
+  // image views can only be created when memory is bound to the image handle
+
+  if (VK_SAMPLE_COUNT_1_BIT != MSAA_SAMPLE_COUNT)
+  {
+    VkImageSubresourceRange sr = {
+        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .levelCount = 1,
+        .layerCount = 1,
+    };
+
+    VkComponentMapping comp = {
+        .r = VK_COMPONENT_SWIZZLE_R,
+        .g = VK_COMPONENT_SWIZZLE_G,
+        .b = VK_COMPONENT_SWIZZLE_B,
+        .a = VK_COMPONENT_SWIZZLE_A,
+    };
+
+    VkImageViewCreateInfo ci = {
+        .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image            = msaa_color_image.image,
+        .viewType         = VK_IMAGE_VIEW_TYPE_2D,
+        .format           = surface_format.format,
+        .components       = comp,
+        .subresourceRange = sr,
+    };
+
+    vkDestroyImageView(device, msaa_color_image.image_view, nullptr);
+    vkCreateImageView(device, &ci, nullptr, &msaa_color_image.image_view);
+  }
+
+  {
+    VkImageSubresourceRange sr = {
+        .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+        .levelCount = 1,
+        .layerCount = 1,
+    };
+
+    VkComponentMapping comp = {
+        .r = VK_COMPONENT_SWIZZLE_R,
+        .g = VK_COMPONENT_SWIZZLE_G,
+        .b = VK_COMPONENT_SWIZZLE_B,
+        .a = VK_COMPONENT_SWIZZLE_A,
+    };
+
+    VkImageViewCreateInfo ci = {
+        .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image            = depth_image.image,
+        .viewType         = VK_IMAGE_VIEW_TYPE_2D,
+        .format           = VK_FORMAT_D32_SFLOAT,
+        .components       = comp,
+        .subresourceRange = sr,
+    };
+
+    vkDestroyImageView(device, depth_image.image_view, nullptr);
+    vkCreateImageView(device, &ci, nullptr, &depth_image.image_view);
+  }
+
+  // transitioning depth image into correct layout
+  {
+    VkCommandBuffer cmd = VK_NULL_HANDLE;
+
+    {
+      VkCommandBufferAllocateInfo info = {
+          .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+          .commandPool        = graphics_command_pool,
+          .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+          .commandBufferCount = 1,
+      };
+      vkAllocateCommandBuffers(device, &info, &cmd);
+    }
+
+    {
+      VkCommandBufferBeginInfo info = {
+          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+          .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+      };
+      vkBeginCommandBuffer(cmd, &info);
+    }
+
+    {
+      VkImageMemoryBarrier barrier = {
+          // depth test attachment
+          .sType         = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+          .srcAccessMask = 0,
+          .dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+          .oldLayout     = VK_IMAGE_LAYOUT_UNDEFINED,
+          .newLayout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+          .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+          .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+          .image               = depth_image.image,
+          .subresourceRange =
+              {
+                  .aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT,
+                  .baseMipLevel   = 0,
+                  .levelCount     = 1,
+                  .baseArrayLayer = 0,
+                  .layerCount     = 1,
+              },
+      };
+
+      vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, 0, 0,
+                           nullptr, 0, nullptr, 1, &barrier);
+
+      vkEndCommandBuffer(cmd);
+
+      {
+        VkSubmitInfo info = {
+            .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .commandBufferCount = 1,
+            .pCommandBuffers    = &cmd,
+        };
+        vkQueueSubmit(graphics_queue, 1, &info, VK_NULL_HANDLE);
+        vkQueueWaitIdle(graphics_queue);
+      }
+
+      vkFreeCommandBuffers(device, graphics_command_pool, 1, &cmd);
+    }
+  }
+
+  setup_render_passes();
+  setup_framebuffers();
+  setup_pipeline_layouts();
+  setup_pipelines();
 }

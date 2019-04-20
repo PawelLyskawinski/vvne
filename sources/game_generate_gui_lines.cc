@@ -58,7 +58,7 @@ void generate_gui_lines(const GenerateGuiLinesCommand& cmd, vec2 dst[], uint32_t
 
   const float width               = 0.75f;
   const float height              = 1.0f;
-  const float offset_up           = 0.2f;
+  const float offset_up           = 0.20f;
   const float ruler_lid_length    = 0.05f;
   const float vertical_correction = 0.008f;
   const float tiny_line_offset    = 0.011f;
@@ -75,10 +75,10 @@ void generate_gui_lines(const GenerateGuiLinesCommand& cmd, vec2 dst[], uint32_t
   //////////////////////////////////////////////////////////////////////////////
   // GREEN - BIG
   //////////////////////////////////////////////////////////////////////////////
-  sink.push_offset(max_left_x, top_y, ruler_lid_length, 0.0f);
-  sink.push_offset(max_left_x, bottom_y, ruler_lid_length, 0.0f);
-  sink.push_offset(max_right_x, top_y, -ruler_lid_length, 0.0f);
-  sink.push_offset(max_right_x, bottom_y, -ruler_lid_length, 0.0f);
+  sink.push_offset(max_left_x, top_y-0.005f, ruler_lid_length, 0.0f);
+  sink.push_offset(max_left_x, bottom_y+0.005f, ruler_lid_length, 0.0f);
+  sink.push_offset(max_right_x, top_y-0.005f, -ruler_lid_length, 0.0f);
+  sink.push_offset(max_right_x, bottom_y+0.005f, -ruler_lid_length, 0.0f);
   green_counter.big = sink.reset_counter();
 
   //////////////////////////////////////////////////////////////////////////////

@@ -28,7 +28,7 @@ void skybox(Engine& engine)
 
   for (uint32_t i = 0; i < render_pass.framebuffers_count; ++i)
   {
-    VkImageView attachments_msaa[]    = {engine.swapchain_image_views[i], engine.msaa_color_image_view};
+    VkImageView attachments_msaa[]    = {engine.swapchain_image_views[i], engine.msaa_color_image.image_view};
     VkImageView attachments_no_msaa[] = {engine.swapchain_image_views[i]};
 
     VkFramebufferCreateInfo ci = {
@@ -60,10 +60,10 @@ void color_and_depth(Engine& engine)
 
   for (uint32_t i = 0; i < render_pass.framebuffers_count; ++i)
   {
-    VkImageView attachments_msaa[] = {engine.swapchain_image_views[i], engine.depth_image_view,
-                                      engine.msaa_color_image_view};
+    VkImageView attachments_msaa[] = {engine.swapchain_image_views[i], engine.depth_image.image_view,
+                                      engine.msaa_color_image.image_view};
 
-    VkImageView attachments_no_msaa[] = {engine.swapchain_image_views[i], engine.depth_image_view};
+    VkImageView attachments_no_msaa[] = {engine.swapchain_image_views[i], engine.depth_image.image_view};
 
     VkFramebufferCreateInfo ci = {
         .sType      = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
@@ -94,7 +94,7 @@ void gui(Engine& engine)
 
   for (uint32_t i = 0; i < render_pass.framebuffers_count; ++i)
   {
-    VkImageView attachments_msaa[]    = {engine.swapchain_image_views[i], engine.msaa_color_image_view};
+    VkImageView attachments_msaa[]    = {engine.swapchain_image_views[i], engine.msaa_color_image.image_view};
     VkImageView attachments_no_msaa[] = {engine.swapchain_image_views[i]};
 
     VkFramebufferCreateInfo ci = {

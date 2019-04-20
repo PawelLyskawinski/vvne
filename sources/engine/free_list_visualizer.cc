@@ -64,6 +64,7 @@ void free_list_visualize(const FreeListAllocator& allocator)
     {
       ImGui::SameLine(0.0f, 0.0f);
     }
+    // TODO This function can be used only once thanks to naming collisions.. fix it!
     SDL_snprintf(name_buffer, 128, "%s##%u", "free_list_visualize", counter++);
     ImGui::ColorButton(name_buffer,
                        (BlockType::FreeSpace == type) ? ImVec4(0.1f, 0.1f, 0.1f, 0.0f) : ImVec4(1.0f, 0.0f, 0.0f, 0.1f),

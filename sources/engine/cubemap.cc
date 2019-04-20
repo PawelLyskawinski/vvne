@@ -45,14 +45,12 @@ static VkExtent3D create_flat_extent(int size)
   };
 }
 
-static void allocate_memory(Engine* engine, VkImage image)
+static void allocate_memory(Engine* engine, Texture& t)
 {
   VkMemoryRequirements reqs = {};
-  vkGetImageMemoryRequirements(engine->device, image, &reqs);
-  vkBindImageMemory(engine->device, image, engine->memory_blocks.device_images.memory,
-                    engine->memory_blocks.device_images.stack_pointer);
-
-  engine->memory_blocks.device_images.stack_pointer += align(reqs.size, engine->memory_blocks.device_images.alignment);
+  vkGetImageMemoryRequirements(engine->device, t.image, &reqs);
+  t.memory_offset = engine->gpu_image_memory_allocator.allocate_bytes(align(reqs.size, reqs.alignment));
+  vkBindImageMemory(engine->device, t.image, engine->memory_blocks.device_images, t.memory_offset);
 }
 
 Texture generate_cubemap(Engine* engine, Game* game, const char* equirectangular_filepath, int desired_size[2])
@@ -62,7 +60,7 @@ Texture generate_cubemap(Engine* engine, Game* game, const char* equirectangular
   //////////////////////////////////////////////////////////////////////////////
   // Result cubemap image handle creation
   //////////////////////////////////////////////////////////////////////////////
-  VkImage cubemap_image = VK_NULL_HANDLE;
+  Texture result = {};
 
   {
     VkImageCreateInfo ci = {
@@ -80,15 +78,14 @@ Texture generate_cubemap(Engine* engine, Game* game, const char* equirectangular
         .initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED,
     };
 
-    vkCreateImage(engine->device, &ci, nullptr, &cubemap_image);
+    vkCreateImage(engine->device, &ci, nullptr, &result.image);
   }
 
-  allocate_memory(engine, cubemap_image);
+  allocate_memory(engine, result);
 
   //////////////////////////////////////////////////////////////////////////////
   // Image view containing all 6 cubemap layers
   //////////////////////////////////////////////////////////////////////////////
-  VkImageView cubemap_image_view = VK_NULL_HANDLE;
 
   {
     VkImageSubresourceRange sr = {
@@ -101,13 +98,13 @@ Texture generate_cubemap(Engine* engine, Game* game, const char* equirectangular
 
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = cubemap_image,
+        .image            = result.image,
         .viewType         = VK_IMAGE_VIEW_TYPE_CUBE,
         .format           = surface_format,
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(engine->device, &ci, nullptr, &cubemap_image_view);
+    vkCreateImageView(engine->device, &ci, nullptr, &result.image_view);
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -127,7 +124,7 @@ Texture generate_cubemap(Engine* engine, Game* game, const char* equirectangular
 
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = cubemap_image,
+        .image            = result.image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D,
         .format           = surface_format,
         .subresourceRange = sr,
@@ -139,9 +136,8 @@ Texture generate_cubemap(Engine* engine, Game* game, const char* equirectangular
   //////////////////////////////////////////////////////////////////////////////
   // Push image and image view handles to engine list
   //////////////////////////////////////////////////////////////////////////////
-  Texture result = {cubemap_image, cubemap_image_view};
-  engine->autoclean_images.push(cubemap_image);
-  engine->autoclean_image_views.push(cubemap_image_view);
+  engine->autoclean_images.push(result.image);
+  engine->autoclean_image_views.push(result.image_view);
 
   //////////////////////////////////////////////////////////////////////////////
   // Load 2D equirectangular image from file
@@ -584,7 +580,7 @@ Texture generate_irradiance_cubemap(Engine* engine, Game* game, Texture environm
   //////////////////////////////////////////////////////////////////////////////
   // Result cubemap image handle creation
   //////////////////////////////////////////////////////////////////////////////
-  VkImage cubemap_image = VK_NULL_HANDLE;
+  Texture result = {};
 
   {
     VkImageCreateInfo ci = {
@@ -602,15 +598,14 @@ Texture generate_irradiance_cubemap(Engine* engine, Game* game, Texture environm
         .initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED,
     };
 
-    vkCreateImage(engine->device, &ci, nullptr, &cubemap_image);
+    vkCreateImage(engine->device, &ci, nullptr, &result.image);
   }
 
-  allocate_memory(engine, cubemap_image);
+  allocate_memory(engine, result);
 
   //////////////////////////////////////////////////////////////////////////////
   // Image views creation
   //////////////////////////////////////////////////////////////////////////////
-  VkImageView cubemap_image_view = VK_NULL_HANDLE;
 
   {
     VkImageSubresourceRange sr = {
@@ -623,13 +618,13 @@ Texture generate_irradiance_cubemap(Engine* engine, Game* game, Texture environm
 
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = cubemap_image,
+        .image            = result.image,
         .viewType         = VK_IMAGE_VIEW_TYPE_CUBE,
         .format           = surface_format,
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(engine->device, &ci, nullptr, &cubemap_image_view);
+    vkCreateImageView(engine->device, &ci, nullptr, &result.image_view);
   }
 
   VkImageView cubemap_image_side_views[6];
@@ -646,7 +641,7 @@ Texture generate_irradiance_cubemap(Engine* engine, Game* game, Texture environm
 
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = cubemap_image,
+        .image            = result.image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D,
         .format           = surface_format,
         .subresourceRange = sr,
@@ -655,9 +650,8 @@ Texture generate_irradiance_cubemap(Engine* engine, Game* game, Texture environm
     vkCreateImageView(engine->device, &ci, nullptr, &cubemap_image_side_views[i]);
   }
 
-  Texture result = {cubemap_image, cubemap_image_view};
-  engine->autoclean_images.push(cubemap_image);
-  engine->autoclean_image_views.push(cubemap_image_view);
+  engine->autoclean_images.push(result.image);
+  engine->autoclean_image_views.push(result.image_view);
 
   VkRenderPass render_pass = VK_NULL_HANDLE;
 
@@ -1079,7 +1073,7 @@ Texture generate_prefiltered_cubemap(Engine* engine, Game* game, Texture environ
   //////////////////////////////////////////////////////////////////////////////
   // Result cubemap image handle creation
   //////////////////////////////////////////////////////////////////////////////
-  VkImage cubemap_image = VK_NULL_HANDLE;
+  Texture result = {};
 
   {
     VkImageCreateInfo ci = {
@@ -1097,16 +1091,14 @@ Texture generate_prefiltered_cubemap(Engine* engine, Game* game, Texture environ
         .initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED,
     };
 
-    vkCreateImage(engine->device, &ci, nullptr, &cubemap_image);
+    vkCreateImage(engine->device, &ci, nullptr, &result.image);
   }
 
-  allocate_memory(engine, cubemap_image);
+  allocate_memory(engine, result);
 
   //////////////////////////////////////////////////////////////////////////////
   // Image view creation
   //////////////////////////////////////////////////////////////////////////////
-  VkImageView cubemap_image_view = VK_NULL_HANDLE;
-
   {
     VkImageSubresourceRange sr = {
         .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -1118,13 +1110,13 @@ Texture generate_prefiltered_cubemap(Engine* engine, Game* game, Texture environ
 
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = cubemap_image,
+        .image            = result.image,
         .viewType         = VK_IMAGE_VIEW_TYPE_CUBE,
         .format           = surface_format,
         .subresourceRange = sr,
     };
 
-    vkCreateImageView(engine->device, &ci, nullptr, &cubemap_image_view);
+    vkCreateImageView(engine->device, &ci, nullptr, &result.image_view);
   }
 
   VkImageView cubemap_image_side_views[CUBE_SIDES * DESIRED_MIP_LEVELS];
@@ -1143,7 +1135,7 @@ Texture generate_prefiltered_cubemap(Engine* engine, Game* game, Texture environ
 
       VkImageViewCreateInfo ci = {
           .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-          .image            = cubemap_image,
+          .image            = result.image,
           .viewType         = VK_IMAGE_VIEW_TYPE_2D,
           .format           = surface_format,
           .subresourceRange = sr,
@@ -1153,9 +1145,8 @@ Texture generate_prefiltered_cubemap(Engine* engine, Game* game, Texture environ
     }
   }
 
-  Texture result = {cubemap_image, cubemap_image_view};
-  engine->autoclean_images.push(cubemap_image);
-  engine->autoclean_image_views.push(cubemap_image_view);
+  engine->autoclean_images.push(result.image);
+  engine->autoclean_image_views.push(result.image_view);
 
   VkRenderPass render_pass = VK_NULL_HANDLE;
 
@@ -1591,7 +1582,7 @@ Texture generate_prefiltered_cubemap(Engine* engine, Game* game, Texture environ
 
 Texture generate_brdf_lookup(Engine* engine, int size)
 {
-  VkImage brdf_image = VK_NULL_HANDLE;
+  Texture result = {};
 
   {
     VkImageCreateInfo info = {
@@ -1605,12 +1596,10 @@ Texture generate_brdf_lookup(Engine* engine, int size)
         .tiling      = VK_IMAGE_TILING_OPTIMAL,
         .usage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
     };
-    vkCreateImage(engine->device, &info, nullptr, &brdf_image);
+    vkCreateImage(engine->device, &info, nullptr, &result.image);
   }
 
-  allocate_memory(engine, brdf_image);
-
-  VkImageView brdf_image_view = VK_NULL_HANDLE;
+  allocate_memory(engine, result);
 
   {
     VkImageSubresourceRange range = {
@@ -1623,18 +1612,17 @@ Texture generate_brdf_lookup(Engine* engine, int size)
 
     VkImageViewCreateInfo info = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = brdf_image,
+        .image            = result.image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D,
         .format           = VK_FORMAT_R16G16_SFLOAT,
         .subresourceRange = range,
     };
 
-    vkCreateImageView(engine->device, &info, nullptr, &brdf_image_view);
+    vkCreateImageView(engine->device, &info, nullptr, &result.image_view);
   }
 
-  Texture result = {brdf_image, brdf_image_view};
-  engine->autoclean_images.push(brdf_image);
-  engine->autoclean_image_views.push(brdf_image_view);
+  engine->autoclean_images.push(result.image);
+  engine->autoclean_image_views.push(result.image_view);
 
   VkRenderPass render_pass = VK_NULL_HANDLE;
 
@@ -1702,7 +1690,7 @@ Texture generate_brdf_lookup(Engine* engine, int size)
         .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
         .renderPass      = render_pass,
         .attachmentCount = 1,
-        .pAttachments    = &brdf_image_view,
+        .pAttachments    = &result.image_view,
         .width           = static_cast<uint32_t>(size),
         .height          = static_cast<uint32_t>(size),
         .layers          = 1,
