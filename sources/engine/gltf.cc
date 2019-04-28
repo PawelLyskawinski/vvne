@@ -545,8 +545,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     {
       GpuMemoryBlock& block = engine.memory_blocks.host_visible_transfer_source;
-      host_buffer_offset    = block.stack_pointer;
-      block.stack_pointer += align(static_cast<VkDeviceSize>(total_upload_buffer_size), block.alignment);
+      host_buffer_offset    = block.allocator.allocate_bytes(align(static_cast<VkDeviceSize>(total_upload_buffer_size), block.alignment));
     }
 
     {
@@ -559,12 +558,8 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     {
       GpuMemoryBlock& block = engine.memory_blocks.device_local;
-
-      mesh.indices_offset = block.stack_pointer;
-      block.stack_pointer += align(static_cast<VkDeviceSize>(required_index_space), block.alignment);
-
-      mesh.vertices_offset = block.stack_pointer;
-      block.stack_pointer += align(static_cast<VkDeviceSize>(required_vertex_space), block.alignment);
+      mesh.indices_offset   = block.allocator.allocate_bytes(align(static_cast<VkDeviceSize>(required_index_space), block.alignment));
+      mesh.vertices_offset  = block.allocator.allocate_bytes(align(static_cast<VkDeviceSize>(required_vertex_space), block.alignment));
     }
 
     VkCommandBuffer cmd = VK_NULL_HANDLE;
@@ -657,7 +652,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
     vkDestroyFence(engine.device, data_upload_fence, nullptr);
     vkFreeCommandBuffers(engine.device, engine.graphics_command_pool, 1, &cmd);
 
-    engine.memory_blocks.host_visible_transfer_source.stack_pointer = 0;
+    engine.memory_blocks.host_visible_transfer_source.allocator.reset();
     engine.generic_allocator.free(upload_buffer, total_upload_buffer_size);
   }
 

@@ -25,8 +25,13 @@ VkBool32
 
 namespace {
 
-const uint32_t initial_window_width  = 1900u;
-const uint32_t initial_window_height = 1200u;
+const uint32_t initial_window_width                              = 1900;
+const uint32_t initial_window_height                             = 1200;
+const uint32_t gpu_device_local_memory_pool_size                 = 5_MB;
+const uint32_t gpu_host_visible_transfer_source_memory_pool_size = 5_MB;
+const uint32_t gpu_host_coherent_memory_pool_size                = 1_MB;
+const uint32_t gpu_device_local_image_memory_pool_size           = 500_MB;
+const uint32_t gpu_host_coherent_ubo_memory_pool_size            = 1_MB;
 
 uint32_t find_memory_type_index(VkPhysicalDeviceMemoryProperties* properties, VkMemoryRequirements* reqs,
                                 VkMemoryPropertyFlags searched)
@@ -431,7 +436,7 @@ void Engine::startup(bool vulkan_validation_enabled)
   {
     VkBufferCreateInfo ci = {
         .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size        = GPU_DEVICE_LOCAL_MEMORY_POOL_SIZE,
+        .size        = gpu_device_local_memory_pool_size,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
 
@@ -456,6 +461,7 @@ void Engine::startup(bool vulkan_validation_enabled)
         .memoryTypeIndex = find_memory_type_index(&properties, &reqs, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
     };
 
+    memory_blocks.device_local.allocator.init(reqs.size);
     vkAllocateMemory(device, &allocate, nullptr, &memory_blocks.device_local.memory);
     vkBindBufferMemory(device, gpu_device_local_memory_buffer, memory_blocks.device_local.memory, 0);
   }
@@ -464,7 +470,7 @@ void Engine::startup(bool vulkan_validation_enabled)
   {
     VkBufferCreateInfo ci = {
         .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size        = GPU_HOST_VISIBLE_TRANSFER_SOURCE_MEMORY_POOL_SIZE,
+        .size        = gpu_host_visible_transfer_source_memory_pool_size,
         .usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
@@ -487,6 +493,7 @@ void Engine::startup(bool vulkan_validation_enabled)
             &properties, &reqs, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
     };
 
+    memory_blocks.host_visible_transfer_source.allocator.init(reqs.size);
     vkAllocateMemory(device, &allocate, nullptr, &memory_blocks.host_visible_transfer_source.memory);
     vkBindBufferMemory(device, gpu_host_visible_transfer_source_memory_buffer,
                        memory_blocks.host_visible_transfer_source.memory, 0);
@@ -497,7 +504,7 @@ void Engine::startup(bool vulkan_validation_enabled)
   {
     VkBufferCreateInfo ci = {
         .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size        = GPU_HOST_COHERENT_MEMORY_POOL_SIZE,
+        .size        = gpu_host_coherent_memory_pool_size,
         .usage       = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
@@ -519,44 +526,48 @@ void Engine::startup(bool vulkan_validation_enabled)
         .memoryTypeIndex = find_memory_type_index(&properties, &reqs, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT),
     };
 
+    memory_blocks.host_coherent.allocator.init(reqs.size);
     vkAllocateMemory(device, &allocate, nullptr, &memory_blocks.host_coherent.memory);
     vkBindBufferMemory(device, gpu_host_coherent_memory_buffer, memory_blocks.host_coherent.memory, 0);
   }
 
   // IMAGES
   {
-    gpu_image_memory_allocator.init(GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE);
+    memory_blocks.device_images.allocator.init(gpu_device_local_image_memory_pool_size);
 
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(device, depth_image.image, &reqs);
-    depth_image.memory_offset = gpu_image_memory_allocator.allocate_bytes(align(reqs.size, reqs.alignment));
+    depth_image.memory_offset = memory_blocks.device_images.allocator.allocate_bytes(align(reqs.size, reqs.alignment));
 
     VkPhysicalDeviceMemoryProperties properties = {};
     vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
 
     VkMemoryAllocateInfo allocate = {
         .sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .allocationSize  = GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE,
+        .allocationSize  = gpu_device_local_image_memory_pool_size,
         .memoryTypeIndex = find_memory_type_index(&properties, &reqs, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
     };
 
-    vkAllocateMemory(device, &allocate, nullptr, &memory_blocks.device_images);
-    vkBindImageMemory(device, depth_image.image, memory_blocks.device_images, depth_image.memory_offset);
+    vkAllocateMemory(device, &allocate, nullptr, &memory_blocks.device_images.memory);
+    vkBindImageMemory(device, depth_image.image, memory_blocks.device_images.memory, depth_image.memory_offset);
   }
 
   if (VK_SAMPLE_COUNT_1_BIT != MSAA_SAMPLE_COUNT)
   {
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(device, msaa_color_image.image, &reqs);
-    msaa_color_image.memory_offset = gpu_image_memory_allocator.allocate_bytes(align(reqs.size, reqs.alignment));
-    vkBindImageMemory(device, msaa_color_image.image, memory_blocks.device_images, msaa_color_image.memory_offset);
+    msaa_color_image.memory_offset =
+        memory_blocks.device_images.allocator.allocate_bytes(align(reqs.size, reqs.alignment));
+    vkBindImageMemory(device, msaa_color_image.image, memory_blocks.device_images.memory,
+                      msaa_color_image.memory_offset);
   }
 
   {
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(device, shadowmap_image.image, &reqs);
-    shadowmap_image.memory_offset = gpu_image_memory_allocator.allocate_bytes(align(reqs.size, reqs.alignment));
-    vkBindImageMemory(device, shadowmap_image.image, memory_blocks.device_images, shadowmap_image.memory_offset);
+    shadowmap_image.memory_offset =
+        memory_blocks.device_images.allocator.allocate_bytes(align(reqs.size, reqs.alignment));
+    vkBindImageMemory(device, shadowmap_image.image, memory_blocks.device_images.memory, shadowmap_image.memory_offset);
   }
 
   // image views can only be created when memory is bound to the image handle
@@ -681,7 +692,7 @@ void Engine::startup(bool vulkan_validation_enabled)
   {
     VkBufferCreateInfo ci = {
         .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size        = GPU_HOST_COHERENT_UBO_MEMORY_POOL_SIZE,
+        .size        = gpu_host_coherent_ubo_memory_pool_size,
         .usage       = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
@@ -704,6 +715,7 @@ void Engine::startup(bool vulkan_validation_enabled)
             &properties, &reqs, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
     };
 
+    memory_blocks.host_coherent_ubo.allocator.init(reqs.size);
     vkAllocateMemory(device, &allocate, nullptr, &memory_blocks.host_coherent_ubo.memory);
     vkBindBufferMemory(device, gpu_host_coherent_ubo_memory_buffer, memory_blocks.host_coherent_ubo.memory, 0);
   }
@@ -1278,8 +1290,8 @@ Texture Engine::load_texture(SDL_Surface* surface, bool register_for_destruction
   {
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(device, result.image, &reqs);
-    result.memory_offset = gpu_image_memory_allocator.allocate_bytes(align(reqs.size, reqs.alignment));
-    vkBindImageMemory(device, result.image, memory_blocks.device_images, result.memory_offset);
+    result.memory_offset = memory_blocks.device_images.allocator.allocate_bytes(align(reqs.size, reqs.alignment));
+    vkBindImageMemory(device, result.image, memory_blocks.device_images.memory, result.memory_offset);
   }
 
   {
@@ -1597,7 +1609,7 @@ void MemoryBlocks::destroy(VkDevice device)
   auto destroy = [device](const GpuMemoryBlock& block) { vkFreeMemory(device, block.memory, nullptr); };
   destroy(device_local);
   destroy(host_visible_transfer_source);
-  vkFreeMemory(device, device_images, nullptr);
+  vkFreeMemory(device, device_images.memory, nullptr);
   destroy(host_coherent);
   destroy(host_coherent_ubo);
 }
@@ -1677,13 +1689,13 @@ void Engine::change_resolution(const VkExtent2D new_size)
   {
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(device, msaa_color_image.image, &reqs);
-    gpu_image_memory_allocator.free_bytes(msaa_color_image.memory_offset, align(reqs.size, reqs.alignment));
+    memory_blocks.device_images.allocator.free_bytes(msaa_color_image.memory_offset, align(reqs.size, reqs.alignment));
   }
 
   {
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(device, depth_image.image, &reqs);
-    gpu_image_memory_allocator.free_bytes(depth_image.memory_offset, align(reqs.size, reqs.alignment));
+    memory_blocks.device_images.allocator.free_bytes(depth_image.memory_offset, align(reqs.size, reqs.alignment));
   }
 
   if (VK_SAMPLE_COUNT_1_BIT != MSAA_SAMPLE_COUNT)
@@ -1707,8 +1719,10 @@ void Engine::change_resolution(const VkExtent2D new_size)
 
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(device, msaa_color_image.image, &reqs);
-    msaa_color_image.memory_offset = gpu_image_memory_allocator.allocate_bytes(align(reqs.size, reqs.alignment));
-    vkBindImageMemory(device, msaa_color_image.image, memory_blocks.device_images, msaa_color_image.memory_offset);
+    msaa_color_image.memory_offset =
+        memory_blocks.device_images.allocator.allocate_bytes(align(reqs.size, reqs.alignment));
+    vkBindImageMemory(device, msaa_color_image.image, memory_blocks.device_images.memory,
+                      msaa_color_image.memory_offset);
   }
 
   {
@@ -1731,8 +1745,8 @@ void Engine::change_resolution(const VkExtent2D new_size)
 
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(device, depth_image.image, &reqs);
-    depth_image.memory_offset = gpu_image_memory_allocator.allocate_bytes(align(reqs.size, reqs.alignment));
-    vkBindImageMemory(device, depth_image.image, memory_blocks.device_images, depth_image.memory_offset);
+    depth_image.memory_offset = memory_blocks.device_images.allocator.allocate_bytes(align(reqs.size, reqs.alignment));
+    vkBindImageMemory(device, depth_image.image, memory_blocks.device_images.memory, depth_image.memory_offset);
   }
 
   // image views can only be created when memory is bound to the image handle

@@ -12,13 +12,6 @@ constexpr float    to_rad(float deg) noexcept { return (float(M_PI) * deg) / 180
 constexpr float    to_deg(float rad) noexcept { return (180.0f * rad) / float(M_PI); }
 template <typename T> constexpr T clamp(T val, T min, T max) { return (val < min) ? min : (val > max) ? max : val; }
 
-constexpr uint32_t GPU_DEVICE_LOCAL_MEMORY_POOL_SIZE                 = 5_MB;
-constexpr uint32_t GPU_HOST_VISIBLE_TRANSFER_SOURCE_MEMORY_POOL_SIZE = 5_MB;
-constexpr uint32_t GPU_HOST_COHERENT_MEMORY_POOL_SIZE                = 1_MB;
-constexpr uint32_t GPU_DEVICE_LOCAL_IMAGE_MEMORY_POOL_SIZE           = 500_MB;
-constexpr uint32_t GPU_HOST_COHERENT_UBO_MEMORY_POOL_SIZE            = 1_MB;
-constexpr uint32_t HOST_PERMANENT_ALLOCATOR_POOL_SIZE                = 3_MB;
-constexpr uint32_t HOST_DIRTY_ALLOCATOR_POOL_SIZE                    = 5_MB;
 
 constexpr int SWAPCHAIN_IMAGES_COUNT  = 2;
 constexpr int SHADOWMAP_IMAGE_DIM     = 1024 * 2;
@@ -96,9 +89,9 @@ struct DescriptorSetLayouts
 
 struct GpuMemoryBlock
 {
-  VkDeviceMemory memory;
-  VkDeviceSize   alignment;
-  VkDeviceSize   stack_pointer;
+  VkDeviceMemory     memory;
+  VkDeviceSize       alignment;
+  GpuMemoryAllocator allocator;
 };
 
 struct MemoryBlocks
@@ -107,7 +100,7 @@ struct MemoryBlocks
 
   GpuMemoryBlock device_local;
   GpuMemoryBlock host_visible_transfer_source;
-  VkDeviceMemory device_images;
+  GpuMemoryBlock device_images;
   GpuMemoryBlock host_coherent;
   GpuMemoryBlock host_coherent_ubo;
 };
@@ -175,8 +168,7 @@ struct Engine
   RenderPasses         render_passes;
   Pipelines            pipelines;
 
-  GpuMemoryAllocator gpu_image_memory_allocator;
-  FreeListAllocator  generic_allocator;
+  FreeListAllocator generic_allocator;
 
   void           startup(bool vulkan_validation_enabled);
   void           teardown();

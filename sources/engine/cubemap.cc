@@ -49,8 +49,8 @@ static void allocate_memory(Engine* engine, Texture& t)
 {
   VkMemoryRequirements reqs = {};
   vkGetImageMemoryRequirements(engine->device, t.image, &reqs);
-  t.memory_offset = engine->gpu_image_memory_allocator.allocate_bytes(align(reqs.size, reqs.alignment));
-  vkBindImageMemory(engine->device, t.image, engine->memory_blocks.device_images, t.memory_offset);
+  t.memory_offset = engine->memory_blocks.device_images.allocator.allocate_bytes(align(reqs.size, reqs.alignment));
+  vkBindImageMemory(engine->device, t.image, engine->memory_blocks.device_images.memory, t.memory_offset);
 }
 
 Texture generate_cubemap(Engine* engine, Game* game, const char* equirectangular_filepath, int desired_size[2])

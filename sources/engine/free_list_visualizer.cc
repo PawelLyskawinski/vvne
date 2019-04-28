@@ -71,7 +71,6 @@ void free_list_visualize(const FreeListAllocator& allocator)
                        ImGuiColorEditFlags_NoTooltip, ImVec2(length, 20));
   };
 
-  ImGui::Text("general purpose allocator (%uMB pool)", max_size / (1024u * 1024u));
   const FreeListAllocator::Node* current = allocator.head.next;
   if (nullptr == current)
   {

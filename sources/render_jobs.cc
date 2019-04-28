@@ -631,7 +631,7 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
           .character_data        = tjd.game.lucida_sans_sdf_chars,
           .characters_pool_count = SDL_arraysize(tjd.game.lucida_sans_sdf_char_ids),
           .texture_size          = {512, 256},
-          .scaling               = 220.0f, // tjd.game.DEBUG_VEC2[0],
+          .scaling               = tjd.engine.extent2D.height / 4.1f,
           .position =
               {
                   line_to_pixel_length(0.48f,

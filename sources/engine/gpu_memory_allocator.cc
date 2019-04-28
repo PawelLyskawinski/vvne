@@ -5,11 +5,18 @@
 
 void GpuMemoryAllocator::init(VkDeviceSize max_size)
 {
+  this->max_size  = max_size;
+  reset();
+}
+
+void GpuMemoryAllocator::reset()
+{
   nodes_count     = 1;
   nodes[0].offset = 0;
   nodes[0].size   = max_size;
-  this->max_size  = max_size;
 }
+
+namespace {
 
 class DestructorPrinter
 {
@@ -25,6 +32,8 @@ private:
   const char* m_issuer;
   uint32_t&   m_observed;
 };
+
+} // namespace
 
 VkDeviceSize GpuMemoryAllocator::allocate_bytes(VkDeviceSize size)
 {
@@ -56,7 +65,7 @@ VkDeviceSize GpuMemoryAllocator::allocate_bytes(VkDeviceSize size)
 
 void GpuMemoryAllocator::free_bytes(VkDeviceSize offset, VkDeviceSize size)
 {
-  //DestructorPrinter p(__FUNCTION__, nodes_count);
+  // DestructorPrinter p(__FUNCTION__, nodes_count);
 
   // basically a sorted container insertion problem
   const Node insertion = {offset, size};
