@@ -4,8 +4,9 @@ layout(push_constant) uniform PushConst
 {
   mat4  projection;
   mat4  view;
-  mat4  model;
+  vec3  cam_pos;
   float adjustment;
+  float time;
 }
 push_const;
 
@@ -33,7 +34,7 @@ float screenSpaceTessFactor(vec4 p0, vec4 p1)
   float radius = distance(p0, p1) / 0.5;
 
   // View space
-  vec4 v0 = push_const.view * push_const.model * midPoint;
+  vec4 v0 = push_const.view * midPoint;
 
   // Project into clip space
   vec4 clip0 = (push_const.projection * (v0 - vec4(radius, vec3(0.0))));

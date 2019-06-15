@@ -272,7 +272,7 @@ void helmet_job(ThreadJobData tjd)
 
   Operation ops[] = {
       // clang-format off
-      { .translation         = { Operation::Type::Translation,        {0.0f, 3.0f, 0.0f} } },
+      { .translation         = { Operation::Type::Translation,        {0.0f, 6.0f, 0.0f} } },
       { .quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(180.0), {1.0f, 0.0f, 0.0f} }                            },
       { .scale               = { Operation::Type::Scale,              {1.6f, 1.6f, 1.6f} }                                           },
       // clang-format on
@@ -300,11 +300,11 @@ void robot_job(ThreadJobData tjd)
   // standing pose, rotate back, camera, movement tilts
   Operation quat_ops[] = {
       // clang-format off
-      { .quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(180.0),                                                                                    {1.0f, 0.0f, 0.0f} } },
+      { .quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(180.0),                                                                                      {1.0f, 0.0f, 0.0f} } },
       { .quaternion_rotation = { Operation::Type::QuaternionRotation, ctx->game->player.position.x < ctx->game->player.camera_position.x ? to_rad(180.0f) : to_rad(0.0f), {0.0f, 1.0f, 0.0f} } },
-      { .quaternion_rotation = { Operation::Type::QuaternionRotation, static_cast<float>(SDL_atan(z_delta / x_delta)),                                                  {0.0f, 1.0f, 0.0f} } },
-      { .quaternion_rotation = { Operation::Type::QuaternionRotation,  8.0f * corrected_velocity_vector[0],                                                             {1.0f, 0.0f, 0.0f} } },
-      { .quaternion_rotation = { Operation::Type::QuaternionRotation, -8.0f * corrected_velocity_vector[1],                                                             {0.0f, 0.0f, 1.0f} } },
+      { .quaternion_rotation = { Operation::Type::QuaternionRotation, static_cast<float>(SDL_atan(z_delta / x_delta)),                                                    {0.0f, 1.0f, 0.0f} } },
+      { .quaternion_rotation = { Operation::Type::QuaternionRotation,  8.0f * corrected_velocity_vector[0],                                                               {1.0f, 0.0f, 0.0f} } },
+      { .quaternion_rotation = { Operation::Type::QuaternionRotation, -8.0f * corrected_velocity_vector[1],                                                               {0.0f, 0.0f, 1.0f} } },
       // clang-format on
   };
 
@@ -331,7 +331,7 @@ void monster_job(ThreadJobData tjd)
 
   Operation ops[] = {
       // clang-format off
-      { .translation         = { Operation::Type::Translation,        {-2.0f, 3.5f, 0.5f} }              },
+      { .translation         = { Operation::Type::Translation,        {-2.0f, 6.5f, 0.5f} }              },
       { .quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(45.0), {1.0f, 0.0f, 0.0f} } },
       { .scale               = { Operation::Type::Scale,              {0.025f, 0.025f, 0.025f} }         },
       // clang-format on
@@ -352,7 +352,7 @@ void rigged_simple_job(ThreadJobData tjd)
 
   Operation ops[] = {
       // clang-format off
-      { .translation         = { Operation::Type::Translation,        {-2.0f, 3.0f, 3.0f} } },
+      { .translation         = { Operation::Type::Translation,        {-2.0f, 6.0f, 3.0f} } },
       { .quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(45.0), {1.0f, 0.0f, 0.0f} }                                                        },
       { .scale               = { Operation::Type::Scale,              {0.5f, 0.5f, 0.5f} }                                                                      },
       // clang-format on
@@ -418,7 +418,7 @@ void matrioshka_job(ThreadJobData tjd)
 
   Operation ops[] = {
       // clang-format off
-      { .translation = { Operation::Type::Translation, {-2.0f, 3.0f, 3.0f} } },
+      { .translation = { Operation::Type::Translation, {-2.0f, 6.0f, 3.0f} } },
       { .quaternion  = { Operation::Type::Quaternion,  {orientation[0],orientation[1], orientation[2], orientation[3]} }                      },
       // clang-format on
   };

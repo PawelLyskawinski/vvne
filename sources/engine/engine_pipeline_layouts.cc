@@ -440,7 +440,7 @@ void tesselated_ground(Engine& engine)
       {
           .stageFlags = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
           .offset     = 0,
-          .size       = 3 * sizeof(mat4x4) + 2 * sizeof(float) + sizeof(vec3),
+          .size       = 2 * sizeof(mat4x4) + 2 * sizeof(float) + sizeof(vec3),
       },
   };
 

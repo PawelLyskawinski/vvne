@@ -1734,16 +1734,16 @@ void water(ThreadJobData tjd)
 
   mat4x4 scale_matrix = {};
   mat4x4_identity(scale_matrix);
-  mat4x4_scale_aniso(scale_matrix, scale_matrix, 10.0f, 10.0f, 1.0f);
+  mat4x4_scale_aniso(scale_matrix, scale_matrix, 20.0f, 20.0f, 1.0f);
 
   for (int x = 0; x < 3; ++x)
   {
     for (int y = 0; y < 3; ++y)
     {
       mat4x4 translation_matrix = {};
-      mat4x4_translate(translation_matrix, 20.0f * x - 20.0f,
-                       4.5f, // + 0.02f * SDL_sinf(ctx->game->current_time_sec),
-                       20.0f * y - 20.0f);
+      mat4x4_translate(translation_matrix, 40.0f * x - 40.0f,
+                       10.5f + 0.02f * SDL_sinf(ctx->game->current_time_sec),
+                       40.0f * y - 40.0f);
 
       mat4x4 tmp = {};
       mat4x4_mul(tmp, translation_matrix, rotation_matrix);
@@ -1898,28 +1898,25 @@ void tesselated_ground(ThreadJobData tjd)
 
   struct PushConst
   {
-    PushConst(Game& game, const Mat4x4& model)
+    explicit PushConst(Game& game)
         : projection(game.player.camera_projection)
         , view(game.player.camera_view)
-        , model(model)
+        , camera_position(game.player.camera_position)
         , adjustment(game.DEBUG_VEC2[0])
         , time(game.current_time_sec)
-        , camera_position(game.player.camera_position)
     {
     }
 
     Mat4x4 projection;
     Mat4x4 view;
-    Mat4x4 model;
+    Vec3   camera_position;
     float  adjustment;
     float  time;
-    Vec3   camera_position;
   };
 
-  Mat4x4 translation;
-  translation.identity();
 
-  PushConst pc(*ctx->game, translation);
+  PushConst pc(*ctx->game);
+
   vkCmdPushConstants(command, ctx->engine->pipelines.tesselated_ground.layout,
                      VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT |
                          VK_SHADER_STAGE_FRAGMENT_BIT,

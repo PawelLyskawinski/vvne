@@ -12,14 +12,12 @@ const mat4 bias_mat = mat4(0.5, 0.0, 0.0, 0.0, //
 layout(constant_id = 0) const int SHADOW_MAP_CASCADE_COUNT = 4;
 
 layout(push_constant) uniform PushConst
-
 {
   mat4  projection;
   mat4  view;
-  mat4  model;
+  vec3  cam_pos;
   float adjustment;
   float time;
-  vec3  cam_pos;
 }
 transformation;
 

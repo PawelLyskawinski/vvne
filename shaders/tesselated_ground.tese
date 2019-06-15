@@ -4,8 +4,9 @@ layout(push_constant) uniform PushConst
 {
   mat4  projection;
   mat4  view;
-  mat4  model;
+  vec3  cam_pos;
   float adjustment;
+  float time;
 }
 push_const;
 
@@ -44,10 +45,10 @@ void main()
   // pos.z = -1.5f * (cos(pos.x) + cos(pos.y));
   // pos.y -= textureLod(displacementMap, outUV, 0.0).r * ubo.displacementFactor;
 
-  // Perspective projection
-  gl_Position = push_const.projection * push_const.view * push_const.model * pos;
+  gl_Position = push_const.projection * push_const.view  * pos;
+ // outWorldPos = gl_Position.xyz;
 
   // Calculate vectors for lighting based on tessellated position
-  outWorldPos = vec3(push_const.model * pos);
+  outWorldPos = pos.xyz;
   outViewPos  = pos.xyz;
 }
