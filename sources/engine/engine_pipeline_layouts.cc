@@ -422,7 +422,7 @@ void colored_model_wireframe(Engine& engine)
           .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
           .offset     = sizeof(mat4x4),
           .size       = sizeof(vec3),
-      }
+      },
   };
 
   VkPipelineLayoutCreateInfo ci = {
@@ -432,6 +432,36 @@ void colored_model_wireframe(Engine& engine)
   };
 
   vkCreatePipelineLayout(engine.device, &ci, nullptr, &engine.pipelines.colored_model_wireframe.layout);
+}
+
+void tesselated_ground(Engine& engine)
+{
+  VkPushConstantRange ranges[] = {
+      {
+          .stageFlags = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+          .offset     = 0,
+          .size       = 3 * sizeof(mat4x4) + 2 * sizeof(float) + sizeof(vec3),
+      },
+  };
+
+  VkDescriptorSetLayout descriptor_sets[] = {
+      engine.descriptor_set_layouts.frustum_planes, //
+      engine.descriptor_set_layouts.pbr_metallic_workflow_material,
+      engine.descriptor_set_layouts.pbr_ibl_cubemaps_and_brdf_lut,
+      engine.descriptor_set_layouts.single_texture_in_frag,
+      engine.descriptor_set_layouts.pbr_dynamic_lights,
+      engine.descriptor_set_layouts.cascade_shadow_map_matrices_ubo_frag,
+  };
+
+  VkPipelineLayoutCreateInfo ci = {
+      .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+      .setLayoutCount         = SDL_arraysize(descriptor_sets),
+      .pSetLayouts            = descriptor_sets,
+      .pushConstantRangeCount = SDL_arraysize(ranges),
+      .pPushConstantRanges    = ranges,
+  };
+
+  vkCreatePipelineLayout(engine.device, &ci, nullptr, &engine.pipelines.tesselated_ground.layout);
 }
 
 } // namespace
@@ -455,4 +485,5 @@ void Engine::setup_pipeline_layouts()
   imgui(*this);
   debug_shadowmap_billboard(*this);
   colored_model_wireframe(*this);
+  tesselated_ground(*this);
 }

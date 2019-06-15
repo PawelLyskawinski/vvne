@@ -13,6 +13,7 @@ include_directories(C:/Users/plyskawinski/Downloads/MinGW/include
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libstdc++ -static-libgcc")
 set(SDL_LIBRARY    ${CMAKE_CURRENT_LIST_DIR}/bin/SDL2.dll)
 set(VULKAN_LIBRARY C:/Windows/System32/vulkan-1.dll)
+# set(VULKAN_LIBRARY ${CMAKE_CURRENT_LIST_DIR}/bin/vulkan-1.dll)
 else()
 include_directories(/usr/include/
                     ${CMAKE_CURRENT_LIST_DIR}/thirdparty)
@@ -39,6 +40,7 @@ set(SOURCES
         sources/engine/free_list_visualizer.cc
         sources/engine/gpu_memory_allocator.cc
         sources/engine/gpu_memory_visualizer.cc
+        sources/engine/job_system.cc
         sources/game.cc
         sources/game_generate_gui_lines.cc
         sources/game_generate_sdf_font.cc
@@ -48,6 +50,13 @@ set(SOURCES
         sources/render_jobs.cc
         sources/update_jobs.cc
         sources/SimpleEntity.cc
+        sources/player.cc
+        sources/terrain_as_a_function.cc
+        sources/profiler.cc
+        sources/profiler_visualizer.cc
+        sources/levels/example_level.cc
+        sources/materials.cc
+        sources/debug_gui.cc
         thirdparty/imgui.cpp
         thirdparty/imgui_draw.cpp
         thirdparty/imgui_widgets.cpp

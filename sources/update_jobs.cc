@@ -267,9 +267,12 @@ namespace update {
 
 void helmet_job(ThreadJobData tjd)
 {
+  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
+  ScopedPerfEvent perf_event(ctx->game->update_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+
   Operation ops[] = {
       // clang-format off
-      { .translation         = { Operation::Type::Translation,        {tjd.game.vr_level_goal[0], 3.0f, tjd.game.vr_level_goal[1]} } },
+      { .translation         = { Operation::Type::Translation,        {0.0f, 3.0f, 0.0f} } },
       { .quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(180.0), {1.0f, 0.0f, 0.0f} }                            },
       { .scale               = { Operation::Type::Scale,              {1.6f, 1.6f, 1.6f} }                                           },
       // clang-format on
@@ -277,28 +280,31 @@ void helmet_job(ThreadJobData tjd)
 
   mat4x4 world_transform;
   calculate_matrix(world_transform, ops, SDL_arraysize(ops));
-  tjd.game.helmet_entity.recalculate_node_transforms(tjd.game.helmet, world_transform);
+  ctx->game->helmet_entity.recalculate_node_transforms(ctx->game->materials.helmet, world_transform);
 }
 
 void robot_job(ThreadJobData tjd)
 {
-  float x_delta                   = tjd.game.player_position[0] - tjd.game.cameras.gameplay.position[0];
-  float z_delta                   = tjd.game.player_position[2] - tjd.game.cameras.gameplay.position[2];
-  vec2  velocity_vector           = {tjd.game.player_velocity[0], tjd.game.player_velocity[2]};
+  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
+  ScopedPerfEvent perf_event(ctx->game->update_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+
+  float x_delta                   = ctx->game->player.position.x - ctx->game->player.camera_position.x;
+  float z_delta                   = ctx->game->player.position.z - ctx->game->player.camera_position.z;
+  vec2  velocity_vector           = {ctx->game->player.velocity.x, ctx->game->player.velocity.z};
   float velocity_length           = vec2_len(velocity_vector);
   float velocity_angle            = SDL_atan2f(velocity_vector[0], velocity_vector[1]);
-  float relative_velocity_angle   = tjd.game.camera_angle - velocity_angle;
+  float relative_velocity_angle   = ctx->game->player.camera_angle - velocity_angle;
   vec2  corrected_velocity_vector = {velocity_length * SDL_cosf(relative_velocity_angle),
                                     velocity_length * SDL_sinf(relative_velocity_angle)};
 
   // standing pose, rotate back, camera, movement tilts
   Operation quat_ops[] = {
       // clang-format off
-      { .quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(180.0),                                                                                       {1.0f, 0.0f, 0.0f} } },
-      { .quaternion_rotation = { Operation::Type::QuaternionRotation, tjd.game.player_position[0] < tjd.game.cameras.gameplay.position[0] ? to_rad(180.0f) : to_rad(0.0f), {0.0f, 1.0f, 0.0f} } },
-      { .quaternion_rotation = { Operation::Type::QuaternionRotation, static_cast<float>(SDL_atan(z_delta / x_delta)),                                                     {0.0f, 1.0f, 0.0f} } },
-      { .quaternion_rotation = { Operation::Type::QuaternionRotation,  8.0f * corrected_velocity_vector[0],                                                                {1.0f, 0.0f, 0.0f} } },
-      { .quaternion_rotation = { Operation::Type::QuaternionRotation, -8.0f * corrected_velocity_vector[1],                                                                {0.0f, 0.0f, 1.0f} } },
+      { .quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(180.0),                                                                                    {1.0f, 0.0f, 0.0f} } },
+      { .quaternion_rotation = { Operation::Type::QuaternionRotation, ctx->game->player.position.x < ctx->game->player.camera_position.x ? to_rad(180.0f) : to_rad(0.0f), {0.0f, 1.0f, 0.0f} } },
+      { .quaternion_rotation = { Operation::Type::QuaternionRotation, static_cast<float>(SDL_atan(z_delta / x_delta)),                                                  {0.0f, 1.0f, 0.0f} } },
+      { .quaternion_rotation = { Operation::Type::QuaternionRotation,  8.0f * corrected_velocity_vector[0],                                                             {1.0f, 0.0f, 0.0f} } },
+      { .quaternion_rotation = { Operation::Type::QuaternionRotation, -8.0f * corrected_velocity_vector[1],                                                             {0.0f, 0.0f, 1.0f} } },
       // clang-format on
   };
 
@@ -307,7 +313,7 @@ void robot_job(ThreadJobData tjd)
 
   Operation ops[] = {
       // clang-format off
-      { .translation         = { Operation::Type::Translation, {tjd.game.player_position[0], tjd.game.player_position[1] - 1.0f, tjd.game.player_position[2]} } },
+      { .translation         = { Operation::Type::Translation, {ctx->game->player.position.x, ctx->game->player.position.y - 1.0f, ctx->game->player.position.z} } },
       { .quaternion          = { Operation::Type::Quaternion,  {orientation[0], orientation[1], orientation[2], orientation[3]} }                               },
       { .scale               = { Operation::Type::Scale,       {0.5f, 0.5f, 0.5f} }                                                                             },
       // clang-format on
@@ -315,12 +321,13 @@ void robot_job(ThreadJobData tjd)
 
   mat4x4 world_transform;
   calculate_matrix(world_transform, ops, SDL_arraysize(ops));
-  tjd.game.robot_entity.recalculate_node_transforms(tjd.game.robot, world_transform);
+  ctx->game->robot_entity.recalculate_node_transforms(ctx->game->materials.robot, world_transform);
 }
 
 void monster_job(ThreadJobData tjd)
 {
-  const float factor = 0.025f;
+  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
+  ScopedPerfEvent perf_event(ctx->game->update_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
 
   Operation ops[] = {
       // clang-format off
@@ -333,12 +340,16 @@ void monster_job(ThreadJobData tjd)
   mat4x4 world_transform;
   calculate_matrix(world_transform, ops, SDL_arraysize(ops));
 
-  animate_entity(tjd.game.monster_entity, tjd.engine.generic_allocator, tjd.game.monster, tjd.game.current_time_sec);
-  tjd.game.monster_entity.recalculate_node_transforms(tjd.game.monster, world_transform);
+  animate_entity(ctx->game->monster_entity, ctx->engine->generic_allocator, ctx->game->materials.monster,
+                 ctx->game->current_time_sec);
+  ctx->game->monster_entity.recalculate_node_transforms(ctx->game->materials.monster, world_transform);
 }
 
 void rigged_simple_job(ThreadJobData tjd)
 {
+  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
+  ScopedPerfEvent perf_event(ctx->game->update_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+
   Operation ops[] = {
       // clang-format off
       { .translation         = { Operation::Type::Translation,        {-2.0f, 3.0f, 3.0f} } },
@@ -350,27 +361,30 @@ void rigged_simple_job(ThreadJobData tjd)
   mat4x4 world_transform;
   calculate_matrix(world_transform, ops, SDL_arraysize(ops));
 
-  animate_entity(tjd.game.rigged_simple_entity, tjd.engine.generic_allocator, tjd.game.riggedSimple,
-                 tjd.game.current_time_sec);
-  tjd.game.rigged_simple_entity.recalculate_node_transforms(tjd.game.riggedSimple, world_transform);
+  animate_entity(ctx->game->rigged_simple_entity, ctx->engine->generic_allocator, ctx->game->materials.riggedSimple,
+                 ctx->game->current_time_sec);
+  ctx->game->rigged_simple_entity.recalculate_node_transforms(ctx->game->materials.riggedSimple, world_transform);
 }
 
 void moving_lights_job(ThreadJobData tjd)
 {
-  for (int i = 0; i < tjd.game.pbr_light_sources_cache.count; ++i)
+  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
+  ScopedPerfEvent perf_event(ctx->game->update_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+
+  for (int i = 0; i < ctx->game->materials.pbr_light_sources_cache.count; ++i)
   {
     Operation quat_ops[] = {
         // clang-format off
-        {.quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(100.0f * tjd.game.current_time_sec), {0.0f, 0.0f, 1.0f} } },
-        {.quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(280.0f * tjd.game.current_time_sec), {0.0f, 1.0f, 0.0f} } },
-        {.quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(60.0f * tjd.game.current_time_sec),  {1.0f, 0.0f, 0.0f} } },
+        {.quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(100.0f * ctx->game->current_time_sec), {0.0f, 0.0f, 1.0f} } },
+        {.quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(280.0f * ctx->game->current_time_sec), {0.0f, 1.0f, 0.0f} } },
+        {.quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(60.0f * ctx->game->current_time_sec),  {1.0f, 0.0f, 0.0f} } },
         // clang-format on
     };
 
     quat orientation;
     calculate_quat(orientation, quat_ops, SDL_arraysize(quat_ops));
 
-    float* position = tjd.game.pbr_light_sources_cache.positions[i];
+    float* position = &ctx->game->materials.pbr_light_sources_cache.positions[i].x;
 
     Operation ops[] = {
         // clang-format off
@@ -382,17 +396,20 @@ void moving_lights_job(ThreadJobData tjd)
 
     mat4x4 world_transform;
     calculate_matrix(world_transform, ops, SDL_arraysize(ops));
-    tjd.game.box_entities[i].recalculate_node_transforms(tjd.game.box, world_transform);
+    ctx->game->box_entities[i].recalculate_node_transforms(ctx->game->materials.box, world_transform);
   }
 }
 
 void matrioshka_job(ThreadJobData tjd)
 {
+  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
+  ScopedPerfEvent perf_event(ctx->game->update_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+
   Operation quat_ops[] = {
       // clang-format off
-      {.quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(90.0f * tjd.game.current_time_sec / 90.0f), {0.0f, 0.0f, 1.0f} }  },
-      {.quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(140.0f * tjd.game.current_time_sec / 30.0f), {0.0f, 1.0f, 0.0f} } },
-      {.quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(90.0f * tjd.game.current_time_sec / 20.0f),  {1.0f, 0.0f, 0.0f} } },
+      {.quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(90.0f * ctx->game->current_time_sec / 90.0f), {0.0f, 0.0f, 1.0f} }  },
+      {.quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(140.0f * ctx->game->current_time_sec / 30.0f), {0.0f, 1.0f, 0.0f} } },
+      {.quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(90.0f * ctx->game->current_time_sec / 20.0f),  {1.0f, 0.0f, 0.0f} } },
       // clang-format on
   };
 
@@ -409,27 +426,30 @@ void matrioshka_job(ThreadJobData tjd)
   mat4x4 world_transform;
   calculate_matrix(world_transform, ops, SDL_arraysize(ops));
 
-  animate_entity(tjd.game.matrioshka_entity, tjd.engine.generic_allocator, tjd.game.animatedBox,
-                 tjd.game.current_time_sec);
-  tjd.game.matrioshka_entity.recalculate_node_transforms(tjd.game.animatedBox, world_transform);
+  animate_entity(ctx->game->matrioshka_entity, ctx->engine->generic_allocator, ctx->game->materials.animatedBox,
+                 ctx->game->current_time_sec);
+  ctx->game->matrioshka_entity.recalculate_node_transforms(ctx->game->materials.animatedBox, world_transform);
 }
 
 void orientation_axis_job(ThreadJobData tjd)
 {
+  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
+  ScopedPerfEvent perf_event(ctx->game->update_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+
   const float translation_offset = 2.0f;
   float       rotations[]        = {-to_rad(90.0f), -to_rad(90.0f), to_rad(180.0f)};
   vec3        axis[]             = {{0.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}};
-  vec3        trans_offsets[]    = {
-      {translation_offset, 0.0f, 0.0f}, {0.0f, -translation_offset, 0.0f}, {0.0f, 0.0f, translation_offset}};
+
+  Vec3 trans_offsets[] = {Vec3(translation_offset, 0.0f, 0.0f), Vec3(0.0f, -translation_offset, 0.0f),
+                          Vec3(0.0f, 0.0f, translation_offset)};
 
   for (int i = 0; i < 3; ++i)
   {
-    vec3 trans;
-    vec3_add(trans, tjd.game.player_position, trans_offsets[i]);
+    Vec3 trans = ctx->game->player.position + trans_offsets[i];
 
     Operation ops[] = {
         // clang-format off
-        { .translation          = { Operation::Type::Translation,        {trans[0], trans[1], trans[2]} }                     },
+        { .translation          = { Operation::Type::Translation,        {trans.x, trans.y, trans.z} }                     },
         { .quaternion_rotation  = { Operation::Type::QuaternionRotation, rotations[i], {axis[i][0], axis[i][1], axis[i][2]} } },
         { .scale                = { Operation::Type::Scale,              {1.0f, 1.0f, 0.5f} },                                },
         // clang-format on
@@ -437,7 +457,7 @@ void orientation_axis_job(ThreadJobData tjd)
 
     mat4x4 world_transform;
     calculate_matrix(world_transform, ops, SDL_arraysize(ops));
-    tjd.game.axis_arrow_entities[i].recalculate_node_transforms(tjd.game.lil_arrow, world_transform);
+    ctx->game->axis_arrow_entities[i].recalculate_node_transforms(ctx->game->materials.lil_arrow, world_transform);
   }
 }
 

@@ -1,5 +1,5 @@
 #include "cubemap.hh"
-#include "../game.hh"
+#include "../materials.hh"
 #include "engine.hh"
 #include <SDL2/SDL_log.h>
 
@@ -53,7 +53,7 @@ static void allocate_memory(Engine* engine, Texture& t)
   vkBindImageMemory(engine->device, t.image, engine->memory_blocks.device_images.memory, t.memory_offset);
 }
 
-Texture generate_cubemap(Engine* engine, Game* game, const char* equirectangular_filepath, int desired_size[2])
+Texture generate_cubemap(Engine* engine, Materials* materials, const char* equirectangular_filepath, int desired_size[2])
 {
   const VkFormat surface_format = engine->surface_format.format;
 
@@ -517,8 +517,8 @@ Texture generate_cubemap(Engine* engine, Game* game, const char* equirectangular
       vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[i]);
       vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
 
-      const Node& node = game->box.nodes.data[1];
-      Mesh&       mesh = game->box.meshes.data[node.mesh];
+      const Node& node = materials->box.nodes.data[1];
+      Mesh&       mesh = materials->box.meshes.data[node.mesh];
 
       vkCmdBindIndexBuffer(cmd, engine->gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(cmd, 0, 1, &engine->gpu_device_local_memory_buffer, &mesh.vertices_offset);
@@ -573,7 +573,7 @@ Texture generate_cubemap(Engine* engine, Game* game, const char* equirectangular
   return result;
 }
 
-Texture generate_irradiance_cubemap(Engine* engine, Game* game, Texture environment_cubemap_idx, int desired_size[2])
+Texture generate_irradiance_cubemap(Engine* engine, Materials* materials, Texture environment_cubemap_idx, int desired_size[2])
 {
   const VkFormat surface_format = engine->surface_format.format;
 
@@ -1011,8 +1011,8 @@ Texture generate_irradiance_cubemap(Engine* engine, Game* game, Texture environm
       vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set, 0, nullptr);
       vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
 
-      const Node& node = game->box.nodes.data[1];
-      Mesh&       mesh = game->box.meshes.data[node.mesh];
+      const Node& node = materials->box.nodes.data[1];
+      Mesh&       mesh = materials->box.meshes.data[node.mesh];
 
       vkCmdBindIndexBuffer(cmd, engine->gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(cmd, 0, 1, &engine->gpu_device_local_memory_buffer, &mesh.vertices_offset);
@@ -1063,7 +1063,7 @@ Texture generate_irradiance_cubemap(Engine* engine, Game* game, Texture environm
   return result;
 }
 
-Texture generate_prefiltered_cubemap(Engine* engine, Game* game, Texture environment_cubemap_idx, int desired_size[2])
+Texture generate_prefiltered_cubemap(Engine* engine, Materials* materials, Texture environment_cubemap_idx, int desired_size[2])
 {
   const VkFormat surface_format = engine->surface_format.format;
 
@@ -1526,8 +1526,8 @@ Texture generate_prefiltered_cubemap(Engine* engine, Game* game, Texture environ
         vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(float),
                            &roughness);
 
-        const Node& node = game->box.nodes.data[1];
-        Mesh&       mesh = game->box.meshes.data[node.mesh];
+        const Node& node = materials->box.nodes.data[1];
+        Mesh&       mesh = materials->box.meshes.data[node.mesh];
 
         vkCmdBindIndexBuffer(cmd, engine->gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
         vkCmdBindVertexBuffers(cmd, 0, 1, &engine->gpu_device_local_memory_buffer, &mesh.vertices_offset);

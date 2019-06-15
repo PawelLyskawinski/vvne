@@ -44,6 +44,13 @@ template <typename T, uint32_t N = 64> struct ElementStack
     data[count++] = input;
   }
 
+  void push(const T array[], uint32_t array_n)
+  {
+    SDL_assert(N > (count + array_n));
+    for (uint32_t i = 0; i < array_n; ++i)
+      data[count++] = array[i];
+  }
+
   const T& operator[](const uint32_t idx) const
   {
     SDL_assert(count > idx);

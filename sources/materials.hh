@@ -1,0 +1,144 @@
+#pragma once
+
+#include "engine/engine.hh"
+#include "engine/gltf.hh"
+#include "game_generate_gui_lines.hh"
+#include "engine/math.hh"
+
+struct LightSources
+{
+  Vec4 positions[64];
+  Vec4 colors[64];
+  int  count = 0;
+
+  void update(uint32_t i, const Vec4& p, const Vec4& c)
+  {
+    positions[i] = p;
+    colors[i]    = c;
+  }
+
+  void update(uint32_t i, const Vec3& p, const Vec3& c) { update(i, Vec4(p), Vec4(c)); }
+};
+
+struct SdfChar
+{
+  uint8_t  width;
+  uint8_t  height;
+  uint16_t x;
+  uint16_t y;
+  int8_t   xoffset;
+  int8_t   yoffset;
+  uint8_t  xadvance;
+};
+
+struct GenerateSdfFontCommand
+{
+  char     character;
+  uint8_t* lookup_table;
+  SdfChar* character_data;
+  int      characters_pool_count;
+  int      texture_size[2];
+  float    scaling;
+  vec3     position;
+  float    cursor;
+};
+
+struct GenerateSdfFontCommandResult
+{
+  vec2   character_coordinate;
+  vec2   character_size;
+  mat4x4 transform;
+  float  cursor_movement;
+};
+
+struct Materials
+{
+  uint8_t lucida_sans_sdf_char_ids[97];
+  SdfChar lucida_sans_sdf_chars[97];
+  Texture lucida_sans_sdf_image;
+
+  Texture      imgui_font_texture;
+  VkDeviceSize imgui_vertex_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize imgui_index_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
+
+  VkDescriptorSet pbr_ibl_environment_dset;
+  VkDescriptorSet helmet_pbr_material_dset;
+  VkDescriptorSet robot_pbr_material_dset;
+  VkDescriptorSet pbr_dynamic_lights_dset;
+  VkDescriptorSet skybox_cubemap_dset;
+  VkDescriptorSet imgui_font_atlas_dset;
+  VkDescriptorSet rig_skinning_matrices_dset;
+  VkDescriptorSet monster_skinning_matrices_dset;
+  VkDescriptorSet lucida_sans_sdf_dset;
+  VkDescriptorSet sandy_level_pbr_material_dset;
+  VkDescriptorSet pbr_water_material_dset;
+  VkDescriptorSet debug_shadow_map_dset;
+  VkDescriptorSet frustum_planes_dset[SWAPCHAIN_IMAGES_COUNT];
+
+  // Those two descriptor sets partially point to the same data. In both cases we'll be using
+  // already calculated and uploaded cascade view projection matrices. The difference is:
+  // - during rendering additionally information about the depth split distance per cascade is required
+  // - depth pass uses them in vertex shader, rendering in fragment. The stages itself require us to have separate
+  //   descriptors
+  //
+  VkDescriptorSet cascade_view_proj_matrices_depth_pass_dset[SWAPCHAIN_IMAGES_COUNT];
+  VkDescriptorSet cascade_view_proj_matrices_render_dset[SWAPCHAIN_IMAGES_COUNT];
+
+  // ubos
+  VkDeviceSize rig_skinning_matrices_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize fig_skinning_matrices_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize monster_skinning_matrices_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize pbr_dynamic_lights_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize cascade_view_proj_mat_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
+  VkDeviceSize frustum_planes_ubo_offsets[SWAPCHAIN_IMAGES_COUNT];
+
+  // cascade shadow mapping
+  Mat4x4 cascade_view_proj_mat[SHADOWMAP_CASCADE_COUNT];
+  float  cascade_split_depths[SHADOWMAP_CASCADE_COUNT];
+
+  // CSM debuging mostly, but can be used as a billboard space in any shader
+  VkDeviceSize green_gui_billboard_vertex_buffer_offset;
+  VkDeviceSize regular_billboard_vertex_buffer_offset;
+
+  // frame cache
+  LightSources pbr_light_sources_cache;
+
+  // models
+  SceneGraph helmet;
+  SceneGraph box;
+  SceneGraph animatedBox;
+  SceneGraph riggedSimple;
+  SceneGraph monster;
+  SceneGraph robot;
+  SceneGraph rock;
+  SceneGraph lil_arrow;
+
+  // textures
+  Texture environment_cubemap;
+  Texture irradiance_cubemap;
+  Texture prefiltered_cubemap;
+  Texture brdf_lookup;
+
+  Texture sand_albedo;
+  Texture sand_ambient_occlusion;
+  Texture sand_metallic_roughness;
+  Texture sand_normal;
+  Texture sand_emissive;
+  Texture water_normal;
+
+  Vec3         light_source_position;
+  VkDeviceSize vr_level_vertex_buffer_offset;
+  VkDeviceSize vr_level_index_buffer_offset;
+  int          vr_level_index_count;
+  VkIndexType  vr_level_index_type;
+  VkDeviceSize tesselation_vb_offset;
+  uint32_t     tesselation_instances;
+
+  VkDeviceSize     green_gui_rulers_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
+  GuiLineSizeCount gui_green_lines_count;
+  GuiLineSizeCount gui_red_lines_count;
+  GuiLineSizeCount gui_yellow_lines_count;
+
+  void setup(Engine& engine);
+  void teardown(Engine& engine);
+};

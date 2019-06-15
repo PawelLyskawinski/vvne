@@ -1,5 +1,9 @@
 @echo off
 
+call:compile tesselated_ground.frag
+call:compile tesselated_ground.vert
+call:compile tesselated_ground.tesc
+call:compile tesselated_ground.tese
 call:compile debug_billboard.frag
 call:compile debug_billboard.vert
 call:compile imgui.frag
@@ -22,10 +26,8 @@ call:compile brdf_compute.frag
 call:compile brdf_compute.vert
 call:compile green_gui.frag
 call:compile green_gui.vert
-call:compile green_gui_weapon_selector_box_left.frag
-call:compile green_gui_weapon_selector_box_left.vert
-call:compile green_gui_weapon_selector_box_right.frag
-call:compile green_gui_weapon_selector_box_right.vert
+call:compile green_gui_weapon_selector_box.frag
+call:compile green_gui_weapon_selector_box.vert
 call:compile green_gui_lines.frag
 call:compile green_gui_lines.vert
 call:compile green_gui_sdf.frag
@@ -45,5 +47,5 @@ goto:eof
 
 :compile
 for /f "usebackq delims=" %%x in (`hasher.py %~1`) do set arg=%%x
-C:/VulkanSDK/1.1.77.0/Bin/glslangValidator.exe -V %~1 -o ../bin/%arg%
+C:/VulkanSDK/1.1.106.0/Bin/glslangValidator.exe -V %~1 -o ../bin/%arg%
 goto:eof

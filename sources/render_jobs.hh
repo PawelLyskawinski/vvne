@@ -30,5 +30,6 @@ void imgui(ThreadJobData tjd);
 void water(ThreadJobData tjd);
 void debug_shadowmap(ThreadJobData tjd);
 void orientation_axis(ThreadJobData tjd);
+void tesselated_ground(ThreadJobData tjd);
 
 } // namespace render

@@ -1,33 +1,23 @@
 #pragma once
 
 #include "allocators.hh"
+#include "engine_constants.hh"
 #include "free_list_allocator.hh"
 #include "gpu_memory_allocator.hh"
+#include "job_system.hh"
 #include <SDL2/SDL_video.h>
 #include <vulkan/vulkan.h>
 
 constexpr uint32_t operator"" _KB(unsigned long long in) { return 1024u * static_cast<uint32_t>(in); }
 constexpr uint32_t operator"" _MB(unsigned long long in) { return 1024u * 1024u * static_cast<uint32_t>(in); }
-constexpr float    to_rad(float deg) noexcept { return (float(M_PI) * deg) / 180.0f; }
-constexpr float    to_deg(float rad) noexcept { return (180.0f * rad) / float(M_PI); }
-template <typename T> constexpr T clamp(T val, T min, T max) { return (val < min) ? min : (val > max) ? max : val; }
-
-
-constexpr int SWAPCHAIN_IMAGES_COUNT  = 2;
-constexpr int SHADOWMAP_IMAGE_DIM     = 1024 * 2;
-constexpr int SHADOWMAP_CASCADE_COUNT = 4;
-
-struct PipelineWithHayout
-{
-  VkPipeline       pipeline;
-  VkPipelineLayout layout;
-};
 
 struct Pipelines
 {
-  void destroy(VkDevice device);
-
-  using Pair = PipelineWithHayout;
+  struct Pair
+  {
+    VkPipeline       pipeline;
+    VkPipelineLayout layout;
+  };
 
   Pair shadowmap;
   Pair skybox;
@@ -46,38 +36,28 @@ struct Pipelines
   Pair imgui;
   Pair debug_billboard;
   Pair colored_model_wireframe;
+  Pair tesselated_ground;
 };
 
 struct RenderPass
 {
-  void destroy(VkDevice device);
-  void begin(VkCommandBuffer cmd, uint32_t image_index);
-
   VkRenderPass   render_pass;
   VkFramebuffer* framebuffers;
   uint32_t       framebuffers_count;
+
+  void begin(VkCommandBuffer cmd, uint32_t image_index) const;
 };
 
 struct RenderPasses
 {
-  void init();
-  void destroy(VkDevice device);
-
   RenderPass shadowmap;
   RenderPass skybox;
   RenderPass color_and_depth;
   RenderPass gui;
-
-  VkFramebuffer shadowmap_framebuffers[SHADOWMAP_CASCADE_COUNT];
-  VkFramebuffer skybox_framebuffers[SWAPCHAIN_IMAGES_COUNT];
-  VkFramebuffer color_and_depth_framebuffers[SWAPCHAIN_IMAGES_COUNT];
-  VkFramebuffer gui_framebuffers[SWAPCHAIN_IMAGES_COUNT];
 };
 
 struct DescriptorSetLayouts
 {
-  void destroy(VkDevice device);
-
   VkDescriptorSetLayout shadow_pass;
   VkDescriptorSetLayout pbr_metallic_workflow_material;
   VkDescriptorSetLayout pbr_ibl_cubemaps_and_brdf_lut;
@@ -85,6 +65,7 @@ struct DescriptorSetLayouts
   VkDescriptorSetLayout single_texture_in_frag;
   VkDescriptorSetLayout skinning_matrices;
   VkDescriptorSetLayout cascade_shadow_map_matrices_ubo_frag;
+  VkDescriptorSetLayout frustum_planes;
 };
 
 struct GpuMemoryBlock
@@ -92,12 +73,12 @@ struct GpuMemoryBlock
   VkDeviceMemory     memory;
   VkDeviceSize       alignment;
   GpuMemoryAllocator allocator;
+
+  VkDeviceSize allocate_aligned(VkDeviceSize size);
 };
 
 struct MemoryBlocks
 {
-  void destroy(VkDevice device);
-
   GpuMemoryBlock device_local;
   GpuMemoryBlock host_visible_transfer_source;
   GpuMemoryBlock device_images;
@@ -117,9 +98,17 @@ struct Engine
   // configuration
   VkSampleCountFlagBits MSAA_SAMPLE_COUNT;
 
+  // renderdoc support
+  bool                              renderdoc_marker_naming_enabled;
+  PFN_vkDebugMarkerSetObjectTagEXT  vkDebugMarkerSetObjectTag;
+  PFN_vkDebugMarkerSetObjectNameEXT vkDebugMarkerSetObjectName;
+  PFN_vkCmdDebugMarkerBeginEXT      vkCmdDebugMarkerBegin;
+  PFN_vkCmdDebugMarkerEndEXT        vkCmdDebugMarkerEnd;
+  PFN_vkCmdDebugMarkerInsertEXT     vkCmdDebugMarkerInsert;
+
   // data
   VkInstance                 instance;
-  VkDebugReportCallbackEXT   debug_callback;
+  VkDebugUtilsMessengerEXT   debug_callback;
   SDL_Window*                window;
   VkPhysicalDevice           physical_device;
   VkPhysicalDeviceProperties physical_device_properties;
@@ -169,6 +158,7 @@ struct Engine
   Pipelines            pipelines;
 
   FreeListAllocator generic_allocator;
+  JobSystem         job_system;
 
   void           startup(bool vulkan_validation_enabled);
   void           teardown();

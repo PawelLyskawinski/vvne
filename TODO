@@ -1,0 +1,3 @@
+- "frustum_planes_generate" function requires MVP matrix as an input, not a simple projection
+- this mvp calculation has to be moved from "render" function to separate "update"
+- game should store the generated matrix and reuse it both for generate function as well as command buffer recording

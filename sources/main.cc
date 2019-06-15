@@ -3,7 +3,15 @@
 #include "game.hh"
 #include <SDL2/SDL.h>
 
-int main(int argc, char* argv[])
+static bool is_in_arguments_list(const char* argv[], uint32_t argc, const char* search)
+{
+  for (uint32_t i = 0; i < (argc - 1); ++i)
+    if (0 == SDL_strcmp(argv[i + 1], search))
+      return true;
+  return false;
+}
+
+int main(int argc, const char* argv[])
 {
   SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_VERBOSE);
   SDL_SetHint(SDL_HINT_WINDOWS_DISABLE_THREAD_NAMING, "1");
@@ -18,23 +26,7 @@ int main(int argc, char* argv[])
   constexpr int desired_frames_per_sec = 60;
   // ---------------------------
 
-  {
-    bool vulkan_validation = false;
-    if (argc > 1)
-    {
-      for (int i = 1; i < argc; ++i)
-      {
-        if (0 == SDL_strcmp(argv[i], "--validate"))
-        {
-          vulkan_validation = true;
-          break;
-        }
-      }
-    }
-
-    engine->startup(vulkan_validation);
-  }
-
+  engine->startup(is_in_arguments_list(argv, argc, "--validate"));
   game->startup(*engine);
 
   uint64_t        performance_frequency     = SDL_GetPerformanceFrequency();

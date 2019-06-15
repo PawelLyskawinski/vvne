@@ -214,48 +214,21 @@ struct Seeker
   }
 };
 
-class SceneGraphAllocator
+struct TextureLoadOp
 {
-public:
-  SceneGraphAllocator(Seeker document_node, FreeListAllocator& allocator)
-      : document_node(document_node)
-      , allocator(allocator)
-  {
-  }
-
-  template <typename T> SceneGraphAllocator& allocate(ArrayView<T>& arrayview, const char* name)
-  {
-    if (document_node.has(name))
-    {
-      arrayview.count = document_node.node(name).elements_count();
-      arrayview.data  = allocator.allocate<T>(static_cast<uint32_t>(arrayview.count));
-      arrayview.fill_with_zeros();
-    }
-
-    return *this;
-  }
-
-private:
-  Seeker             document_node;
-  FreeListAllocator& allocator;
+  Texture&    dst;
+  const char* name;
 };
 
-class MaterialTextureLoader
+void load_textures(TextureLoadOp ops[], uint32_t n, Engine& engine, const uint8_t* binary_data,
+                   const Seeker& material_json, const Seeker& images_json, const Seeker& buffer_views_json)
 {
-public:
-  MaterialTextureLoader(Engine& engine, const uint8_t binary_data[], const Seeker& material_json,
-                        const Seeker& images_json, const Seeker& buffer_views_json)
-      : engine(engine)
-      , binary_data(binary_data)
-      , material_json(material_json)
-      , images_json(images_json)
-      , buffer_views_json(buffer_views_json)
-  {
-  }
+  TextureLoadOp* begin = ops;
+  TextureLoadOp* end   = &ops[n];
 
-  MaterialTextureLoader& load(Texture& result, const char* name)
+  for (TextureLoadOp* t = begin; t != end; ++t)
   {
-    int    image_idx       = material_json.node(name).integer("index");
+    int    image_idx       = material_json.node(t->name).integer("index");
     int    buffer_view_idx = images_json.idx(image_idx).integer("bufferView");
     Seeker buffer_view     = buffer_views_json.idx(buffer_view_idx);
     int    offset          = buffer_view.integer("byteOffset");
@@ -267,24 +240,29 @@ public:
     SDL_PixelFormat format  = {.format = SDL_PIXELFORMAT_RGBA32, .BitsPerPixel = 32, .BytesPerPixel = (32 + 7) / 8};
     stbi_uc*        pixels  = stbi_load_from_memory(&binary_data[offset], length, &x, &y, &real_format, STBI_rgb_alpha);
     SDL_Surface     surface = {.format = &format, .w = x, .h = y, .pitch = 4 * x, .pixels = pixels};
-    result                  = engine.load_texture(&surface);
+    t->dst                  = engine.load_texture(&surface);
     stbi_image_free(pixels);
-    return *this;
   }
+}
 
-  MaterialTextureLoader& replace_material(Seeker new_material_json)
-  {
-    material_json = new_material_json;
-    return *this;
-  }
+constexpr uint32_t GLB_OFFSET_TO_CHUNK_DATA = 2 * sizeof(uint32_t);
+constexpr uint32_t GLB_OFFSET_TO_JSON       = 3 * sizeof(uint32_t); // glb header
 
-private:
-  Engine&        engine;
-  const uint8_t* binary_data;
-  Seeker         material_json;
-  Seeker         images_json;
-  Seeker         buffer_views_json;
-}; // namespace
+const char* find_glb_json_data(const uint8_t* blob)
+{
+  return reinterpret_cast<const char*>(&blob[GLB_OFFSET_TO_JSON + GLB_OFFSET_TO_CHUNK_DATA]);
+}
+
+uint32_t find_glb_json_chunk_length(const uint8_t* blob)
+{
+  return *reinterpret_cast<const uint32_t*>(&blob[GLB_OFFSET_TO_JSON]);
+}
+
+const uint8_t* find_glb_binary_data(const uint8_t* blob)
+{
+  return &blob[GLB_OFFSET_TO_JSON + GLB_OFFSET_TO_CHUNK_DATA + find_glb_json_chunk_length(blob) +
+               GLB_OFFSET_TO_CHUNK_DATA];
+}
 
 } // namespace
 
@@ -299,25 +277,25 @@ SceneGraph loadGLB(Engine& engine, const char* path)
   SDL_RWread(ctx, glb_file_content, sizeof(char), static_cast<size_t>(glb_file_size));
   SDL_RWclose(ctx);
 
-  const uint32_t offset_to_chunk_data = 2 * sizeof(uint32_t);
-  const uint32_t offset_to_json       = 3 * sizeof(uint32_t); // glb header
-  const uint32_t json_chunk_length    = *reinterpret_cast<uint32_t*>(&glb_file_content[offset_to_json]);
-  const char*    json_data = reinterpret_cast<const char*>(&glb_file_content[offset_to_json + offset_to_chunk_data]);
-  const uint32_t offset_to_binary = offset_to_json + offset_to_chunk_data + json_chunk_length;
-  const uint8_t* binary_data      = &glb_file_content[offset_to_binary + offset_to_chunk_data];
-
-  const Seeker document     = Seeker{json_data, json_chunk_length};
-  const Seeker buffer_views = document.node("bufferViews");
+  const uint8_t* binary_data = find_glb_binary_data(glb_file_content);
+  const Seeker   document = Seeker{find_glb_json_data(glb_file_content), find_glb_json_chunk_length(glb_file_content)};
+  const Seeker   buffer_views = document.node("bufferViews");
 
   SceneGraph scene_graph = {};
 
-  SceneGraphAllocator(document, engine.generic_allocator)
-      .allocate(scene_graph.materials, "materials")
-      .allocate(scene_graph.meshes, "meshes")
-      .allocate(scene_graph.nodes, "nodes")
-      .allocate(scene_graph.scenes, "scenes")
-      .allocate(scene_graph.animations, "animations")
-      .allocate(scene_graph.skins, "skins");
+  auto safe_count = [](const Seeker& d, const char* name) { return d.has(name) ? d.node(name).elements_count() : 0; };
+  scene_graph.materials.count  = safe_count(document, "materials");
+  scene_graph.materials.data   = engine.generic_allocator.allocate_zeroed<Material>(scene_graph.materials.count);
+  scene_graph.meshes.count     = safe_count(document, "meshes");
+  scene_graph.meshes.data      = engine.generic_allocator.allocate_zeroed<Mesh>(scene_graph.meshes.count);
+  scene_graph.nodes.count      = safe_count(document, "nodes");
+  scene_graph.nodes.data       = engine.generic_allocator.allocate_zeroed<Node>(scene_graph.nodes.count);
+  scene_graph.scenes.count     = safe_count(document, "scenes");
+  scene_graph.scenes.data      = engine.generic_allocator.allocate_zeroed<Scene>(scene_graph.scenes.count);
+  scene_graph.animations.count = safe_count(document, "animations");
+  scene_graph.animations.data  = engine.generic_allocator.allocate_zeroed<Animation>(scene_graph.animations.count);
+  scene_graph.skins.count      = safe_count(document, "skins");
+  scene_graph.skins.data       = engine.generic_allocator.allocate_zeroed<Skin>(scene_graph.skins.count);
 
   // ---------------------------------------------------------------------------
   // MATERIALS
@@ -332,13 +310,21 @@ SceneGraph loadGLB(Engine& engine, const char* path)
       Material& material      = scene_graph.materials.data[material_idx];
       Seeker    material_json = document.node("materials").idx(material_idx);
 
-      MaterialTextureLoader(engine, binary_data, material_json, images, buffer_views)
-          .load(material.emissive_texture, "emissiveTexture")
-          .load(material.AO_texture, "occlusionTexture")
-          .load(material.normal_texture, "normalTexture")
-          .replace_material(material_json.node("pbrMetallicRoughness"))
-          .load(material.albedo_texture, "baseColorTexture")
-          .load(material.metal_roughness_texture, "metallicRoughnessTexture");
+      TextureLoadOp ops[] = {
+          {material.emissive_texture, "emissiveTexture"},
+          {material.AO_texture, "occlusionTexture"},
+          {material.normal_texture, "normalTexture"},
+      };
+
+      load_textures(ops, SDL_arraysize(ops), engine, binary_data, material_json, images, buffer_views);
+
+      TextureLoadOp metallness_ops[] = {
+          {material.albedo_texture, "baseColorTexture"},
+          {material.metal_roughness_texture, "metallicRoughnessTexture"},
+      };
+
+      load_textures(metallness_ops, SDL_arraysize(metallness_ops), engine, binary_data,
+                    material_json.node("pbrMetallicRoughness"), images, buffer_views);
     }
   }
 
@@ -545,7 +531,8 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     {
       GpuMemoryBlock& block = engine.memory_blocks.host_visible_transfer_source;
-      host_buffer_offset    = block.allocator.allocate_bytes(align(static_cast<VkDeviceSize>(total_upload_buffer_size), block.alignment));
+      host_buffer_offset =
+          block.allocator.allocate_bytes(align(static_cast<VkDeviceSize>(total_upload_buffer_size), block.alignment));
     }
 
     {
@@ -558,8 +545,10 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     {
       GpuMemoryBlock& block = engine.memory_blocks.device_local;
-      mesh.indices_offset   = block.allocator.allocate_bytes(align(static_cast<VkDeviceSize>(required_index_space), block.alignment));
-      mesh.vertices_offset  = block.allocator.allocate_bytes(align(static_cast<VkDeviceSize>(required_vertex_space), block.alignment));
+      mesh.indices_offset =
+          block.allocator.allocate_bytes(align(static_cast<VkDeviceSize>(required_index_space), block.alignment));
+      mesh.vertices_offset =
+          block.allocator.allocate_bytes(align(static_cast<VkDeviceSize>(required_vertex_space), block.alignment));
     }
 
     VkCommandBuffer cmd = VK_NULL_HANDLE;

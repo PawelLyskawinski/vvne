@@ -1,29 +1,6 @@
 #include "free_list_allocator.hh"
 
-// @TODO: handle edge cases for situations when we end up with segments smalled then sizeof(FreeListAllocator::Node)
-
 using Node = FreeListAllocator::Node;
-
-static void push_node(uint8_t* new_node, unsigned new_node_size, Node* previous)
-{
-  uint8_t* begin_previous = reinterpret_cast<uint8_t*>(previous);
-  uint8_t* end_previous   = begin_previous + previous->size;
-  Node*    potential_node = reinterpret_cast<Node*>(new_node);
-
-  if (end_previous == new_node)
-  {
-    // If the freed memory sitting at the end of current node,
-    // we'll simply extend the current node
-    previous->size += new_node_size;
-  }
-  else
-  {
-    // there is some still allocated space to take into consideration
-    potential_node->next = previous->next;
-    potential_node->size = new_node_size;
-    previous->next       = potential_node;
-  }
-}
 
 void FreeListAllocator::init()
 {

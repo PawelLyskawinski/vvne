@@ -35,7 +35,7 @@ struct GpuMemoryAllocator
   VkDeviceSize max_size;
 
   void         init(VkDeviceSize max_size);
-  void reset();
+  void         reset();
   VkDeviceSize allocate_bytes(VkDeviceSize size);
   void         free_bytes(VkDeviceSize offset, VkDeviceSize size);
 };

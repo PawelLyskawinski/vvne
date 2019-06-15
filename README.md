@@ -18,18 +18,27 @@ Current preview (still a veeeery long road ahead)
 - Cascaded shadow mapping
 
 ### TODO - engine
+short distance goals:
+- Parallelized pipeline creation
+- Shader preloading and reuse
+- Textured tesselated level
+- Particle system (engine boost effect)
+
+long distance goals:
 - Editor for level design
-- DXT texture compression
 - Global illumination (got to understand spherical harmonics and light probes first)
 - Occluders (AABB trees)
-- Tesselated level ground (initially from height map)
 
 ### TODO - game
-- movable tilt lines under strafe movement (gui)
-- health bar / resource indicator (gui)
+short distance goals:
+- Small AI horde patrol throughout level
+- Maintenence create drop call
+- Shooting and melee
+- Height calculation rework
+
+long distance goals:
+- AI combat
 - better model and animations (while only using keyframes from glb)
-- particles from engine when using boost
-- refactor height calculation (basic physics and collision systems)
 
 ### Used C++ subset
 - no stl

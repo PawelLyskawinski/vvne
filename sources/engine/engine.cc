@@ -1,5 +1,5 @@
 #include "engine.hh"
-#include "linmath.h"
+#include "math.hh"
 #include "sha256.h"
 #include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_log.h>
@@ -12,14 +12,15 @@
 #include <stb_image.h>
 #pragma GCC diagnostic pop
 
-VkBool32
-#ifndef __linux__
-    __stdcall
-#endif
-    vulkan_debug_callback(VkDebugReportFlagsEXT, VkDebugReportObjectTypeEXT, uint64_t, size_t, int32_t, const char*,
-                          const char* msg, void*)
+static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
+                                                            VkDebugUtilsMessageTypeFlagsEXT             messageType,
+                                                            const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+                                                            void*                                       pUserData)
 {
-  SDL_Log("validation layer: %s", msg);
+  (void)messageSeverity;
+  (void)messageType;
+  (void)pUserData;
+  SDL_Log("validation layer: %s", pCallbackData->pMessage);
   return VK_FALSE;
 }
 
@@ -58,12 +59,67 @@ const char* to_cstr(VkPresentModeKHR mode)
   return modes[clamp(mode, VK_PRESENT_MODE_IMMEDIATE_KHR, VK_PRESENT_MODE_RANGE_SIZE_KHR)];
 }
 
+void renderpass_allocate_memory(FreeListAllocator& a, RenderPass& rp, uint32_t n)
+{
+  rp.framebuffers_count = n;
+  rp.framebuffers       = a.allocate<VkFramebuffer>(n);
+}
+
+class DeviceExtensionNameView
+{
+public:
+  DeviceExtensionNameView(VkPhysicalDevice physical_device, FreeListAllocator& allocator)
+      : allocator(allocator)
+      , properties(nullptr)
+      , count(0)
+  {
+    vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &count, nullptr);
+    properties = allocator.allocate<VkExtensionProperties>(count);
+    vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &count, properties);
+  }
+
+  ~DeviceExtensionNameView() { allocator.free(properties, count); }
+
+  class Iterator
+  {
+  public:
+    explicit Iterator(VkExtensionProperties* it)
+        : it(it)
+    {
+    }
+
+    const char* operator*() const { return it->extensionName; }
+    void        operator++() { ++it; }
+    bool        operator!=(const Iterator& rhs) { return it != rhs.it; }
+
+  private:
+    VkExtensionProperties* it;
+  };
+
+  Iterator begin() const { return Iterator(properties); }
+  Iterator end() const { return Iterator(&properties[count]); }
+
+private:
+  FreeListAllocator&     allocator;
+  VkExtensionProperties* properties;
+  uint32_t               count;
+};
+
 } // namespace
+
+VkDeviceSize GpuMemoryBlock::allocate_aligned(VkDeviceSize size)
+{
+  return allocator.allocate_bytes(align(size, alignment));
+}
 
 void Engine::startup(bool vulkan_validation_enabled)
 {
   generic_allocator.init();
-  render_passes.init();
+
+  renderpass_allocate_memory(generic_allocator, render_passes.shadowmap, SHADOWMAP_CASCADE_COUNT);
+  renderpass_allocate_memory(generic_allocator, render_passes.skybox, SWAPCHAIN_IMAGES_COUNT);
+  renderpass_allocate_memory(generic_allocator, render_passes.color_and_depth, SWAPCHAIN_IMAGES_COUNT);
+  renderpass_allocate_memory(generic_allocator, render_passes.gui, SWAPCHAIN_IMAGES_COUNT);
 
   window = SDL_CreateWindow("vvne", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, initial_window_width,
                             initial_window_height, SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
@@ -78,25 +134,27 @@ void Engine::startup(bool vulkan_validation_enabled)
         .apiVersion         = VK_API_VERSION_1_0,
     };
 
-    const char* instance_layers[] = {"VK_LAYER_LUNARG_standard_validation"};
+    const char* validation_layers[]     = {"VK_LAYER_KHRONOS_validation"};
+    const char* validation_extensions[] = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
 
     uint32_t count = 0;
     SDL_Vulkan_GetInstanceExtensions(window, &count, nullptr);
-    const char** extensions = generic_allocator.allocate<const char*>(vulkan_validation_enabled ? count + 1 : count);
+    const char** extensions = generic_allocator.allocate<const char*>(count + SDL_arraysize(validation_extensions));
     SDL_Vulkan_GetInstanceExtensions(window, &count, extensions);
+
     if (vulkan_validation_enabled)
     {
-      extensions[count] = VK_EXT_DEBUG_REPORT_EXTENSION_NAME;
-      count += 1;
+      SDL_memcpy(&extensions[count], validation_extensions, sizeof(validation_extensions));
+      count += SDL_arraysize(validation_extensions);
     }
 
     VkInstanceCreateInfo ci = {
-        .sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-        .pNext                   = nullptr,
-        .flags                   = 0,
-        .pApplicationInfo        = &ai,
-        .enabledLayerCount       = vulkan_validation_enabled ? 1u : 0u,
-        .ppEnabledLayerNames     = vulkan_validation_enabled ? instance_layers : nullptr,
+        .sType               = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+        .pNext               = nullptr,
+        .flags               = 0,
+        .pApplicationInfo    = &ai,
+        .enabledLayerCount   = vulkan_validation_enabled ? static_cast<uint32_t>(SDL_arraysize(validation_layers)) : 0u,
+        .ppEnabledLayerNames = vulkan_validation_enabled ? validation_layers : nullptr,
         .enabledExtensionCount   = count,
         .ppEnabledExtensionNames = extensions,
     };
@@ -107,14 +165,18 @@ void Engine::startup(bool vulkan_validation_enabled)
 
   if (vulkan_validation_enabled)
   {
-    VkDebugReportCallbackCreateInfoEXT ci = {
-        .sType       = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT,
-        .pNext       = nullptr,
-        .flags       = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT,
-        .pfnCallback = vulkan_debug_callback,
+    VkDebugUtilsMessengerCreateInfoEXT ci = {
+        .sType           = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+        .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+                           VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                           VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+        .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                       VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+        .pfnUserCallback = vulkan_debug_callback,
     };
 
-    auto fcn = (PFN_vkCreateDebugReportCallbackEXT)(vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT"));
+    auto fcn = (PFN_vkCreateDebugUtilsMessengerEXT)(vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"));
+    SDL_assert(fcn);
     fcn(instance, &ci, nullptr, &debug_callback);
   }
 
@@ -148,8 +210,9 @@ void Engine::startup(bool vulkan_validation_enabled)
 
     for (uint32_t i = 0; i < count; ++i)
     {
-      VkQueueFamilyProperties properties          = all_properties[i];
-      VkBool32                has_present_support = 0;
+      VkQueueFamilyProperties properties = all_properties[i];
+
+      VkBool32 has_present_support = 0;
       vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, surface, &has_present_support);
 
       if (has_present_support && (properties.queueFlags & VK_QUEUE_GRAPHICS_BIT))
@@ -163,8 +226,8 @@ void Engine::startup(bool vulkan_validation_enabled)
   }
 
   {
-    const char* device_layers[]     = {"VK_LAYER_LUNARG_standard_validation"};
-    const char* device_extensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+    const char* device_layers[]     = {"VK_LAYER_KHRONOS_validation"};
+    const char* device_extensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_EXT_DEBUG_MARKER_EXTENSION_NAME};
     float       queue_priorities[]  = {1.0f};
 
     VkDeviceQueueCreateInfo graphics = {
@@ -175,18 +238,36 @@ void Engine::startup(bool vulkan_validation_enabled)
     };
 
     VkPhysicalDeviceFeatures device_features = {
-        .sampleRateShading = VK_TRUE,
-        .fillModeNonSolid  = VK_TRUE, // enables VK_POLYGON_MODE_LINE
-        .wideLines         = VK_TRUE,
+        .tessellationShader = VK_TRUE,
+        .sampleRateShading  = VK_TRUE,
+        .fillModeNonSolid   = VK_TRUE, // enables VK_POLYGON_MODE_LINE
+        .wideLines          = VK_TRUE,
     };
+
+    uint32_t device_extensions_count = SDL_arraysize(device_extensions) - 1;
+
+    renderdoc_marker_naming_enabled = false;
+    if (vulkan_validation_enabled)
+    {
+      for (const char* name : DeviceExtensionNameView(physical_device, generic_allocator))
+      {
+        if (0 == SDL_strcmp(name, VK_EXT_DEBUG_MARKER_EXTENSION_NAME))
+        {
+          SDL_Log("Renderdoc support ENABLED");
+          renderdoc_marker_naming_enabled = true;
+          device_extensions_count += 1;
+          break;
+        }
+      }
+    }
 
     VkDeviceCreateInfo ci = {
         .sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .queueCreateInfoCount    = 1,
         .pQueueCreateInfos       = &graphics,
-        .enabledLayerCount       = vulkan_validation_enabled ? 1u : 0u,
+        .enabledLayerCount       = vulkan_validation_enabled ? static_cast<uint32_t>(SDL_arraysize(device_layers)) : 0u,
         .ppEnabledLayerNames     = vulkan_validation_enabled ? device_layers : nullptr,
-        .enabledExtensionCount   = SDL_arraysize(device_extensions),
+        .enabledExtensionCount   = device_extensions_count,
         .ppEnabledExtensionNames = device_extensions,
         .pEnabledFeatures        = &device_features,
     };
@@ -194,7 +275,19 @@ void Engine::startup(bool vulkan_validation_enabled)
     vkCreateDevice(physical_device, &ci, nullptr, &device);
   }
 
+  if (renderdoc_marker_naming_enabled)
+  {
+    vkDebugMarkerSetObjectTag =
+        (PFN_vkDebugMarkerSetObjectTagEXT)vkGetDeviceProcAddr(device, "vkDebugMarkerSetObjectTagEXT");
+    vkDebugMarkerSetObjectName =
+        (PFN_vkDebugMarkerSetObjectNameEXT)vkGetDeviceProcAddr(device, "vkDebugMarkerSetObjectNameEXT");
+    vkCmdDebugMarkerBegin  = (PFN_vkCmdDebugMarkerBeginEXT)vkGetDeviceProcAddr(device, "vkCmdDebugMarkerBeginEXT");
+    vkCmdDebugMarkerEnd    = (PFN_vkCmdDebugMarkerEndEXT)vkGetDeviceProcAddr(device, "vkCmdDebugMarkerEndEXT");
+    vkCmdDebugMarkerInsert = (PFN_vkCmdDebugMarkerInsertEXT)vkGetDeviceProcAddr(device, "vkCmdDebugMarkerInsertEXT");
+  }
+
   vkGetDeviceQueue(device, graphics_family_index, 0, &graphics_queue);
+  job_system.setup(device, graphics_family_index);
 
   {
     uint32_t count = 0;
@@ -821,13 +914,51 @@ void Engine::startup(bool vulkan_validation_enabled)
   }
 }
 
+namespace {
+
+void destroy_pipelines(VkDevice device, Pipelines& pipelines)
+{
+  const Pipelines::Pair* begin = reinterpret_cast<const Pipelines::Pair*>(&pipelines);
+  const Pipelines::Pair* end   = begin + (sizeof(Pipelines) / sizeof(Pipelines::Pair));
+
+  for (const Pipelines::Pair* it = begin; it != end; ++it)
+  {
+    vkDestroyPipeline(device, it->pipeline, nullptr);
+    vkDestroyPipelineLayout(device, it->layout, nullptr);
+  }
+}
+
+void destroy_renderpasses(VkDevice device, RenderPasses& rps)
+{
+  const RenderPass* begin = reinterpret_cast<const RenderPass*>(&rps);
+  const RenderPass* end   = begin + (sizeof(RenderPasses) / sizeof(RenderPass));
+
+  for (const RenderPass* it = begin; it != end; ++it)
+  {
+    vkDestroyRenderPass(device, it->render_pass, nullptr);
+    for (uint32_t i = 0; i < it->framebuffers_count; ++i)
+      vkDestroyFramebuffer(device, it->framebuffers[i], nullptr);
+  }
+}
+
+} // namespace
+
 void Engine::teardown()
 {
   vkDeviceWaitIdle(device);
+  job_system.teardown(device);
 
-  descriptor_set_layouts.destroy(device);
-  render_passes.destroy(device);
-  pipelines.destroy(device);
+  {
+    const VkDescriptorSetLayout* begin = reinterpret_cast<const VkDescriptorSetLayout*>(&descriptor_set_layouts);
+    const VkDescriptorSetLayout* end   = begin + (sizeof(DescriptorSetLayouts) / sizeof(VkDescriptorSetLayout));
+    for (const VkDescriptorSetLayout* it = begin; it != end; ++it)
+    {
+      vkDestroyDescriptorSetLayout(device, *it, nullptr);
+    }
+  }
+
+  destroy_renderpasses(device, render_passes);
+  destroy_pipelines(device, pipelines);
 
   for (VkFence& fence : submition_fences)
     vkDestroyFence(device, fence, nullptr);
@@ -847,7 +978,14 @@ void Engine::teardown()
   vkDestroyImageView(device, depth_image.image_view, nullptr);
   vkDestroyImage(device, depth_image.image, nullptr);
 
-  memory_blocks.destroy(device);
+  {
+    const GpuMemoryBlock* begin = reinterpret_cast<const GpuMemoryBlock*>(&memory_blocks);
+    const GpuMemoryBlock* end   = begin + (sizeof(MemoryBlocks) / sizeof(GpuMemoryBlock));
+    for (const GpuMemoryBlock* it = begin; it != end; ++it)
+    {
+      vkFreeMemory(device, it->memory, nullptr);
+    }
+  }
 
   vkDestroyBuffer(device, gpu_device_local_memory_buffer, nullptr);
   vkDestroyBuffer(device, gpu_host_visible_transfer_source_memory_buffer, nullptr);
@@ -874,8 +1012,9 @@ void Engine::teardown()
 
   if (VK_NULL_HANDLE != debug_callback)
   {
-    using Fcn = PFN_vkDestroyDebugReportCallbackEXT;
-    auto fcn  = (Fcn)(vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT"));
+    using Fcn = PFN_vkDestroyDebugUtilsMessengerEXT;
+    auto fcn  = (Fcn)(vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT"));
+    SDL_assert(fcn);
     fcn(instance, debug_callback, nullptr);
   }
 
@@ -1500,9 +1639,10 @@ VkShaderModule Engine::load_shader(const char* file_path)
   }
   hash_string[64] = '\0';
 
-  SDL_RWops* handle      = SDL_RWFromFile(&hash_string[54], "rb");
-  uint32_t   file_length = static_cast<uint32_t>(SDL_RWsize(handle));
-  uint8_t*   buffer      = static_cast<uint8_t*>(SDL_malloc(file_length));
+  SDL_RWops* handle = SDL_RWFromFile(&hash_string[54], "rb");
+  SDL_assert(handle);
+  uint32_t file_length = static_cast<uint32_t>(SDL_RWsize(handle));
+  uint8_t* buffer      = static_cast<uint8_t*>(SDL_malloc(file_length));
 
   SDL_RWread(handle, buffer, sizeof(uint8_t), file_length);
   SDL_RWclose(handle);
@@ -1522,60 +1662,7 @@ VkShaderModule Engine::load_shader(const char* file_path)
   return result;
 }
 
-void Pipelines::destroy(VkDevice device)
-{
-  auto destroy = [device](const Pipelines::Pair& in) {
-    vkDestroyPipeline(device, in.pipeline, nullptr);
-    vkDestroyPipelineLayout(device, in.layout, nullptr);
-  };
-
-  destroy(shadowmap);
-  destroy(skybox);
-  destroy(scene3D);
-  destroy(pbr_water);
-  destroy(colored_geometry);
-  destroy(colored_geometry_triangle_strip);
-  destroy(colored_geometry_skinned);
-  destroy(green_gui);
-  destroy(green_gui_weapon_selector_box_left);
-  destroy(green_gui_weapon_selector_box_right);
-  destroy(green_gui_lines);
-  destroy(green_gui_sdf_font);
-  destroy(green_gui_triangle);
-  destroy(green_gui_radar_dots);
-  destroy(imgui);
-  destroy(debug_billboard);
-  destroy(colored_model_wireframe);
-}
-
-void RenderPasses::destroy(VkDevice device)
-{
-  shadowmap.destroy(device);
-  skybox.destroy(device);
-  color_and_depth.destroy(device);
-  gui.destroy(device);
-}
-
-void RenderPasses::init()
-{
-  shadowmap.framebuffers             = shadowmap_framebuffers;
-  shadowmap.framebuffers_count       = SDL_arraysize(shadowmap_framebuffers);
-  skybox.framebuffers                = skybox_framebuffers;
-  skybox.framebuffers_count          = SDL_arraysize(skybox_framebuffers);
-  color_and_depth.framebuffers       = color_and_depth_framebuffers;
-  color_and_depth.framebuffers_count = SDL_arraysize(color_and_depth_framebuffers);
-  gui.framebuffers                   = gui_framebuffers;
-  gui.framebuffers_count             = SDL_arraysize(gui_framebuffers);
-}
-
-void RenderPass::destroy(VkDevice device)
-{
-  vkDestroyRenderPass(device, render_pass, nullptr);
-  for (uint32_t i = 0; i < framebuffers_count; ++i)
-    vkDestroyFramebuffer(device, framebuffers[i], nullptr);
-}
-
-void RenderPass::begin(VkCommandBuffer cmd, uint32_t image_index)
+void RenderPass::begin(VkCommandBuffer cmd, uint32_t image_index) const
 {
   VkCommandBufferInheritanceInfo inheritance = {
       .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
@@ -1592,28 +1679,6 @@ void RenderPass::begin(VkCommandBuffer cmd, uint32_t image_index)
   vkBeginCommandBuffer(cmd, &begin_info);
 }
 
-void DescriptorSetLayouts::destroy(VkDevice device)
-{
-  auto destroy = [device](VkDescriptorSetLayout layout) { vkDestroyDescriptorSetLayout(device, layout, nullptr); };
-  destroy(shadow_pass);
-  destroy(pbr_metallic_workflow_material);
-  destroy(pbr_ibl_cubemaps_and_brdf_lut);
-  destroy(pbr_dynamic_lights);
-  destroy(single_texture_in_frag);
-  destroy(skinning_matrices);
-  destroy(cascade_shadow_map_matrices_ubo_frag);
-}
-
-void MemoryBlocks::destroy(VkDevice device)
-{
-  auto destroy = [device](const GpuMemoryBlock& block) { vkFreeMemory(device, block.memory, nullptr); };
-  destroy(device_local);
-  destroy(host_visible_transfer_source);
-  vkFreeMemory(device, device_images.memory, nullptr);
-  destroy(host_coherent);
-  destroy(host_coherent_ubo);
-}
-
 void Engine::change_resolution(const VkExtent2D new_size)
 {
   extent2D = new_size;
@@ -1621,8 +1686,8 @@ void Engine::change_resolution(const VkExtent2D new_size)
   vkDeviceWaitIdle(device);
   SDL_SetWindowSize(window, extent2D.width, extent2D.height);
 
-  render_passes.destroy(device);
-  pipelines.destroy(device);
+  destroy_renderpasses(device, render_passes);
+  destroy_pipelines(device, pipelines);
 
   vkDestroySwapchainKHR(device, swapchain, nullptr);
   vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &surface_capabilities);

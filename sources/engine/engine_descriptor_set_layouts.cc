@@ -156,7 +156,26 @@ void Engine::setup_descriptor_set_layouts()
         .pBindings    = &binding,
     };
 
-    binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
     vkCreateDescriptorSetLayout(device, &ci, nullptr, &descriptor_set_layouts.cascade_shadow_map_matrices_ubo_frag);
+  }
+
+  // --------------------------------------------------------------- //
+  // used for frustum culling in terrain tesselation control shader
+  // --------------------------------------------------------------- //
+  {
+    VkDescriptorSetLayoutBinding binding = {
+        .binding         = 0,
+        .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = 1,
+        .stageFlags      = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT,
+    };
+
+    VkDescriptorSetLayoutCreateInfo ci = {
+        .sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 1,
+        .pBindings    = &binding,
+    };
+
+    vkCreateDescriptorSetLayout(device, &ci, nullptr, &descriptor_set_layouts.frustum_planes);
   }
 }

@@ -4,6 +4,10 @@ function compile {
   glslangValidator -V $1 -o ../bin/$(./hasher.py $1)
 }
 
+compile tesselated_ground.frag
+compile tesselated_ground.vert
+compile tesselated_ground.tesc
+compile tesselated_ground.tese
 compile debug_billboard.frag
 compile debug_billboard.vert
 compile imgui.frag
@@ -26,10 +30,8 @@ compile brdf_compute.frag
 compile brdf_compute.vert
 compile green_gui.frag
 compile green_gui.vert
-compile green_gui_weapon_selector_box_left.frag
-compile green_gui_weapon_selector_box_left.vert
-compile green_gui_weapon_selector_box_right.frag
-compile green_gui_weapon_selector_box_right.vert
+compile green_gui_weapon_selector_box.frag
+compile green_gui_weapon_selector_box.vert
 compile green_gui_lines.frag
 compile green_gui_lines.vert
 compile green_gui_sdf.frag
