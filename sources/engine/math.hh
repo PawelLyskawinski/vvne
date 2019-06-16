@@ -59,6 +59,13 @@ struct Vec3
     z = ::clamp(z, min, max);
   }
 
+  Vec3 normalize() const
+  {
+      Vec3 r;
+      vec3_norm(&r.x, &x);
+      return r;
+  }
+
   Vec2 xz() const { return Vec2(x, z); }
 
   float x = 0.0f;
@@ -78,7 +85,7 @@ struct Vec4
   {
   }
 
-  Vec4(const Vec3& v, float w = 0.0f)
+  explicit Vec4(const Vec3& v, float w = 0.0f)
       : x(v.x)
       , y(v.y)
       , z(v.z)
@@ -88,6 +95,9 @@ struct Vec4
 
   Vec4  scale(float s) const { return Vec4(x * s, y * s, z * s, w * s); }
   Vec3& as_vec3() { return *reinterpret_cast<Vec3*>(this); }
+
+  float& operator[](uint32_t i) { return *(&x + i); }
+  const float& operator[](uint32_t i) const { return *(&x + i); }
 
   float x = 0.0f;
   float y = 0.0f;
@@ -111,10 +121,16 @@ struct Mat4x4
     return r;
   }
 
-  Vec4 operator*(Vec4& rhs)
+  Vec4 operator*(const Vec4& rhs) const
   {
     Vec4 r;
-    mat4x4_mul_vec4(&r.x, mtx, &rhs.x);
+    for (int j = 0; j < 4; ++j)
+    {
+      for (int i = 0; i < 4; ++i)
+      {
+        r[j] += mtx[i][j] * rhs[i];
+      }
+    }
     return r;
   }
 

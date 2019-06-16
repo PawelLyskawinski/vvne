@@ -244,8 +244,7 @@ namespace {
 // Based on:
 // https://github.com/SaschaWillems/Vulkan/blob/master/examples/shadowmappingcascade/shadowmappingcascade.cpp
 // -------------------------------------------------------------------------------------------------------------------
-void recalculate_cascade_view_proj_matrices(Mat4x4 cascade_view_proj_mat[SHADOWMAP_CASCADE_COUNT],
-                                            float  cascade_split_depths[SHADOWMAP_CASCADE_COUNT],
+void recalculate_cascade_view_proj_matrices(Mat4x4* cascade_view_proj_mat, float* cascade_split_depths,
                                             Mat4x4 camera_projection, Mat4x4 camera_view, Vec3 light_source_position)
 {
   constexpr float cascade_split_lambda = 0.95f;
@@ -295,54 +294,52 @@ void recalculate_cascade_view_proj_matrices(Mat4x4 cascade_view_proj_mat[SHADOWM
     // LoD change should follow main game camera and not the light projection.
     // Because of that frustums have to "come out" from viewer camera.
     //
-    Mat4x4 cam     = camera_projection * camera_view;
-    Mat4x4 inv_cam = cam.invert();
+    Mat4x4 inv_cam = (camera_projection * camera_view).invert();
 
     for (Vec3& in : frustum_corners)
     {
-      Vec4 corners_as_vec4 = Vec4(in, 1.0f);
-      Vec4 inv_corner      = inv_cam * corners_as_vec4;
-
-      in.x = inv_corner.x / inv_corner.w;
-      in.y = inv_corner.y / inv_corner.w;
-      in.z = inv_corner.z / inv_corner.w;
+      Vec4 inv_corner = inv_cam * Vec4(in, 1.0f);
+      in              = inv_corner.as_vec3().scale(1.0f / inv_corner.w);
     }
 
     const float split_dist = cascade_splits[cascade_idx];
     for (uint32_t i = 0; i < 4; i++)
     {
-      Vec3 dist              = frustum_corners[i + 4] - frustum_corners[i];
+      const Vec3 dist        = frustum_corners[i + 4] - frustum_corners[i];
       frustum_corners[i + 4] = frustum_corners[i] + dist.scale(split_dist);
-      frustum_corners[i]     = frustum_corners[i] + dist.scale(last_split_dist);
+      frustum_corners[i] += dist.scale(last_split_dist);
     }
 
     Vec3 frustum_center;
-    for (const Vec3& frustum_corner : frustum_corners)
+    for (Vec3& frustum_corner : frustum_corners)
+    {
       frustum_center += frustum_corner;
-
+    }
     frustum_center = frustum_center.scale(1.0f / 8.0f);
 
     float radius = 0.0f;
-    for (Vec3& frustum_corner : frustum_corners)
+    for (const Vec3& frustum_corner : frustum_corners)
     {
-      float distance = (frustum_corner - frustum_center).len();
-      radius         = SDL_max(radius, distance);
+      const float distance = (frustum_corner - frustum_center).len();
+      radius               = SDL_max(radius, distance);
     }
 
-    Vec3 max_extents = Vec3(SDL_ceilf(radius * 16.0f) / 16.0f);
+    radius           = SDL_ceilf(radius * 16.0f) / 16.0f;
+    Vec3 max_extents = Vec3(radius);
     Vec3 min_extents = max_extents.invert_signs();
-    Vec3 light_dir   = light_source_position.invert_signs();
+    Vec3 light_dir   = light_source_position.invert_signs().normalize();
 
     Mat4x4 light_view_mat;
+
     {
-      Vec3 up               = Vec3(0.0f, -1.0f, 0.0f);
-      Vec3 scaled_light_dir = light_dir.scale(-min_extents.z);
-      Vec3 eye              = frustum_center - scaled_light_dir;
+      Vec3 up  = Vec3(0.0f, -1.0f, 0.0f);
+      Vec3 eye = frustum_center - light_dir.scale(-min_extents.z);
       light_view_mat.look_at(eye, frustum_center, up);
     }
 
     // todo: I don't know why the near clipping plane has to be a huge negative number! If used with 0 as in tutorials,
     //       the depth is not calculated properly.. I guess for now it'll have to be this way.
+
     Mat4x4 light_ortho_mat;
     light_ortho_mat.ortho(min_extents.x, max_extents.x, min_extents.y, max_extents.y, -400.0f,
                           max_extents.z - min_extents.z);
@@ -491,14 +488,14 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   {
     Vec3 position = Vec3(SDL_sinf(current_time_sec / 1.2f), 3.1f, 2.5f * SDL_cosf(current_time_sec / 1.2f));
     calculate_light_Y_pos(position);
-    const Vec3 color    = Vec3(8.0);
+    const Vec3 color = Vec3(8.0);
     materials.pbr_light_sources_cache.update(3, position, color);
   }
 
   {
     Vec3 position = Vec3(0.0f, 3.0f, -4.0f);
     calculate_light_Y_pos(position);
-    const Vec3 color    = Vec3(10.0f, 0.0f, 10.0f);
+    const Vec3 color = Vec3(10.0f, 0.0f, 10.0f);
     materials.pbr_light_sources_cache.update(4, position, color);
   }
 
@@ -603,6 +600,7 @@ void Game::render(Engine& engine)
         render::robot_depth_job,
         render::helmet_depth_job,
         render::imgui,
+        render::debug_shadowmap,
     };
 
     engine.job_system.jobs.reset();
