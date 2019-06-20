@@ -176,6 +176,7 @@ void Game::startup(Engine& engine)
   }
 
   materials.setup(engine);
+  materials.light_source_position = Vec3(0.0f, -1.0f, 1.0f);
 
   helmet_entity.init(engine.generic_allocator, materials.helmet);
   robot_entity.init(engine.generic_allocator, materials.robot);
@@ -190,12 +191,8 @@ void Game::startup(Engine& engine)
   for (SimpleEntity& entity : axis_arrow_entities)
     entity.init(engine.generic_allocator, materials.lil_arrow);
 
-  player.camera_projection.perspective(engine.extent2D, to_rad(90.0f), 0.1f, 500.0f);
-
-  player.camera_angle        = static_cast<float>(M_PI / 2);
-  player.camera_updown_angle = -1.2f;
-  player.position            = Vec3(0.0f, 0.0f, -10.0f);
-  booster_jet_fuel           = 1.0f;
+  player.setup(engine.extent2D.width, engine.extent2D.height);
+  booster_jet_fuel = 1.0f;
 
   DEBUG_VEC2[0] = 0.1f;
   DEBUG_VEC2[1] = -1.0f;
@@ -207,8 +204,6 @@ void Game::startup(Engine& engine)
   DEBUG_LIGHT_ORTHO_PARAMS[1] = 10.0f;
   DEBUG_LIGHT_ORTHO_PARAMS[2] = -10.0f;
   DEBUG_LIGHT_ORTHO_PARAMS[3] = 10.0f;
-
-  materials.light_source_position = Vec3(-30.0f, -10.0f, 10.0f);
 
   for (WeaponSelection& sel : weapon_selections)
     sel.init();
@@ -238,18 +233,16 @@ void Game::teardown(Engine& engine)
   vkDeviceWaitIdle(engine.device);
 }
 
-namespace {
-
 // CASCADE SHADOW MAPPING --------------------------------------------------------------------------------------------
 // Based on:
 // https://github.com/SaschaWillems/Vulkan/blob/master/examples/shadowmappingcascade/shadowmappingcascade.cpp
 // -------------------------------------------------------------------------------------------------------------------
-void recalculate_cascade_view_proj_matrices(Mat4x4* cascade_view_proj_mat, float* cascade_split_depths,
+static void recalculate_cascade_view_proj_matrices(Mat4x4* cascade_view_proj_mat, float* cascade_split_depths,
                                             Mat4x4 camera_projection, Mat4x4 camera_view, Vec3 light_source_position)
 {
   constexpr float cascade_split_lambda = 0.95f;
-  constexpr float near_clip            = 0.1f;
-  constexpr float far_clip             = 1000.0f;
+  constexpr float near_clip            = 0.001f;
+  constexpr float far_clip             = 500.0f;
   constexpr float clip_range           = far_clip - near_clip;
   constexpr float min_z                = near_clip;
   constexpr float max_z                = near_clip + clip_range;
@@ -324,8 +317,7 @@ void recalculate_cascade_view_proj_matrices(Mat4x4* cascade_view_proj_mat, float
       radius               = SDL_max(radius, distance);
     }
 
-    radius           = SDL_ceilf(radius * 16.0f) / 16.0f;
-    Vec3 max_extents = Vec3(radius);
+    Vec3 max_extents = Vec3(SDL_ceilf(radius * 16.0f) / 16.0f);
     Vec3 min_extents = max_extents.invert_signs();
     Vec3 light_dir   = light_source_position.invert_signs().normalize();
 
@@ -341,7 +333,7 @@ void recalculate_cascade_view_proj_matrices(Mat4x4* cascade_view_proj_mat, float
     //       the depth is not calculated properly.. I guess for now it'll have to be this way.
 
     Mat4x4 light_ortho_mat;
-    light_ortho_mat.ortho(min_extents.x, max_extents.x, min_extents.y, max_extents.y, -400.0f,
+    light_ortho_mat.ortho(min_extents.x, max_extents.x, min_extents.y, max_extents.y, -50.0f,
                           max_extents.z - min_extents.z);
 
     cascade_view_proj_mat[cascade_idx] = light_ortho_mat * light_view_mat;
@@ -350,8 +342,6 @@ void recalculate_cascade_view_proj_matrices(Mat4x4* cascade_view_proj_mat, float
     last_split_dist                    = cascade_splits[cascade_idx];
   }
 }
-
-} // namespace
 
 void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 {
@@ -446,7 +436,6 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   for (WeaponSelection& sel : weapon_selections)
     sel.animate(0.008f * time_delta_since_last_frame_ms);
 
-  materials.light_source_position = Vec3(200.0f, -100.0f, 0.0f);
 
   debug_gui.update(engine, *this);
   player.update(current_time_sec, time_delta_since_last_frame_ms);

@@ -30,6 +30,15 @@ constexpr uint64_t scancode_to_mask(SDL_Scancode scancode)
 
 } // namespace
 
+void Player::setup(uint32_t width, uint32_t height)
+{
+  const VkExtent2D extent = {width, height};
+  camera_projection.perspective(extent, to_rad(90.0f), 0.1f, 500.0f);
+  camera_angle        = static_cast<float>(M_PI / 2);
+  camera_updown_angle = -1.2f;
+  position            = Vec3(0.0f, 0.0f, -10.0f);
+}
+
 void Player::process_event(const SDL_Event& event)
 {
   switch (event.type)
@@ -105,8 +114,8 @@ void Player::update(const float current_time_sec, const float delta_ms)
   }
 
   // @todo: re-enable jumping
-  const float y_scale = 2.0f;
-  const float y_offset = -11.0f;
+  const float y_scale    = 2.0f;
+  const float y_offset   = -11.0f;
   const float adjustment = 0.1f;
 
   position.y = SDL_cosf(adjustment * position.x) + SDL_cosf(adjustment * position.y);
@@ -116,8 +125,8 @@ void Player::update(const float current_time_sec, const float delta_ms)
   camera_position =
       position +
       Vec3(SDL_cosf(camera_angle), SDL_sinf(clamp(camera_updown_angle, -1.5f, 1.5f)), -SDL_sinf(camera_angle))
-          .scale(camera_distance)
-          - Vec3(0.0f, 1.5f, 0.0f);
+          .scale(camera_distance) -
+      Vec3(0.0f, 1.5f, 0.0f);
 
   {
     Vec3 center = position - Vec3(0.0f, 1.5f, 0.0f);

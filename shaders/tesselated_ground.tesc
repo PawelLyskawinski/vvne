@@ -85,12 +85,12 @@ void main()
     }
     else
     {
-      gl_TessLevelInner[0] = 0.1f;
-      gl_TessLevelInner[1] = 0.1f;
-      gl_TessLevelOuter[0] = 0.1f;
-      gl_TessLevelOuter[1] = 0.1f;
-      gl_TessLevelOuter[2] = 0.1f;
-      gl_TessLevelOuter[3] = 0.1f;
+      gl_TessLevelInner[0] = 0.0f;
+      gl_TessLevelInner[1] = 0.0f;
+      gl_TessLevelOuter[0] = 0.0f;
+      gl_TessLevelOuter[1] = 0.0f;
+      gl_TessLevelOuter[2] = 0.0f;
+      gl_TessLevelOuter[3] = 0.0f;
     }
   }
 

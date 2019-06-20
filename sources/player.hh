@@ -19,6 +19,7 @@ struct Player
   float    camera_updown_angle = 0.0f;
   uint64_t internal_key_flags  = 0ULL;
 
+  void setup(uint32_t width, uint32_t height);
   void process_event(const SDL_Event& event);
   void update(float current_time_sec, float delta_ms);
 };

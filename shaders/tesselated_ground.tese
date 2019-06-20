@@ -50,5 +50,5 @@ void main()
 
   // Calculate vectors for lighting based on tessellated position
   outWorldPos = pos.xyz;
-  outViewPos  = pos.xyz;
+  outViewPos  = gl_Position.xyz;
 }
