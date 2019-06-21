@@ -589,7 +589,7 @@ void Game::render(Engine& engine)
         render::robot_depth_job,
         render::helmet_depth_job,
         render::imgui,
-        render::debug_shadowmap,
+        // render::debug_shadowmap,
     };
 
     engine.job_system.jobs.reset();

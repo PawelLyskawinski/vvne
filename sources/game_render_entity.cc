@@ -141,3 +141,28 @@ void render_entity(const SimpleEntity& entity, const SceneGraph& scene_graph, co
     }
   }
 }
+
+void render_entity_skinned(const SimpleEntity& entity, const SceneGraph& scene_graph, const Engine& engine,
+                           const RenderEntityParams& p)
+{
+  mat4x4 projection_view = {};
+  mat4x4_mul(projection_view, p.projection, p.view);
+
+  const uint64_t bitmap = entity.node_renderabilities & filter_nodes_with_mesh(scene_graph.nodes);
+
+  for (int node_idx = 0; node_idx < scene_graph.nodes.count; ++node_idx)
+  {
+    if (bitmap & (uint64_t(1) << node_idx))
+    {
+      const int   mesh_idx = scene_graph.nodes.data[node_idx].mesh;
+      const Mesh& mesh     = scene_graph.meshes.data[mesh_idx];
+
+      vkCmdBindIndexBuffer(p.cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
+      vkCmdBindVertexBuffers(p.cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
+
+      vkCmdPushConstants(p.cmd, p.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), projection_view);
+      vkCmdPushConstants(p.cmd, p.pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(vec3), p.color);
+      vkCmdDrawIndexed(p.cmd, mesh.indices_count, 1, 0, 0, 0);
+    }
+  }
+}

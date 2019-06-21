@@ -2,7 +2,7 @@
 
 layout(push_constant) uniform Transformation
 {
-  mat4 mvp;
+  mat4 projection_view;
 }
 transformation;
 
@@ -25,6 +25,6 @@ void main()
   mat4 skin_matrix = inWeight.x * ubo.joint_matrix[inJoint.x] + inWeight.y * ubo.joint_matrix[inJoint.y] +
                      inWeight.z * ubo.joint_matrix[inJoint.z] + inWeight.w * ubo.joint_matrix[inJoint.w];
 
-  gl_Position = transformation.mvp * skin_matrix * vec4(inPosition, 1.0);
+  gl_Position = transformation.projection_view * skin_matrix * vec4(inPosition, 1.0);
   outPosition = inNormal;
 }

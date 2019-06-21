@@ -390,7 +390,7 @@ void simple_rigged(ThreadJobData tjd)
   };
 
   copy_camera_settings(params, ctx->game->player);
-  render_entity(ctx->game->rigged_simple_entity, ctx->game->materials.riggedSimple, *ctx->engine, params);
+  render_entity_skinned(ctx->game->rigged_simple_entity, ctx->game->materials.riggedSimple, *ctx->engine, params);
 
   vkEndCommandBuffer(command);
 }
@@ -419,7 +419,7 @@ void monster_rigged(ThreadJobData tjd)
   };
 
   copy_camera_settings(params, ctx->game->player);
-  render_entity(ctx->game->monster_entity, ctx->game->materials.monster, *ctx->engine, params);
+  render_entity_skinned(ctx->game->monster_entity, ctx->game->materials.monster, *ctx->engine, params);
 
   vkEndCommandBuffer(command);
 }

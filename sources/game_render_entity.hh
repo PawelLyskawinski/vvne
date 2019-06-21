@@ -14,3 +14,6 @@ void render_wireframe_entity(const SimpleEntity& entity, const SceneGraph& scene
 
 void render_entity(const SimpleEntity& entity, const SceneGraph& scene_graph, const Engine& engine,
                    const RenderEntityParams& p);
+
+void render_entity_skinned(const SimpleEntity& entity, const SceneGraph& scene_graph, const Engine& engine,
+                           const RenderEntityParams& p);

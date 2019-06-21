@@ -1,3 +1,4 @@
+#include <SDL2/SDL_log.h>
 #include "update_jobs.hh"
 
 namespace {
@@ -332,8 +333,8 @@ void monster_job(ThreadJobData tjd)
   Operation ops[] = {
       // clang-format off
       { .translation         = { Operation::Type::Translation,        {-2.0f, 6.5f, 0.5f} }              },
-      { .quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(45.0), {1.0f, 0.0f, 0.0f} } },
-      { .scale               = { Operation::Type::Scale,              {0.025f, 0.025f, 0.025f} }         },
+      { .quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(90.0), {1.0f, 0.0f, 0.0f} } },
+      { .scale               = { Operation::Type::Scale,              {0.001f, 0.001f, 0.001f} }         },
       // clang-format on
   };
 
@@ -352,8 +353,8 @@ void rigged_simple_job(ThreadJobData tjd)
 
   Operation ops[] = {
       // clang-format off
-      { .translation         = { Operation::Type::Translation,        {-2.0f, 6.0f, 3.0f} } },
-      { .quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(45.0), {1.0f, 0.0f, 0.0f} }                                                        },
+      { .translation         = { Operation::Type::Translation, {-5.0f, 6.0f, 0.0f} } },
+      { .quaternion_rotation = { Operation::Type::QuaternionRotation, to_rad(90.0), {1.0f, 0.0f, 0.0f} }                                                        },
       { .scale               = { Operation::Type::Scale,              {0.5f, 0.5f, 0.5f} }                                                                      },
       // clang-format on
   };
