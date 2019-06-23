@@ -2636,7 +2636,7 @@ void tesselated_ground(Engine& engine, float y_scale = 2.0f, float y_offset = -1
   };
 
   const float tesc_constants[] = {
-          1.0f, // tessellatedEdgeSize
+          0.8f, // tessellatedEdgeSize
           0.001f, // tessellationFactor
           20.0f, // frustum_check_radius
           y_scale,

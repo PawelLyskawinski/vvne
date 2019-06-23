@@ -312,9 +312,10 @@ void robot_job(ThreadJobData tjd)
   quat orientation = {};
   calculate_quat(orientation, quat_ops, SDL_arraysize(quat_ops));
 
+  const Vec3& position = ctx->game->player.position;
   Operation ops[] = {
       // clang-format off
-      { .translation         = { Operation::Type::Translation, {ctx->game->player.position.x, ctx->game->player.position.y - 1.0f, ctx->game->player.position.z} } },
+      { .translation         = { Operation::Type::Translation, {position.x, position.y, position.z} } },
       { .quaternion          = { Operation::Type::Quaternion,  {orientation[0], orientation[1], orientation[2], orientation[3]} }                               },
       { .scale               = { Operation::Type::Scale,       {0.5f, 0.5f, 0.5f} }                                                                             },
       // clang-format on

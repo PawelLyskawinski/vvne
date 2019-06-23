@@ -40,7 +40,7 @@ void main()
   vec4 pos  = mix(pos1, pos2, gl_TessCoord.y);
 
   // Displace
-  pos.y -= y_scale * (cos(push_const.adjustment * pos.x) + cos(push_const.adjustment * pos.y));
+  pos.y -= y_scale * (cos(push_const.adjustment * pos.x) + cos(push_const.adjustment * pos.z));
   pos.y -= y_offset;
   // pos.z = -1.5f * (cos(pos.x) + cos(pos.y));
   // pos.y -= textureLod(displacementMap, outUV, 0.0).r * ubo.displacementFactor;

@@ -444,10 +444,10 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
   auto calculate_light_Y_pos = [](Vec3& position) {
     const float y_scale    = 2.0f;
-    const float y_offset   = -11.0f;
+    const float y_offset   = -11.8f;
     const float adjustment = 0.1f;
 
-    position.y = SDL_cosf(adjustment * position.x) + SDL_cosf(adjustment * position.y);
+    position.y = SDL_cosf(adjustment * position.x) + SDL_cosf(adjustment * position.z);
     position.y *= -y_scale;
     position.y -= y_offset;
   };
