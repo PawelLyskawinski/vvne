@@ -916,30 +916,23 @@ void Engine::startup(bool vulkan_validation_enabled)
 
 namespace {
 
-void destroy_pipelines(VkDevice device, Pipelines& pipelines)
+template <typename TElement> class StructureAsArrayView
 {
-  const Pipelines::Pair* begin = reinterpret_cast<const Pipelines::Pair*>(&pipelines);
-  const Pipelines::Pair* end   = begin + (sizeof(Pipelines) / sizeof(Pipelines::Pair));
-
-  for (const Pipelines::Pair* it = begin; it != end; ++it)
+public:
+  template <typename TOriginal>
+  explicit StructureAsArrayView(const TOriginal* orig)
+      : m_begin(reinterpret_cast<const TElement*>(orig))
+      , m_end(m_begin + (sizeof(TOriginal) / sizeof(TElement)))
   {
-    vkDestroyPipeline(device, it->pipeline, nullptr);
-    vkDestroyPipelineLayout(device, it->layout, nullptr);
   }
-}
 
-void destroy_renderpasses(VkDevice device, RenderPasses& rps)
-{
-  const RenderPass* begin = reinterpret_cast<const RenderPass*>(&rps);
-  const RenderPass* end   = begin + (sizeof(RenderPasses) / sizeof(RenderPass));
+  const TElement* begin() const { return m_begin; }
+  const TElement* end() const { return m_end; }
 
-  for (const RenderPass* it = begin; it != end; ++it)
-  {
-    vkDestroyRenderPass(device, it->render_pass, nullptr);
-    for (uint32_t i = 0; i < it->framebuffers_count; ++i)
-      vkDestroyFramebuffer(device, it->framebuffers[i], nullptr);
-  }
-}
+private:
+  const TElement* m_begin;
+  const TElement* m_end;
+};
 
 } // namespace
 
@@ -948,17 +941,23 @@ void Engine::teardown()
   vkDeviceWaitIdle(device);
   job_system.teardown(device);
 
+  for (const VkDescriptorSetLayout& it : StructureAsArrayView<VkDescriptorSetLayout>(&descriptor_set_layouts))
   {
-    const VkDescriptorSetLayout* begin = reinterpret_cast<const VkDescriptorSetLayout*>(&descriptor_set_layouts);
-    const VkDescriptorSetLayout* end   = begin + (sizeof(DescriptorSetLayouts) / sizeof(VkDescriptorSetLayout));
-    for (const VkDescriptorSetLayout* it = begin; it != end; ++it)
-    {
-      vkDestroyDescriptorSetLayout(device, *it, nullptr);
-    }
+    vkDestroyDescriptorSetLayout(device, it, nullptr);
   }
 
-  destroy_renderpasses(device, render_passes);
-  destroy_pipelines(device, pipelines);
+  for (const RenderPass& it : StructureAsArrayView<RenderPass>(&render_passes))
+  {
+    vkDestroyRenderPass(device, it.render_pass, nullptr);
+    for (uint32_t i = 0; i < it.framebuffers_count; ++i)
+      vkDestroyFramebuffer(device, it.framebuffers[i], nullptr);
+  }
+
+  for (const Pipelines::Pair& it : StructureAsArrayView<Pipelines::Pair>(&pipelines))
+  {
+    vkDestroyPipeline(device, it.pipeline, nullptr);
+    vkDestroyPipelineLayout(device, it.layout, nullptr);
+  }
 
   for (VkFence& fence : submition_fences)
     vkDestroyFence(device, fence, nullptr);
@@ -1686,8 +1685,18 @@ void Engine::change_resolution(const VkExtent2D new_size)
   vkDeviceWaitIdle(device);
   SDL_SetWindowSize(window, extent2D.width, extent2D.height);
 
-  destroy_renderpasses(device, render_passes);
-  destroy_pipelines(device, pipelines);
+  for (const RenderPass& it : StructureAsArrayView<RenderPass>(&render_passes))
+  {
+    vkDestroyRenderPass(device, it.render_pass, nullptr);
+    for (uint32_t i = 0; i < it.framebuffers_count; ++i)
+      vkDestroyFramebuffer(device, it.framebuffers[i], nullptr);
+  }
+
+  for (const Pipelines::Pair& it : StructureAsArrayView<Pipelines::Pair>(&pipelines))
+  {
+    vkDestroyPipeline(device, it.pipeline, nullptr);
+    vkDestroyPipelineLayout(device, it.layout, nullptr);
+  }
 
   vkDestroySwapchainKHR(device, swapchain, nullptr);
   vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &surface_capabilities);
