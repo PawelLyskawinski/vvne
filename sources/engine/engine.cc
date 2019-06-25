@@ -949,8 +949,10 @@ void Engine::teardown()
   for (const RenderPass& it : StructureAsArrayView<RenderPass>(&render_passes))
   {
     vkDestroyRenderPass(device, it.render_pass, nullptr);
-    for (uint32_t i = 0; i < it.framebuffers_count; ++i)
-      vkDestroyFramebuffer(device, it.framebuffers[i], nullptr);
+    for (const VkFramebuffer& fb : ArrayView<VkFramebuffer>{it.framebuffers, static_cast<int>(it.framebuffers_count)})
+    {
+      vkDestroyFramebuffer(device, fb, nullptr);
+    }
   }
 
   for (const Pipelines::Pair& it : StructureAsArrayView<Pipelines::Pair>(&pipelines))
@@ -960,13 +962,19 @@ void Engine::teardown()
   }
 
   for (VkFence& fence : submition_fences)
+  {
     vkDestroyFence(device, fence, nullptr);
+  }
 
   for (auto& image : autoclean_images)
+  {
     vkDestroyImage(device, image, nullptr);
+  }
 
   for (auto& image_view : autoclean_image_views)
+  {
     vkDestroyImageView(device, image_view, nullptr);
+  }
 
   if (VK_SAMPLE_COUNT_1_BIT != MSAA_SAMPLE_COUNT)
   {
@@ -977,13 +985,9 @@ void Engine::teardown()
   vkDestroyImageView(device, depth_image.image_view, nullptr);
   vkDestroyImage(device, depth_image.image, nullptr);
 
+  for (const GpuMemoryBlock& it : StructureAsArrayView<GpuMemoryBlock>(&memory_blocks))
   {
-    const GpuMemoryBlock* begin = reinterpret_cast<const GpuMemoryBlock*>(&memory_blocks);
-    const GpuMemoryBlock* end   = begin + (sizeof(MemoryBlocks) / sizeof(GpuMemoryBlock));
-    for (const GpuMemoryBlock* it = begin; it != end; ++it)
-    {
-      vkFreeMemory(device, it->memory, nullptr);
-    }
+    vkFreeMemory(device, it.memory, nullptr);
   }
 
   vkDestroyBuffer(device, gpu_device_local_memory_buffer, nullptr);
@@ -1000,8 +1004,10 @@ void Engine::teardown()
   vkDestroyCommandPool(device, graphics_command_pool, nullptr);
   vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
 
-  for (VkImageView swapchain_image_view : swapchain_image_views)
+  for (const VkImageView& swapchain_image_view : swapchain_image_views)
+  {
     vkDestroyImageView(device, swapchain_image_view, nullptr);
+  }
 
   vkDestroySwapchainKHR(device, swapchain, nullptr);
 
