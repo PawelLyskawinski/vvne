@@ -48,3 +48,5 @@ compile depth_pass.vert
 compile depth_pass.frag
 compile colored_model_wireframe.frag
 compile colored_model_wireframe.vert
+compile fft_water_h0_k_pass.frag
+compile fft_water_h0_k_pass.vert

@@ -62,6 +62,7 @@ struct Materials
   VkDeviceSize imgui_index_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
 
   Texture fft_water_h0_k_texture;
+  Texture fft_water_h0_minus_k_texture;
 
   VkDescriptorSet pbr_ibl_environment_dset;
   VkDescriptorSet helmet_pbr_material_dset;

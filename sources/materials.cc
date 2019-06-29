@@ -29,8 +29,7 @@ struct ImguiFontSurface
 
 void Materials::setup(Engine& engine)
 {
-  fft_water_h0_k_texture = fft_water::generate_h0_k_image(engine);
-  imgui_font_texture     = engine.load_texture(ImguiFontSurface().surface);
+  imgui_font_texture = engine.load_texture(ImguiFontSurface().surface);
 
   {
     GpuMemoryBlock& block = engine.memory_blocks.host_coherent;
@@ -280,7 +279,6 @@ void Materials::setup(Engine& engine)
     vkAllocateDescriptorSets(engine.device, &allocate, &lucida_sans_sdf_dset);
     vkAllocateDescriptorSets(engine.device, &allocate, &pbr_water_material_dset);
     vkAllocateDescriptorSets(engine.device, &allocate, &debug_shadow_map_dset);
-    vkAllocateDescriptorSets(engine.device, &allocate, &debug_ttf_water_h0_k_dset);
   }
 
   {
@@ -317,11 +315,6 @@ void Materials::setup(Engine& engine)
     image.sampler   = engine.shadowmap_sampler;
     image.imageView = engine.shadowmap_image.image_view;
     write.dstSet    = debug_shadow_map_dset;
-    vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
-
-    image.sampler   = engine.shadowmap_sampler;
-    image.imageView = fft_water_h0_k_texture.image_view;
-    write.dstSet    = debug_ttf_water_h0_k_dset;
     vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
   }
 
@@ -687,10 +680,48 @@ void Materials::setup(Engine& engine)
 
     engine.generic_allocator.free(fnt_file_content, static_cast<uint32_t>(fnt_file_size));
   }
+
+  //
+  // FFT WATER
+  //
+
+  fft_water::generate_h0_k_image(engine, green_gui_billboard_vertex_buffer_offset, fft_water_h0_k_texture,
+                                 fft_water_h0_minus_k_texture);
+
+  {
+    VkDescriptorSetAllocateInfo allocate = {
+        .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool     = engine.descriptor_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts        = &engine.descriptor_set_layouts.single_texture_in_frag,
+    };
+
+    vkAllocateDescriptorSets(engine.device, &allocate, &debug_ttf_water_h0_k_dset);
+
+    VkDescriptorImageInfo image = {
+        .sampler     = engine.shadowmap_sampler,
+        .imageView   = fft_water_h0_k_texture.image_view,
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    };
+
+    VkWriteDescriptorSet write = {
+        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet          = debug_ttf_water_h0_k_dset,
+        .dstBinding      = 0,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .pImageInfo      = &image,
+    };
+
+    vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
+  }
 }
 
 void Materials::teardown(Engine& engine)
 {
+  vkDestroyImageView(engine.device, fft_water_h0_minus_k_texture.image_view, nullptr);
+  vkDestroyImage(engine.device, fft_water_h0_minus_k_texture.image, nullptr);
   vkDestroyImageView(engine.device, fft_water_h0_k_texture.image_view, nullptr);
   vkDestroyImage(engine.device, fft_water_h0_k_texture.image, nullptr);
 }

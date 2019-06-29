@@ -1965,10 +1965,9 @@ void debug_fft_water(ThreadJobData tjd)
   mat4x4_ortho(gui_projection, 0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
 
   const float rectangle_dimension_pixels = 120.0f;
-  vec2        translation                = {rectangle_dimension_pixels + 10.0f, rectangle_dimension_pixels + 220.0f};
 
   mat4x4 translation_matrix = {};
-  mat4x4_translate(translation_matrix, translation[0], translation[1], -1.0f);
+  mat4x4_translate(translation_matrix, rectangle_dimension_pixels + 10.0f, rectangle_dimension_pixels + 220.0f, -1.0f);
 
   mat4x4 scale_matrix = {};
   mat4x4_identity(scale_matrix);
@@ -1978,6 +1977,15 @@ void debug_fft_water(ThreadJobData tjd)
   mat4x4_mul(world_transform, translation_matrix, scale_matrix);
 
   mat4x4 mvp = {};
+  mat4x4_mul(mvp, gui_projection, world_transform);
+
+  vkCmdPushConstants(command, ctx->engine->pipelines.debug_billboard.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                     sizeof(mat4x4), mvp);
+
+  vkCmdDraw(command, 4, 1, 0, 0);
+
+  mat4x4_translate(translation_matrix, 3 * rectangle_dimension_pixels + 20.0f, rectangle_dimension_pixels + 220.0f, -1.0f);
+  mat4x4_mul(world_transform, translation_matrix, scale_matrix);
   mat4x4_mul(mvp, gui_projection, world_transform);
 
   vkCmdPushConstants(command, ctx->engine->pipelines.debug_billboard.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,

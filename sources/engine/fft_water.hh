@@ -9,7 +9,7 @@
 
 namespace fft_water {
 
-Texture generate_h0_k_image(Engine& engine);
-void generate_h0_minusk_image();
+void generate_h0_k_image(Engine& engine, VkDeviceSize offset_to_billboard_vertices, Texture& fft_water_h0_k_texture,
+                         Texture& fft_water_h0_minus_k_texture);
 
 } // namespace fft_water
