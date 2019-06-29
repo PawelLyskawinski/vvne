@@ -41,6 +41,7 @@ set(SOURCES
         sources/engine/gpu_memory_allocator.cc
         sources/engine/gpu_memory_visualizer.cc
         sources/engine/job_system.cc
+        sources/engine/fft_water.cc
         sources/game.cc
         sources/game_generate_gui_lines.cc
         sources/game_generate_sdf_font.cc
@@ -60,7 +61,8 @@ set(SOURCES
         thirdparty/imgui.cpp
         thirdparty/imgui_draw.cpp
         thirdparty/imgui_widgets.cpp
-        thirdparty/sha256.cpp)
+        thirdparty/sha256.cpp
+        )
 
 if(WIN32)
 add_executable(${PROJECT_NAME} ${SOURCES} assets/applicationIcon.rc)

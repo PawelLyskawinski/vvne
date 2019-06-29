@@ -4,6 +4,8 @@ call:compile tesselated_ground.frag
 call:compile tesselated_ground.vert
 call:compile tesselated_ground.tesc
 call:compile tesselated_ground.tese
+call:compile debug_billboard_texture_array.frag
+call:compile debug_billboard_texture_array.vert
 call:compile debug_billboard.frag
 call:compile debug_billboard.vert
 call:compile imgui.frag

@@ -2,8 +2,8 @@
 
 #include "engine/engine.hh"
 #include "engine/gltf.hh"
-#include "game_generate_gui_lines.hh"
 #include "engine/math.hh"
+#include "game_generate_gui_lines.hh"
 
 struct LightSources
 {
@@ -61,6 +61,8 @@ struct Materials
   VkDeviceSize imgui_vertex_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
   VkDeviceSize imgui_index_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
 
+  Texture fft_water_h0_k_texture;
+
   VkDescriptorSet pbr_ibl_environment_dset;
   VkDescriptorSet helmet_pbr_material_dset;
   VkDescriptorSet robot_pbr_material_dset;
@@ -73,6 +75,7 @@ struct Materials
   VkDescriptorSet sandy_level_pbr_material_dset;
   VkDescriptorSet pbr_water_material_dset;
   VkDescriptorSet debug_shadow_map_dset;
+  VkDescriptorSet debug_ttf_water_h0_k_dset;
   VkDescriptorSet frustum_planes_dset[SWAPCHAIN_IMAGES_COUNT];
 
   // Those two descriptor sets partially point to the same data. In both cases we'll be using

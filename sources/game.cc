@@ -228,9 +228,9 @@ void Game::teardown(Engine& engine)
 {
   for (SDL_Cursor* cursor : debug_gui.mousecursors)
     SDL_FreeCursor(cursor);
-  materials.teardown(engine);
 
   vkDeviceWaitIdle(engine.device);
+  materials.teardown(engine);
 }
 
 // CASCADE SHADOW MAPPING --------------------------------------------------------------------------------------------
@@ -565,12 +565,12 @@ void Game::render(Engine& engine)
 
     Job gameplay_jobs[] = {
         render::radar,
-        render::robot_gui_lines,
-        render::height_ruler_text,
-        render::tilt_ruler_text,
-        render::robot_gui_speed_meter_text,
-        render::robot_gui_speed_meter_triangle,
-        render::compass_text,
+        // render::robot_gui_lines,
+        // render::height_ruler_text,
+        // render::tilt_ruler_text,
+        // render::robot_gui_speed_meter_text,
+        // render::robot_gui_speed_meter_triangle,
+        // render::compass_text,
         render::radar_dots,
         render::weapon_selectors_left,
         render::weapon_selectors_right,
@@ -590,6 +590,7 @@ void Game::render(Engine& engine)
         render::helmet_depth_job,
         render::imgui,
         // render::debug_shadowmap,
+        render::debug_fft_water,
     };
 
     engine.job_system.jobs.reset();
@@ -783,7 +784,9 @@ void Game::render(Engine& engine)
 
         vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
         for (VkCommandBuffer secondary_command : gui_commands)
+        {
           vkCmdExecuteCommands(cmd, 1, &secondary_command);
+        }
         vkCmdEndRenderPass(cmd);
       }
 

@@ -35,6 +35,7 @@ struct Pipelines
   Pair green_gui_radar_dots;
   Pair imgui;
   Pair debug_billboard;
+  Pair debug_billboard_texture_array;
   Pair colored_model_wireframe;
   Pair tesselated_ground;
 };

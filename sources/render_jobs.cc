@@ -122,6 +122,7 @@ void robot_job(ThreadJobData tjd)
   copy_camera_settings(params, ctx->game->player);
   render_pbr_entity(ctx->game->robot_entity, ctx->game->materials.robot, *ctx->engine, params);
 
+#if 0
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_model_wireframe.pipeline);
   params.pipeline_layout = ctx->engine->pipelines.colored_model_wireframe.layout;
 
@@ -130,6 +131,7 @@ void robot_job(ThreadJobData tjd)
   params.color[2] = SDL_fabsf(SDL_sinf(1.0f * ctx->game->current_time_sec * 1.5f));
 
   render_wireframe_entity(ctx->game->robot_entity, ctx->game->materials.robot, *ctx->engine, params);
+#endif
 
   vkEndCommandBuffer(command);
 }
@@ -1741,8 +1743,7 @@ void water(ThreadJobData tjd)
     for (int y = 0; y < 3; ++y)
     {
       mat4x4 translation_matrix = {};
-      mat4x4_translate(translation_matrix, 40.0f * x - 40.0f,
-                       10.5f + 0.02f * SDL_sinf(ctx->game->current_time_sec),
+      mat4x4_translate(translation_matrix, 40.0f * x - 40.0f, 10.5f + 0.03f * SDL_sinf(ctx->game->current_time_sec),
                        40.0f * y - 40.0f);
 
       mat4x4 tmp = {};
@@ -1790,12 +1791,14 @@ void debug_shadowmap(ThreadJobData tjd)
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.debug_billboard.pipeline);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    ctx->engine->pipelines.debug_billboard_texture_array.pipeline);
 
   vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer,
                          &ctx->game->materials.green_gui_billboard_vertex_buffer_offset);
 
-  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.debug_billboard.layout, 0, 1,
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          ctx->engine->pipelines.debug_billboard_texture_array.layout, 0, 1,
                           &ctx->game->materials.debug_shadow_map_dset, 0, nullptr);
 
   for (uint32_t cascade = 0; cascade < SHADOWMAP_CASCADE_COUNT; ++cascade)
@@ -1837,10 +1840,10 @@ void debug_shadowmap(ThreadJobData tjd)
     mat4x4 mvp = {};
     mat4x4_mul(mvp, gui_projection, world_transform);
 
-    vkCmdPushConstants(command, ctx->engine->pipelines.debug_billboard.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
-                       sizeof(mat4x4), mvp);
-    vkCmdPushConstants(command, ctx->engine->pipelines.debug_billboard.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                       sizeof(mat4x4), sizeof(cascade), &cascade);
+    vkCmdPushConstants(command, ctx->engine->pipelines.debug_billboard_texture_array.layout, VK_SHADER_STAGE_VERTEX_BIT,
+                       0, sizeof(mat4x4), mvp);
+    vkCmdPushConstants(command, ctx->engine->pipelines.debug_billboard_texture_array.layout,
+                       VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(cascade), &cascade);
 
     vkCmdDraw(command, 4, 1, 0, 0);
   }
@@ -1914,7 +1917,6 @@ void tesselated_ground(ThreadJobData tjd)
     float  time;
   };
 
-
   PushConst pc(*ctx->game);
 
   vkCmdPushConstants(command, ctx->engine->pipelines.tesselated_ground.layout,
@@ -1939,6 +1941,49 @@ void tesselated_ground(ThreadJobData tjd)
 
   vkCmdSetLineWidth(command, 2.0f);
   vkCmdDraw(command, ctx->game->materials.tesselation_instances, 1, 0, 0);
+
+  vkEndCommandBuffer(command);
+}
+
+void debug_fft_water(ThreadJobData tjd)
+{
+  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  ctx->game->gui_commands.push(command);
+  ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.debug_billboard.pipeline);
+
+  vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer,
+                         &ctx->game->materials.green_gui_billboard_vertex_buffer_offset);
+
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.debug_billboard.layout, 0, 1,
+                          &ctx->game->materials.debug_ttf_water_h0_k_dset, 0, nullptr);
+
+  mat4x4 gui_projection = {};
+  mat4x4_ortho(gui_projection, 0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
+
+  const float rectangle_dimension_pixels = 120.0f;
+  vec2        translation                = {rectangle_dimension_pixels + 10.0f, rectangle_dimension_pixels + 220.0f};
+
+  mat4x4 translation_matrix = {};
+  mat4x4_translate(translation_matrix, translation[0], translation[1], -1.0f);
+
+  mat4x4 scale_matrix = {};
+  mat4x4_identity(scale_matrix);
+  mat4x4_scale_aniso(scale_matrix, scale_matrix, rectangle_dimension_pixels, rectangle_dimension_pixels, 1.0f);
+
+  mat4x4 world_transform = {};
+  mat4x4_mul(world_transform, translation_matrix, scale_matrix);
+
+  mat4x4 mvp = {};
+  mat4x4_mul(mvp, gui_projection, world_transform);
+
+  vkCmdPushConstants(command, ctx->engine->pipelines.debug_billboard.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                     sizeof(mat4x4), mvp);
+
+  vkCmdDraw(command, 4, 1, 0, 0);
 
   vkEndCommandBuffer(command);
 }

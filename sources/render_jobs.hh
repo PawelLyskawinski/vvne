@@ -29,6 +29,7 @@ void hello_world_text(ThreadJobData tjd);
 void imgui(ThreadJobData tjd);
 void water(ThreadJobData tjd);
 void debug_shadowmap(ThreadJobData tjd);
+void debug_fft_water(ThreadJobData tjd);
 void orientation_axis(ThreadJobData tjd);
 void tesselated_ground(ThreadJobData tjd);
 

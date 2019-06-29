@@ -2280,6 +2280,156 @@ void pbr_water(Engine& engine)
   vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.pipelines.pbr_water.pipeline);
 }
 
+void debug_billboard_texture_array(Engine& engine)
+{
+  TwoStageShader shaders(engine, "debug_billboard_texture_array.vert", "debug_billboard_texture_array.frag");
+
+  VkVertexInputAttributeDescription attribute_descriptions[] = {
+      {
+          .location = 0,
+          .binding  = 0,
+          .format   = VK_FORMAT_R32G32_SFLOAT,
+          .offset   = static_cast<uint32_t>(offsetof(GreenGuiVertex, position)),
+      },
+      {
+          .location = 1,
+          .binding  = 0,
+          .format   = VK_FORMAT_R32G32_SFLOAT,
+          .offset   = static_cast<uint32_t>(offsetof(GreenGuiVertex, uv)),
+      },
+  };
+
+  VkVertexInputBindingDescription vertex_binding_descriptions[] = {
+      {
+          .binding   = 0,
+          .stride    = sizeof(GreenGuiVertex),
+          .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+      },
+  };
+
+  VkPipelineVertexInputStateCreateInfo vertex_input_state = {
+      .sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+      .vertexBindingDescriptionCount   = SDL_arraysize(vertex_binding_descriptions),
+      .pVertexBindingDescriptions      = vertex_binding_descriptions,
+      .vertexAttributeDescriptionCount = SDL_arraysize(attribute_descriptions),
+      .pVertexAttributeDescriptions    = attribute_descriptions,
+  };
+
+  VkPipelineInputAssemblyStateCreateInfo input_assembly_state = {
+      .sType                  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+      .topology               = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
+      .primitiveRestartEnable = VK_FALSE,
+  };
+
+  VkViewport viewports[] = {
+      {
+          .x        = 0.0f,
+          .y        = 0.0f,
+          .width    = static_cast<float>(engine.extent2D.width),
+          .height   = static_cast<float>(engine.extent2D.height),
+          .minDepth = 0.0f,
+          .maxDepth = 1.0f,
+      },
+  };
+
+  VkRect2D scissors[] = {
+      {
+          .offset = {0, 0},
+          .extent = engine.extent2D,
+      },
+  };
+
+  VkPipelineViewportStateCreateInfo viewport_state = {
+      .sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+      .viewportCount = SDL_arraysize(viewports),
+      .pViewports    = viewports,
+      .scissorCount  = SDL_arraysize(scissors),
+      .pScissors     = scissors,
+  };
+
+  VkPipelineRasterizationStateCreateInfo rasterization_state = {
+      .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+      .depthClampEnable        = VK_FALSE,
+      .rasterizerDiscardEnable = VK_FALSE,
+      .polygonMode             = VK_POLYGON_MODE_FILL,
+      .cullMode                = VK_CULL_MODE_FRONT_BIT,
+      .frontFace               = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+      .depthBiasEnable         = VK_FALSE,
+      .depthBiasConstantFactor = 0.0f,
+      .depthBiasClamp          = 0.0f,
+      .depthBiasSlopeFactor    = 0.0f,
+      .lineWidth               = 1.0f,
+  };
+
+  VkPipelineMultisampleStateCreateInfo multisample_state = {
+      .sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+      .rasterizationSamples  = engine.MSAA_SAMPLE_COUNT,
+      .sampleShadingEnable   = VK_TRUE,
+      .minSampleShading      = 1.0f,
+      .alphaToCoverageEnable = VK_TRUE,
+      .alphaToOneEnable      = VK_FALSE,
+  };
+
+  VkPipelineDepthStencilStateCreateInfo depth_stencil_state = {
+      .sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+      .depthTestEnable       = VK_TRUE,
+      .depthWriteEnable      = VK_TRUE,
+      .depthCompareOp        = VK_COMPARE_OP_LESS,
+      .depthBoundsTestEnable = VK_FALSE,
+      .stencilTestEnable     = VK_FALSE,
+      .minDepthBounds        = 0.0f,
+      .maxDepthBounds        = 1.0f,
+  };
+
+  VkColorComponentFlags rgba_mask = 0;
+  rgba_mask |= VK_COLOR_COMPONENT_R_BIT;
+  rgba_mask |= VK_COLOR_COMPONENT_G_BIT;
+  rgba_mask |= VK_COLOR_COMPONENT_B_BIT;
+  rgba_mask |= VK_COLOR_COMPONENT_A_BIT;
+
+  VkPipelineColorBlendAttachmentState color_blend_attachments[] = {
+      {
+          .blendEnable         = VK_FALSE,
+          .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
+          .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
+          .colorBlendOp        = VK_BLEND_OP_ADD,
+          .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+          .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+          .alphaBlendOp        = VK_BLEND_OP_ADD,
+          .colorWriteMask      = rgba_mask,
+      },
+  };
+
+  VkPipelineColorBlendStateCreateInfo color_blend_state = {
+      .sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+      .logicOpEnable   = VK_FALSE,
+      .logicOp         = VK_LOGIC_OP_COPY,
+      .attachmentCount = SDL_arraysize(color_blend_attachments),
+      .pAttachments    = color_blend_attachments,
+  };
+
+  VkGraphicsPipelineCreateInfo ci = {
+      .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+      .stageCount          = SDL_arraysize(shaders.shader_stages),
+      .pStages             = shaders.shader_stages,
+      .pVertexInputState   = &vertex_input_state,
+      .pInputAssemblyState = &input_assembly_state,
+      .pViewportState      = &viewport_state,
+      .pRasterizationState = &rasterization_state,
+      .pMultisampleState   = &multisample_state,
+      .pDepthStencilState  = &depth_stencil_state,
+      .pColorBlendState    = &color_blend_state,
+      .layout              = engine.pipelines.debug_billboard_texture_array.layout,
+      .renderPass          = engine.render_passes.gui.render_pass,
+      .subpass             = 0,
+      .basePipelineHandle  = VK_NULL_HANDLE,
+      .basePipelineIndex   = -1,
+  };
+
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
+                            &engine.pipelines.debug_billboard_texture_array.pipeline);
+}
+
 void debug_billboard(Engine& engine)
 {
   TwoStageShader shaders(engine, "debug_billboard.vert", "debug_billboard.frag");
@@ -2426,7 +2576,8 @@ void debug_billboard(Engine& engine)
       .basePipelineIndex   = -1,
   };
 
-  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.pipelines.debug_billboard.pipeline);
+  vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr,
+                            &engine.pipelines.debug_billboard.pipeline);
 }
 
 void colored_model_wireframe(Engine& engine)
@@ -2636,11 +2787,10 @@ void tesselated_ground(Engine& engine, float y_scale = 2.0f, float y_offset = -1
   };
 
   const float tesc_constants[] = {
-          5.0f, // tessellatedEdgeSize
-          0.01f, // tessellationFactor
-          20.0f, // frustum_check_radius
-          y_scale,
-          y_offset,
+      5.0f,  // tessellatedEdgeSize
+      0.01f, // tessellationFactor
+      20.0f, // frustum_check_radius
+      y_scale, y_offset,
   };
 
   VkSpecializationInfo tesc_specialization_info = {
@@ -2667,8 +2817,8 @@ void tesselated_ground(Engine& engine, float y_scale = 2.0f, float y_offset = -1
   };
 
   const float tese_constants[] = {
-          y_scale,
-          y_offset,
+      y_scale,
+      y_offset,
   };
 
   VkSpecializationInfo tese_specialization_info = {
@@ -2868,6 +3018,7 @@ void Engine::setup_pipelines()
   green_gui_radar_dots(*this);
   pbr_water(*this);
   debug_billboard(*this);
+  debug_billboard_texture_array(*this);
   colored_model_wireframe(*this);
   tesselated_ground(*this);
 }

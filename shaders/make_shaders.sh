@@ -8,6 +8,8 @@ compile tesselated_ground.frag
 compile tesselated_ground.vert
 compile tesselated_ground.tesc
 compile tesselated_ground.tese
+compile debug_billboard_texture_array.frag
+compile debug_billboard_texture_array.vert
 compile debug_billboard.frag
 compile debug_billboard.vert
 compile imgui.frag

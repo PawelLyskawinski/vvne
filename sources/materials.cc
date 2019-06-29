@@ -1,5 +1,6 @@
 #include "materials.hh"
 #include "engine/cubemap.hh"
+#include "engine/fft_water.hh"
 #include "game_constants.hh"
 #include "imgui.h"
 #include "terrain_as_a_function.hh"
@@ -28,7 +29,8 @@ struct ImguiFontSurface
 
 void Materials::setup(Engine& engine)
 {
-  imgui_font_texture = engine.load_texture(ImguiFontSurface().surface);
+  fft_water_h0_k_texture = fft_water::generate_h0_k_image(engine);
+  imgui_font_texture     = engine.load_texture(ImguiFontSurface().surface);
 
   {
     GpuMemoryBlock& block = engine.memory_blocks.host_coherent;
@@ -278,6 +280,7 @@ void Materials::setup(Engine& engine)
     vkAllocateDescriptorSets(engine.device, &allocate, &lucida_sans_sdf_dset);
     vkAllocateDescriptorSets(engine.device, &allocate, &pbr_water_material_dset);
     vkAllocateDescriptorSets(engine.device, &allocate, &debug_shadow_map_dset);
+    vkAllocateDescriptorSets(engine.device, &allocate, &debug_ttf_water_h0_k_dset);
   }
 
   {
@@ -314,6 +317,11 @@ void Materials::setup(Engine& engine)
     image.sampler   = engine.shadowmap_sampler;
     image.imageView = engine.shadowmap_image.image_view;
     write.dstSet    = debug_shadow_map_dset;
+    vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
+
+    image.sampler   = engine.shadowmap_sampler;
+    image.imageView = fft_water_h0_k_texture.image_view;
+    write.dstSet    = debug_ttf_water_h0_k_dset;
     vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
   }
 
@@ -681,4 +689,8 @@ void Materials::setup(Engine& engine)
   }
 }
 
-void Materials::teardown(Engine& engine) {}
+void Materials::teardown(Engine& engine)
+{
+  vkDestroyImageView(engine.device, fft_water_h0_k_texture.image_view, nullptr);
+  vkDestroyImage(engine.device, fft_water_h0_k_texture.image, nullptr);
+}

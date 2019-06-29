@@ -384,7 +384,7 @@ void imgui(Engine& engine)
   vkCreatePipelineLayout(engine.device, &ci, nullptr, &engine.pipelines.imgui.layout);
 }
 
-void debug_shadowmap_billboard(Engine& engine)
+void debug_shadowmap_billboard_texture_array(Engine& engine)
 {
   VkPushConstantRange ranges[] = {
       {
@@ -396,6 +396,27 @@ void debug_shadowmap_billboard(Engine& engine)
           .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
           .offset     = sizeof(mat4x4),
           .size       = sizeof(uint32_t),
+      },
+  };
+
+  VkPipelineLayoutCreateInfo ci = {
+      .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+      .setLayoutCount         = 1,
+      .pSetLayouts            = &engine.descriptor_set_layouts.single_texture_in_frag,
+      .pushConstantRangeCount = SDL_arraysize(ranges),
+      .pPushConstantRanges    = ranges,
+  };
+
+  vkCreatePipelineLayout(engine.device, &ci, nullptr, &engine.pipelines.debug_billboard_texture_array.layout);
+}
+
+void debug_shadowmap_billboard(Engine& engine)
+{
+  VkPushConstantRange ranges[] = {
+      {
+          .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+          .offset     = 0,
+          .size       = sizeof(mat4x4),
       },
   };
 
@@ -438,9 +459,10 @@ void tesselated_ground(Engine& engine)
 {
   VkPushConstantRange ranges[] = {
       {
-          .stageFlags = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-          .offset     = 0,
-          .size       = 2 * sizeof(mat4x4) + 2 * sizeof(float) + sizeof(vec3),
+          .stageFlags = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT |
+                        VK_SHADER_STAGE_FRAGMENT_BIT,
+          .offset = 0,
+          .size   = 2 * sizeof(mat4x4) + 2 * sizeof(float) + sizeof(vec3),
       },
   };
 
@@ -484,6 +506,7 @@ void Engine::setup_pipeline_layouts()
   green_gui_radar_dots(*this);
   imgui(*this);
   debug_shadowmap_billboard(*this);
+  debug_shadowmap_billboard_texture_array(*this);
   colored_model_wireframe(*this);
   tesselated_ground(*this);
 }
