@@ -670,8 +670,6 @@ void Game::render(Engine& engine)
       // -----------------------------------------------------------------------------------------------
       // WATER PRE-PASS
       // -----------------------------------------------------------------------------------------------
-      static bool once_prepass = false;
-      if (false == once_prepass)
       {
         VkClearValue clear_value = {};
         clear_value.color        = {{0.0f, 1.0f, 1.0f, 1.0f}};
@@ -688,8 +686,6 @@ void Game::render(Engine& engine)
         vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
         vkCmdExecuteCommands(cmd, 1, &water_prepass_command);
         vkCmdEndRenderPass(cmd);
-
-        once_prepass = true;
       }
 
       // -----------------------------------------------------------------------------------------------
@@ -856,10 +852,8 @@ void Game::render(Engine& engine)
             },
         };
 
-        // vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
-        // nullptr, 0, nullptr, SDL_arraysize(barriers), barriers);
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr,
-                             0, nullptr, 1, barriers);
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, SDL_arraysize(barriers), barriers);
+        // vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 1, barriers);
       }
 
       vkEndCommandBuffer(cmd);

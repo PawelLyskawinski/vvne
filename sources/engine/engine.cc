@@ -26,8 +26,8 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug_callback(VkDebugUtilsMessageS
 
 namespace {
 
-const uint32_t initial_window_width                              = 1900;
-const uint32_t initial_window_height                             = 1200;
+const uint32_t initial_window_width                              = 1000;
+const uint32_t initial_window_height                             = 800;
 const uint32_t gpu_device_local_memory_pool_size                 = 5_MB;
 const uint32_t gpu_host_visible_transfer_source_memory_pool_size = 5_MB;
 const uint32_t gpu_host_coherent_memory_pool_size                = 1_MB;

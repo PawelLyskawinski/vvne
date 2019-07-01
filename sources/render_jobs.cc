@@ -2021,13 +2021,11 @@ void fft_water_hkt(ThreadJobData tjd)
   VkCommandBuffer command          = acquire_command_buffer(tjd);
   ctx->game->water_prepass_command = command;
   ctx->engine->render_passes.water_pre_pass.begin(command, 0);
+
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.fft_water_hkt.pipeline);
-  vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer,
-                         &ctx->game->materials.green_gui_billboard_vertex_buffer_offset);
-  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.fft_water_hkt.layout, 0, 1,
-                          &ctx->game->materials.fft_water_hkt_dset, 0, nullptr);
-  vkCmdPushConstants(command, ctx->engine->pipelines.fft_water_hkt.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
-                     sizeof(float), &ctx->game->current_time_sec);
+  vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer, &ctx->game->materials.green_gui_billboard_vertex_buffer_offset);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.fft_water_hkt.layout, 0, 1, &ctx->game->materials.fft_water_hkt_dset, 0, nullptr);
+  vkCmdPushConstants(command, ctx->engine->pipelines.fft_water_hkt.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float), &ctx->game->current_time_sec);
   vkCmdDraw(command, 4, 1, 0, 0);
   vkEndCommandBuffer(command);
 }

@@ -65,6 +65,6 @@ void main()
 
   complex dy = add(mul(tilde_h0k, exp_iwt), mul(tilde_h0minuskconj, exp_iwt_inv));
 
-  // outColor = vec4(dy.real, dy.im, 0.0, 1.0);
-  outColor = vec4(1.0, 0.0, 0.0, 1.0);
+  outColor = vec4(dy.real, dy.im, 0.0, 1.0);
+  // outColor = vec4(1.0, 0.0, 0.0, 1.0);
 }
