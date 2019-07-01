@@ -2,6 +2,62 @@
 
 namespace {
 
+void water_pre_pass(Engine& engine)
+{
+  VkAttachmentDescription attachment = {
+      .format         = engine.surface_format.format,
+      .samples        = VK_SAMPLE_COUNT_1_BIT,
+      .loadOp         = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+      .storeOp        = VK_ATTACHMENT_STORE_OP_STORE,
+      .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+      .stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE,
+      .initialLayout  = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+      .finalLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+  };
+
+  VkAttachmentReference reference = {
+      .attachment = 0,
+      .layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+  };
+
+  VkSubpassDescription subpass = {
+      .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
+      .colorAttachmentCount = 1,
+      .pColorAttachments    = &reference,
+  };
+
+  VkSubpassDependency dependencies[] = {
+      {
+          .srcSubpass    = VK_SUBPASS_EXTERNAL,
+          .dstSubpass    = 0,
+          .srcStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+          .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+          .srcAccessMask = VK_ACCESS_SHADER_READ_BIT,
+          .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+      },
+      {
+          .srcSubpass    = 0,
+          .dstSubpass    = VK_SUBPASS_EXTERNAL,
+          .srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+          .dstStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+          .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+          .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+      },
+  };
+
+  VkRenderPassCreateInfo ci = {
+      .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+      .attachmentCount = 1,
+      .pAttachments    = &attachment,
+      .subpassCount    = 1,
+      .pSubpasses      = &subpass,
+      .dependencyCount = SDL_arraysize(dependencies),
+      .pDependencies   = dependencies,
+  };
+
+  vkCreateRenderPass(engine.device, &ci, nullptr, &engine.render_passes.water_pre_pass.render_pass);
+}
+
 void shadowmap(Engine& engine)
 {
   VkAttachmentDescription attachment = {
@@ -388,6 +444,7 @@ void gui(Engine& engine)
 
 void Engine::setup_render_passes()
 {
+  water_pre_pass(*this);
   shadowmap(*this);
   skybox(*this);
   color_and_depth(*this);

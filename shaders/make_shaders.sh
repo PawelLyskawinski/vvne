@@ -50,3 +50,5 @@ compile colored_model_wireframe.frag
 compile colored_model_wireframe.vert
 compile fft_water_h0_k_pass.frag
 compile fft_water_h0_k_pass.vert
+compile fft_water_hkt.frag
+compile fft_water_hkt.vert

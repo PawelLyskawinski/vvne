@@ -685,8 +685,8 @@ void Materials::setup(Engine& engine)
   // FFT WATER
   //
 
-  fft_water::generate_h0_k_image(engine, green_gui_billboard_vertex_buffer_offset, fft_water_h0_k_texture,
-                                 fft_water_h0_minus_k_texture);
+  fft_water::generate_h0_k_images(engine, green_gui_billboard_vertex_buffer_offset, fft_water_h0_k_texture,
+                                  fft_water_h0_minus_k_texture);
 
   {
     VkDescriptorSetAllocateInfo allocate = {
@@ -696,7 +696,9 @@ void Materials::setup(Engine& engine)
         .pSetLayouts        = &engine.descriptor_set_layouts.single_texture_in_frag,
     };
 
-    vkAllocateDescriptorSets(engine.device, &allocate, &debug_ttf_water_h0_k_dset);
+    vkAllocateDescriptorSets(engine.device, &allocate, &debug_fft_water_h0_k_dset);
+    vkAllocateDescriptorSets(engine.device, &allocate, &debug_fft_water_h0_minus_k_dset);
+    vkAllocateDescriptorSets(engine.device, &allocate, &debug_fft_water_hkt_dset);
 
     VkDescriptorImageInfo image = {
         .sampler     = engine.shadowmap_sampler,
@@ -706,7 +708,7 @@ void Materials::setup(Engine& engine)
 
     VkWriteDescriptorSet write = {
         .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet          = debug_ttf_water_h0_k_dset,
+        .dstSet          = debug_fft_water_h0_k_dset,
         .dstBinding      = 0,
         .dstArrayElement = 0,
         .descriptorCount = 1,
@@ -715,6 +717,60 @@ void Materials::setup(Engine& engine)
     };
 
     vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
+
+    write.dstSet    = debug_fft_water_h0_minus_k_dset;
+    image.imageView = fft_water_h0_minus_k_texture.image_view;
+    vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
+
+    write.dstSet    = debug_fft_water_hkt_dset;
+    image.imageView = engine.fft_water_hkt_image.image_view;
+    vkUpdateDescriptorSets(engine.device, 1, &write, 0, nullptr);
+  }
+
+  {
+    VkDescriptorSetAllocateInfo allocate = {
+        .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool     = engine.descriptor_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts        = &engine.descriptor_set_layouts.two_textures_in_frag,
+    };
+
+    vkAllocateDescriptorSets(engine.device, &allocate, &fft_water_hkt_dset);
+
+    VkDescriptorImageInfo image_a = {
+        .sampler     = engine.shadowmap_sampler,
+        .imageView   = fft_water_h0_k_texture.image_view,
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    };
+
+    VkDescriptorImageInfo image_b = {
+        .sampler     = engine.shadowmap_sampler,
+        .imageView   = fft_water_h0_minus_k_texture.image_view,
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    };
+
+    VkWriteDescriptorSet writes[] = {
+        {
+            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet          = fft_water_hkt_dset,
+            .dstBinding      = 0,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .pImageInfo      = &image_a,
+        },
+        {
+            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet          = fft_water_hkt_dset,
+            .dstBinding      = 1,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .pImageInfo      = &image_b,
+        },
+    };
+
+    vkUpdateDescriptorSets(engine.device, SDL_arraysize(writes), writes, 0, nullptr);
   }
 }
 

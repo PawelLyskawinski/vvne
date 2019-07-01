@@ -32,5 +32,6 @@ void debug_shadowmap(ThreadJobData tjd);
 void debug_fft_water(ThreadJobData tjd);
 void orientation_axis(ThreadJobData tjd);
 void tesselated_ground(ThreadJobData tjd);
+void fft_water_hkt(ThreadJobData tjd);
 
 } // namespace render

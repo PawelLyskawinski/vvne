@@ -486,6 +486,31 @@ void tesselated_ground(Engine& engine)
   vkCreatePipelineLayout(engine.device, &ci, nullptr, &engine.pipelines.tesselated_ground.layout);
 }
 
+void fft_water_hkt(Engine& engine)
+{
+  VkPushConstantRange ranges[] = {
+      {
+          .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+          .offset     = 0,
+          .size       = sizeof(float),
+      },
+  };
+
+  VkDescriptorSetLayout descriptor_sets[] = {
+      engine.descriptor_set_layouts.two_textures_in_frag,
+  };
+
+  VkPipelineLayoutCreateInfo ci = {
+      .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+      .setLayoutCount         = SDL_arraysize(descriptor_sets),
+      .pSetLayouts            = descriptor_sets,
+      .pushConstantRangeCount = SDL_arraysize(ranges),
+      .pPushConstantRanges    = ranges,
+  };
+
+  vkCreatePipelineLayout(engine.device, &ci, nullptr, &engine.pipelines.fft_water_hkt.layout);
+}
+
 } // namespace
 
 void Engine::setup_pipeline_layouts()
@@ -509,4 +534,5 @@ void Engine::setup_pipeline_layouts()
   debug_shadowmap_billboard_texture_array(*this);
   colored_model_wireframe(*this);
   tesselated_ground(*this);
+  fft_water_hkt(*this);
 }

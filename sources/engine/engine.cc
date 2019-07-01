@@ -116,6 +116,7 @@ void Engine::startup(bool vulkan_validation_enabled)
 {
   generic_allocator.init();
 
+  renderpass_allocate_memory(generic_allocator, render_passes.water_pre_pass, 1);
   renderpass_allocate_memory(generic_allocator, render_passes.shadowmap, SHADOWMAP_CASCADE_COUNT);
   renderpass_allocate_memory(generic_allocator, render_passes.skybox, SWAPCHAIN_IMAGES_COUNT);
   renderpass_allocate_memory(generic_allocator, render_passes.color_and_depth, SWAPCHAIN_IMAGES_COUNT);
@@ -479,6 +480,24 @@ void Engine::startup(bool vulkan_validation_enabled)
   }
 
   {
+    VkImageCreateInfo ci = {
+        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType     = VK_IMAGE_TYPE_2D,
+        .format        = surface_format.format,
+        .extent        = {.width = FFT_WATER_H0_TEXTURE_DIM, .height = FFT_WATER_H0_TEXTURE_DIM, .depth = 1},
+        .mipLevels     = 1,
+        .arrayLayers   = 1,
+        .samples       = VK_SAMPLE_COUNT_1_BIT,
+        .tiling        = VK_IMAGE_TILING_OPTIMAL,
+        .usage         = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+
+    vkCreateImage(device, &ci, nullptr, &fft_water_hkt_image.image);
+  }
+
+  {
     VkSamplerCreateInfo ci = {
         .sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
         .magFilter               = VK_FILTER_LINEAR,
@@ -645,6 +664,15 @@ void Engine::startup(bool vulkan_validation_enabled)
     vkBindImageMemory(device, depth_image.image, memory_blocks.device_images.memory, depth_image.memory_offset);
   }
 
+  {
+    VkMemoryRequirements reqs = {};
+    vkGetImageMemoryRequirements(device, fft_water_hkt_image.image, &reqs);
+    fft_water_hkt_image.memory_offset =
+        memory_blocks.device_images.allocator.allocate_bytes(align(reqs.size, reqs.alignment));
+    vkBindImageMemory(device, fft_water_hkt_image.image, memory_blocks.device_images.memory,
+                      fft_water_hkt_image.memory_offset);
+  }
+
   if (VK_SAMPLE_COUNT_1_BIT != MSAA_SAMPLE_COUNT)
   {
     VkMemoryRequirements reqs = {};
@@ -774,6 +802,32 @@ void Engine::startup(bool vulkan_validation_enabled)
   }
 
   {
+    VkImageSubresourceRange sr = {
+        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .levelCount = 1,
+        .layerCount = 1,
+    };
+
+    VkComponentMapping comp = {
+        .r = VK_COMPONENT_SWIZZLE_R,
+        .g = VK_COMPONENT_SWIZZLE_G,
+        .b = VK_COMPONENT_SWIZZLE_B,
+        .a = VK_COMPONENT_SWIZZLE_A,
+    };
+
+    VkImageViewCreateInfo ci = {
+        .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image            = fft_water_hkt_image.image,
+        .viewType         = VK_IMAGE_VIEW_TYPE_2D,
+        .format           = surface_format.format,
+        .components       = comp,
+        .subresourceRange = sr,
+    };
+
+    vkCreateImageView(device, &ci, nullptr, &fft_water_hkt_image.image_view);
+  }
+
+  {
     autoclean_images.push(shadowmap_image.image);
     autoclean_image_views.push(shadowmap_image.image_view);
 
@@ -839,6 +893,25 @@ void Engine::startup(bool vulkan_validation_enabled)
 
     {
       VkImageMemoryBarrier barriers[] = {
+          // fft_water_hky
+          {
+              .sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+              .srcAccessMask       = 0,
+              .dstAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+              .oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED,
+              .newLayout           = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+              .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+              .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+              .image               = fft_water_hkt_image.image,
+              .subresourceRange =
+                  {
+                      .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                      .baseMipLevel   = 0,
+                      .levelCount     = 1,
+                      .baseArrayLayer = 0,
+                      .layerCount     = 1,
+                  },
+          },
           // shadow map
           {
               .sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -880,10 +953,12 @@ void Engine::startup(bool vulkan_validation_enabled)
           },
       };
 
-      vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr,
+      vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr,
                            0, nullptr, 1, &barriers[0]);
+      vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr,
+                           0, nullptr, 1, &barriers[1]);
       vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, 0, 0,
-                           nullptr, 0, nullptr, 1, &barriers[1]);
+                           nullptr, 0, nullptr, 1, &barriers[2]);
 
       vkEndCommandBuffer(cmd);
 
@@ -984,6 +1059,9 @@ void Engine::teardown()
 
   vkDestroyImageView(device, depth_image.image_view, nullptr);
   vkDestroyImage(device, depth_image.image, nullptr);
+
+  vkDestroyImageView(device, fft_water_hkt_image.image_view, nullptr);
+  vkDestroyImage(device, fft_water_hkt_image.image, nullptr);
 
   for (const GpuMemoryBlock& it : StructureAsArrayView<GpuMemoryBlock>(&memory_blocks))
   {

@@ -38,6 +38,7 @@ struct Pipelines
   Pair debug_billboard_texture_array;
   Pair colored_model_wireframe;
   Pair tesselated_ground;
+  Pair fft_water_hkt;
 };
 
 struct RenderPass
@@ -51,6 +52,7 @@ struct RenderPass
 
 struct RenderPasses
 {
+  RenderPass water_pre_pass;
   RenderPass shadowmap;
   RenderPass skybox;
   RenderPass color_and_depth;
@@ -64,6 +66,7 @@ struct DescriptorSetLayouts
   VkDescriptorSetLayout pbr_ibl_cubemaps_and_brdf_lut;
   VkDescriptorSetLayout pbr_dynamic_lights;
   VkDescriptorSetLayout single_texture_in_frag;
+  VkDescriptorSetLayout two_textures_in_frag;
   VkDescriptorSetLayout skinning_matrices;
   VkDescriptorSetLayout cascade_shadow_map_matrices_ubo_frag;
   VkDescriptorSetLayout frustum_planes;
@@ -128,6 +131,7 @@ struct Engine
   VkDescriptorPool           descriptor_pool;
   Texture                    msaa_color_image;
   Texture                    depth_image;
+  Texture                    fft_water_hkt_image;
   VkSemaphore                image_available;
   VkSemaphore                render_finished;
   VkSampler                  texture_sampler;

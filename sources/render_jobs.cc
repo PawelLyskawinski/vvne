@@ -1959,7 +1959,7 @@ void debug_fft_water(ThreadJobData tjd)
                          &ctx->game->materials.green_gui_billboard_vertex_buffer_offset);
 
   vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.debug_billboard.layout, 0, 1,
-                          &ctx->game->materials.debug_ttf_water_h0_k_dset, 0, nullptr);
+                          &ctx->game->materials.debug_fft_water_h0_k_dset, 0, nullptr);
 
   mat4x4 gui_projection = {};
   mat4x4_ortho(gui_projection, 0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
@@ -1984,7 +1984,11 @@ void debug_fft_water(ThreadJobData tjd)
 
   vkCmdDraw(command, 4, 1, 0, 0);
 
-  mat4x4_translate(translation_matrix, 3 * rectangle_dimension_pixels + 20.0f, rectangle_dimension_pixels + 220.0f, -1.0f);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.debug_billboard.layout, 0, 1,
+                          &ctx->game->materials.debug_fft_water_h0_minus_k_dset, 0, nullptr);
+
+  mat4x4_translate(translation_matrix, 3 * rectangle_dimension_pixels + 20.0f, rectangle_dimension_pixels + 220.0f,
+                   -1.0f);
   mat4x4_mul(world_transform, translation_matrix, scale_matrix);
   mat4x4_mul(mvp, gui_projection, world_transform);
 
@@ -1993,6 +1997,38 @@ void debug_fft_water(ThreadJobData tjd)
 
   vkCmdDraw(command, 4, 1, 0, 0);
 
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.debug_billboard.layout, 0, 1,
+                          &ctx->game->materials.debug_fft_water_hkt_dset, 0, nullptr);
+
+  mat4x4_translate(translation_matrix, rectangle_dimension_pixels + 10.0f, 3 * rectangle_dimension_pixels + 230.0f,
+                   -1.0f);
+  mat4x4_mul(world_transform, translation_matrix, scale_matrix);
+  mat4x4_mul(mvp, gui_projection, world_transform);
+
+  vkCmdPushConstants(command, ctx->engine->pipelines.debug_billboard.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                     sizeof(mat4x4), mvp);
+
+  vkCmdDraw(command, 4, 1, 0, 0);
+
+  vkEndCommandBuffer(command);
+}
+
+void fft_water_hkt(ThreadJobData tjd)
+{
+  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+
+  VkCommandBuffer command          = acquire_command_buffer(tjd);
+  ctx->game->water_prepass_command = command;
+  ctx->engine->render_passes.water_pre_pass.begin(command, 0);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.fft_water_hkt.pipeline);
+  vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer,
+                         &ctx->game->materials.green_gui_billboard_vertex_buffer_offset);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.fft_water_hkt.layout, 0, 1,
+                          &ctx->game->materials.fft_water_hkt_dset, 0, nullptr);
+  vkCmdPushConstants(command, ctx->engine->pipelines.fft_water_hkt.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                     sizeof(float), &ctx->game->current_time_sec);
+  vkCmdDraw(command, 4, 1, 0, 0);
   vkEndCommandBuffer(command);
 }
 

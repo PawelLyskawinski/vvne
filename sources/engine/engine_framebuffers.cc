@@ -2,6 +2,23 @@
 
 namespace {
 
+void water_pre_pass(Engine& engine)
+{
+  RenderPass& render_pass = engine.render_passes.water_pre_pass;
+
+  VkFramebufferCreateInfo ci = {
+      .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+      .renderPass      = render_pass.render_pass,
+      .attachmentCount = 1,
+      .pAttachments    = &engine.fft_water_hkt_image.image_view,
+      .width           = FFT_WATER_H0_TEXTURE_DIM,
+      .height          = FFT_WATER_H0_TEXTURE_DIM,
+      .layers          = 1,
+  };
+
+  vkCreateFramebuffer(engine.device, &ci, nullptr, render_pass.framebuffers);
+}
+
 void shadowmap(Engine& engine)
 {
   RenderPass& render_pass = engine.render_passes.shadowmap;
@@ -124,6 +141,7 @@ void gui(Engine& engine)
 
 void Engine::setup_framebuffers()
 {
+  water_pre_pass(*this);
   shadowmap(*this);
   skybox(*this);
   color_and_depth(*this);

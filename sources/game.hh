@@ -77,6 +77,7 @@ struct Game
   uint32_t                                image_index;
   AtomicStack<ShadowmapCommandBuffer, 64> shadow_mapping_pass_commands;
   VkCommandBuffer                         skybox_command;
+  VkCommandBuffer                         water_prepass_command;
   AtomicStack<VkCommandBuffer, 64>        scene_rendering_commands;
   AtomicStack<VkCommandBuffer, 64>        gui_commands;
   float                                   current_time_sec;

@@ -120,6 +120,34 @@ void Engine::setup_descriptor_set_layouts()
   }
 
   // --------------------------------------------------------------- //
+  // Two textures in fragment shader
+  // --------------------------------------------------------------- //
+  {
+    VkDescriptorSetLayoutBinding bindings[] = {
+        {
+            .binding         = 0,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = 1,
+            .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+        },
+        {
+            .binding         = 1,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = 1,
+            .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+        },
+    };
+
+    VkDescriptorSetLayoutCreateInfo ci = {
+        .sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = SDL_arraysize(bindings),
+        .pBindings    = bindings,
+    };
+
+    vkCreateDescriptorSetLayout(device, &ci, nullptr, &descriptor_set_layouts.two_textures_in_frag);
+  }
+
+  // --------------------------------------------------------------- //
   // Skinning matrices in vertex shader
   // --------------------------------------------------------------- //
   {

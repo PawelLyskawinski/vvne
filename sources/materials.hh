@@ -76,7 +76,10 @@ struct Materials
   VkDescriptorSet sandy_level_pbr_material_dset;
   VkDescriptorSet pbr_water_material_dset;
   VkDescriptorSet debug_shadow_map_dset;
-  VkDescriptorSet debug_ttf_water_h0_k_dset;
+  VkDescriptorSet debug_fft_water_h0_k_dset;
+  VkDescriptorSet debug_fft_water_h0_minus_k_dset;
+  VkDescriptorSet fft_water_hkt_dset;
+  VkDescriptorSet debug_fft_water_hkt_dset;
   VkDescriptorSet frustum_planes_dset[SWAPCHAIN_IMAGES_COUNT];
 
   // Those two descriptor sets partially point to the same data. In both cases we'll be using

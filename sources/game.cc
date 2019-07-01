@@ -238,7 +238,8 @@ void Game::teardown(Engine& engine)
 // https://github.com/SaschaWillems/Vulkan/blob/master/examples/shadowmappingcascade/shadowmappingcascade.cpp
 // -------------------------------------------------------------------------------------------------------------------
 static void recalculate_cascade_view_proj_matrices(Mat4x4* cascade_view_proj_mat, float* cascade_split_depths,
-                                            Mat4x4 camera_projection, Mat4x4 camera_view, Vec3 light_source_position)
+                                                   Mat4x4 camera_projection, Mat4x4 camera_view,
+                                                   Vec3 light_source_position)
 {
   constexpr float cascade_split_lambda = 0.95f;
   constexpr float near_clip            = 0.001f;
@@ -436,7 +437,6 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   for (WeaponSelection& sel : weapon_selections)
     sel.animate(0.008f * time_delta_since_last_frame_ms);
 
-
   debug_gui.update(engine, *this);
   player.update(current_time_sec, time_delta_since_last_frame_ms);
 
@@ -591,6 +591,7 @@ void Game::render(Engine& engine)
         render::imgui,
         // render::debug_shadowmap,
         render::debug_fft_water,
+        render::fft_water_hkt,
     };
 
     engine.job_system.jobs.reset();
@@ -664,6 +665,31 @@ void Game::render(Engine& engine)
       {
         VkCommandBufferBeginInfo begin = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
         vkBeginCommandBuffer(cmd, &begin);
+      }
+
+      // -----------------------------------------------------------------------------------------------
+      // WATER PRE-PASS
+      // -----------------------------------------------------------------------------------------------
+      static bool once_prepass = false;
+      if (false == once_prepass)
+      {
+        VkClearValue clear_value = {};
+        clear_value.color        = {{0.0f, 1.0f, 1.0f, 1.0f}};
+
+        VkRenderPassBeginInfo begin = {
+            .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+            .renderPass      = engine.render_passes.water_pre_pass.render_pass,
+            .framebuffer     = engine.render_passes.water_pre_pass.framebuffers[0],
+            .renderArea      = {.extent = {.width = FFT_WATER_H0_TEXTURE_DIM, .height = FFT_WATER_H0_TEXTURE_DIM}},
+            .clearValueCount = 1,
+            .pClearValues    = &clear_value,
+        };
+
+        vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+        vkCmdExecuteCommands(cmd, 1, &water_prepass_command);
+        vkCmdEndRenderPass(cmd);
+
+        once_prepass = true;
       }
 
       // -----------------------------------------------------------------------------------------------
@@ -791,27 +817,49 @@ void Game::render(Engine& engine)
       }
 
       {
-        VkImageMemoryBarrier barrier = {
-            .sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-            .srcAccessMask       = 0,
-            .dstAccessMask       = 0,
-            .oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            .newLayout           = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image               = engine.shadowmap_image.image,
-            .subresourceRange =
-                {
-                    .aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT,
-                    .baseMipLevel   = 0,
-                    .levelCount     = 1,
-                    .baseArrayLayer = 0,
-                    .layerCount     = SHADOWMAP_CASCADE_COUNT,
-                },
+        VkImageMemoryBarrier barriers[] = {
+            {
+                .sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                .srcAccessMask       = 0,
+                .dstAccessMask       = 0,
+                .oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                .newLayout           = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .image               = engine.shadowmap_image.image,
+                .subresourceRange =
+                    {
+                        .aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT,
+                        .baseMipLevel   = 0,
+                        .levelCount     = 1,
+                        .baseArrayLayer = 0,
+                        .layerCount     = SHADOWMAP_CASCADE_COUNT,
+                    },
+            },
+            {
+                .sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                .srcAccessMask       = 0,
+                .dstAccessMask       = 0,
+                .oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                .newLayout           = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .image               = engine.fft_water_hkt_image.image,
+                .subresourceRange =
+                    {
+                        .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                        .baseMipLevel   = 0,
+                        .levelCount     = 1,
+                        .baseArrayLayer = 0,
+                        .layerCount     = 1,
+                    },
+            },
         };
 
+        // vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
+        // nullptr, 0, nullptr, SDL_arraysize(barriers), barriers);
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr,
-                             0, nullptr, 1, &barrier);
+                             0, nullptr, 1, barriers);
       }
 
       vkEndCommandBuffer(cmd);
