@@ -48,16 +48,16 @@ void main()
                         / sqrt(2.0),
                     -4000.0, 4000.0);
 
-  float h0minusk = clamp(sqrt(                                           //
-                        (A / (mag_squered * mag_squered))           //
-                        * pow(dot(normalize(-k), normalize(w)), 4.0) //
-                        * exp(-(1.0 / (mag_squered * L_ * L_)))     //
-                        * exp(-mag_squered * pow(L / 2000.0, 2)))   //
-                        / sqrt(2.0),
-                    -4000.0, 4000.0);
+  float h0minusk = clamp(sqrt(                                            //
+                             (A / (mag_squered * mag_squered))            //
+                             * pow(dot(normalize(-k), normalize(w)), 4.0) //
+                             * exp(-(1.0 / (mag_squered * L_ * L_)))      //
+                             * exp(-mag_squered * pow(L / 2000.0, 2)))    //
+                             / sqrt(2.0),
+                         -4000.0, 4000.0);
 
   vec4 gauss_random = gauss_rng();
 
-  outColor = vec4(gauss_random.xy * h0k, 0.0, 1.0);
+  outColor  = vec4(gauss_random.xy * h0k, 0.0, 1.0);
   outColor2 = vec4(gauss_random.zw * h0minusk, 0.0, 1.0);
 }

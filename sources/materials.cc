@@ -7,29 +7,32 @@
 
 namespace {
 
-struct ImguiFontSurface
+struct RAIISurface
 {
-  ImguiFontSurface()
+  explicit RAIISurface(SDL_Surface* surface)
+      : surface(surface)
   {
-    ImGuiIO&       io             = ImGui::GetIO();
-    unsigned char* guifont_pixels = nullptr;
-    int            guifont_w      = 0;
-    int            guifont_h      = 0;
-    io.Fonts->GetTexDataAsRGBA32(&guifont_pixels, &guifont_w, &guifont_h);
-    surface = SDL_CreateRGBSurfaceWithFormatFrom(guifont_pixels, guifont_w, guifont_h, 32, 4 * guifont_w,
-                                                 SDL_PIXELFORMAT_RGBA8888);
   }
-
-  ~ImguiFontSurface() { SDL_FreeSurface(surface); }
-
+  ~RAIISurface() { SDL_FreeSurface(surface); }
   SDL_Surface* surface;
 };
+
+SDL_Surface* create_imgui_font_surface()
+{
+  ImGuiIO&       io             = ImGui::GetIO();
+  unsigned char* guifont_pixels = nullptr;
+  int            guifont_w      = 0;
+  int            guifont_h      = 0;
+  io.Fonts->GetTexDataAsRGBA32(&guifont_pixels, &guifont_w, &guifont_h);
+  return SDL_CreateRGBSurfaceWithFormatFrom(guifont_pixels, guifont_w, guifont_h, 32, 4 * guifont_w,
+                                                        SDL_PIXELFORMAT_RGBA8888);
+}
 
 } // namespace
 
 void Materials::setup(Engine& engine)
 {
-  imgui_font_texture = engine.load_texture(ImguiFontSurface().surface);
+  imgui_font_texture = engine.load_texture(RAIISurface(create_imgui_font_surface()).surface);
 
   {
     GpuMemoryBlock& block = engine.memory_blocks.host_coherent;

@@ -56,8 +56,8 @@ void main()
     mag = 0.0001;
 
   const float w       = sqrt(9.81 * mag);
-  const float cosinus = cos(w * push_const.t);
-  const float sinus   = sin(w * push_const.t);
+  const float cosinus = cos(w * 1.0f * push_const.t);
+  const float sinus   = sin(w * 1.0f * push_const.t);
 
   // euler formula
   const complex exp_iwt     = complex(cosinus, sinus);
