@@ -259,16 +259,19 @@ void green_gui_lines(Engine& engine)
 {
   VkPushConstantRange ranges[] = {
       {
-          .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+          .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
           .offset     = 0,
+          .size       = sizeof(vec4),
+      },
+      {
+          .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+          .offset     = sizeof(vec4),
           .size       = sizeof(vec4),
       },
   };
 
   VkPipelineLayoutCreateInfo ci = {
       .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount         = 1,
-      .pSetLayouts            = &engine.descriptor_set_layouts.single_texture_in_frag,
       .pushConstantRangeCount = SDL_arraysize(ranges),
       .pPushConstantRanges    = ranges,
   };

@@ -8,6 +8,7 @@
 #include "game_constants.hh"
 #include "game_generate_gui_lines.hh"
 #include "imgui.h"
+#include "lua_scripts.hh"
 #include "materials.hh"
 #include "player.hh"
 #include "profiler.hh"
@@ -68,10 +69,11 @@ struct JobContext
 
 struct Game
 {
-  DebugGui  debug_gui;
-  Materials materials;
-  Profiler  update_profiler;
-  Profiler  render_profiler;
+  DebugGui   debug_gui;
+  Materials  materials;
+  Profiler   update_profiler;
+  Profiler   render_profiler;
+  LuaScripts lua_scripts;
 
   VkCommandBuffer                         primary_command_buffers[SWAPCHAIN_IMAGES_COUNT];
   uint32_t                                image_index;

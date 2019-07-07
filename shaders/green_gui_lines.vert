@@ -1,8 +1,20 @@
 #version 450
 
-layout(location = 0) in vec2 inPosition;
+layout(push_constant) uniform Transformation
+{
+    vec2 position_a;
+    vec2 position_b;
+}
+transformation;
 
 void main()
 {
-  gl_Position = vec4(inPosition, 0.0, 1.0);
+    if(0 == gl_VertexIndex)
+    {
+        gl_Position = vec4(transformation.position_a, 0.0, 1.0);
+    }
+    else
+    {
+        gl_Position = vec4(transformation.position_b, 0.0, 1.0);
+    }
 }

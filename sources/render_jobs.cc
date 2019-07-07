@@ -477,112 +477,19 @@ void robot_gui_lines(ThreadJobData tjd)
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
+
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_lines.pipeline);
-  vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_host_coherent_memory_buffer,
-                         &ctx->game->materials.green_gui_rulers_buffer_offsets[ctx->game->image_index]);
 
-  {
-    // in vulkan coordinate system Y axis is pointing down, so we'll have to invert the value to get
-    // something more reasonable
-    GenerateGuiLinesCommand cmd = {
-        .player_y_location_meters = -ctx->game->player.position.y,
-        .camera_x_pitch_radians   = 0.0f, // to_rad(10) * SDL_sinf(current_time_sec), // simulating future strafe tilts,
-        .camera_y_pitch_radians   = ctx->game->player.camera_updown_angle,
-    };
+  lua_pushlightuserdata(ctx->game->lua_scripts.test_script, command);
+  lua_pushlightuserdata(ctx->game->lua_scripts.test_script, ctx->engine->pipelines.green_gui_lines.layout);
+  lua_pushinteger(ctx->game->lua_scripts.test_script, static_cast<int>(ctx->engine->extent2D.width));
+  lua_pushinteger(ctx->game->lua_scripts.test_script, static_cast<int>(ctx->engine->extent2D.height));
+  lua_pushnumber(ctx->game->lua_scripts.test_script, -ctx->game->player.position.y);
+  lua_pushnumber(ctx->game->lua_scripts.test_script, 0.0);
+  lua_pushnumber(ctx->game->lua_scripts.test_script, ctx->game->player.camera_updown_angle);
 
-    void* data = nullptr;
-    vkMapMemory(ctx->engine->device, ctx->engine->memory_blocks.host_coherent.memory,
-                ctx->game->materials.green_gui_rulers_buffer_offsets[ctx->game->image_index],
-                MAX_ROBOT_GUI_LINES * sizeof(vec2), 0, &data);
-
-    generate_gui_lines(cmd, reinterpret_cast<vec2*>(data), MAX_ROBOT_GUI_LINES,
-                       ctx->game->materials.gui_green_lines_count, ctx->game->materials.gui_red_lines_count,
-                       ctx->game->materials.gui_yellow_lines_count);
-
-    vkUnmapMemory(ctx->engine->device, ctx->engine->memory_blocks.host_coherent.memory);
-  }
-
-  uint32_t offset = 0;
-
-  // ------ GREEN ------
-  {
-    VkRect2D scissor{.extent = ctx->engine->extent2D};
-    vkCmdSetScissor(command, 0, 1, &scissor);
-
-    const float             line_widths[] = {7.0f, 5.0f, 3.0f, 1.0f};
-    const GuiLineSizeCount& counts        = ctx->game->materials.gui_green_lines_count;
-    const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
-
-    vec4 color = {125.0f / 255.0f, 204.0f / 255.0f, 174.0f / 255.0f, 0.9f};
-    vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_lines.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
-                       sizeof(vec4), color);
-
-    for (int i = 0; i < 4; ++i)
-    {
-      if (0 == line_counts[i])
-        continue;
-
-      vkCmdSetLineWidth(command, line_widths[i]);
-      vkCmdDraw(command, 2 * static_cast<uint32_t>(line_counts[i]), 1, 2 * offset, 0);
-      offset += line_counts[i];
-    }
-  }
-
-  // ------ RED ------
-  {
-    VkRect2D scissor{};
-    scissor.extent.width  = line_to_pixel_length(1.50f, ctx->engine->extent2D.width);
-    scissor.extent.height = line_to_pixel_length(1.02f, ctx->engine->extent2D.height);
-    scissor.offset.x      = (ctx->engine->extent2D.width / 2) - (scissor.extent.width / 2);
-    scissor.offset.y      = line_to_pixel_length(0.29f, ctx->engine->extent2D.height); // 118
-    vkCmdSetScissor(command, 0, 1, &scissor);
-
-    const float             line_widths[] = {7.0f, 5.0f, 3.0f, 1.0f};
-    const GuiLineSizeCount& counts        = ctx->game->materials.gui_red_lines_count;
-    const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
-
-    vec4 color = {1.0f, 0.0f, 0.0f, 0.9f};
-    vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_lines.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
-                       sizeof(vec4), color);
-
-    for (int i = 0; i < 4; ++i)
-    {
-      if (0 == line_counts[i])
-        continue;
-
-      vkCmdSetLineWidth(command, line_widths[i]);
-      vkCmdDraw(command, 2 * static_cast<uint32_t>(line_counts[i]), 1, 2 * offset, 0);
-      offset += line_counts[i];
-    }
-  }
-
-  // ------ YELLOW ------
-  {
-    VkRect2D scissor      = {};
-    scissor.extent.width  = line_to_pixel_length(0.5f, ctx->engine->extent2D.width);
-    scissor.extent.height = line_to_pixel_length(1.3f, ctx->engine->extent2D.height);
-    scissor.offset.x      = (ctx->engine->extent2D.width / 2) - (scissor.extent.width / 2);
-    scissor.offset.y      = line_to_pixel_length(0.2f, ctx->engine->extent2D.height);
-    vkCmdSetScissor(command, 0, 1, &scissor);
-
-    const float             line_widths[] = {7.0f, 5.0f, 3.0f, 1.0f};
-    const GuiLineSizeCount& counts        = ctx->game->materials.gui_yellow_lines_count;
-    const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
-
-    vec4 color = {1.0f, 1.0f, 0.0f, 0.7f};
-    vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_lines.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
-                       sizeof(vec4), color);
-
-    for (int i = 0; i < 4; ++i)
-    {
-      if (0 == line_counts[i])
-        continue;
-
-      vkCmdSetLineWidth(command, line_widths[i]);
-      vkCmdDraw(command, 2 * static_cast<uint32_t>(line_counts[i]), 1, 2 * offset, 0);
-      offset += line_counts[i];
-    }
-  }
+  lua_pcall(ctx->game->lua_scripts.test_script, 7, 0, 0);
+  lua_getglobal(ctx->game->lua_scripts.test_script, "script");
 
   vkEndCommandBuffer(command);
 }
@@ -2023,9 +1930,12 @@ void fft_water_hkt(ThreadJobData tjd)
   ctx->engine->render_passes.water_pre_pass.begin(command, 0);
 
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.fft_water_hkt.pipeline);
-  vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer, &ctx->game->materials.green_gui_billboard_vertex_buffer_offset);
-  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.fft_water_hkt.layout, 0, 1, &ctx->game->materials.fft_water_hkt_dset, 0, nullptr);
-  vkCmdPushConstants(command, ctx->engine->pipelines.fft_water_hkt.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float), &ctx->game->current_time_sec);
+  vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer,
+                         &ctx->game->materials.green_gui_billboard_vertex_buffer_offset);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.fft_water_hkt.layout, 0, 1,
+                          &ctx->game->materials.fft_water_hkt_dset, 0, nullptr);
+  vkCmdPushConstants(command, ctx->engine->pipelines.fft_water_hkt.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                     sizeof(float), &ctx->game->current_time_sec);
   vkCmdDraw(command, 4, 1, 0, 0);
   vkEndCommandBuffer(command);
 }

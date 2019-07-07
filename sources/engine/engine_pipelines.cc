@@ -1585,29 +1585,8 @@ void green_gui_lines(Engine& engine)
 {
   TwoStageShader shaders(engine, "green_gui_lines.vert", "green_gui_lines.frag");
 
-  VkVertexInputAttributeDescription attribute_descriptions[] = {
-      {
-          .location = 0,
-          .binding  = 0,
-          .format   = VK_FORMAT_R32G32_SFLOAT,
-          .offset   = 0,
-      },
-  };
-
-  VkVertexInputBindingDescription vertex_binding_descriptions[] = {
-      {
-          .binding   = 0,
-          .stride    = sizeof(vec2),
-          .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
-      },
-  };
-
   VkPipelineVertexInputStateCreateInfo vertex_input_state = {
-      .sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-      .vertexBindingDescriptionCount   = SDL_arraysize(vertex_binding_descriptions),
-      .pVertexBindingDescriptions      = vertex_binding_descriptions,
-      .vertexAttributeDescriptionCount = SDL_arraysize(attribute_descriptions),
-      .pVertexAttributeDescriptions    = attribute_descriptions,
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
   };
 
   VkPipelineInputAssemblyStateCreateInfo input_assembly_state = {

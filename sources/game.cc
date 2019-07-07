@@ -222,10 +222,68 @@ void Game::startup(Engine& engine)
   job_context.engine          = &engine;
   job_context.game            = this;
   engine.job_system.user_data = &job_context;
+
+  auto line_draw_fcn = [](lua_State* state) -> int {
+    auto read_vec4 = [](lua_State* s, vec4 dst) {
+      for (int i = 0; i < 4; ++i)
+      {
+        lua_pushinteger(s, i + 1);
+        lua_gettable(s, -2);
+        dst[i] = lua_tonumber(s, -1);
+        lua_pop(s, 1);
+      }
+    };
+
+    float            line_width = 0.0;
+    vec4             color      = {};
+    vec4             position   = {};
+    VkPipelineLayout layout     = VK_NULL_HANDLE;
+    VkCommandBuffer  command    = VK_NULL_HANDLE;
+
+    line_width = static_cast<float>(lua_tonumber(state, -1));
+    lua_pop(state, 1);
+    read_vec4(state, color);
+    lua_pop(state, 1);
+    read_vec4(state, position);
+    lua_pop(state, 1);
+    layout = reinterpret_cast<VkPipelineLayout>(lua_touserdata(state, -1));
+    lua_pop(state, 1);
+    command = reinterpret_cast<VkCommandBuffer>(lua_touserdata(state, -1));
+    lua_pop(state, 1);
+
+    vkCmdPushConstants(command, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vec4), position);
+    vkCmdPushConstants(command, layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vec4), sizeof(vec4), color);
+
+    vkCmdSetLineWidth(command, line_width);
+    vkCmdDraw(command, 2, 1, 0, 0);
+
+    return 0;
+  };
+
+  auto set_scissor_fcn = [](lua_State* state) -> int {
+    VkRect2D rect = {};
+
+    rect.offset.y           = lua_tonumber(state, -1);
+    rect.offset.x           = lua_tonumber(state, -2);
+    rect.extent.height      = lua_tonumber(state, -3);
+    rect.extent.width       = lua_tonumber(state, -4);
+    VkCommandBuffer command = reinterpret_cast<VkCommandBuffer>(lua_touserdata(state, -5));
+    lua_pop(state, 5);
+
+    vkCmdSetScissor(command, 0, 1, &rect);
+
+    return 0;
+  };
+
+  lua_CFunction functions[]      = {line_draw_fcn, set_scissor_fcn};
+  const char*   function_names[] = {"line_draw", "set_scissor"};
+  lua_scripts.setup(functions, function_names, SDL_arraysize(functions));
 }
 
 void Game::teardown(Engine& engine)
 {
+  lua_scripts.teardown();
+
   for (SDL_Cursor* cursor : debug_gui.mousecursors)
     SDL_FreeCursor(cursor);
 
@@ -434,6 +492,8 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     }
   }
 
+  lua_scripts.reload();
+
   for (WeaponSelection& sel : weapon_selections)
     sel.animate(0.008f * time_delta_since_last_frame_ms);
 
@@ -565,12 +625,12 @@ void Game::render(Engine& engine)
 
     Job gameplay_jobs[] = {
         render::radar,
-        // render::robot_gui_lines,
-        // render::height_ruler_text,
-        // render::tilt_ruler_text,
-        // render::robot_gui_speed_meter_text,
-        // render::robot_gui_speed_meter_triangle,
-        // render::compass_text,
+        render::robot_gui_lines,
+        render::height_ruler_text,
+        render::tilt_ruler_text,
+        render::robot_gui_speed_meter_text,
+        render::robot_gui_speed_meter_triangle,
+        render::compass_text,
         render::radar_dots,
         render::weapon_selectors_left,
         render::weapon_selectors_right,
@@ -590,8 +650,8 @@ void Game::render(Engine& engine)
         render::helmet_depth_job,
         render::imgui,
         // render::debug_shadowmap,
-        render::debug_fft_water,
-        render::fft_water_hkt,
+        // render::debug_fft_water,
+        // render::fft_water_hkt,
     };
 
     engine.job_system.jobs.reset();
@@ -684,7 +744,7 @@ void Game::render(Engine& engine)
         };
 
         vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-        vkCmdExecuteCommands(cmd, 1, &water_prepass_command);
+        // vkCmdExecuteCommands(cmd, 1, &water_prepass_command);
         vkCmdEndRenderPass(cmd);
       }
 
@@ -852,8 +912,10 @@ void Game::render(Engine& engine)
             },
         };
 
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, SDL_arraysize(barriers), barriers);
-        // vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 1, barriers);
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr,
+                             0, nullptr, SDL_arraysize(barriers), barriers);
+        // vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
+        // nullptr, 0, nullptr, 1, barriers);
       }
 
       vkEndCommandBuffer(cmd);

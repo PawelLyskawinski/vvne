@@ -156,6 +156,7 @@ void render_wireframe_entity(const SimpleEntity& entity, const SceneGraph& scene
   {
     const int   mesh_idx = scene_graph.nodes.data[node_idx].mesh;
     const Mesh& mesh     = scene_graph.meshes.data[mesh_idx];
+
     mat4x4      mvp      = {};
     multiply(mvp, p.projection, p.view, entity.node_transforms[node_idx]);
 

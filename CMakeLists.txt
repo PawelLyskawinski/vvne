@@ -4,7 +4,10 @@ project(vvne CXX)
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -std=c++2a -g -fno-exceptions -fno-rtti -Wall -DSDL_ASSERT_LEVEL=3")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -std=c++2a -O2 -fno-exceptions -fno-rtti -Wall")
 
-include_directories(${CMAKE_CURRENT_LIST_DIR}/thirdparty)
+include_directories(
+        ${CMAKE_CURRENT_LIST_DIR}/thirdparty
+        ${CMAKE_CURRENT_LIST_DIR}/../lua-5.3.5/src/
+)
 
 if(WIN32)
 include_directories(C:/Users/plyskawinski/Downloads/MinGW/include
@@ -13,13 +16,14 @@ include_directories(C:/Users/plyskawinski/Downloads/MinGW/include
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libstdc++ -static-libgcc")
 set(SDL_LIBRARY    ${CMAKE_CURRENT_LIST_DIR}/bin/SDL2.dll)
 set(VULKAN_LIBRARY C:/Windows/System32/vulkan-1.dll)
-# set(VULKAN_LIBRARY ${CMAKE_CURRENT_LIST_DIR}/bin/vulkan-1.dll)
+set(LUA_LIBRARY    liblua.a) # TBD
 else()
 include_directories(/usr/include/
                     ${CMAKE_CURRENT_LIST_DIR}/thirdparty)
 
 set(SDL_LIBRARY    /usr/lib/libSDL2-2.0.so)
 set(VULKAN_LIBRARY /usr/lib/libvulkan.so)
+set(LUA_LIBRARY    ${CMAKE_CURRENT_LIST_DIR}/../lua-5.3.5/src/liblua.a)
 endif()
 
 add_executable(tests unit_tests/SeekerTests.cc)
@@ -70,13 +74,12 @@ else()
 add_executable(${PROJECT_NAME} ${SOURCES})
 endif()
 
-target_link_libraries(${PROJECT_NAME} ${SDL_LIBRARY} ${VULKAN_LIBRARY})
 if(WIN32)
 target_link_libraries(${PROJECT_NAME}
         -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive
         )
 endif()
-target_link_libraries(${PROJECT_NAME} ${SDL_LIBRARY} ${VULKAN_LIBRARY})
+target_link_libraries(${PROJECT_NAME} ${SDL_LIBRARY} ${VULKAN_LIBRARY} ${LUA_LIBRARY} -ldl)
 target_link_libraries(tests ${SDL_LIBRARY})
 target_link_libraries(level_generator_tests ${SDL_LIBRARY})
 target_link_libraries(jobsytem ${SDL_LIBRARY})
