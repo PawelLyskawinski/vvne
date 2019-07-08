@@ -16,7 +16,7 @@ include_directories(C:/Users/plyskawinski/Downloads/MinGW/include
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libstdc++ -static-libgcc")
 set(SDL_LIBRARY    ${CMAKE_CURRENT_LIST_DIR}/bin/SDL2.dll)
 set(VULKAN_LIBRARY C:/Windows/System32/vulkan-1.dll)
-set(LUA_LIBRARY    liblua.a) # TBD
+set(LUA_LIBRARY    ${CMAKE_CURRENT_LIST_DIR}/../lua-5.3.5/src/liblua53.a)
 else()
 include_directories(/usr/include/
                     ${CMAKE_CURRENT_LIST_DIR}/thirdparty)
@@ -46,6 +46,10 @@ set(SOURCES
         sources/engine/gpu_memory_visualizer.cc
         sources/engine/job_system.cc
         sources/engine/fft_water.cc
+        sources/engine/instance_creation.cc
+        sources/engine/debug_callback_creation.cc
+        sources/engine/select_physical_device.cc
+        sources/engine/select_graphics_family_index.cc
         sources/game.cc
         sources/game_generate_gui_lines.cc
         sources/game_generate_sdf_font.cc
@@ -78,8 +82,12 @@ if(WIN32)
 target_link_libraries(${PROJECT_NAME}
         -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive
         )
+else()
+target_link_libraries(${PROJECT_NAME}
+         -ldl
+        )
 endif()
-target_link_libraries(${PROJECT_NAME} ${SDL_LIBRARY} ${VULKAN_LIBRARY} ${LUA_LIBRARY} -ldl)
+target_link_libraries(${PROJECT_NAME} ${SDL_LIBRARY} ${VULKAN_LIBRARY} ${LUA_LIBRARY})
 target_link_libraries(tests ${SDL_LIBRARY})
 target_link_libraries(level_generator_tests ${SDL_LIBRARY})
 target_link_libraries(jobsytem ${SDL_LIBRARY})

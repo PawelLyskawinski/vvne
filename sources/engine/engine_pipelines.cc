@@ -2851,8 +2851,6 @@ void fft_water_hkt(Engine& engine)
   vkCreateGraphicsPipelines(engine.device, VK_NULL_HANDLE, 1, &ci, nullptr, &engine.pipelines.fft_water_hkt.pipeline);
 }
 
-} // namespace
-
 void tesselated_ground(Engine& engine, float y_scale = 2.0f, float y_offset = -12.0f)
 {
   VkPipelineShaderStageCreateInfo shader_stages[] = {
@@ -3126,6 +3124,8 @@ void tesselated_ground(Engine& engine, float y_scale = 2.0f, float y_offset = -1
   for (VkPipelineShaderStageCreateInfo& shader_stage : shader_stages)
     vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
 }
+
+} // namespace
 
 void Engine::setup_pipelines()
 {

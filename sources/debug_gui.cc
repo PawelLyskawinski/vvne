@@ -250,21 +250,6 @@ void DebugGui::update(Engine& engine, Game& game)
     }
   }
 
-  if (ImGui::CollapsingHeader("Ground testing"))
-  {
-    static float y_scale  = 0.0f;
-    static float y_offset = 0.0f;
-    ImGui::InputFloat("y_scale", &y_scale);
-    ImGui::InputFloat("y_offset", &y_offset);
-
-    if (ImGui::Button("Reload tesselation pipeline"))
-    {
-      vkDeviceWaitIdle(engine.device);
-      vkDestroyPipeline(engine.device, engine.pipelines.tesselated_ground.pipeline, nullptr);
-      tesselated_ground(engine, y_scale, y_offset);
-    }
-  }
-
   ImGui::Text("%.4f %.4f %.4f", game.player.position.x, game.player.position.y, game.player.position.z);
 
   // players position becomes the cartesian (0, 0) point for us, hence the substraction order

@@ -1,5 +1,9 @@
 #include "engine.hh"
+#include "debug_callback_creation.hh"
+#include "instance_creation.hh"
 #include "math.hh"
+#include "select_graphics_family_index.hh"
+#include "select_physical_device.hh"
 #include "sha256.h"
 #include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_log.h>
@@ -11,18 +15,6 @@
 #include <SDL2/SDL_timer.h>
 #include <stb_image.h>
 #pragma GCC diagnostic pop
-
-static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
-                                                            VkDebugUtilsMessageTypeFlagsEXT             messageType,
-                                                            const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-                                                            void*                                       pUserData)
-{
-  (void)messageSeverity;
-  (void)messageType;
-  (void)pUserData;
-  SDL_Log("validation layer: %s", pCallbackData->pMessage);
-  return VK_FALSE;
-}
 
 namespace {
 
@@ -122,109 +114,17 @@ void Engine::startup(bool vulkan_validation_enabled)
   renderpass_allocate_memory(generic_allocator, render_passes.color_and_depth, SWAPCHAIN_IMAGES_COUNT);
   renderpass_allocate_memory(generic_allocator, render_passes.gui, SWAPCHAIN_IMAGES_COUNT);
 
-  window = SDL_CreateWindow("vvne", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, initial_window_width,
+  window          = SDL_CreateWindow("vvne", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, initial_window_width,
                             initial_window_height, SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
+  instance        = instance_create(window, &generic_allocator, vulkan_validation_enabled);
+  debug_callback  = vulkan_validation_enabled ? debug_callback_create(instance) : VK_NULL_HANDLE;
+  physical_device = select_physical_device(instance, &generic_allocator);
 
-  {
-    VkApplicationInfo ai = {
-        .sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        .pApplicationName   = "vvne",
-        .applicationVersion = 1,
-        .pEngineName        = "vvne_engine",
-        .engineVersion      = 1,
-        .apiVersion         = VK_API_VERSION_1_0,
-    };
-
-    const char* validation_layers[]     = {"VK_LAYER_KHRONOS_validation"};
-    const char* validation_extensions[] = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
-
-    uint32_t count = 0;
-    SDL_Vulkan_GetInstanceExtensions(window, &count, nullptr);
-    const char** extensions = generic_allocator.allocate<const char*>(count + SDL_arraysize(validation_extensions));
-    SDL_Vulkan_GetInstanceExtensions(window, &count, extensions);
-
-    if (vulkan_validation_enabled)
-    {
-      SDL_memcpy(&extensions[count], validation_extensions, sizeof(validation_extensions));
-      count += SDL_arraysize(validation_extensions);
-    }
-
-    VkInstanceCreateInfo ci = {
-        .sType               = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-        .pNext               = nullptr,
-        .flags               = 0,
-        .pApplicationInfo    = &ai,
-        .enabledLayerCount   = vulkan_validation_enabled ? static_cast<uint32_t>(SDL_arraysize(validation_layers)) : 0u,
-        .ppEnabledLayerNames = vulkan_validation_enabled ? validation_layers : nullptr,
-        .enabledExtensionCount   = count,
-        .ppEnabledExtensionNames = extensions,
-    };
-
-    vkCreateInstance(&ci, nullptr, &instance);
-    generic_allocator.free(extensions, count);
-  }
-
-  if (vulkan_validation_enabled)
-  {
-    VkDebugUtilsMessengerCreateInfoEXT ci = {
-        .sType           = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-        .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-                           VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-                           VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-        .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-                       VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
-        .pfnUserCallback = vulkan_debug_callback,
-    };
-
-    auto fcn = (PFN_vkCreateDebugUtilsMessengerEXT)(vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"));
-    SDL_assert(fcn);
-    fcn(instance, &ci, nullptr, &debug_callback);
-  }
-
-  {
-    uint32_t count = 0;
-    vkEnumeratePhysicalDevices(instance, &count, nullptr);
-    VkPhysicalDevice* handles = generic_allocator.allocate<VkPhysicalDevice>(count);
-    vkEnumeratePhysicalDevices(instance, &count, handles);
-
-    physical_device = handles[0];
-    vkGetPhysicalDeviceProperties(physical_device, &physical_device_properties);
-    SDL_Log("Selecting graphics card: %s", physical_device_properties.deviceName);
-    generic_allocator.free(handles, count);
-  }
-
-  SDL_bool surface_result = SDL_Vulkan_CreateSurface(window, instance, &surface);
-  if (SDL_FALSE == surface_result)
-  {
-    SDL_Log("%s", SDL_GetError());
-    return;
-  }
-
+  SDL_assert(SDL_Vulkan_CreateSurface(window, instance, &surface));
   vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &surface_capabilities);
-  extent2D = surface_capabilities.currentExtent;
 
-  {
-    uint32_t count = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, nullptr);
-    VkQueueFamilyProperties* all_properties = generic_allocator.allocate<VkQueueFamilyProperties>(count);
-    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, all_properties);
-
-    for (uint32_t i = 0; i < count; ++i)
-    {
-      VkQueueFamilyProperties properties = all_properties[i];
-
-      VkBool32 has_present_support = 0;
-      vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, surface, &has_present_support);
-
-      if (has_present_support && (properties.queueFlags & VK_QUEUE_GRAPHICS_BIT))
-      {
-        graphics_family_index = i;
-        break;
-      }
-    }
-
-    generic_allocator.free(all_properties, count);
-  }
+  extent2D              = surface_capabilities.currentExtent;
+  graphics_family_index = select_graphics_family_index(physical_device, surface, &generic_allocator);
 
   {
     const char* device_layers[]     = {"VK_LAYER_KHRONOS_validation"};
@@ -953,8 +853,8 @@ void Engine::startup(bool vulkan_validation_enabled)
           },
       };
 
-      vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr,
-                           0, nullptr, 1, &barriers[0]);
+      vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0,
+                           nullptr, 0, nullptr, 1, &barriers[0]);
       vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr,
                            0, nullptr, 1, &barriers[1]);
       vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, 0, 0,
