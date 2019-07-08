@@ -1,5 +1,6 @@
 #include "engine.hh"
 #include "debug_callback_creation.hh"
+#include "device_creation.hh"
 #include "instance_creation.hh"
 #include "math.hh"
 #include "select_graphics_family_index.hh"
@@ -57,46 +58,6 @@ void renderpass_allocate_memory(FreeListAllocator& a, RenderPass& rp, uint32_t n
   rp.framebuffers       = a.allocate<VkFramebuffer>(n);
 }
 
-class DeviceExtensionNameView
-{
-public:
-  DeviceExtensionNameView(VkPhysicalDevice physical_device, FreeListAllocator& allocator)
-      : allocator(allocator)
-      , properties(nullptr)
-      , count(0)
-  {
-    vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &count, nullptr);
-    properties = allocator.allocate<VkExtensionProperties>(count);
-    vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &count, properties);
-  }
-
-  ~DeviceExtensionNameView() { allocator.free(properties, count); }
-
-  class Iterator
-  {
-  public:
-    explicit Iterator(VkExtensionProperties* it)
-        : it(it)
-    {
-    }
-
-    const char* operator*() const { return it->extensionName; }
-    void        operator++() { ++it; }
-    bool        operator!=(const Iterator& rhs) { return it != rhs.it; }
-
-  private:
-    VkExtensionProperties* it;
-  };
-
-  Iterator begin() const { return Iterator(properties); }
-  Iterator end() const { return Iterator(&properties[count]); }
-
-private:
-  FreeListAllocator&     allocator;
-  VkExtensionProperties* properties;
-  uint32_t               count;
-};
-
 } // namespace
 
 VkDeviceSize GpuMemoryBlock::allocate_aligned(VkDeviceSize size)
@@ -126,55 +87,11 @@ void Engine::startup(bool vulkan_validation_enabled)
   extent2D              = surface_capabilities.currentExtent;
   graphics_family_index = select_graphics_family_index(physical_device, surface, &generic_allocator);
 
-  {
-    const char* device_layers[]     = {"VK_LAYER_KHRONOS_validation"};
-    const char* device_extensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_EXT_DEBUG_MARKER_EXTENSION_NAME};
-    float       queue_priorities[]  = {1.0f};
+  renderdoc_marker_naming_enabled =
+      verify_physical_device_extension(physical_device, &generic_allocator, VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
 
-    VkDeviceQueueCreateInfo graphics = {
-        .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-        .queueFamilyIndex = graphics_family_index,
-        .queueCount       = SDL_arraysize(queue_priorities),
-        .pQueuePriorities = queue_priorities,
-    };
-
-    VkPhysicalDeviceFeatures device_features = {
-        .tessellationShader = VK_TRUE,
-        .sampleRateShading  = VK_TRUE,
-        .fillModeNonSolid   = VK_TRUE, // enables VK_POLYGON_MODE_LINE
-        .wideLines          = VK_TRUE,
-    };
-
-    uint32_t device_extensions_count = SDL_arraysize(device_extensions) - 1;
-
-    renderdoc_marker_naming_enabled = false;
-    if (vulkan_validation_enabled)
-    {
-      for (const char* name : DeviceExtensionNameView(physical_device, generic_allocator))
-      {
-        if (0 == SDL_strcmp(name, VK_EXT_DEBUG_MARKER_EXTENSION_NAME))
-        {
-          SDL_Log("Renderdoc support ENABLED");
-          renderdoc_marker_naming_enabled = true;
-          device_extensions_count += 1;
-          break;
-        }
-      }
-    }
-
-    VkDeviceCreateInfo ci = {
-        .sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .queueCreateInfoCount    = 1,
-        .pQueueCreateInfos       = &graphics,
-        .enabledLayerCount       = vulkan_validation_enabled ? static_cast<uint32_t>(SDL_arraysize(device_layers)) : 0u,
-        .ppEnabledLayerNames     = vulkan_validation_enabled ? device_layers : nullptr,
-        .enabledExtensionCount   = device_extensions_count,
-        .ppEnabledExtensionNames = device_extensions,
-        .pEnabledFeatures        = &device_features,
-    };
-
-    vkCreateDevice(physical_device, &ci, nullptr, &device);
-  }
+  device =
+      device_create(physical_device, graphics_family_index, vulkan_validation_enabled, renderdoc_marker_naming_enabled);
 
   if (renderdoc_marker_naming_enabled)
   {

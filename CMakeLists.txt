@@ -50,6 +50,7 @@ set(SOURCES
         sources/engine/debug_callback_creation.cc
         sources/engine/select_physical_device.cc
         sources/engine/select_graphics_family_index.cc
+        sources/engine/device_creation.cc
         sources/game.cc
         sources/game_generate_gui_lines.cc
         sources/game_generate_sdf_font.cc
