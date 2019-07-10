@@ -80,9 +80,13 @@ public:
   {
     game.skybox_command = command;
     engine.render_passes.skybox.begin(command, game.image_index);
+
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, engine.pipelines.skybox.pipeline);
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, engine.pipelines.skybox.layout, 0, 1,
+                            &game.materials.skybox_cubemap_dset, 0, nullptr);
   }
 
-  void draw()
+  void render()
   {
     const Node& node = game.materials.box.nodes.data[1];
     Mesh&       mesh = game.materials.box.meshes.data[node.mesh];
@@ -98,11 +102,12 @@ public:
   }
 };
 
-class RobotDepthJob : public JobWithCommand
+class DepthJob : public JobWithCommand
 {
 public:
-  explicit RobotDepthJob(ThreadJobData& tjd, int cascade_idx)
+  explicit DepthJob(ThreadJobData& tjd, int cascade_idx)
       : JobWithCommand(tjd)
+      , cascade_idx(cascade_idx)
   {
     game.shadow_mapping_pass_commands.push({command, cascade_idx});
     engine.render_passes.shadowmap.begin(command, static_cast<uint32_t>(cascade_idx));
@@ -110,14 +115,21 @@ public:
     vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, engine.pipelines.shadowmap.pipeline);
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, engine.pipelines.shadowmap.layout, 0, 1,
                             &game.materials.cascade_view_proj_matrices_depth_pass_dset[game.image_index], 0, nullptr);
-    render_pbr_entity_shadow(game.robot_entity, game.materials.robot, engine, game, command, cascade_idx);
   }
+
+  void render(const SimpleEntity& entity, const SceneGraph& scene_graph)
+  {
+    render_pbr_entity_shadow(entity, scene_graph, engine, game, command, cascade_idx);
+  }
+
+private:
+  int cascade_idx;
 };
 
-class RobotJob : public JobWithCommand
+class PbrModelJob : public JobWithCommand
 {
 public:
-  explicit RobotJob(ThreadJobData& tjd)
+  explicit PbrModelJob(ThreadJobData& tjd)
       : JobWithCommand(tjd)
   {
     game.scene_rendering_commands.push(command);
@@ -125,26 +137,27 @@ public:
     vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, engine.pipelines.scene3D.pipeline);
   }
 
-  void bind_materials()
+  void bind_materials(VkDescriptorSet pbr_material)
   {
-    const Materials& materials = game.materials;
+    const Materials& m = game.materials;
 
     VkDescriptorSet dsets[] = {
-        materials.robot_pbr_material_dset,
-        materials.pbr_ibl_environment_dset,
-        materials.debug_shadow_map_dset,
-        materials.pbr_dynamic_lights_dset,
-        materials.cascade_view_proj_matrices_render_dset[game.image_index],
+        pbr_material,
+        m.pbr_ibl_environment_dset,
+        m.debug_shadow_map_dset,
+        m.pbr_dynamic_lights_dset,
+        m.cascade_view_proj_matrices_render_dset[game.image_index],
     };
 
     uint32_t dynamic_offsets[] = {
-        static_cast<uint32_t>(game.materials.pbr_dynamic_lights_ubo_offsets[game.image_index])};
+        static_cast<uint32_t>(game.materials.pbr_dynamic_lights_ubo_offsets[game.image_index]),
+    };
 
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, engine.pipelines.scene3D.layout, 0,
                             SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
   }
 
-  void render()
+  void render(const SimpleEntity& entity, const SceneGraph& scene_graph)
   {
     RenderEntityParams params = {
         .cmd             = command,
@@ -153,7 +166,7 @@ public:
     };
 
     copy_camera_settings(params, game.player);
-    render_pbr_entity(game.robot_entity, game.materials.robot, engine, params);
+    render_pbr_entity(entity, scene_graph, engine, params);
   }
 };
 
@@ -176,7 +189,7 @@ void skybox_job(ThreadJobData tjd)
   mat4x4_dup(push.view, skybox.game.player.camera_view.mtx);
 
   skybox.push_constants(push);
-  skybox.draw();
+  skybox.render();
 }
 
 void robot_depth_job(ThreadJobData tjd)
@@ -184,74 +197,37 @@ void robot_depth_job(ThreadJobData tjd)
   JobPerfEvent perf_event(tjd, __PRETTY_FUNCTION__);
   for (int cascade_idx = 0; cascade_idx < SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
   {
-    RobotDepthJob depth(tjd, cascade_idx);
+    DepthJob depth(tjd, cascade_idx);
+    depth.render(depth.game.robot_entity, depth.game.materials.robot);
   }
 }
 
 void robot_job(ThreadJobData tjd)
 {
   JobPerfEvent perf_event(tjd, __PRETTY_FUNCTION__);
-  RobotJob     robot(tjd);
 
-  robot.bind_materials();
-  robot.render();
+  PbrModelJob model(tjd);
+  model.bind_materials(model.game.materials.robot_pbr_material_dset);
+  model.render(model.game.robot_entity, model.game.materials.robot);
 }
 
 void helmet_depth_job(ThreadJobData tjd)
 {
   JobPerfEvent perf_event(tjd, __PRETTY_FUNCTION__);
-
   for (int cascade_idx = 0; cascade_idx < SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
   {
-    VkCommandBuffer command = acquire_command_buffer(tjd);
-    ctx->game->shadow_mapping_pass_commands.push({command, cascade_idx});
-    ctx->engine->render_passes.shadowmap.begin(command, static_cast<uint32_t>(cascade_idx));
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.shadowmap.pipeline);
-    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.shadowmap.layout, 0, 1,
-                            &ctx->game->materials.cascade_view_proj_matrices_depth_pass_dset[ctx->game->image_index], 0,
-                            nullptr);
-    render_pbr_entity_shadow(ctx->game->helmet_entity, ctx->game->materials.helmet, *ctx->engine, *ctx->game, command,
-                             cascade_idx);
-    vkEndCommandBuffer(command);
+    DepthJob depth(tjd, cascade_idx);
+    depth.render(depth.game.helmet_entity, depth.game.materials.helmet);
   }
 }
 
 void helmet_job(ThreadJobData tjd)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  JobPerfEvent perf_event(tjd, __PRETTY_FUNCTION__);
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->scene_rendering_commands.push(command);
-  ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.scene3D.pipeline);
-
-  {
-    VkDescriptorSet dsets[] = {
-        ctx->game->materials.helmet_pbr_material_dset,
-        ctx->game->materials.pbr_ibl_environment_dset,
-        ctx->game->materials.debug_shadow_map_dset,
-        ctx->game->materials.pbr_dynamic_lights_dset,
-        ctx->game->materials.cascade_view_proj_matrices_render_dset[ctx->game->image_index],
-    };
-
-    uint32_t dynamic_offsets[] = {
-        static_cast<uint32_t>(ctx->game->materials.pbr_dynamic_lights_ubo_offsets[ctx->game->image_index])};
-
-    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.scene3D.layout, 0,
-                            SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
-  }
-
-  RenderEntityParams params = {
-      .cmd             = command,
-      .color           = {0.0f, 0.0f, 0.0f},
-      .pipeline_layout = ctx->engine->pipelines.scene3D.layout,
-  };
-
-  copy_camera_settings(params, ctx->game->player);
-  render_pbr_entity(ctx->game->helmet_entity, ctx->game->materials.helmet, *ctx->engine, params);
-
-  vkEndCommandBuffer(command);
+  PbrModelJob model(tjd);
+  model.bind_materials(model.game.materials.helmet_pbr_material_dset);
+  model.render(model.game.helmet_entity, model.game.materials.helmet);
 }
 
 void point_light_boxes(ThreadJobData tjd)
