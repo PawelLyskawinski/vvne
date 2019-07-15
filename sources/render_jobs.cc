@@ -170,6 +170,64 @@ public:
   }
 };
 
+class ColoredModelJob : public JobWithCommand
+{
+public:
+  explicit ColoredModelJob(ThreadJobData& tjd)
+      : JobWithCommand(tjd)
+      , params{}
+  {
+    params.cmd             = command;
+    params.pipeline_layout = engine.pipelines.colored_geometry.layout;
+    copy_camera_settings(params, game.player);
+
+    game.scene_rendering_commands.push(command);
+    engine.render_passes.color_and_depth.begin(command, game.image_index);
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, engine.pipelines.colored_geometry.pipeline);
+  }
+
+  void render(const SimpleEntity& entity, const SceneGraph& scene_graph, vec3 color)
+  {
+    SDL_memcpy(params.color, color, sizeof(vec3));
+    render_entity(entity, scene_graph, engine, params);
+  }
+
+private:
+  RenderEntityParams params;
+};
+
+class ColoredSkinnedModelJob : public JobWithCommand
+{
+public:
+  explicit ColoredSkinnedModelJob(ThreadJobData& tjd)
+      : JobWithCommand(tjd)
+      , params{}
+  {
+    params.cmd             = command;
+    params.pipeline_layout = engine.pipelines.colored_geometry_skinned.layout;
+    copy_camera_settings(params, game.player);
+
+    game.scene_rendering_commands.push(command);
+    engine.render_passes.color_and_depth.begin(command, game.image_index);
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, engine.pipelines.colored_geometry_skinned.pipeline);
+  }
+
+  void bind_descriptor_sets(const VkDescriptorSet sets[], uint32_t sets_count, const uint32_t offsets[],
+                            uint32_t offsets_count)
+  {
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, engine.pipelines.colored_geometry_skinned.layout,
+                            0, sets_count, sets, offsets_count, offsets);
+  }
+
+  void render(const SimpleEntity& entity, const SceneGraph& scene_graph)
+  {
+    render_entity_skinned(entity, scene_graph, engine, params);
+  }
+
+private:
+  RenderEntityParams params;
+};
+
 } // namespace
 
 namespace render {
@@ -232,234 +290,45 @@ void helmet_job(ThreadJobData tjd)
 
 void point_light_boxes(ThreadJobData tjd)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
-
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->scene_rendering_commands.push(command);
-  ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry.pipeline);
-
-  RenderEntityParams params = {
-      .cmd             = command,
-      .color           = {0.0f, 0.0f, 0.0f},
-      .pipeline_layout = ctx->engine->pipelines.colored_geometry.layout,
-  };
-
-  copy_camera_settings(params, ctx->game->player);
-
-  for (unsigned i = 0; i < SDL_arraysize(ctx->game->box_entities); ++i)
+  JobPerfEvent    perf_event(tjd, __PRETTY_FUNCTION__);
+  ColoredModelJob model(tjd);
+  for (unsigned i = 0; i < SDL_arraysize(model.game.box_entities); ++i)
   {
-    SDL_memcpy(params.color, &ctx->game->materials.pbr_light_sources_cache.colors[i].x, sizeof(vec3));
-    render_entity(ctx->game->box_entities[i], ctx->game->materials.box, *ctx->engine, params);
+    model.render(model.game.box_entities[i], model.game.materials.box,
+                 &model.game.materials.pbr_light_sources_cache.colors[i].x);
   }
-
-  vkEndCommandBuffer(command);
 }
 
 void matrioshka_box(ThreadJobData tjd)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
-
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->scene_rendering_commands.push(command);
-  ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry.pipeline);
-
-  RenderEntityParams params = {
-      .cmd             = command,
-      .color           = {0.0f, 1.0f, 0.0f},
-      .pipeline_layout = ctx->engine->pipelines.colored_geometry.layout,
-  };
-
-  copy_camera_settings(params, ctx->game->player);
-  render_entity(ctx->game->matrioshka_entity, ctx->game->materials.animatedBox, *ctx->engine, params);
-
-  vkEndCommandBuffer(command);
+  JobPerfEvent    perf_event(tjd, __PRETTY_FUNCTION__);
+  ColoredModelJob model(tjd);
+  vec3            color = {0.0f, 1.0f, 0.0f};
+  model.render(model.game.matrioshka_entity, model.game.materials.animatedBox, color);
 }
-
-void vr_scene(ThreadJobData tjd)
-{
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
-
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->scene_rendering_commands.push(command);
-  ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.scene3D.pipeline);
-
-  {
-    VkDescriptorSet dsets[] = {
-        ctx->game->materials.sandy_level_pbr_material_dset,
-        ctx->game->materials.pbr_ibl_environment_dset,
-        ctx->game->materials.debug_shadow_map_dset,
-        ctx->game->materials.pbr_dynamic_lights_dset,
-        ctx->game->materials.cascade_view_proj_matrices_render_dset[ctx->game->image_index],
-    };
-
-    uint32_t dynamic_offsets[] = {
-        static_cast<uint32_t>(ctx->game->materials.pbr_dynamic_lights_ubo_offsets[ctx->game->image_index])};
-
-    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.scene3D.layout, 0,
-                            SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
-  }
-
-  vkCmdBindIndexBuffer(command, ctx->engine->gpu_device_local_memory_buffer,
-                       ctx->game->materials.vr_level_index_buffer_offset, ctx->game->materials.vr_level_index_type);
-
-  vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer,
-                         &ctx->game->materials.vr_level_vertex_buffer_offset);
-
-  mat4x4 translation_matrix = {};
-  mat4x4_translate(translation_matrix, 0.0, 3.0, 0.0);
-
-  mat4x4 rotation_matrix = {};
-  mat4x4_identity(rotation_matrix);
-
-  mat4x4 scale_matrix = {};
-  mat4x4_identity(scale_matrix);
-  const float scale = 100.0f;
-  mat4x4_scale_aniso(scale_matrix, scale_matrix, scale, scale, scale);
-
-  mat4x4 tmp = {};
-  mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-
-  struct SkinningUbo
-  {
-    mat4x4 projection;
-    mat4x4 view;
-    mat4x4 model;
-    vec3   camera_position;
-  } ubo = {};
-
-  mat4x4_dup(ubo.projection, ctx->game->player.camera_projection.mtx);
-  mat4x4_dup(ubo.view, ctx->game->player.camera_view.mtx);
-  mat4x4_mul(ubo.model, tmp, scale_matrix);
-  SDL_memcpy(ubo.camera_position, &ctx->game->player.camera_position.x, sizeof(vec3));
-
-  vkCmdPushConstants(command, ctx->engine->pipelines.scene3D.layout,
-                     VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ubo), &ubo);
-  vkCmdDrawIndexed(command, static_cast<uint32_t>(ctx->game->materials.vr_level_index_count), 1, 0, 0, 0);
-
-  vkEndCommandBuffer(command);
-}
-
-#if 0
-void vr_scene_depth(ThreadJobData tjd)
-{
-  for (int cascade_idx = 0; cascade_idx < Engine::SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
-  {
-    VkCommandBuffer command = acquire_command_buffer(tjd);
-    ctx->game->shadow_mapping_pass_commands.push({command, cascade_idx});
-
-    VkCommandBufferInheritanceInfo inheritance = {
-        .sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .renderPass  = ctx->engine->shadowmap_render_pass,
-        .framebuffer = ctx->engine->shadowmap_framebuffers[ctx->game->image_index],
-    };
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &inheritance,
-    };
-
-    vkBeginCommandBuffer(command, &begin_info);
-
-    mat4x4 translation_matrix = {};
-    mat4x4_translate(translation_matrix, 0.0, 3.0, 0.0);
-
-    mat4x4 rotation_matrix = {};
-    mat4x4_identity(rotation_matrix);
-
-    mat4x4 scale_matrix = {};
-    mat4x4_identity(scale_matrix);
-    const float scale = 100.0f;
-    mat4x4_scale_aniso(scale_matrix, scale_matrix, scale, scale, scale);
-
-    mat4x4 tmp = {};
-    mat4x4_mul(tmp, translation_matrix, rotation_matrix);
-
-    struct PushConstant
-    {
-      mat4x4 light_space_matrix;
-      mat4x4 model;
-    } pc = {};
-
-    mat4x4_dup(pc.light_space_matrix, ctx->game->light_space_matrix);
-    mat4x4_mul(pc.model, tmp, scale_matrix);
-
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->shadow_mapping.pipeline);
-    vkCmdBindIndexBuffer(command, ctx->engine->gpu_device_local_memory_buffer, ctx->game->vr_level_index_buffer_offset,
-                         ctx->game->vr_level_index_type);
-    vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer,
-                           &ctx->game->vr_level_vertex_buffer_offset);
-    vkCmdPushConstants(command, ctx->engine->shadow_mapping.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(pc),
-                       &pc);
-    vkCmdDrawIndexed(command, static_cast<uint32_t>(ctx->game->vr_level_index_count), 1, 0, 0, 0);
-
-    vkEndCommandBuffer(command);
-  }
-}
-#endif
 
 void simple_rigged(ThreadJobData tjd)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
-
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->scene_rendering_commands.push(command);
-  ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry_skinned.pipeline);
+  JobPerfEvent           perf_event(tjd, __PRETTY_FUNCTION__);
+  ColoredSkinnedModelJob model(tjd);
 
   uint32_t dynamic_offsets[] = {
-      static_cast<uint32_t>(ctx->game->materials.rig_skinning_matrices_ubo_offsets[ctx->game->image_index])};
+      static_cast<uint32_t>(model.game.materials.rig_skinning_matrices_ubo_offsets[model.game.image_index])};
 
-  vkCmdBindDescriptorSets(
-      command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry_skinned.layout, 0, 1,
-      &ctx->game->materials.rig_skinning_matrices_dset, SDL_arraysize(dynamic_offsets), dynamic_offsets);
-
-  RenderEntityParams params = {
-      .cmd             = command,
-      .color           = {0.0f, 0.0f, 0.0f},
-      .pipeline_layout = ctx->engine->pipelines.colored_geometry_skinned.layout,
-  };
-
-  copy_camera_settings(params, ctx->game->player);
-  render_entity_skinned(ctx->game->rigged_simple_entity, ctx->game->materials.riggedSimple, *ctx->engine, params);
-
-  vkEndCommandBuffer(command);
+  model.bind_descriptor_sets(&model.game.materials.rig_skinning_matrices_dset, 1, dynamic_offsets, 1);
+  model.render(model.game.rigged_simple_entity, model.game.materials.riggedSimple);
 }
 
 void monster_rigged(ThreadJobData tjd)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
-
-  VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->scene_rendering_commands.push(command);
-  ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry_skinned.pipeline);
+  JobPerfEvent           perf_event(tjd, __PRETTY_FUNCTION__);
+  ColoredSkinnedModelJob model(tjd);
 
   uint32_t dynamic_offsets[] = {
-      static_cast<uint32_t>(ctx->game->materials.monster_skinning_matrices_ubo_offsets[ctx->game->image_index])};
+      static_cast<uint32_t>(model.game.materials.monster_skinning_matrices_ubo_offsets[model.game.image_index])};
 
-  vkCmdBindDescriptorSets(
-      command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry_skinned.layout, 0, 1,
-      &ctx->game->materials.monster_skinning_matrices_dset, SDL_arraysize(dynamic_offsets), dynamic_offsets);
-
-  RenderEntityParams params = {
-      .cmd             = command,
-      .color           = {1.0f, 1.0f, 1.0f},
-      .pipeline_layout = ctx->engine->pipelines.colored_geometry_skinned.layout,
-  };
-
-  copy_camera_settings(params, ctx->game->player);
-  render_entity_skinned(ctx->game->monster_entity, ctx->game->materials.monster, *ctx->engine, params);
-
-  vkEndCommandBuffer(command);
+  model.bind_descriptor_sets(&model.game.materials.monster_skinning_matrices_dset, 1, dynamic_offsets, 1);
+  model.render(model.game.monster_entity, model.game.materials.monster);
 }
 
 void radar(ThreadJobData tjd)
@@ -516,13 +385,14 @@ void robot_gui_lines(ThreadJobData tjd)
 
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_lines.pipeline);
 
-  lua_pushlightuserdata(ctx->game->lua_scripts.test_script, command);
-  lua_pushlightuserdata(ctx->game->lua_scripts.test_script, ctx->engine->pipelines.green_gui_lines.layout);
-  lua_pushinteger(ctx->game->lua_scripts.test_script, static_cast<int>(ctx->engine->extent2D.width));
-  lua_pushinteger(ctx->game->lua_scripts.test_script, static_cast<int>(ctx->engine->extent2D.height));
-  lua_pushnumber(ctx->game->lua_scripts.test_script, -ctx->game->player.position.y);
-  lua_pushnumber(ctx->game->lua_scripts.test_script, 0.0);
-  lua_pushnumber(ctx->game->lua_scripts.test_script, ctx->game->player.camera_updown_angle);
+  lua_State* script = ctx->game->lua_scripts.test_script;
+  lua_pushlightuserdata(script, command);
+  lua_pushlightuserdata(script, ctx->engine->pipelines.green_gui_lines.layout);
+  lua_pushinteger(script, static_cast<int>(ctx->engine->extent2D.width));
+  lua_pushinteger(script, static_cast<int>(ctx->engine->extent2D.height));
+  lua_pushnumber(script, -ctx->game->player.position.y);
+  lua_pushnumber(script, 0.0);
+  lua_pushnumber(script, ctx->game->player.camera_updown_angle);
 
   lua_pcall(ctx->game->lua_scripts.test_script, 7, 0, 0);
   lua_getglobal(ctx->game->lua_scripts.test_script, "script");
