@@ -31,7 +31,7 @@ void skybox(Engine& engine)
   VkFramebufferCreateInfo ci = {
       .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
       .renderPass      = render_pass.render_pass,
-      .attachmentCount = (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT) ? 2u : 1u,
+      .attachmentCount = (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT) ? 1u : 2u,
       .pAttachments    = attachments,
       .width           = engine.extent2D.width,
       .height          = engine.extent2D.height,
