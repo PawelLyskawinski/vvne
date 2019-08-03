@@ -1,5 +1,4 @@
 #include "job_system.hh"
-#include "engine.hh"
 
 void JobSystem::setup(VkDevice device, uint32_t graphics_queue_family_index)
 {
@@ -10,13 +9,15 @@ void JobSystem::setup(VkDevice device, uint32_t graphics_queue_family_index)
 
   for (WorkerThread& worker : workers)
   {
-    VkCommandPoolCreateInfo info = {
-        .sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-        .flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-        .queueFamilyIndex = graphics_queue_family_index,
-    };
+    {
+      VkCommandPoolCreateInfo info = {
+          .sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+          .flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+          .queueFamilyIndex = graphics_queue_family_index,
+      };
 
-    vkCreateCommandPool(device, &info, nullptr, &worker.pool);
+      vkCreateCommandPool(device, &info, nullptr, &worker.pool);
+    }
 
     for (WorkerCommands& cmds : worker.commands)
     {
@@ -48,15 +49,14 @@ void JobSystem::setup(VkDevice device, uint32_t graphics_queue_family_index)
 void JobSystem::teardown(VkDevice device)
 {
   thread_end_requested = true;
-  jobs.reset();
+  jobs_count           = 0;
   SDL_AtomicSet(&jobs_taken, 0);
 
   SDL_CondBroadcast(new_jobs_available_cond);
 
   for (WorkerThread& worker : workers)
   {
-    int retval = 0;
-    SDL_WaitThread(worker.thread_handle, &retval);
+    SDL_WaitThread(worker.thread_handle, nullptr);
   }
 
   SDL_DestroySemaphore(all_threads_idle_signal);
@@ -103,7 +103,7 @@ void JobSystem::worker_loop()
 
     uint32_t job_idx = SDL_AtomicIncRef(&jobs_taken);
 
-    while (job_idx < jobs.count)
+    while (job_idx < jobs_count)
     {
       ThreadJobData tjd = {
           .thread_id = threadId,

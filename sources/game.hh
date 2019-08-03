@@ -4,7 +4,6 @@
 #include "debug_gui.hh"
 #include "engine/engine.hh"
 #include "engine/gltf.hh"
-#include "game_cache.hh"
 #include "game_constants.hh"
 #include "game_generate_gui_lines.hh"
 #include "imgui.h"
@@ -109,8 +108,6 @@ struct Game
   SimpleEntity monster_entity;
   SimpleEntity rigged_simple_entity;
   SimpleEntity axis_arrow_entities[3];
-
-  GameCache cache;
 
   void startup(Engine& engine);
   void teardown(Engine& engine);

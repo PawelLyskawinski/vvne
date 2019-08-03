@@ -6,13 +6,24 @@
 #include "profiler_visualizer.hh"
 #include <SDL2/SDL_log.h>
 
-static bool is_any(const bool array[], int n)
+namespace {
+
+template <typename TIt, typename TPred> bool any_of(TIt begin, TIt end, TPred pred)
 {
-  for (int i = 0; i < n; ++i)
-    if (array[i])
+  for (; begin != end; ++begin)
+    if (pred(*begin))
       return true;
   return false;
 }
+
+template <typename TIt, typename TAcc, typename TFcn> TAcc accumulate(TIt begin, TIt end, TAcc acc, TFcn fcn)
+{
+  for (; begin != end; ++begin)
+    acc = fcn(acc, *begin);
+  return acc;
+}
+
+} // namespace
 
 void DebugGui::process_event(SDL_Event& event)
 {
@@ -21,17 +32,11 @@ void DebugGui::process_event(SDL_Event& event)
   switch (event.type)
   {
   case SDL_MOUSEWHEEL:
-  {
-    if (event.wheel.y > 0.0)
+    if (0.0f != event.wheel.y)
     {
-      io.MouseWheel = 1.0f;
+      io.MouseWheel = std::signbit(event.wheel.y) ? -1.0f : 1.0f;
     }
-    else if (event.wheel.y < 0.0)
-    {
-      io.MouseWheel = -1.0f;
-    }
-  }
-  break;
+    break;
 
   case SDL_TEXTINPUT:
     io.AddInputCharactersUTF8(event.text.text);
@@ -110,19 +115,30 @@ void DebugGui::update(Engine& engine, Game& game)
     io.MouseDown[2] = mousepressed[2] or (0 != (mouseMask & SDL_BUTTON(SDL_BUTTON_MIDDLE)));
 
     for (bool& iter : mousepressed)
+    {
       iter = false;
+    }
 
-    if (SDL_GetWindowFlags(window) & (SDL_WINDOW_MOUSE_FOCUS | SDL_WINDOW_MOUSE_CAPTURE))
+    if (SDL_GetWindowFlags(window) & Uint32(SDL_WINDOW_MOUSE_FOCUS | SDL_WINDOW_MOUSE_CAPTURE))
+    {
       io.MousePos = ImVec2((float)mx, (float)my);
+    }
 
-    const bool   any_mouse_button_down     = is_any(io.MouseDown, SDL_arraysize(io.MouseDown));
     const Uint32 window_has_mouse_captured = SDL_GetWindowFlags(window) & SDL_WINDOW_MOUSE_CAPTURE;
-
-    if (any_mouse_button_down and (not window_has_mouse_captured))
-      SDL_CaptureMouse(SDL_TRUE);
-
-    if ((not any_mouse_button_down) and window_has_mouse_captured)
-      SDL_CaptureMouse(SDL_FALSE);
+    if (any_of(io.MouseDown, &io.MouseDown[5], [](bool it) { return it; }))
+    {
+      if (not window_has_mouse_captured)
+      {
+        SDL_CaptureMouse(SDL_TRUE);
+      }
+    }
+    else
+    {
+      if (window_has_mouse_captured)
+      {
+        SDL_CaptureMouse(SDL_FALSE);
+      }
+    }
 
     ImGuiMouseCursor cursor = ImGui::GetMouseCursor();
     if (io.MouseDrawCursor or (ImGuiMouseCursor_None == cursor))
@@ -278,47 +294,75 @@ void DebugGui::update(Engine& engine, Game& game)
   ImGui::End();
 }
 
+class DrawDataView
+{
+public:
+  explicit DrawDataView(ImDrawData* draw_data)
+      : draw_data(draw_data)
+  {
+  }
+
+  [[nodiscard]] ImDrawList** begin() const { return draw_data->CmdLists; }
+  [[nodiscard]] ImDrawList** end() const { return &draw_data->CmdLists[draw_data->CmdListsCount]; }
+
+private:
+  ImDrawData* draw_data;
+};
+
+template <typename T> T* serialize(T* dst, const ImVector<T>& src)
+{
+  SDL_memcpy(dst, src.Data, src.Size * sizeof(T));
+  return dst + src.Size;
+}
+
+class MemoryMap
+{
+public:
+  MemoryMap(VkDevice device, VkDeviceMemory memory, VkDeviceSize offset, VkDeviceSize size)
+      : device(device)
+      , memory(memory)
+      , ptr(nullptr)
+  {
+    vkMapMemory(device, memory, offset, size, 0, reinterpret_cast<void**>(&ptr));
+  }
+
+  ~MemoryMap() { vkUnmapMemory(device, memory); }
+
+  void* operator*() { return ptr; }
+
+private:
+  VkDevice       device;
+  VkDeviceMemory memory;
+  void*          ptr;
+};
+
 void DebugGui::render(Engine& engine, Game& game)
 {
   ImDrawData* draw_data = ImGui::GetDrawData();
 
-  size_t vertex_size = draw_data->TotalVtxCount * sizeof(ImDrawVert);
-  size_t index_size  = draw_data->TotalIdxCount * sizeof(ImDrawIdx);
+  const size_t vertex_size = draw_data->TotalVtxCount * sizeof(ImDrawVert);
+  const size_t index_size  = draw_data->TotalIdxCount * sizeof(ImDrawIdx);
 
   SDL_assert(IMGUI_VERTEX_BUFFER_CAPACITY_BYTES >= vertex_size);
   SDL_assert(IMGUI_INDEX_BUFFER_CAPACITY_BYTES >= index_size);
 
+  DrawDataView view(draw_data);
+
   if (0 < vertex_size)
   {
-    ImDrawVert* vtx_dst = nullptr;
-    vkMapMemory(engine.device, engine.memory_blocks.host_coherent.memory,
-                game.materials.imgui_vertex_buffer_offsets[game.image_index], vertex_size, 0,
-                reinterpret_cast<void**>(&vtx_dst));
+    MemoryMap vtx_dst(engine.device, engine.memory_blocks.host_coherent.memory,
+                      game.materials.imgui_vertex_buffer_offsets[game.image_index], vertex_size);
 
-    for (int n = 0; n < draw_data->CmdListsCount; ++n)
-    {
-      const ImDrawList* cmd_list = draw_data->CmdLists[n];
-      SDL_memcpy(vtx_dst, cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size * sizeof(ImDrawVert));
-      vtx_dst += cmd_list->VtxBuffer.Size;
-    }
-
-    vkUnmapMemory(engine.device, engine.memory_blocks.host_coherent.memory);
+    accumulate(view.begin(), view.end(), reinterpret_cast<ImDrawVert*>(*vtx_dst),
+               [](ImDrawVert* dst, const ImDrawList* cmd_list) { return serialize(dst, cmd_list->VtxBuffer); });
   }
 
   if (0 < index_size)
   {
-    ImDrawIdx* idx_dst = nullptr;
-    vkMapMemory(engine.device, engine.memory_blocks.host_coherent.memory,
-                game.materials.imgui_index_buffer_offsets[game.image_index], index_size, 0,
-                reinterpret_cast<void**>(&idx_dst));
+    MemoryMap idx_dst(engine.device, engine.memory_blocks.host_coherent.memory,
+                      game.materials.imgui_index_buffer_offsets[game.image_index], vertex_size);
 
-    for (int n = 0; n < draw_data->CmdListsCount; ++n)
-    {
-      const ImDrawList* cmd_list = draw_data->CmdLists[n];
-      SDL_memcpy(idx_dst, cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx));
-      idx_dst += cmd_list->IdxBuffer.Size;
-    }
-
-    vkUnmapMemory(engine.device, engine.memory_blocks.host_coherent.memory);
+    accumulate(view.begin(), view.end(), reinterpret_cast<ImDrawIdx*>(*idx_dst),
+               [](ImDrawIdx* dst, const ImDrawList* cmd_list) { return serialize(dst, cmd_list->IdxBuffer); });
   }
 }

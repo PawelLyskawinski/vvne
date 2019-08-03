@@ -1,18 +1,13 @@
 #include "game.hh"
 #include "engine/cubemap.hh"
-#include "engine/free_list_visualizer.hh"
 #include "engine/gpu_memory_visualizer.hh"
 #include "render_jobs.hh"
 #include "terrain_as_a_function.hh"
 #include "update_jobs.hh"
-#include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_clipboard.h>
 #include <SDL2/SDL_events.h>
-#include <SDL2/SDL_log.h>
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_stdinc.h>
-#include <SDL2/SDL_timer.h>
-#include <SDL2/SDL_vulkan.h>
 
 static void update_ubo(VkDevice device, VkDeviceMemory memory, VkDeviceSize size, VkDeviceSize offset, void* src)
 {
@@ -238,7 +233,8 @@ void Game::teardown(Engine& engine)
 // https://github.com/SaschaWillems/Vulkan/blob/master/examples/shadowmappingcascade/shadowmappingcascade.cpp
 // -------------------------------------------------------------------------------------------------------------------
 static void recalculate_cascade_view_proj_matrices(Mat4x4* cascade_view_proj_mat, float* cascade_split_depths,
-                                            Mat4x4 camera_projection, Mat4x4 camera_view, Vec3 light_source_position)
+                                                   Mat4x4 camera_projection, Mat4x4 camera_view,
+                                                   Vec3 light_source_position)
 {
   constexpr float cascade_split_lambda = 0.95f;
   constexpr float near_clip            = 0.001f;
@@ -436,7 +432,6 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   for (WeaponSelection& sel : weapon_selections)
     sel.animate(0.008f * time_delta_since_last_frame_ms);
 
-
   debug_gui.update(engine, *this);
   player.update(current_time_sec, time_delta_since_last_frame_ms);
 
@@ -491,13 +486,13 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   recalculate_cascade_view_proj_matrices(materials.cascade_view_proj_mat, materials.cascade_split_depths,
                                          player.camera_projection, player.camera_view, materials.light_source_position);
 
-  Job jobs[] = {
+  const Job jobs[] = {
       update::moving_lights_job, update::helmet_job,        update::robot_job,
       update::monster_job,       update::rigged_simple_job, update::matrioshka_job,
   };
 
-  engine.job_system.jobs.reset();
-  engine.job_system.jobs.push(jobs, SDL_arraysize(jobs));
+  engine.job_system.jobs_count = SDL_arraysize(jobs);
+  SDL_memcpy(engine.job_system.jobs, jobs, sizeof(jobs));
   engine.job_system.start();
   ImGui::Render();
   engine.job_system.wait_for_finish();
@@ -563,7 +558,7 @@ void Game::render(Engine& engine)
   {
     ScopedPerfEvent perf_event(render_profiler, __PRETTY_FUNCTION__, 0);
 
-    Job gameplay_jobs[] = {
+    const Job jobs[] = {
         render::radar,
         render::robot_gui_lines,
         render::height_ruler_text,
@@ -574,9 +569,6 @@ void Game::render(Engine& engine)
         render::radar_dots,
         render::weapon_selectors_left,
         render::weapon_selectors_right,
-    };
-
-    Job jobs[] = {
         render::tesselated_ground,
         render::skybox_job,
         render::robot_job,
@@ -592,9 +584,8 @@ void Game::render(Engine& engine)
         // render::debug_shadowmap,
     };
 
-    engine.job_system.jobs.reset();
-    engine.job_system.jobs.push(gameplay_jobs, SDL_arraysize(gameplay_jobs));
-    engine.job_system.jobs.push(jobs, SDL_arraysize(jobs));
+    engine.job_system.jobs_count = SDL_arraysize(jobs);
+    SDL_memcpy(engine.job_system.jobs, jobs, sizeof(jobs));
     engine.job_system.start();
 
     // While we await for tasks to be finished by worker threads, this one will handle memory synchronization
@@ -603,24 +594,17 @@ void Game::render(Engine& engine)
     // Cascade shadow map projection matrices
     //
     {
-      struct Update
-      {
-        Mat4x4 cascade_view_proj_mat[SHADOWMAP_CASCADE_COUNT];
-        float  cascade_splits[SHADOWMAP_CASCADE_COUNT];
-      } ubo_update = {};
+      VkDeviceMemory memory = engine.memory_blocks.host_coherent_ubo.memory;
 
-      for (int i = 0; i < SHADOWMAP_CASCADE_COUNT; ++i)
-      {
-        ubo_update.cascade_view_proj_mat[i] = materials.cascade_view_proj_mat[i];
-      }
+      uint8_t* data = nullptr;
+      vkMapMemory(engine.device, memory, materials.cascade_view_proj_mat_ubo_offsets[image_index],
+                  SHADOWMAP_CASCADE_COUNT * (sizeof(Mat4x4) + sizeof(float)), 0, reinterpret_cast<void**>(&data));
 
-      for (int i = 0; i < SHADOWMAP_CASCADE_COUNT; ++i)
-      {
-        ubo_update.cascade_splits[i] = materials.cascade_split_depths[i];
-      }
+      SDL_memcpy(data, materials.cascade_view_proj_mat, SHADOWMAP_CASCADE_COUNT * sizeof(Mat4x4));
+      data += SHADOWMAP_CASCADE_COUNT * sizeof(Mat4x4);
+      SDL_memcpy(data, materials.cascade_split_depths, SHADOWMAP_CASCADE_COUNT * sizeof(Mat4x4));
 
-      update_ubo(engine.device, engine.memory_blocks.host_coherent_ubo.memory, sizeof(ubo_update),
-                 materials.cascade_view_proj_mat_ubo_offsets[image_index], &ubo_update);
+      vkUnmapMemory(engine.device, memory);
     }
 
     //

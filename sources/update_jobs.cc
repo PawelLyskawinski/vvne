@@ -1,7 +1,15 @@
-#include <SDL2/SDL_log.h>
 #include "update_jobs.hh"
+#include <SDL2/SDL_log.h>
 
 namespace {
+
+template <typename TIter, typename TPred> bool none_of(TIter begin, TIter end, TPred pred)
+{
+  for (; begin != end; ++begin)
+    if (pred(*begin))
+      return false;
+  return true;
+}
 
 int find_first_higher(const float times[], float current)
 {
@@ -15,9 +23,7 @@ template <int DIM> void lerp(const float a[], const float b[], float result[], f
 {
   for (int i = 0; i < DIM; ++i)
   {
-    float distance = b[i] - a[i];
-    float progress = distance * t;
-    result[i]      = a[i] + progress;
+    result[i] = a[i] + (b[i] - a[i]) * t;
   }
 }
 
@@ -56,18 +62,8 @@ void animate_entity(SimpleEntity& entity, FreeListAllocator& allocator, SceneGra
   const Animation& animation            = scene_graph.animations.data[0];
   const float      animation_time       = current_time_sec - animation_start_time;
 
-  bool is_animation_still_ongoing = false;
-  for (const AnimationChannel& channel : animation.channels)
-  {
-    const AnimationSampler& sampler = animation.samplers[channel.sampler_idx];
-    if (sampler.time_frame[1] > animation_time)
-    {
-      is_animation_still_ongoing = true;
-      break;
-    }
-  }
-
-  if (not is_animation_still_ongoing)
+  if (none_of(animation.samplers.begin(), animation.samplers.end(),
+              [animation_time](const AnimationSampler& sampler) { return sampler.time_frame[1] > animation_time; }))
   {
     const uint64_t clear_mask = SimpleEntity::NodeAnimRotationApplicability |
                                 SimpleEntity::NodeAnimTranslationApplicability | SimpleEntity::AnimationStartTime;
@@ -84,8 +80,9 @@ void animate_entity(SimpleEntity& entity, FreeListAllocator& allocator, SceneGra
     const AnimationSampler& sampler = animation.samplers[channel.sampler_idx];
     if ((sampler.time_frame[1] > animation_time) and (sampler.time_frame[0] < animation_time))
     {
-      int   keyframe_upper         = find_first_higher(sampler.times, animation_time);
-      int   keyframe_lower         = keyframe_upper - 1;
+      int keyframe_upper = find_first_higher(sampler.times, animation_time);
+      int keyframe_lower = keyframe_upper - 1;
+
       float time_between_keyframes = sampler.times[keyframe_upper] - sampler.times[keyframe_lower];
       float keyframe_uniform_time  = (animation_time - sampler.times[keyframe_lower]) / time_between_keyframes;
 
@@ -313,7 +310,7 @@ void robot_job(ThreadJobData tjd)
   calculate_quat(orientation, quat_ops, SDL_arraysize(quat_ops));
 
   const Vec3& position = ctx->game->player.position;
-  Operation ops[] = {
+  Operation   ops[]    = {
       // clang-format off
       { .translation         = { Operation::Type::Translation, {position.x, position.y, position.z} } },
       { .quaternion          = { Operation::Type::Quaternion,  {orientation[0], orientation[1], orientation[2], orientation[3]} }                               },

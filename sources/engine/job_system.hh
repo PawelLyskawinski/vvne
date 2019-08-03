@@ -31,15 +31,18 @@ struct WorkerThread
 
 struct JobSystem
 {
-  bool                   thread_end_requested;
-  ElementStack<Job, 128> jobs;
-  SDL_atomic_t           jobs_taken;
-  SDL_cond*              new_jobs_available_cond;
-  SDL_mutex*             new_jobs_available_mutex;
-  SDL_sem*               all_threads_idle_signal;
-  SDL_atomic_t           threads_finished_work;
-  WorkerThread           workers[WORKER_THREADS_COUNT];
-  void*                  user_data;
+  bool thread_end_requested;
+
+  Job          jobs[128];
+  uint32_t     jobs_count;
+  SDL_atomic_t jobs_taken;
+
+  SDL_cond*    new_jobs_available_cond;
+  SDL_mutex*   new_jobs_available_mutex;
+  SDL_sem*     all_threads_idle_signal;
+  SDL_atomic_t threads_finished_work;
+  WorkerThread workers[WORKER_THREADS_COUNT];
+  void*        user_data;
 
   void            setup(VkDevice device, uint32_t graphics_queue_family_index);
   void            teardown(VkDevice device);

@@ -13,6 +13,6 @@ struct DebugGui
 
   void process_event(SDL_Event& event);
   void update(Engine& engine, Game& game);
-  void render(Engine& engine, Game& game);
-};
 
+  static void render(Engine& engine, Game& game);
+};
