@@ -7,6 +7,7 @@
 #include "game_constants.hh"
 #include "game_generate_gui_lines.hh"
 #include "imgui.h"
+#include "levels/example_level.hh"
 #include "materials.hh"
 #include "player.hh"
 #include "profiler.hh"
@@ -95,7 +96,8 @@ struct Game
   // Gameplay logic
   //////////////////////////////////////////////////////////////////////////////
 
-  Player player;
+  Player       player;
+  ExampleLevel level;
 
   // gameplay mechanics
   float           booster_jet_fuel;
@@ -103,7 +105,11 @@ struct Game
 
   SimpleEntity helmet_entity;
   SimpleEntity robot_entity;
-  SimpleEntity box_entities[6];
+
+  // light test, randoms to be removed later
+  SimpleEntity box_entities[5];
+
+  SimpleEntity robot_engines[2];
   SimpleEntity matrioshka_entity;
   SimpleEntity monster_entity;
   SimpleEntity rigged_simple_entity;

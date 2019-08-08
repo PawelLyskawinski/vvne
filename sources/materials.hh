@@ -2,8 +2,14 @@
 
 #include "engine/engine.hh"
 #include "engine/gltf.hh"
-#include "game_generate_gui_lines.hh"
 #include "engine/math.hh"
+#include "game_generate_gui_lines.hh"
+
+struct LightSource
+{
+  Vec4 position;
+  Vec4 color;
+};
 
 struct LightSources
 {
@@ -15,6 +21,13 @@ struct LightSources
   {
     positions[i] = p;
     colors[i]    = c;
+  }
+
+  void push_back(const LightSource& s)
+  {
+    positions[count] = s.position;
+    colors[count]    = s.color;
+    count++;
   }
 
   void update(uint32_t i, const Vec3& p, const Vec3& c) { update(i, Vec4(p), Vec4(c)); }

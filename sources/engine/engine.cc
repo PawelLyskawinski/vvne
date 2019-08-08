@@ -5,6 +5,8 @@
 #include <SDL2/SDL_log.h>
 #include <SDL2/SDL_vulkan.h>
 
+#include <algorithm>
+
 #define STB_IMAGE_IMPLEMENTATION
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -65,46 +67,6 @@ void renderpass_allocate_memory(FreeListAllocator& a, RenderPass& rp, uint32_t n
   rp.framebuffers       = a.allocate<VkFramebuffer>(n);
 }
 
-class DeviceExtensionNameView
-{
-public:
-  DeviceExtensionNameView(VkPhysicalDevice physical_device, FreeListAllocator& allocator)
-      : allocator(allocator)
-      , properties(nullptr)
-      , count(0)
-  {
-    vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &count, nullptr);
-    properties = allocator.allocate<VkExtensionProperties>(count);
-    vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &count, properties);
-  }
-
-  ~DeviceExtensionNameView() { allocator.free(properties, count); }
-
-  class Iterator
-  {
-  public:
-    explicit Iterator(VkExtensionProperties* it)
-        : it(it)
-    {
-    }
-
-    const char* operator*() const { return it->extensionName; }
-    void        operator++() { ++it; }
-    bool        operator!=(const Iterator& rhs) { return it != rhs.it; }
-
-  private:
-    VkExtensionProperties* it;
-  };
-
-  Iterator begin() const { return Iterator(properties); }
-  Iterator end() const { return Iterator(&properties[count]); }
-
-private:
-  FreeListAllocator&     allocator;
-  VkExtensionProperties* properties;
-  uint32_t               count;
-};
-
 } // namespace
 
 VkDeviceSize GpuMemoryBlock::allocate_aligned(VkDeviceSize size)
@@ -150,8 +112,6 @@ void Engine::startup(bool vulkan_validation_enabled)
 
     VkInstanceCreateInfo ci = {
         .sType               = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-        .pNext               = nullptr,
-        .flags               = 0,
         .pApplicationInfo    = &ai,
         .enabledLayerCount   = vulkan_validation_enabled ? static_cast<uint32_t>(SDL_arraysize(validation_layers)) : 0u,
         .ppEnabledLayerNames = vulkan_validation_enabled ? validation_layers : nullptr,
@@ -249,16 +209,23 @@ void Engine::startup(bool vulkan_validation_enabled)
     renderdoc_marker_naming_enabled = false;
     if (vulkan_validation_enabled)
     {
-      for (const char* name : DeviceExtensionNameView(physical_device, generic_allocator))
+      uint32_t count = 0;
+      vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &count, nullptr);
+      VkExtensionProperties* properties = generic_allocator.allocate<VkExtensionProperties>(count);
+      vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &count, properties);
+
+      auto is_debug_marker_ext = [](const VkExtensionProperties& p) {
+        return 0 == SDL_strcmp(p.extensionName, VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
+      };
+
+      if (std::any_of(properties, &properties[count], is_debug_marker_ext))
       {
-        if (0 == SDL_strcmp(name, VK_EXT_DEBUG_MARKER_EXTENSION_NAME))
-        {
-          SDL_Log("Renderdoc support ENABLED");
-          renderdoc_marker_naming_enabled = true;
-          device_extensions_count += 1;
-          break;
-        }
+        SDL_Log("Renderdoc support ENABLED");
+        renderdoc_marker_naming_enabled = true;
+        device_extensions_count += 1;
       }
+
+      generic_allocator.free(properties, count);
     }
 
     VkDeviceCreateInfo ci = {
@@ -317,20 +284,16 @@ void Engine::startup(bool vulkan_validation_enabled)
     vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, present_modes);
 
     SDL_Log("Supported presentation modes");
-    for (uint32_t i = 0; i < count; ++i)
-      SDL_Log("%s", to_cstr(present_modes[i]));
+    std::for_each(present_modes, &present_modes[count],
+                  [](const VkPresentModeKHR& mode) { SDL_Log("%s", to_cstr(mode)); });
 
-    auto has = [](const VkPresentModeKHR* all, uint32_t n, VkPresentModeKHR elem) {
-      for (uint32_t i = 0; i < n; ++i)
-        if (elem == all[i])
-          return true;
-      return false;
-    };
+    auto is_immediate = [](const VkPresentModeKHR& mode) { return VK_PRESENT_MODE_IMMEDIATE_KHR == mode; };
+    auto is_mailbox   = [](const VkPresentModeKHR& mode) { return VK_PRESENT_MODE_MAILBOX_KHR == mode; };
 
-    present_mode = has(present_modes, count, VK_PRESENT_MODE_IMMEDIATE_KHR)
+    present_mode = std::any_of(present_modes, &present_modes[count], is_immediate)
                        ? VK_PRESENT_MODE_IMMEDIATE_KHR
-                       : has(present_modes, count, VK_PRESENT_MODE_MAILBOX_KHR) ? VK_PRESENT_MODE_MAILBOX_KHR
-                                                                                : VK_PRESENT_MODE_FIFO_KHR;
+                       : std::any_of(present_modes, &present_modes[count], is_mailbox) ? VK_PRESENT_MODE_MAILBOX_KHR
+                                                                                       : VK_PRESENT_MODE_FIFO_KHR;
 
     generic_allocator.free(present_modes, count);
   }
@@ -926,8 +889,8 @@ public:
   {
   }
 
-  const TElement* begin() const { return m_begin; }
-  const TElement* end() const { return m_end; }
+  [[nodiscard]] const TElement* begin() const { return m_begin; }
+  [[nodiscard]] const TElement* end() const { return m_end; }
 
 private:
   const TElement* m_begin;
@@ -1036,8 +999,8 @@ Texture Engine::load_texture(const char* filepath, bool register_for_destruction
 
   SDL_assert(nullptr != pixels);
 
-  SDL_Surface surface = {.format = &format, .w = x, .h = y, .pitch = 4 * x, .pixels = pixels};
-  Texture     result  = load_texture(&surface, register_for_destruction);
+  SDL_Surface image_surface = {.format = &format, .w = x, .h = y, .pitch = 4 * x, .pixels = pixels};
+  Texture     result  = load_texture(&image_surface, register_for_destruction);
   stbi_image_free(pixels);
 
   return result;

@@ -1,5 +1,4 @@
 #include "game_generate_gui_lines.hh"
-#include "game.hh"
 #include <SDL2/SDL_log.h>
 
 namespace {

@@ -106,7 +106,7 @@ void Game::startup(Engine& engine)
   {
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    ImGui::StyleColorsDark();
+    ImGui::StyleColorsClassic();
 
     {
       struct KeyMapping
@@ -178,6 +178,9 @@ void Game::startup(Engine& engine)
   monster_entity.init(engine.generic_allocator, materials.monster);
 
   for (SimpleEntity& entity : box_entities)
+    entity.init(engine.generic_allocator, materials.box);
+
+  for (SimpleEntity& entity : robot_engines)
     entity.init(engine.generic_allocator, materials.box);
 
   matrioshka_entity.init(engine.generic_allocator, materials.animatedBox);
@@ -433,54 +436,50 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     sel.animate(0.008f * time_delta_since_last_frame_ms);
 
   debug_gui.update(engine, *this);
-  player.update(current_time_sec, time_delta_since_last_frame_ms);
+  player.update(current_time_sec, time_delta_since_last_frame_ms, level);
 
-  materials.pbr_light_sources_cache.count = 5;
-
-  auto calculate_light_Y_pos = [](Vec3& position) {
-    const float y_scale    = 2.0f;
-    const float y_offset   = -11.8f;
-    const float adjustment = 0.1f;
-
-    position.y = SDL_cosf(adjustment * position.x) + SDL_cosf(adjustment * position.z);
-    position.y *= -y_scale;
-    position.y -= y_offset;
+  LightSource dynamic_lights[] = {
+      {
+          {SDL_sinf(current_time_sec), 0.0f, 3.0f + SDL_cosf(current_time_sec), 1.0f},
+          {20.0f + (5.0f * SDL_sinf(current_time_sec + 0.4f)), 0.0f, 0.0f, 1.0f},
+      },
+      {
+          {12.8f * SDL_cosf(current_time_sec), 0.0f, -10.0f + (8.8f * SDL_sinf(current_time_sec)), 1.0f},
+          {0.0f, 20.0f, 0.0f, 1.0f},
+      },
+      {
+          {20.8f * SDL_sinf(current_time_sec / 2.0f), 0.0f, 3.0f + (0.8f * SDL_cosf(current_time_sec / 2.0f)), 1.0f},
+          {0.0f, 0.0f, 20.0f, 1.0f},
+      },
+      {
+          {SDL_sinf(current_time_sec / 1.2f), 0.0f, 2.5f * SDL_cosf(current_time_sec / 1.2f), 1.0f},
+          {8.0f, 8.0f, 8.0f, 1.0f},
+      },
+      {
+          {0.0f, 0.0f, -4.0f, 1.0f},
+          {10.0f, 0.0f, 10.0f, 1.0f},
+      },
+      // player engines
+      {
+          {player.position.x - 1.0f, player.position.y, player.position.z, 1.0f},
+          {0.01f, 0.01f, 1.0f, 1.0f},
+      },
+      {
+          {player.position.x + 1.0f, player.position.y, player.position.z, 1.0f},
+          {0.01f, 0.01f, 1.0f, 1.0f},
+      },
   };
 
+  for (uint32_t i = 0; i < 5; ++i)
   {
-    Vec3 position = Vec3(SDL_sinf(current_time_sec), 3.5f, 3.0f + SDL_cosf(current_time_sec));
-    calculate_light_Y_pos(position);
-    const Vec3 color = Vec3(20.0f + (5.0f * SDL_sinf(current_time_sec + 0.4f)), 0.0, 0.0);
-    materials.pbr_light_sources_cache.update(0, position, color);
+    LightSource& light = dynamic_lights[i];
+    light.position.y   = level.get_height(light.position.x, light.position.z) - 1.0f;
   }
 
+  materials.pbr_light_sources_cache.count = 0;
+  for (const LightSource& light : dynamic_lights)
   {
-    Vec3 position = Vec3(12.8f * SDL_cosf(current_time_sec), 1.0f, -10.0f + (8.8f * SDL_sinf(current_time_sec)));
-    calculate_light_Y_pos(position);
-    const Vec3 color = Vec3(0.0f, 20.0f, 0.0f);
-    materials.pbr_light_sources_cache.update(1, position, color);
-  }
-
-  {
-    Vec3 position =
-        Vec3(20.8f * SDL_sinf(current_time_sec / 2.0f), 3.3f, 3.0f + (0.8f * SDL_cosf(current_time_sec / 2.0f)));
-    calculate_light_Y_pos(position);
-    const Vec3 color = Vec3(0.0, 0.0, 20.0);
-    materials.pbr_light_sources_cache.update(2, position, color);
-  }
-
-  {
-    Vec3 position = Vec3(SDL_sinf(current_time_sec / 1.2f), 3.1f, 2.5f * SDL_cosf(current_time_sec / 1.2f));
-    calculate_light_Y_pos(position);
-    const Vec3 color = Vec3(8.0);
-    materials.pbr_light_sources_cache.update(3, position, color);
-  }
-
-  {
-    Vec3 position = Vec3(0.0f, 3.0f, -4.0f);
-    calculate_light_Y_pos(position);
-    const Vec3 color = Vec3(10.0f, 0.0f, 10.0f);
-    materials.pbr_light_sources_cache.update(4, position, color);
+    materials.pbr_light_sources_cache.push_back(light);
   }
 
   recalculate_cascade_view_proj_matrices(materials.cascade_view_proj_mat, materials.cascade_split_depths,

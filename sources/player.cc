@@ -1,5 +1,6 @@
 #include "player.hh"
 #include "engine/engine.hh"
+#include "levels/example_level.hh"
 
 namespace {
 
@@ -70,7 +71,7 @@ void Player::process_event(const SDL_Event& event)
   }
 }
 
-void Player::update(const float current_time_sec, const float delta_ms)
+void Player::update(const float current_time_sec, const float delta_ms, const ExampleLevel& level)
 {
   (void)current_time_sec;
 
@@ -114,13 +115,7 @@ void Player::update(const float current_time_sec, const float delta_ms)
   }
 
   // @todo: re-enable jumping
-  const float y_scale    = 2.0f;
-  const float y_offset   = -10.5f;
-  const float adjustment = 0.1f;
-
-  position.y = SDL_cosf(adjustment * position.x) + SDL_cosf(adjustment * position.z);
-  position.y *= -y_scale;
-  position.y -= y_offset;
+  position.y = level.get_height(position.x, position.z) - 1.5f;
 
   camera_position =
       position +

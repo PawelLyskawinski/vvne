@@ -6,7 +6,12 @@
 // but we'll see how this ends up.
 //
 
-float ExampleLevel::get_terrain_height(float x, float y) const
+float ExampleLevel::get_height(float x, float y) const
 {
-  return 0.05f * (SDL_cosf(4.0f * x) + SDL_cosf(4.0f * y)) + 0.1f;
+  constexpr float adjustment = 0.1f;
+
+  float h = SDL_cosf(adjustment * x) + SDL_cosf(adjustment * y);
+  h *= -2.0f;
+  h += 12.0f;
+  return h;
 }

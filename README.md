@@ -41,11 +41,11 @@ long distance goals:
 - better model and animations (while only using keyframes from glb)
 
 ### Used C++ subset
-- no stl
+- no memory allocating stl
 - no rtti
 - no exceptions
 - minimal use of templates
-- designated initializers (available in C++ with GCC 8.1 c++2a flag)
+- designated initializers (available in C++ with GCC 8.1 c++2a flag, or c++20 soon)
 
 ### Dependencies
 - SDL2 (any version with SDL_vulkan header)

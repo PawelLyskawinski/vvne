@@ -6,24 +6,8 @@
 #include "profiler_visualizer.hh"
 #include <SDL2/SDL_log.h>
 
-namespace {
-
-template <typename TIt, typename TPred> bool any_of(TIt begin, TIt end, TPred pred)
-{
-  for (; begin != end; ++begin)
-    if (pred(*begin))
-      return true;
-  return false;
-}
-
-template <typename TIt, typename TAcc, typename TFcn> TAcc accumulate(TIt begin, TIt end, TAcc acc, TFcn fcn)
-{
-  for (; begin != end; ++begin)
-    acc = fcn(acc, *begin);
-  return acc;
-}
-
-} // namespace
+#include <algorithm>
+#include <numeric>
 
 void DebugGui::process_event(SDL_Event& event)
 {
@@ -125,7 +109,7 @@ void DebugGui::update(Engine& engine, Game& game)
     }
 
     const Uint32 window_has_mouse_captured = SDL_GetWindowFlags(window) & SDL_WINDOW_MOUSE_CAPTURE;
-    if (any_of(io.MouseDown, &io.MouseDown[5], [](bool it) { return it; }))
+    if (std::any_of(io.MouseDown, &io.MouseDown[5], [](bool it) { return it; }))
     {
       if (not window_has_mouse_captured)
       {
@@ -353,8 +337,8 @@ void DebugGui::render(Engine& engine, Game& game)
     MemoryMap vtx_dst(engine.device, engine.memory_blocks.host_coherent.memory,
                       game.materials.imgui_vertex_buffer_offsets[game.image_index], vertex_size);
 
-    accumulate(view.begin(), view.end(), reinterpret_cast<ImDrawVert*>(*vtx_dst),
-               [](ImDrawVert* dst, const ImDrawList* cmd_list) { return serialize(dst, cmd_list->VtxBuffer); });
+    std::accumulate(view.begin(), view.end(), reinterpret_cast<ImDrawVert*>(*vtx_dst),
+                    [](ImDrawVert* dst, const ImDrawList* cmd_list) { return serialize(dst, cmd_list->VtxBuffer); });
   }
 
   if (0 < index_size)
@@ -362,7 +346,7 @@ void DebugGui::render(Engine& engine, Game& game)
     MemoryMap idx_dst(engine.device, engine.memory_blocks.host_coherent.memory,
                       game.materials.imgui_index_buffer_offsets[game.image_index], vertex_size);
 
-    accumulate(view.begin(), view.end(), reinterpret_cast<ImDrawIdx*>(*idx_dst),
-               [](ImDrawIdx* dst, const ImDrawList* cmd_list) { return serialize(dst, cmd_list->IdxBuffer); });
+    std::accumulate(view.begin(), view.end(), reinterpret_cast<ImDrawIdx*>(*idx_dst),
+                    [](ImDrawIdx* dst, const ImDrawList* cmd_list) { return serialize(dst, cmd_list->IdxBuffer); });
   }
 }
