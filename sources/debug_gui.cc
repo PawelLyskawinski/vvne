@@ -18,7 +18,7 @@ void DebugGui::process_event(SDL_Event& event)
   case SDL_MOUSEWHEEL:
     if (0.0f != event.wheel.y)
     {
-      io.MouseWheel = std::signbit(event.wheel.y) ? -1.0f : 1.0f;
+      io.MouseWheel = (0 > event.wheel.y) ? -1.0f : 1.0f;
     }
     break;
 
