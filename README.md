@@ -1,8 +1,6 @@
 # vvne
 
-There are a lot of publicly available engines / demos on github which use vulkan and gltf2.0, but as far as I can tell none of them keeps the implementation *stl-free*. I'm paranoid about compile times and sadly only way to archive that is by skipping what state of the art c++ has to offer.
-
-Project aims to recreate a [very inspiring muv luv gif](https://thumbs.gfycat.com/HelplessRealAlbacoretuna-size_restricted.gif) as best as possible.
+Project aims to recreate a [very inspiring muv luv gif](https://thumbs.gfycat.com/HelplessRealAlbacoretuna-size_restricted.gif) using [subset of c++](https://gist.github.com/bkaradzic/2e39896bc7d8c34e042b), SDL and vulkan.
 
 Current preview (still a veeeery long road ahead)
 ![status preview image](assets/current_status.jpg)
@@ -36,27 +34,19 @@ short distance goals:
 - Shooting and melee
 - Height calculation rework
 
-long distance goals:
+### long distance goals:
 - AI combat
 - better model and animations (while only using keyframes from glb)
 
-### Used C++ subset
-- no memory allocating stl
-- no rtti
-- no exceptions
-- minimal use of templates
-- designated initializers (available in C++ with GCC 8.1 c++2a flag, or c++20 soon)
-
 ### Dependencies
+- GCC at least 8.1 (to support C++2a)
 - SDL2 (any version with SDL_vulkan header)
 - lunarg vulkan sdk
 
 ### How to build?
-Modification inside CMakeLists.txt are needed. Depending on which platform is used different paths for vulkan and SDL dynamic libraries may be required.
-
-Shaders can be build using assets/make_shaders scripts, but path to glslangvalidator need to be substituted.
-Since shaders are renamed using hashes make sure that 'hashlib' package is available.
-
-GCC 8.1 is nessesary since a brand new standard is used.
-
-Binary should be run inside "bin" folder.
+1. Change include paths inside CMakeLists.txt to suit development environment
+2. Change dll paths for SDL and vulkan
+3. Change glslangvalidator inside 'shaders/make_shaders.bat/.sh'
+4. Install 'hashlib' library for python in use
+5. use scripts for shaders, cmake for game
+6. run binaries inside 'bin' folder
