@@ -16,6 +16,8 @@
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_thread.h>
 
+#include "ecs/manager.hh"
+
 template <typename T, int SIZE> struct AtomicStack
 {
   void push(const T& in) { stack[SDL_AtomicIncRef(&count)] = in; }
@@ -114,6 +116,12 @@ struct Game
   SimpleEntity monster_entity;
   SimpleEntity rigged_simple_entity;
   SimpleEntity axis_arrow_entities[3];
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Gameplay ECS
+  //////////////////////////////////////////////////////////////////////////////
+
+  component::Manager ecs;
 
   void startup(Engine& engine);
   void teardown(Engine& engine);

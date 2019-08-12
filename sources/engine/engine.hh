@@ -136,6 +136,7 @@ struct Engine
   VkFence                    submition_fences[SWAPCHAIN_IMAGES_COUNT];
 
   MemoryBlocks memory_blocks;
+  SDL_mutex*   host_coherent_ubo_lock;
 
   // Used for vertex / index data which will be reused all the time
   VkBuffer gpu_device_local_memory_buffer;

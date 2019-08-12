@@ -5,6 +5,7 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -std=c++2a -g -fno-exception
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -std=c++2a -O2 -fno-exceptions -fno-rtti -Wall")
 
 include_directories(${CMAKE_CURRENT_LIST_DIR}/thirdparty)
+include_directories(${CMAKE_CURRENT_LIST_DIR}/sources)
 
 if(WIN32)
 include_directories(C:/Users/plyskawinski/Downloads/MinGW/include
@@ -60,7 +61,13 @@ set(SOURCES
         thirdparty/imgui.cpp
         thirdparty/imgui_draw.cpp
         thirdparty/imgui_widgets.cpp
-        thirdparty/sha256.cpp)
+        thirdparty/sha256.cpp
+        sources/ecs/components.hh
+        sources/ecs/components.cc
+        sources/ecs/manager.hh
+        sources/ecs/systems.cc
+        sources/ecs/systems.hh
+        sources/ecs/manager.cc)
 
 if(WIN32)
 add_executable(${PROJECT_NAME} ${SOURCES} assets/applicationIcon.rc)

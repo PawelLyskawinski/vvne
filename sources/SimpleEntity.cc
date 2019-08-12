@@ -3,13 +3,6 @@
 
 namespace {
 
-void depth_first_node_parent_hierarchy(uint8_t* hierarchy, const Node* nodes, uint8_t parent_idx, uint8_t node_idx)
-{
-  for (int child_idx : nodes[node_idx].children)
-    depth_first_node_parent_hierarchy(hierarchy, nodes, node_idx, static_cast<uint8_t>(child_idx));
-  hierarchy[node_idx] = parent_idx;
-}
-
 void propagate_node_renderability_hierarchy(int node_idx, uint64_t& dst, const ArrayView<Node>& nodes)
 {
   for (int child_idx : nodes[node_idx].children)
@@ -31,19 +24,10 @@ void SimpleEntity::init(FreeListAllocator& allocator, const SceneGraph& model)
   const uint32_t nodes_count = static_cast<const uint32_t>(model.nodes.count);
   SDL_assert(nodes_count < 64);
 
-  node_parent_hierarchy = allocator.allocate<uint8_t>(nodes_count);
-  node_transforms       = allocator.allocate<mat4x4>(nodes_count);
+  node_transforms = allocator.allocate<mat4x4>(nodes_count);
 
   for (int scene_node_idx : model.scenes[0].nodes)
     propagate_node_renderability_hierarchy(scene_node_idx, node_renderabilities, model.nodes);
-
-  for (uint8_t i = 0; i < nodes_count; ++i)
-    node_parent_hierarchy[i] = i;
-
-  for (uint8_t node_idx = 0; node_idx < nodes_count; ++node_idx)
-    for (int child_idx : model.nodes[node_idx].children)
-      depth_first_node_parent_hierarchy(node_parent_hierarchy, model.nodes.data, node_idx,
-                                        static_cast<uint8_t>(child_idx));
 
   if (model.skins.count)
     joint_matrices = allocator.allocate<mat4x4>(static_cast<uint32_t>(model.skins[0].joints.count));
@@ -64,7 +48,7 @@ void SimpleEntity::recalculate_node_transforms(const SceneGraph& model, mat4x4 w
   if (not model.skins.empty())
   {
     int skeleton_node_idx   = model.skins[0].skeleton;
-    int skeleton_parent_idx = node_parent_hierarchy[skeleton_node_idx];
+    int skeleton_parent_idx = model.node_parent_hierarchy[skeleton_node_idx];
     mat4x4_dup(transforms[skeleton_parent_idx], world_transform);
   }
 
@@ -150,7 +134,7 @@ void SimpleEntity::recalculate_node_transforms(const SceneGraph& model, mat4x4 w
 
   for (uint8_t node_idx = 0; node_idx < nodes.count; ++node_idx)
   {
-    if (node_idx == node_parent_hierarchy[node_idx])
+    if (node_idx == model.node_parent_hierarchy[node_idx])
       for (int child_idx : nodes[node_idx].children)
         depth_first_node_transform(transforms, nodes.data, node_idx, child_idx);
   }

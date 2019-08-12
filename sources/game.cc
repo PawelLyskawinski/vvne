@@ -1,4 +1,5 @@
 #include "game.hh"
+#include "ecs/systems.hh"
 #include "engine/cubemap.hh"
 #include "engine/gpu_memory_visualizer.hh"
 #include "render_jobs.hh"
@@ -173,6 +174,8 @@ void Game::startup(Engine& engine)
   materials.setup(engine);
   materials.light_source_position = Vec3(0.0f, -1.0f, 1.0f);
 
+  // LEGACY
+
   helmet_entity.init(engine.generic_allocator, materials.helmet);
   robot_entity.init(engine.generic_allocator, materials.robot);
   monster_entity.init(engine.generic_allocator, materials.monster);
@@ -188,6 +191,13 @@ void Game::startup(Engine& engine)
 
   for (SimpleEntity& entity : axis_arrow_entities)
     entity.init(engine.generic_allocator, materials.lil_arrow);
+
+  // ECS
+
+  ecs.init(engine.generic_allocator);
+  ExampleLevel::initialize(ecs);
+
+  // ---
 
   player.setup(engine.extent2D.width, engine.extent2D.height);
   booster_jet_fuel = 1.0f;
@@ -438,6 +448,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   debug_gui.update(engine, *this);
   player.update(current_time_sec, time_delta_since_last_frame_ms, level);
 
+#if 0
   LightSource dynamic_lights[] = {
       {
           {SDL_sinf(current_time_sec), 0.0f, 3.0f + SDL_cosf(current_time_sec), 1.0f},
@@ -481,7 +492,12 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   {
     materials.pbr_light_sources_cache.push_back(light);
   }
+#else
 
+  MovementSystem(ecs, level, current_time_sec)();
+  ColorAnimationSystem(ecs, current_time_sec)();
+
+#endif
   recalculate_cascade_view_proj_matrices(materials.cascade_view_proj_mat, materials.cascade_split_depths,
                                          player.camera_projection, player.camera_view, materials.light_source_position);
 
@@ -572,7 +588,7 @@ void Game::render(Engine& engine)
         render::skybox_job,
         render::robot_job,
         render::helmet_job,
-        render::point_light_boxes,
+        // render::point_light_boxes,
         render::matrioshka_box,
         render::water,
         render::simple_rigged,
@@ -588,6 +604,8 @@ void Game::render(Engine& engine)
     engine.job_system.start();
 
     // While we await for tasks to be finished by worker threads, this one will handle memory synchronization
+
+    SDL_LockMutex(engine.host_coherent_ubo_lock);
 
     //
     // Cascade shadow map projection matrices
@@ -636,6 +654,8 @@ void Game::render(Engine& engine)
       frustum_planes_generate(player.camera_projection * player.camera_view, reinterpret_cast<Vec4*>(data));
       vkUnmapMemory(engine.device, engine.memory_blocks.host_coherent_ubo.memory);
     }
+
+    SDL_UnlockMutex(engine.host_coherent_ubo_lock);
 
     engine.job_system.wait_for_finish();
     debug_gui.render(engine, *this);

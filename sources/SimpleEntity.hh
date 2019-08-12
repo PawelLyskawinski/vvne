@@ -10,7 +10,6 @@ struct SimpleEntity
   void recalculate_node_transforms(const SceneGraph& model, mat4x4 world_transform);
 
   // elements which will always be guaranteed to be present for entity
-  uint8_t* node_parent_hierarchy;
   mat4x4*  node_transforms;
   mat4x4*  joint_matrices;
 

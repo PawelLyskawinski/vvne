@@ -107,6 +107,9 @@ struct SceneGraph
   ArrayView<Scene>     scenes;
   ArrayView<Animation> animations;
   ArrayView<Skin>      skins;
+
+  // @TODO
+  ArrayView<uint8_t> node_parent_hierarchy;
 };
 
 SceneGraph loadGLB(Engine& engine, const char* path);

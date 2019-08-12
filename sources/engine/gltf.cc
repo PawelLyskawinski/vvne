@@ -5,6 +5,8 @@
 #include <SDL2/SDL_timer.h>
 #include <linmath.h>
 
+#include <numeric>
+
 #ifndef __linux__
 #include <stdlib.h>
 #endif
@@ -262,6 +264,13 @@ const uint8_t* find_glb_binary_data(const uint8_t* blob)
 {
   return &blob[GLB_OFFSET_TO_JSON + GLB_OFFSET_TO_CHUNK_DATA + find_glb_json_chunk_length(blob) +
                GLB_OFFSET_TO_CHUNK_DATA];
+}
+
+void depth_first_node_parent_hierarchy(uint8_t* hierarchy, const Node* nodes, uint8_t parent_idx, uint8_t node_idx)
+{
+  for (int child_idx : nodes[node_idx].children)
+    depth_first_node_parent_hierarchy(hierarchy, nodes, node_idx, static_cast<uint8_t>(child_idx));
+  hierarchy[node_idx] = parent_idx;
 }
 
 } // namespace
@@ -957,6 +966,27 @@ SceneGraph loadGLB(Engine& engine, const char* path)
   }
 
   engine.generic_allocator.free(glb_file_content, static_cast<uint32_t>(glb_file_size));
+
+  // ---------------------------------------------------------------------------
+  // Child to node graph directions
+  // ---------------------------------------------------------------------------
+
+  scene_graph.node_parent_hierarchy.count = scene_graph.nodes.count;
+  scene_graph.node_parent_hierarchy.data  = engine.generic_allocator.allocate<uint8_t>(scene_graph.nodes.count);
+
+  std::iota(scene_graph.node_parent_hierarchy.begin(), scene_graph.node_parent_hierarchy.end(), 0);
+
+  // TODO: refactor not to use recursive calls
+  for (uint8_t node_idx = 0; node_idx < scene_graph.nodes.count; ++node_idx)
+  {
+    for (int child_idx : scene_graph.nodes[node_idx].children)
+    {
+      depth_first_node_parent_hierarchy(scene_graph.node_parent_hierarchy.data, scene_graph.nodes.data, node_idx,
+                                        static_cast<uint8_t>(child_idx));
+    }
+  }
+
+  ////////////////////////////////////////////////////////////////////////////////////////////////
 
   uint64_t duration_ticks = SDL_GetPerformanceCounter() - start;
   float    elapsed_ms     = 1000.0f * ((float)duration_ticks / (float)SDL_GetPerformanceFrequency());

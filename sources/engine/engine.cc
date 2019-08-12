@@ -875,6 +875,8 @@ void Engine::startup(bool vulkan_validation_enabled)
     VkFenceCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, .flags = VK_FENCE_CREATE_SIGNALED_BIT};
     vkCreateFence(device, &ci, nullptr, &submition_fence);
   }
+
+  host_coherent_ubo_lock = SDL_CreateMutex();
 }
 
 namespace {
@@ -903,6 +905,8 @@ void Engine::teardown()
 {
   vkDeviceWaitIdle(device);
   job_system.teardown(device);
+
+  SDL_DestroyMutex(host_coherent_ubo_lock);
 
   for (const VkDescriptorSetLayout& it : StructureAsArrayView<VkDescriptorSetLayout>(&descriptor_set_layouts))
   {
