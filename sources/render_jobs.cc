@@ -1,6 +1,7 @@
 #include "render_jobs.hh"
 #include "game_render_entity.hh"
 #include <SDL2/SDL_log.h>
+#include <numeric>
 
 // game_generate_sdf_font.cc
 GenerateSdfFontCommandResult generate_sdf_font(const GenerateSdfFontCommand& cmd);
@@ -122,6 +123,7 @@ void robot_job(ThreadJobData tjd)
   copy_camera_settings(params, ctx->game->player);
   render_pbr_entity(ctx->game->robot_entity, ctx->game->materials.robot, *ctx->engine, params);
 
+#if 0
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_model_wireframe.pipeline);
   params.pipeline_layout = ctx->engine->pipelines.colored_model_wireframe.layout;
 
@@ -130,6 +132,7 @@ void robot_job(ThreadJobData tjd)
   params.color[2] = SDL_fabsf(SDL_sinf(1.0f * ctx->game->current_time_sec * 1.5f));
 
   render_wireframe_entity(ctx->game->robot_entity, ctx->game->materials.robot, *ctx->engine, params);
+#endif
 
   vkEndCommandBuffer(command);
 }
@@ -210,10 +213,20 @@ void point_light_boxes(ThreadJobData tjd)
 
   copy_camera_settings(params, ctx->game->player);
 
-  for (unsigned i = 0; i < SDL_arraysize(ctx->game->box_entities); ++i)
+  const uint32_t box_count     = SDL_arraysize(ctx->game->box_entities);
+  const uint32_t engines_count = SDL_arraysize(ctx->game->robot_engines);
+  const uint32_t total_count   = box_count + engines_count;
+
+  SimpleEntity  all[total_count] = {};
+  SimpleEntity* inserter         = all;
+
+  inserter = std::copy(ctx->game->box_entities, &ctx->game->box_entities[box_count], inserter);
+  std::copy(ctx->game->robot_engines, &ctx->game->robot_engines[engines_count], inserter);
+
+  for (unsigned i = 0; i < total_count; ++i)
   {
     SDL_memcpy(params.color, &ctx->game->materials.pbr_light_sources_cache.colors[i].x, sizeof(vec3));
-    render_entity(ctx->game->box_entities[i], ctx->game->materials.box, *ctx->engine, params);
+    render_entity(all[i], ctx->game->materials.box, *ctx->engine, params);
   }
 
   vkEndCommandBuffer(command);
@@ -1741,8 +1754,7 @@ void water(ThreadJobData tjd)
     for (int y = 0; y < 3; ++y)
     {
       mat4x4 translation_matrix = {};
-      mat4x4_translate(translation_matrix, 40.0f * x - 40.0f,
-                       10.5f + 0.02f * SDL_sinf(ctx->game->current_time_sec),
+      mat4x4_translate(translation_matrix, 40.0f * x - 40.0f, 10.5f + 0.02f * SDL_sinf(ctx->game->current_time_sec),
                        40.0f * y - 40.0f);
 
       mat4x4 tmp = {};
@@ -1913,7 +1925,6 @@ void tesselated_ground(ThreadJobData tjd)
     float  adjustment;
     float  time;
   };
-
 
   PushConst pc(*ctx->game);
 
