@@ -67,6 +67,18 @@ void renderpass_allocate_memory(FreeListAllocator& a, RenderPass& rp, uint32_t n
   rp.framebuffers       = a.allocate<VkFramebuffer>(n);
 }
 
+VkComponentMapping gen_rgba_cm()
+{
+  VkComponentMapping cm = {};
+
+  cm.r = VK_COMPONENT_SWIZZLE_R;
+  cm.g = VK_COMPONENT_SWIZZLE_G;
+  cm.b = VK_COMPONENT_SWIZZLE_B;
+  cm.a = VK_COMPONENT_SWIZZLE_A;
+
+  return cm;
+}
+
 } // namespace
 
 VkDeviceSize GpuMemoryBlock::allocate_aligned(VkDeviceSize size)
@@ -322,13 +334,6 @@ void Engine::startup(bool vulkan_validation_enabled)
   }
 
   {
-    VkComponentMapping cm = {
-        .r = VK_COMPONENT_SWIZZLE_IDENTITY,
-        .g = VK_COMPONENT_SWIZZLE_IDENTITY,
-        .b = VK_COMPONENT_SWIZZLE_IDENTITY,
-        .a = VK_COMPONENT_SWIZZLE_IDENTITY,
-    };
-
     VkImageSubresourceRange sr = {
         .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
         .levelCount = 1,
@@ -342,7 +347,6 @@ void Engine::startup(bool vulkan_validation_enabled)
           .image            = swapchain_images[i],
           .viewType         = VK_IMAGE_VIEW_TYPE_2D,
           .format           = surface_format.format,
-          .components       = cm,
           .subresourceRange = sr,
       };
 
@@ -634,19 +638,12 @@ void Engine::startup(bool vulkan_validation_enabled)
         .layerCount = 1,
     };
 
-    VkComponentMapping comp = {
-        .r = VK_COMPONENT_SWIZZLE_R,
-        .g = VK_COMPONENT_SWIZZLE_G,
-        .b = VK_COMPONENT_SWIZZLE_B,
-        .a = VK_COMPONENT_SWIZZLE_A,
-    };
-
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .image            = msaa_color_image.image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D,
         .format           = surface_format.format,
-        .components       = comp,
+        .components       = gen_rgba_cm(),
         .subresourceRange = sr,
     };
 
@@ -660,19 +657,12 @@ void Engine::startup(bool vulkan_validation_enabled)
         .layerCount = 1,
     };
 
-    VkComponentMapping comp = {
-        .r = VK_COMPONENT_SWIZZLE_R,
-        .g = VK_COMPONENT_SWIZZLE_G,
-        .b = VK_COMPONENT_SWIZZLE_B,
-        .a = VK_COMPONENT_SWIZZLE_A,
-    };
-
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .image            = depth_image.image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D,
         .format           = VK_FORMAT_D32_SFLOAT,
-        .components       = comp,
+        .components       = gen_rgba_cm(),
         .subresourceRange = sr,
     };
 
@@ -687,19 +677,12 @@ void Engine::startup(bool vulkan_validation_enabled)
         .layerCount     = SHADOWMAP_CASCADE_COUNT,
     };
 
-    VkComponentMapping comp = {
-        .r = VK_COMPONENT_SWIZZLE_R,
-        .g = VK_COMPONENT_SWIZZLE_G,
-        .b = VK_COMPONENT_SWIZZLE_B,
-        .a = VK_COMPONENT_SWIZZLE_A,
-    };
-
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .image            = shadowmap_image.image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D_ARRAY,
         .format           = VK_FORMAT_D32_SFLOAT,
-        .components       = comp,
+        .components       = gen_rgba_cm(),
         .subresourceRange = sr,
     };
 
@@ -715,19 +698,12 @@ void Engine::startup(bool vulkan_validation_enabled)
         .layerCount     = 1,
     };
 
-    VkComponentMapping comp = {
-        .r = VK_COMPONENT_SWIZZLE_R,
-        .g = VK_COMPONENT_SWIZZLE_G,
-        .b = VK_COMPONENT_SWIZZLE_B,
-        .a = VK_COMPONENT_SWIZZLE_A,
-    };
-
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .image            = shadowmap_image.image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D,
         .format           = VK_FORMAT_D32_SFLOAT,
-        .components       = comp,
+        .components       = gen_rgba_cm(),
         .subresourceRange = sr,
     };
 
@@ -1696,13 +1672,6 @@ void Engine::change_resolution(const VkExtent2D new_size)
 
   // new image views for swapchain
   {
-    VkComponentMapping cm = {
-        .r = VK_COMPONENT_SWIZZLE_IDENTITY,
-        .g = VK_COMPONENT_SWIZZLE_IDENTITY,
-        .b = VK_COMPONENT_SWIZZLE_IDENTITY,
-        .a = VK_COMPONENT_SWIZZLE_IDENTITY,
-    };
-
     VkImageSubresourceRange sr = {
         .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
         .levelCount = 1,
@@ -1716,7 +1685,6 @@ void Engine::change_resolution(const VkExtent2D new_size)
           .image            = swapchain_images[i],
           .viewType         = VK_IMAGE_VIEW_TYPE_2D,
           .format           = surface_format.format,
-          .components       = cm,
           .subresourceRange = sr,
       };
 
@@ -1800,19 +1768,12 @@ void Engine::change_resolution(const VkExtent2D new_size)
         .layerCount = 1,
     };
 
-    VkComponentMapping comp = {
-        .r = VK_COMPONENT_SWIZZLE_R,
-        .g = VK_COMPONENT_SWIZZLE_G,
-        .b = VK_COMPONENT_SWIZZLE_B,
-        .a = VK_COMPONENT_SWIZZLE_A,
-    };
-
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .image            = msaa_color_image.image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D,
         .format           = surface_format.format,
-        .components       = comp,
+        .components       = gen_rgba_cm(),
         .subresourceRange = sr,
     };
 
@@ -1827,19 +1788,12 @@ void Engine::change_resolution(const VkExtent2D new_size)
         .layerCount = 1,
     };
 
-    VkComponentMapping comp = {
-        .r = VK_COMPONENT_SWIZZLE_R,
-        .g = VK_COMPONENT_SWIZZLE_G,
-        .b = VK_COMPONENT_SWIZZLE_B,
-        .a = VK_COMPONENT_SWIZZLE_A,
-    };
-
     VkImageViewCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .image            = depth_image.image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D,
         .format           = VK_FORMAT_D32_SFLOAT,
-        .components       = comp,
+        .components       = gen_rgba_cm(),
         .subresourceRange = sr,
     };
 
