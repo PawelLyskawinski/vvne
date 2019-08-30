@@ -2,14 +2,17 @@
 #include "engine/engine.hh"
 #include "game.hh"
 #include <SDL2/SDL.h>
+#include <algorithm>
 
-static bool is_in_arguments_list(const char* argv[], uint32_t argc, const char* search)
+namespace {
+
+bool is_in_arguments_list(const char* argv[], uint32_t argc, const char* search)
 {
-  for (uint32_t i = 0; i < (argc - 1); ++i)
-    if (0 == SDL_strcmp(argv[i + 1], search))
-      return true;
-  return false;
+  return &argv[argc] !=
+         std::find_if(argv + 1, &argv[argc], [search](const char* it) { return 0 == SDL_strcmp(it, search); });
 }
+
+} // namespace
 
 int main(int argc, const char* argv[])
 {

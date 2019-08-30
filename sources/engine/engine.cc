@@ -256,13 +256,13 @@ void Engine::startup(bool vulkan_validation_enabled)
 
   if (renderdoc_marker_naming_enabled)
   {
-    vkDebugMarkerSetObjectTag =
-        (PFN_vkDebugMarkerSetObjectTagEXT)vkGetDeviceProcAddr(device, "vkDebugMarkerSetObjectTagEXT");
-    vkDebugMarkerSetObjectName =
-        (PFN_vkDebugMarkerSetObjectNameEXT)vkGetDeviceProcAddr(device, "vkDebugMarkerSetObjectNameEXT");
-    vkCmdDebugMarkerBegin  = (PFN_vkCmdDebugMarkerBeginEXT)vkGetDeviceProcAddr(device, "vkCmdDebugMarkerBeginEXT");
-    vkCmdDebugMarkerEnd    = (PFN_vkCmdDebugMarkerEndEXT)vkGetDeviceProcAddr(device, "vkCmdDebugMarkerEndEXT");
-    vkCmdDebugMarkerInsert = (PFN_vkCmdDebugMarkerInsertEXT)vkGetDeviceProcAddr(device, "vkCmdDebugMarkerInsertEXT");
+#define LOAD_FCN(name) (PFN_##name) vkGetDeviceProcAddr(device, "#name")
+    vkDebugMarkerSetObjectTag  = LOAD_FCN(vkDebugMarkerSetObjectTagEXT);
+    vkDebugMarkerSetObjectName = LOAD_FCN(vkDebugMarkerSetObjectNameEXT);
+    vkCmdDebugMarkerBegin      = LOAD_FCN(vkCmdDebugMarkerBeginEXT);
+    vkCmdDebugMarkerEnd        = LOAD_FCN(vkCmdDebugMarkerEndEXT);
+    vkCmdDebugMarkerInsert     = LOAD_FCN(vkCmdDebugMarkerInsertEXT);
+#undef LOAD_FCN
   }
 
   vkGetDeviceQueue(device, graphics_family_index, 0, &graphics_queue);
