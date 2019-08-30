@@ -24,6 +24,27 @@ struct ImguiFontSurface
   SDL_Surface* surface;
 };
 
+struct Cursor
+{
+  explicit Cursor(const char* initial)
+      : ptr(initial)
+  {
+  }
+
+  Cursor& forward(char c)
+  {
+    for (; c != *ptr; ++ptr)
+      ;
+    ++ptr;
+    return *this;
+  }
+
+  template <typename T>[[nodiscard]] T read_uint() const { return static_cast<T>(SDL_strtoul(ptr, nullptr, 10)); }
+  template <typename T>[[nodiscard]] T read_int() const { return static_cast<T>(SDL_strtol(ptr, nullptr, 10)); }
+
+  const char* ptr;
+};
+
 } // namespace
 
 void Materials::setup(Engine& engine)
@@ -640,41 +661,26 @@ void Materials::setup(Engine& engine)
     SDL_RWread(ctx, fnt_file_content, sizeof(char), static_cast<size_t>(fnt_file_size));
     SDL_RWclose(ctx);
 
-    auto forward_right_after = [](char* cursor, char target) -> char* {
-      while (target != *cursor)
-        ++cursor;
-      return ++cursor;
-    };
-
-    char* cursor = fnt_file_content;
+    Cursor cursor(fnt_file_content);
     for (int i = 0; i < 4; ++i)
-      cursor = forward_right_after(cursor, '\n');
+    {
+      cursor.forward('\n');
+    }
 
     for (unsigned i = 0; i < SDL_arraysize(lucida_sans_sdf_chars); ++i)
     {
       uint8_t& id   = lucida_sans_sdf_char_ids[i];
       SdfChar& data = lucida_sans_sdf_chars[i];
 
-      auto read_unsigned = [](char* c) { return SDL_strtoul(c, nullptr, 10); };
-      auto read_signed   = [](char* c) { return SDL_strtol(c, nullptr, 10); };
-
-      cursor        = forward_right_after(cursor, '=');
-      id            = static_cast<uint8_t>(read_unsigned(cursor));
-      cursor        = forward_right_after(cursor, '=');
-      data.x        = static_cast<uint16_t>(read_unsigned(cursor));
-      cursor        = forward_right_after(cursor, '=');
-      data.y        = static_cast<uint16_t>(read_unsigned(cursor));
-      cursor        = forward_right_after(cursor, '=');
-      data.width    = static_cast<uint8_t>(read_unsigned(cursor));
-      cursor        = forward_right_after(cursor, '=');
-      data.height   = static_cast<uint8_t>(read_unsigned(cursor));
-      cursor        = forward_right_after(cursor, '=');
-      data.xoffset  = static_cast<int8_t>(read_signed(cursor));
-      cursor        = forward_right_after(cursor, '=');
-      data.yoffset  = static_cast<int8_t>(read_signed(cursor));
-      cursor        = forward_right_after(cursor, '=');
-      data.xadvance = static_cast<uint8_t>(read_unsigned(cursor));
-      cursor        = forward_right_after(cursor, '\n');
+      id            = cursor.forward('=').read_uint<uint8_t>();
+      data.x        = cursor.forward('=').read_uint<uint16_t>();
+      data.y        = cursor.forward('=').read_uint<uint16_t>();
+      data.width    = cursor.forward('=').read_uint<uint8_t>();
+      data.height   = cursor.forward('=').read_uint<uint8_t>();
+      data.xoffset  = cursor.forward('=').read_int<int8_t>();
+      data.yoffset  = cursor.forward('=').read_int<int8_t>();
+      data.xadvance = cursor.forward('=').read_uint<uint8_t>();
+      cursor.forward('\n');
     }
 
     engine.generic_allocator.free(fnt_file_content, static_cast<uint32_t>(fnt_file_size));

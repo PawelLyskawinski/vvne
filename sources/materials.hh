@@ -64,10 +64,12 @@ struct GenerateSdfFontCommandResult
   float  cursor_movement;
 };
 
+#define LUCIDA_SANS_SDF_CHARS_COUNT 97
+
 struct Materials
 {
-  uint8_t lucida_sans_sdf_char_ids[97];
-  SdfChar lucida_sans_sdf_chars[97];
+  uint8_t lucida_sans_sdf_char_ids[LUCIDA_SANS_SDF_CHARS_COUNT];
+  SdfChar lucida_sans_sdf_chars[LUCIDA_SANS_SDF_CHARS_COUNT];
   Texture lucida_sans_sdf_image;
 
   Texture      imgui_font_texture;

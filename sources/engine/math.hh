@@ -4,6 +4,10 @@
 #include <linmath.h>
 #include <vulkan/vulkan.h>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846f
+#endif
+
 constexpr float                   to_rad(float deg) noexcept { return (float(M_PI) * deg) / 180.0f; }
 constexpr float                   to_deg(float rad) noexcept { return (180.0f * rad) / float(M_PI); }
 template <typename T> constexpr T clamp(T val, T min, T max) { return (val < min) ? min : (val > max) ? max : val; }
