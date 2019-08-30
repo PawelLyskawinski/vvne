@@ -282,18 +282,16 @@ void Engine::startup(bool vulkan_validation_enabled)
     vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, nullptr);
     VkPresentModeKHR* present_modes = generic_allocator.allocate<VkPresentModeKHR>(count);
     vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, present_modes);
+    VkPresentModeKHR* end = &present_modes[count];
 
     SDL_Log("Supported presentation modes");
-    std::for_each(present_modes, &present_modes[count],
-                  [](const VkPresentModeKHR& mode) { SDL_Log("%s", to_cstr(mode)); });
+    std::for_each(present_modes, end, [](const VkPresentModeKHR& mode) { SDL_Log("%s", to_cstr(mode)); });
 
-    auto is_immediate = [](const VkPresentModeKHR& mode) { return VK_PRESENT_MODE_IMMEDIATE_KHR == mode; };
-    auto is_mailbox   = [](const VkPresentModeKHR& mode) { return VK_PRESENT_MODE_MAILBOX_KHR == mode; };
-
-    present_mode = std::any_of(present_modes, &present_modes[count], is_immediate)
+    present_mode = (end != std::find(present_modes, &present_modes[count], VK_PRESENT_MODE_IMMEDIATE_KHR))
                        ? VK_PRESENT_MODE_IMMEDIATE_KHR
-                       : std::any_of(present_modes, &present_modes[count], is_mailbox) ? VK_PRESENT_MODE_MAILBOX_KHR
-                                                                                       : VK_PRESENT_MODE_FIFO_KHR;
+                       : (end != std::find(present_modes, &present_modes[count], VK_PRESENT_MODE_MAILBOX_KHR))
+                             ? VK_PRESENT_MODE_MAILBOX_KHR
+                             : VK_PRESENT_MODE_FIFO_KHR;
 
     generic_allocator.free(present_modes, count);
   }
@@ -1000,7 +998,7 @@ Texture Engine::load_texture(const char* filepath, bool register_for_destruction
   SDL_assert(nullptr != pixels);
 
   SDL_Surface image_surface = {.format = &format, .w = x, .h = y, .pitch = 4 * x, .pixels = pixels};
-  Texture     result  = load_texture(&image_surface, register_for_destruction);
+  Texture     result        = load_texture(&image_surface, register_for_destruction);
   stbi_image_free(pixels);
 
   return result;
