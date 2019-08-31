@@ -41,6 +41,7 @@ set(SOURCES
         sources/engine/gpu_memory_allocator.cc
         sources/engine/gpu_memory_visualizer.cc
         sources/engine/job_system.cc
+        sources/engine/math.cc
         sources/game.cc
         sources/game_generate_gui_lines.cc
         sources/game_generate_sdf_font.cc

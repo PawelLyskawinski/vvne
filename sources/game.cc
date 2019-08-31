@@ -427,8 +427,8 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
     if (quit_requested)
     {
-      SDL_Event event = {.type = SDL_QUIT};
-      SDL_PushEvent(&event);
+      SDL_Event quit_event = {.type = SDL_QUIT};
+      SDL_PushEvent(&quit_event);
     }
   }
 
