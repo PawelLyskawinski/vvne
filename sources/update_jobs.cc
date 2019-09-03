@@ -1,15 +1,9 @@
 #include "update_jobs.hh"
 #include <SDL2/SDL_log.h>
 
-namespace {
+#include <algorithm>
 
-template <typename TIter, typename TPred> bool none_of(TIter begin, TIter end, TPred pred)
-{
-  for (; begin != end; ++begin)
-    if (pred(*begin))
-      return false;
-  return true;
-}
+namespace {
 
 int find_first_higher(const float times[], float current)
 {
@@ -62,8 +56,9 @@ void animate_entity(SimpleEntity& entity, FreeListAllocator& allocator, SceneGra
   const Animation& animation            = scene_graph.animations.data[0];
   const float      animation_time       = current_time_sec - animation_start_time;
 
-  if (none_of(animation.samplers.begin(), animation.samplers.end(),
-              [animation_time](const AnimationSampler& sampler) { return sampler.time_frame[1] > animation_time; }))
+  if (std::none_of(
+          animation.samplers.begin(), animation.samplers.end(),
+          [animation_time](const AnimationSampler& sampler) { return sampler.time_frame[1] > animation_time; }))
   {
     const uint64_t clear_mask = SimpleEntity::NodeAnimRotationApplicability |
                                 SimpleEntity::NodeAnimTranslationApplicability | SimpleEntity::AnimationStartTime;
