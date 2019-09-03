@@ -2,6 +2,7 @@
 #include "engine/engine.hh"
 #include "engine/free_list_visualizer.hh"
 #include "engine/gpu_memory_visualizer.hh"
+#include "engine/memory_map.hh"
 #include "game.hh"
 #include "profiler_visualizer.hh"
 #include <SDL2/SDL_log.h>
@@ -299,27 +300,6 @@ template <typename T> T* serialize(T* dst, const ImVector<T>& src)
   return dst + src.Size;
 }
 
-class MemoryMap
-{
-public:
-  MemoryMap(VkDevice device, VkDeviceMemory memory, VkDeviceSize offset, VkDeviceSize size)
-      : device(device)
-      , memory(memory)
-      , ptr(nullptr)
-  {
-    vkMapMemory(device, memory, offset, size, 0, reinterpret_cast<void**>(&ptr));
-  }
-
-  ~MemoryMap() { vkUnmapMemory(device, memory); }
-
-  void* operator*() { return ptr; }
-
-private:
-  VkDevice       device;
-  VkDeviceMemory memory;
-  void*          ptr;
-};
-
 void DebugGui::render(Engine& engine, Game& game)
 {
   ImDrawData* draw_data = ImGui::GetDrawData();
@@ -344,7 +324,7 @@ void DebugGui::render(Engine& engine, Game& game)
   if (0 < index_size)
   {
     MemoryMap idx_dst(engine.device, engine.memory_blocks.host_coherent.memory,
-                      game.materials.imgui_index_buffer_offsets[game.image_index], vertex_size);
+                      game.materials.imgui_index_buffer_offsets[game.image_index], index_size);
 
     std::accumulate(view.begin(), view.end(), reinterpret_cast<ImDrawIdx*>(*idx_dst),
                     [](ImDrawIdx* dst, const ImDrawList* cmd_list) { return serialize(dst, cmd_list->IdxBuffer); });

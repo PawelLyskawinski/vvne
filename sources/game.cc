@@ -1,6 +1,6 @@
 #include "game.hh"
 #include "engine/cubemap.hh"
-#include "engine/gpu_memory_visualizer.hh"
+#include "engine/memory_map.hh"
 #include "render_jobs.hh"
 #include "terrain_as_a_function.hh"
 #include "update_jobs.hh"
@@ -8,14 +8,6 @@
 #include <SDL2/SDL_events.h>
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_stdinc.h>
-
-static void update_ubo(VkDevice device, VkDeviceMemory memory, VkDeviceSize size, VkDeviceSize offset, void* src)
-{
-  void* data = nullptr;
-  vkMapMemory(device, memory, offset, size, 0, &data);
-  SDL_memcpy(data, src, size);
-  vkUnmapMemory(device, memory);
-}
 
 namespace {
 
@@ -593,52 +585,64 @@ void Game::render(Engine& engine)
     // Cascade shadow map projection matrices
     //
     {
-      VkDeviceMemory memory = engine.memory_blocks.host_coherent_ubo.memory;
+      MemoryMap csm(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
+                    materials.cascade_view_proj_mat_ubo_offsets[image_index],
+                    SHADOWMAP_CASCADE_COUNT * (sizeof(Mat4x4) + sizeof(float)));
 
-      uint8_t* data = nullptr;
-      vkMapMemory(engine.device, memory, materials.cascade_view_proj_mat_ubo_offsets[image_index],
-                  SHADOWMAP_CASCADE_COUNT * (sizeof(Mat4x4) + sizeof(float)), 0, reinterpret_cast<void**>(&data));
-
-      SDL_memcpy(data, materials.cascade_view_proj_mat, SHADOWMAP_CASCADE_COUNT * sizeof(Mat4x4));
-      data += SHADOWMAP_CASCADE_COUNT * sizeof(Mat4x4);
-      SDL_memcpy(data, materials.cascade_split_depths, SHADOWMAP_CASCADE_COUNT * sizeof(Mat4x4));
-
-      vkUnmapMemory(engine.device, memory);
+      std::copy(materials.cascade_split_depths, &materials.cascade_split_depths[SHADOWMAP_CASCADE_COUNT],
+                reinterpret_cast<float*>(std::copy(materials.cascade_view_proj_mat,
+                                                   &materials.cascade_view_proj_mat[SHADOWMAP_CASCADE_COUNT],
+                                                   reinterpret_cast<Mat4x4*>(*csm))));
     }
 
     //
     // light sources
     //
-    update_ubo(engine.device, engine.memory_blocks.host_coherent_ubo.memory, sizeof(LightSources),
-               materials.pbr_dynamic_lights_ubo_offsets[image_index], &materials.pbr_light_sources_cache);
+    {
+      MemoryMap light_sources(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
+                              materials.pbr_dynamic_lights_ubo_offsets[image_index], sizeof(LightSources));
+      *reinterpret_cast<LightSources*>(*light_sources) = materials.pbr_light_sources_cache;
+    }
 
     //
     // rigged simple skinning matrices
     //
-    update_ubo(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
-               materials.riggedSimple.skins[0].joints.count * sizeof(mat4x4),
-               materials.rig_skinning_matrices_ubo_offsets[image_index], rigged_simple_entity.joint_matrices);
+    {
+      const uint32_t count = materials.riggedSimple.skins[0].joints.count;
+      const uint32_t size  = count * sizeof(mat4x4);
+      const Mat4x4*  begin = reinterpret_cast<Mat4x4*>(rigged_simple_entity.joint_matrices);
+      const Mat4x4*  end   = &begin[count];
+
+      MemoryMap joint_matrices(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
+                               materials.rig_skinning_matrices_ubo_offsets[image_index], size);
+      std::copy(begin, end, reinterpret_cast<Mat4x4*>(*joint_matrices));
+    }
 
     //
     // monster skinning matrices
     //
-    update_ubo(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
-               materials.monster.skins[0].joints.count * sizeof(mat4x4),
-               materials.monster_skinning_matrices_ubo_offsets[image_index], monster_entity.joint_matrices);
+    {
+      const uint32_t count = materials.monster.skins[0].joints.count;
+      const uint32_t size  = count * sizeof(mat4x4);
+      const Mat4x4*  begin = reinterpret_cast<Mat4x4*>(monster_entity.joint_matrices);
+      const Mat4x4*  end   = &begin[count];
+
+      MemoryMap joint_matrices(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
+                               materials.monster_skinning_matrices_ubo_offsets[image_index], size);
+      std::copy(begin, end, reinterpret_cast<Mat4x4*>(*joint_matrices));
+    }
 
     //
     // frustum planes
     //
     {
-      void* data = nullptr;
-      vkMapMemory(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
-                  materials.frustum_planes_ubo_offsets[image_index], 6 * sizeof(vec4), 0, &data);
-      frustum_planes_generate(player.camera_projection * player.camera_view, reinterpret_cast<Vec4*>(data));
-      vkUnmapMemory(engine.device, engine.memory_blocks.host_coherent_ubo.memory);
+      MemoryMap frustums(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
+                         materials.frustum_planes_ubo_offsets[image_index], 6 * sizeof(vec4));
+      frustum_planes_generate(player.camera_projection * player.camera_view, reinterpret_cast<Vec4*>(*frustums));
     }
 
     engine.job_system.wait_for_finish();
-    debug_gui.render(engine, *this);
+    DebugGui::render(engine, *this);
 
     {
       VkCommandBuffer cmd = primary_command_buffers[image_index];
