@@ -79,6 +79,14 @@ VkComponentMapping gen_rgba_cm()
   return cm;
 }
 
+void allocate_memory_for_image(VkDevice device, Texture& t, GpuMemoryBlock& block)
+{
+  VkMemoryRequirements reqs = {};
+  vkGetImageMemoryRequirements(device, t.image, &reqs);
+  t.memory_offset = block.allocator.allocate_bytes(align(reqs.size, reqs.alignment));
+  vkBindImageMemory(device, t.image, block.memory, t.memory_offset);
+}
+
 } // namespace
 
 VkDeviceSize GpuMemoryBlock::allocate_aligned(VkDeviceSize size)
@@ -595,7 +603,6 @@ void Engine::startup(bool vulkan_validation_enabled)
 
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(device, depth_image.image, &reqs);
-    depth_image.memory_offset = memory_blocks.device_images.allocator.allocate_bytes(align(reqs.size, reqs.alignment));
 
     VkPhysicalDeviceMemoryProperties properties = {};
     vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
@@ -607,25 +614,13 @@ void Engine::startup(bool vulkan_validation_enabled)
     };
 
     vkAllocateMemory(device, &allocate, nullptr, &memory_blocks.device_images.memory);
-    vkBindImageMemory(device, depth_image.image, memory_blocks.device_images.memory, depth_image.memory_offset);
   }
 
+  allocate_memory_for_image(device, depth_image, memory_blocks.device_images);
+  allocate_memory_for_image(device, shadowmap_image, memory_blocks.device_images);
   if (VK_SAMPLE_COUNT_1_BIT != MSAA_SAMPLE_COUNT)
   {
-    VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(device, msaa_color_image.image, &reqs);
-    msaa_color_image.memory_offset =
-        memory_blocks.device_images.allocator.allocate_bytes(align(reqs.size, reqs.alignment));
-    vkBindImageMemory(device, msaa_color_image.image, memory_blocks.device_images.memory,
-                      msaa_color_image.memory_offset);
-  }
-
-  {
-    VkMemoryRequirements reqs = {};
-    vkGetImageMemoryRequirements(device, shadowmap_image.image, &reqs);
-    shadowmap_image.memory_offset =
-        memory_blocks.device_images.allocator.allocate_bytes(align(reqs.size, reqs.alignment));
-    vkBindImageMemory(device, shadowmap_image.image, memory_blocks.device_images.memory, shadowmap_image.memory_offset);
+    allocate_memory_for_image(device, msaa_color_image, memory_blocks.device_images);
   }
 
   // image views can only be created when memory is bound to the image handle
