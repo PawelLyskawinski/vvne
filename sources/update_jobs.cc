@@ -5,14 +5,6 @@
 
 namespace {
 
-int find_first_higher(const float times[], float current)
-{
-  int iter = 0;
-  while (current > times[iter])
-    iter += 1;
-  return iter;
-}
-
 //
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#appendix-c-spline-interpolation
 //
@@ -27,24 +19,21 @@ void hermite_cubic_spline_interpolation(const float a_in[], const float b_in[], 
 
   for (int i = 0; i < dim; ++i)
   {
-    float P[2] = {a_spline_vertex[i], b_spline_vertex[i]};
-    float M[2] = {a_out_tangent[i], b_in_tangent[i]};
+    const Vec2  P = Vec2(a_spline_vertex[i], b_spline_vertex[i]);
+    const Vec2  M = Vec2(a_out_tangent[i], b_in_tangent[i]).scale(total_duration);
+    const float a = (2.0f * P.x) + M.x + (-2.0f * P.y) + M.y;
+    const float b = (-3.0f * P.x) - (2.0f * M.x) + (3.0f * P.y) - M.y;
 
-    for (float& m : M)
-      m *= total_duration;
-
-    float a   = (2.0f * P[0]) + M[0] + (-2.0f * P[1]) + M[1];
-    float b   = (-3.0f * P[0]) - (2.0f * M[0]) + (3.0f * P[1]) - M[1];
-    float c   = M[0];
-    float d   = P[0];
-    result[i] = (a * t * t * t) + (b * t * t) + (c * t) + (d);
+    result[i] = (a * t * t * t) + (b * t * t) + (M.x * t) + P.x;
   }
 }
 
 void animate_entity(SimpleEntity& entity, FreeListAllocator& allocator, SceneGraph& scene_graph, float current_time_sec)
 {
   if (0 == (entity.flags & SimpleEntity::AnimationStartTime))
+  {
     return;
+  }
 
   const float      animation_start_time = entity.animation_start_time;
   const Animation& animation            = scene_graph.animations.data[0];
@@ -69,7 +58,9 @@ void animate_entity(SimpleEntity& entity, FreeListAllocator& allocator, SceneGra
     const AnimationSampler& sampler = animation.samplers[channel.sampler_idx];
     if ((sampler.time_frame[1] > animation_time) and (sampler.time_frame[0] < animation_time))
     {
-      int keyframe_upper = find_first_higher(sampler.times, animation_time);
+      int keyframe_upper = std::distance(
+          sampler.times, std::lower_bound(sampler.times, sampler.times + sampler.keyframes_count, animation_time));
+
       int keyframe_lower = keyframe_upper - 1;
 
       float time_between_keyframes = sampler.times[keyframe_upper] - sampler.times[keyframe_lower];
@@ -93,11 +84,13 @@ void animate_entity(SimpleEntity& entity, FreeListAllocator& allocator, SceneGra
 
         if (AnimationSampler::Interpolation::Linear == sampler.interpolation)
         {
-          Vec4* a = reinterpret_cast<Vec4*>(&sampler.values[4 * keyframe_lower]);
-          Vec4* b = reinterpret_cast<Vec4*>(&sampler.values[4 * keyframe_upper]);
+          const Vec4* samples = reinterpret_cast<Vec4*>(sampler.values);
+          const Vec4& a       = samples[keyframe_lower];
+          const Vec4& b       = samples[keyframe_upper];
+
           Vec4* c = reinterpret_cast<Vec4*>(&entity.node_rotations[channel.target_node_idx].data.x);
 
-          *c = a->lerp(*b, keyframe_uniform_time).normalize();
+          *c = a.lerp(b, keyframe_uniform_time).normalize();
         }
         else if (AnimationSampler::Interpolation::CubicSpline == sampler.interpolation)
         {
@@ -231,16 +224,16 @@ void moving_lights_job(ThreadJobData tjd)
   const LightSource* end  = ctx->game->materials.pbr_light_sources_cache_last;
   SimpleEntity*      dst  = ctx->game->box_entities;
 
-  for (; end != it; ++it)
-  {
-    const Quaternion orientation = Quaternion(to_rad(100.0f * time), Vec3(0.0f, 0.0f, 1.0f)) *
-                                   Quaternion(to_rad(280.0f * time), Vec3(0.0f, 1.0f, 0.0f)) *
-                                   Quaternion(to_rad(60.0f * time), Vec3(1.0f, 0.0f, 0.0f));
+  const Quaternion orientation = Quaternion(to_rad(100.0f * time), Vec3(0.0f, 0.0f, 1.0f)) *
+                                 Quaternion(to_rad(280.0f * time), Vec3(0.0f, 1.0f, 0.0f)) *
+                                 Quaternion(to_rad(60.0f * time), Vec3(1.0f, 0.0f, 0.0f));
 
+  for (; end != it; ++it, ++dst)
+  {
     const Mat4x4 world_transform =
         Mat4x4::Translation(it->position.as_vec3()) * Mat4x4(orientation) * Mat4x4::Scale(Vec3(0.05f));
 
-    (dst++)->recalculate_node_transforms(ctx->game->materials.box, world_transform);
+    dst->recalculate_node_transforms(ctx->game->materials.box, world_transform);
   }
 }
 
