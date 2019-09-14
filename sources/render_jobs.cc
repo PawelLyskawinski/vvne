@@ -1669,49 +1669,44 @@ void water(ThreadJobData tjd)
                          &ctx->game->materials.regular_billboard_vertex_buffer_offset);
 
   Mat4x4 rotation_matrix = Mat4x4::RotationX(to_rad(90.0f));
+  Mat4x4 scale_matrix    = Mat4x4::Scale(Vec3(20.0f, 20.0f, 1.0f));
 
-  Mat4x4 scale_matrix;
-  scale_matrix.identity();
-  scale_matrix.scale(Vec3(20.0f, 20.0f, 1.0f));
-
-  for (int x = 0; x < 3; ++x)
+  for (int i = 0; i < 9; ++i)
   {
-    for (int y = 0; y < 3; ++y)
+    struct PushConst
     {
-      Mat4x4 translation_matrix;
-      translation_matrix.translate(
-          Vec3(40.0f * x - 40.0f, 10.5f + 0.02f * SDL_sinf(ctx->game->current_time_sec), 40.0f * y - 40.0f));
+      Mat4x4 projection;
+      Mat4x4 view;
+      Mat4x4 model;
+      Vec3   camPos;
+      float  time;
+    } push;
 
-      struct PushConst
-      {
-        Mat4x4 projection;
-        Mat4x4 view;
-        Mat4x4 model;
-        Vec3   camPos;
-        float  time;
-      } push;
+    push.projection = ctx->game->player.camera_projection;
+    push.view       = ctx->game->player.camera_view;
 
-      push.projection = ctx->game->player.camera_projection;
-      push.view       = ctx->game->player.camera_view;
-      push.model      = translation_matrix * rotation_matrix * scale_matrix;
-      push.camPos     = ctx->game->player.camera_position;
-      push.time       = ctx->game->current_time_sec;
+    push.model = Mat4x4::Translation(Vec3(40.0f * static_cast<float>(i % 3) - 40.0f,
+                                          10.5f + 0.02f * SDL_sinf(ctx->game->current_time_sec),
+                                          40.0f * static_cast<float>(i / 3) - 40.0f)) *
+                 rotation_matrix * scale_matrix;
 
-      vkCmdPushConstants(command, ctx->engine->pipelines.pbr_water.layout,
-                         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
+    push.camPos = ctx->game->player.camera_position;
+    push.time   = ctx->game->current_time_sec;
 
-      VkDescriptorSet dsets[] = {ctx->game->materials.pbr_ibl_environment_dset,
-                                 ctx->game->materials.pbr_dynamic_lights_dset,
-                                 ctx->game->materials.pbr_water_material_dset};
+    vkCmdPushConstants(command, ctx->engine->pipelines.pbr_water.layout,
+                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
 
-      uint32_t dynamic_offsets[] = {
-          static_cast<uint32_t>(ctx->game->materials.pbr_dynamic_lights_ubo_offsets[ctx->game->image_index])};
+    VkDescriptorSet dsets[] = {ctx->game->materials.pbr_ibl_environment_dset,
+                               ctx->game->materials.pbr_dynamic_lights_dset,
+                               ctx->game->materials.pbr_water_material_dset};
 
-      vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.pbr_water.layout, 0,
-                              SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
+    uint32_t dynamic_offsets[] = {
+        static_cast<uint32_t>(ctx->game->materials.pbr_dynamic_lights_ubo_offsets[ctx->game->image_index])};
 
-      vkCmdDraw(command, 4, 1, 0, 0);
-    }
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.pbr_water.layout, 0,
+                            SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
+
+    vkCmdDraw(command, 4, 1, 0, 0);
   }
   vkEndCommandBuffer(command);
 }
@@ -1732,11 +1727,11 @@ void debug_shadowmap(ThreadJobData tjd)
   vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.debug_billboard.layout, 0, 1,
                           &ctx->game->materials.debug_shadow_map_dset, 0, nullptr);
 
+  Mat4x4 gui_projection;
+  gui_projection.ortho(0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
+
   for (uint32_t cascade = 0; cascade < SHADOWMAP_CASCADE_COUNT; ++cascade)
   {
-    Mat4x4 gui_projection;
-    gui_projection.ortho(0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
-
     const float rectangle_dimension_pixels = 120.0f;
     Vec2        translation                = {rectangle_dimension_pixels + 10.0f, rectangle_dimension_pixels + 220.0f};
 
@@ -1788,7 +1783,7 @@ void orientation_axis(ThreadJobData tjd)
 
   copy_camera_settings(params, ctx->game->player);
 
-  Vec3 colors[] = {
+  const Vec3 colors[] = {
       Vec3(1.0f, 0.0f, 0.0f),
       Vec3(0.0f, 1.0f, 0.0f),
       Vec3(0.0f, 0.0f, 1.0f),
