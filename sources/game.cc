@@ -172,9 +172,6 @@ void Game::startup(Engine& engine)
   for (SimpleEntity& entity : box_entities)
     entity.init(engine.generic_allocator, materials.box);
 
-  for (SimpleEntity& entity : robot_engines)
-    entity.init(engine.generic_allocator, materials.box);
-
   matrioshka_entity.init(engine.generic_allocator, materials.animatedBox);
   rigged_simple_entity.init(engine.generic_allocator, materials.riggedSimple);
 
@@ -184,11 +181,11 @@ void Game::startup(Engine& engine)
   player.setup(engine.extent2D.width, engine.extent2D.height);
   booster_jet_fuel = 1.0f;
 
-  DEBUG_VEC2[0] = 0.1f;
-  DEBUG_VEC2[1] = -1.0f;
+  DEBUG_VEC2.x = 0.1f;
+  DEBUG_VEC2.y = -1.0f;
 
-  DEBUG_VEC2_ADDITIONAL[0] = 0.0f;
-  DEBUG_VEC2_ADDITIONAL[1] = 0.0f;
+  DEBUG_VEC2_ADDITIONAL.x = 0.0f;
+  DEBUG_VEC2_ADDITIONAL.y = 0.0f;
 
   DEBUG_LIGHT_ORTHO_PARAMS[0] = -10.0f;
   DEBUG_LIGHT_ORTHO_PARAMS[1] = 10.0f;
@@ -312,13 +309,8 @@ static void recalculate_cascade_view_proj_matrices(Mat4x4* cascade_view_proj_mat
     Vec3 min_extents = max_extents.invert_signs();
     Vec3 light_dir   = light_source_position.invert_signs().normalize();
 
-    Mat4x4 light_view_mat;
-
-    {
-      Vec3 up  = Vec3(0.0f, -1.0f, 0.0f);
-      Vec3 eye = frustum_center - light_dir.scale(-min_extents.z);
-      light_view_mat.look_at(eye, frustum_center, up);
-    }
+    const Mat4x4 light_view_mat =
+        Mat4x4::LookAt(frustum_center - light_dir.scale(-min_extents.z), frustum_center, Vec3(0.0f, -1.0f, 0.0f));
 
     // todo: I don't know why the near clipping plane has to be a huge negative number! If used with 0 as in tutorials,
     //       the depth is not calculated properly.. I guess for now it'll have to be this way.
@@ -430,6 +422,8 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   debug_gui.update(engine, *this);
   player.update(current_time_sec, time_delta_since_last_frame_ms, level);
 
+  const float acceleration_length = 5.0f * 1000.0f * player.acceleration.len();
+
   LightSource dynamic_lights[] = {
       {
           {SDL_sinf(current_time_sec), 0.0f, 3.0f + SDL_cosf(current_time_sec), 1.0f},
@@ -454,11 +448,11 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
       // player engines
       {
           {player.position.x - 1.0f, player.position.y, player.position.z, 1.0f},
-          {0.01f, 0.01f, 1.0f, 1.0f},
+          {0.01f, 0.01f, acceleration_length, 1.0f},
       },
       {
           {player.position.x + 1.0f, player.position.y, player.position.z, 1.0f},
-          {0.01f, 0.01f, 1.0f, 1.0f},
+          {0.01f, 0.01f, acceleration_length, 1.0f},
       },
   };
 
@@ -468,11 +462,16 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     light.position.y   = level.get_height(light.position.x, light.position.z) - 1.0f;
   }
 
-  materials.pbr_light_sources_cache.count = 0;
-  for (const LightSource& light : dynamic_lights)
+#if 0
+  for (uint32_t i = 5; i < 7; ++i)
   {
-    materials.pbr_light_sources_cache.push_back(light);
+    LightSource& light = dynamic_lights[i];
+    light.position *= Vec4(SDL_cosf(player.camera_angle), SDL_sinf(clamp(player.camera_updown_angle, -1.5f, 1.5f)), -SDL_sinf(player.camera_angle), 0.0f);
   }
+#endif
+
+  materials.pbr_light_sources_cache_last =
+      std::copy(dynamic_lights, &dynamic_lights[SDL_arraysize(dynamic_lights)], materials.pbr_light_sources_cache);
 
   recalculate_cascade_view_proj_matrices(materials.cascade_view_proj_mat, materials.cascade_split_depths,
                                          player.camera_projection, player.camera_view, materials.light_source_position);
@@ -503,30 +502,30 @@ void frustum_planes_generate(const Mat4x4& matrix, Vec4 planes[])
     FRONT  = 5
   };
 
-  planes[LEFT].x   = matrix.at(0, 3) + matrix.at(0, 0);
-  planes[LEFT].y   = matrix.at(1, 3) + matrix.at(1, 0);
-  planes[LEFT].z   = matrix.at(2, 3) + matrix.at(2, 0);
-  planes[LEFT].w   = matrix.at(3, 3) + matrix.at(3, 0);
-  planes[RIGHT].x  = matrix.at(0, 3) - matrix.at(0, 0);
-  planes[RIGHT].y  = matrix.at(1, 3) - matrix.at(1, 0);
-  planes[RIGHT].z  = matrix.at(2, 3) - matrix.at(2, 0);
-  planes[RIGHT].w  = matrix.at(3, 3) - matrix.at(3, 0);
-  planes[TOP].x    = matrix.at(0, 3) - matrix.at(0, 1);
-  planes[TOP].y    = matrix.at(1, 3) - matrix.at(1, 1);
-  planes[TOP].z    = matrix.at(2, 3) - matrix.at(2, 1);
-  planes[TOP].w    = matrix.at(3, 3) - matrix.at(3, 1);
-  planes[BOTTOM].x = matrix.at(0, 3) + matrix.at(0, 1);
-  planes[BOTTOM].y = matrix.at(1, 3) + matrix.at(1, 1);
-  planes[BOTTOM].z = matrix.at(2, 3) + matrix.at(2, 1);
-  planes[BOTTOM].w = matrix.at(3, 3) + matrix.at(3, 1);
-  planes[BACK].x   = matrix.at(0, 3) + matrix.at(0, 2);
-  planes[BACK].y   = matrix.at(1, 3) + matrix.at(1, 2);
-  planes[BACK].z   = matrix.at(2, 3) + matrix.at(2, 2);
-  planes[BACK].w   = matrix.at(3, 3) + matrix.at(3, 2);
-  planes[FRONT].x  = matrix.at(0, 3) - matrix.at(0, 2);
-  planes[FRONT].y  = matrix.at(1, 3) - matrix.at(1, 2);
-  planes[FRONT].z  = matrix.at(2, 3) - matrix.at(2, 2);
-  planes[FRONT].w  = matrix.at(3, 3) - matrix.at(3, 2);
+  planes[LEFT].x   = matrix.at(3, 0) + matrix.at(0, 0);
+  planes[LEFT].y   = matrix.at(3, 1) + matrix.at(0, 1);
+  planes[LEFT].z   = matrix.at(3, 2) + matrix.at(0, 2);
+  planes[LEFT].w   = matrix.at(3, 3) + matrix.at(0, 3);
+  planes[RIGHT].x  = matrix.at(3, 0) - matrix.at(0, 0);
+  planes[RIGHT].y  = matrix.at(3, 1) - matrix.at(0, 1);
+  planes[RIGHT].z  = matrix.at(3, 2) - matrix.at(0, 2);
+  planes[RIGHT].w  = matrix.at(3, 3) - matrix.at(0, 3);
+  planes[TOP].x    = matrix.at(3, 0) - matrix.at(1, 0);
+  planes[TOP].y    = matrix.at(3, 1) - matrix.at(1, 1);
+  planes[TOP].z    = matrix.at(3, 2) - matrix.at(1, 2);
+  planes[TOP].w    = matrix.at(3, 3) - matrix.at(1, 3);
+  planes[BOTTOM].x = matrix.at(3, 0) + matrix.at(1, 0);
+  planes[BOTTOM].y = matrix.at(3, 1) + matrix.at(1, 1);
+  planes[BOTTOM].z = matrix.at(3, 2) + matrix.at(1, 2);
+  planes[BOTTOM].w = matrix.at(3, 3) + matrix.at(1, 3);
+  planes[BACK].x   = matrix.at(3, 0) + matrix.at(2, 0);
+  planes[BACK].y   = matrix.at(3, 1) + matrix.at(2, 1);
+  planes[BACK].z   = matrix.at(3, 2) + matrix.at(2, 2);
+  planes[BACK].w   = matrix.at(3, 3) + matrix.at(2, 3);
+  planes[FRONT].x  = matrix.at(3, 0) - matrix.at(2, 0);
+  planes[FRONT].y  = matrix.at(3, 1) - matrix.at(2, 1);
+  planes[FRONT].z  = matrix.at(3, 2) - matrix.at(2, 2);
+  planes[FRONT].w  = matrix.at(3, 3) - matrix.at(2, 3);
 
   for (auto i = 0; i < 6; i++)
   {
@@ -560,8 +559,8 @@ void Game::render(Engine& engine)
         render::radar_dots,
         render::weapon_selectors_left,
         render::weapon_selectors_right,
-        render::tesselated_ground,
         render::skybox_job,
+        render::tesselated_ground,
         render::robot_job,
         render::helmet_job,
         render::point_light_boxes,
@@ -600,8 +599,9 @@ void Game::render(Engine& engine)
     //
     {
       MemoryMap light_sources(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
-                              materials.pbr_dynamic_lights_ubo_offsets[image_index], sizeof(LightSources));
-      *reinterpret_cast<LightSources*>(*light_sources) = materials.pbr_light_sources_cache;
+                              materials.pbr_dynamic_lights_ubo_offsets[image_index], sizeof(LightSourcesSoA));
+      *reinterpret_cast<LightSourcesSoA*>(*light_sources) =
+          convert_light_sources(materials.pbr_light_sources_cache, materials.pbr_light_sources_cache_last);
     }
 
     //
@@ -609,7 +609,7 @@ void Game::render(Engine& engine)
     //
     {
       const uint32_t count = materials.riggedSimple.skins[0].joints.count;
-      const uint32_t size  = count * sizeof(mat4x4);
+      const uint32_t size  = count * sizeof(Mat4x4);
       const Mat4x4*  begin = reinterpret_cast<Mat4x4*>(rigged_simple_entity.joint_matrices);
       const Mat4x4*  end   = &begin[count];
 
@@ -623,7 +623,7 @@ void Game::render(Engine& engine)
     //
     {
       const uint32_t count = materials.monster.skins[0].joints.count;
-      const uint32_t size  = count * sizeof(mat4x4);
+      const uint32_t size  = count * sizeof(Mat4x4);
       const Mat4x4*  begin = reinterpret_cast<Mat4x4*>(monster_entity.joint_matrices);
       const Mat4x4*  end   = &begin[count];
 
@@ -637,7 +637,7 @@ void Game::render(Engine& engine)
     //
     {
       MemoryMap frustums(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
-                         materials.frustum_planes_ubo_offsets[image_index], 6 * sizeof(vec4));
+                         materials.frustum_planes_ubo_offsets[image_index], 6 * sizeof(Vec4));
       frustum_planes_generate(player.camera_projection * player.camera_view, reinterpret_cast<Vec4*>(*frustums));
     }
 

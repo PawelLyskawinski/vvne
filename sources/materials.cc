@@ -47,6 +47,22 @@ struct Cursor
 
 } // namespace
 
+LightSourcesSoA convert_light_sources(const LightSource* begin, const LightSource* end)
+{
+  LightSourcesSoA soa = {.count = static_cast<int>(end - begin)};
+
+  Vec4* dst_pos    = soa.positions;
+  Vec4* dst_colors = soa.colors;
+
+  for (; end != begin; ++begin)
+  {
+    *dst_pos++    = begin->position;
+    *dst_colors++ = begin->color;
+  }
+
+  return soa;
+}
+
 void Materials::setup(Engine& engine)
 {
   imgui_font_texture = engine.load_texture(ImguiFontSurface().surface);
@@ -85,8 +101,8 @@ void Materials::setup(Engine& engine)
   sand_emissive           = engine.load_texture("../assets/pbr_sand/sand_emissive.jpg");
   water_normal            = engine.load_texture("../assets/pbr_water/normal_map.jpg");
 
-  const VkDeviceSize light_sources_ubo_size     = sizeof(LightSources);
-  const VkDeviceSize skinning_matrices_ubo_size = 64 * sizeof(mat4x4);
+  const VkDeviceSize light_sources_ubo_size     = sizeof(LightSourcesSoA);
+  const VkDeviceSize skinning_matrices_ubo_size = 64 * sizeof(Mat4x4);
 
   {
     GpuMemoryBlock& block = engine.memory_blocks.host_coherent_ubo;
@@ -113,18 +129,18 @@ void Materials::setup(Engine& engine)
 
     for (VkDeviceSize& offset : cascade_view_proj_mat_ubo_offsets)
     {
-      offset = block.allocate_aligned(SHADOWMAP_CASCADE_COUNT * sizeof(mat4x4) + sizeof(vec4));
+      offset = block.allocate_aligned(SHADOWMAP_CASCADE_COUNT * sizeof(Mat4x4) + sizeof(Vec4));
     }
 
     for (VkDeviceSize& offset : frustum_planes_ubo_offsets)
     {
-      offset = block.allocate_aligned(6 * sizeof(vec4));
+      offset = block.allocate_aligned(6 * sizeof(Vec4));
     }
   }
 
   for (VkDeviceSize& offset : green_gui_rulers_buffer_offsets)
   {
-    offset = engine.memory_blocks.host_coherent.allocate_aligned(MAX_ROBOT_GUI_LINES * sizeof(vec2));
+    offset = engine.memory_blocks.host_coherent.allocate_aligned(MAX_ROBOT_GUI_LINES * sizeof(Vec2));
   }
 
   // ----------------------------------------------------------------------------------------------
@@ -395,7 +411,7 @@ void Materials::setup(Engine& engine)
     VkDescriptorBufferInfo ubo = {
         .buffer = engine.gpu_host_coherent_ubo_memory_buffer,
         .offset = cascade_view_proj_mat_ubo_offsets[i],
-        .range  = SHADOWMAP_CASCADE_COUNT * sizeof(mat4x4),
+        .range  = SHADOWMAP_CASCADE_COUNT * sizeof(Mat4x4),
     };
 
     VkWriteDescriptorSet write = {
@@ -428,7 +444,7 @@ void Materials::setup(Engine& engine)
     VkDescriptorBufferInfo ubo = {
         .buffer = engine.gpu_host_coherent_ubo_memory_buffer,
         .offset = cascade_view_proj_mat_ubo_offsets[i],
-        .range  = SHADOWMAP_CASCADE_COUNT * sizeof(mat4x4) + sizeof(vec4),
+        .range  = SHADOWMAP_CASCADE_COUNT * sizeof(Mat4x4) + sizeof(Vec4),
     };
 
     VkWriteDescriptorSet write = {
@@ -458,7 +474,7 @@ void Materials::setup(Engine& engine)
     VkDescriptorBufferInfo ubo = {
         .buffer = engine.gpu_host_coherent_ubo_memory_buffer,
         .offset = frustum_planes_ubo_offsets[i],
-        .range  = SHADOWMAP_CASCADE_COUNT * 6 * sizeof(vec4),
+        .range  = SHADOWMAP_CASCADE_COUNT * 6 * sizeof(Vec4),
     };
 
     VkWriteDescriptorSet write = {
@@ -480,8 +496,8 @@ void Materials::setup(Engine& engine)
   {
     struct GreenGuiVertex
     {
-      vec2 position;
-      vec2 uv;
+      Vec2 position;
+      Vec2 uv;
     };
 
     GreenGuiVertex vertices[] = {
@@ -505,9 +521,9 @@ void Materials::setup(Engine& engine)
 
     struct ColoredGeometryVertex
     {
-      vec3 position;
-      vec3 normal;
-      vec2 tex_coord;
+      Vec3 position;
+      Vec3 normal;
+      Vec2 tex_coord;
     };
 
     ColoredGeometryVertex cg_vertices[] = {

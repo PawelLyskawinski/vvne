@@ -231,9 +231,9 @@ void DebugGui::update(Engine& engine, Game& game)
     game.DEBUG_FLAG_2 = !game.DEBUG_FLAG_2;
   }
 
-  ImGui::InputFloat2("debug vec2", game.DEBUG_VEC2);
-  ImGui::InputFloat2("debug vec2 additional", game.DEBUG_VEC2_ADDITIONAL);
-  ImGui::InputFloat4("light ortho projection", game.DEBUG_LIGHT_ORTHO_PARAMS);
+  ImGui::InputFloat2("debug vec2", &game.DEBUG_VEC2.x);
+  ImGui::InputFloat2("debug vec2 additional", &game.DEBUG_VEC2_ADDITIONAL.x);
+  ImGui::InputFloat4("light ortho projection", &game.DEBUG_LIGHT_ORTHO_PARAMS.x);
 
   // Resolution change
   {
@@ -267,6 +267,7 @@ void DebugGui::update(Engine& engine, Game& game)
   }
 
   ImGui::Text("%.4f %.4f %.4f", game.player.position.x, game.player.position.y, game.player.position.z);
+  ImGui::Text("acceleration len: %.4f", game.player.acceleration.len());
 
   // players position becomes the cartesian (0, 0) point for us, hence the substraction order
   // vec2 distance = {};

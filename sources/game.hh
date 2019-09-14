@@ -36,10 +36,10 @@ struct ShadowmapCommandBuffer
 struct RenderEntityParams
 {
   VkCommandBuffer  cmd;
-  mat4x4           projection;
-  mat4x4           view;
-  vec3             camera_position;
-  vec3             color;
+  Mat4x4           projection;
+  Mat4x4           view;
+  Vec3             camera_position;
+  Vec3             color;
   VkPipelineLayout pipeline_layout;
 };
 
@@ -84,9 +84,9 @@ struct Game
 
   bool DEBUG_FLAG_1;
   bool DEBUG_FLAG_2;
-  vec2 DEBUG_VEC2;
-  vec2 DEBUG_VEC2_ADDITIONAL;
-  vec4 DEBUG_LIGHT_ORTHO_PARAMS;
+  Vec2 DEBUG_VEC2;
+  Vec2 DEBUG_VEC2_ADDITIONAL;
+  Vec4 DEBUG_LIGHT_ORTHO_PARAMS;
 
   bool lmb_clicked;
   int  lmb_last_cursor_position[2];
@@ -106,10 +106,9 @@ struct Game
   SimpleEntity helmet_entity;
   SimpleEntity robot_entity;
 
-  // light test, randoms to be removed later
-  SimpleEntity box_entities[5];
+  // light test
+  SimpleEntity box_entities[7];
 
-  SimpleEntity robot_engines[2];
   SimpleEntity matrioshka_entity;
   SimpleEntity monster_entity;
   SimpleEntity rigged_simple_entity;

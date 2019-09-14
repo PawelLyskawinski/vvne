@@ -11,27 +11,14 @@ struct LightSource
   Vec4 color;
 };
 
-struct LightSources
+struct LightSourcesSoA
 {
   Vec4 positions[64];
   Vec4 colors[64];
   int  count = 0;
-
-  void update(uint32_t i, const Vec4& p, const Vec4& c)
-  {
-    positions[i] = p;
-    colors[i]    = c;
-  }
-
-  void push_back(const LightSource& s)
-  {
-    positions[count] = s.position;
-    colors[count]    = s.color;
-    count++;
-  }
-
-  void update(uint32_t i, const Vec3& p, const Vec3& c) { update(i, Vec4(p), Vec4(c)); }
 };
+
+[[nodiscard]] LightSourcesSoA convert_light_sources(const LightSource* begin, const LightSource* end);
 
 struct SdfChar
 {
@@ -52,15 +39,15 @@ struct GenerateSdfFontCommand
   int      characters_pool_count;
   int      texture_size[2];
   float    scaling;
-  vec3     position;
+  Vec3     position;
   float    cursor;
 };
 
 struct GenerateSdfFontCommandResult
 {
-  vec2   character_coordinate;
-  vec2   character_size;
-  mat4x4 transform;
+  Vec2   character_coordinate;
+  Vec2   character_size;
+  Mat4x4 transform;
   float  cursor_movement;
 };
 
@@ -116,7 +103,8 @@ struct Materials
   VkDeviceSize regular_billboard_vertex_buffer_offset;
 
   // frame cache
-  LightSources pbr_light_sources_cache;
+  LightSource  pbr_light_sources_cache[64];
+  LightSource* pbr_light_sources_cache_last;
 
   // models
   SceneGraph helmet;

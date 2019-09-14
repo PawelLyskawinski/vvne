@@ -1,7 +1,8 @@
 #include "render_jobs.hh"
+#include "engine/memory_map.hh"
 #include "game_render_entity.hh"
+
 #include <SDL2/SDL_log.h>
-#include <numeric>
 
 // game_generate_sdf_font.cc
 GenerateSdfFontCommandResult generate_sdf_font(const GenerateSdfFontCommand& cmd);
@@ -26,9 +27,9 @@ VkCommandBuffer acquire_command_buffer(ThreadJobData& tjd)
 
 void copy_camera_settings(RenderEntityParams& dst, Player& player)
 {
-  mat4x4_dup(dst.projection, player.camera_projection.mtx);
-  mat4x4_dup(dst.view, player.camera_view.mtx);
-  SDL_memcpy(dst.camera_position, &player.camera_position.x, sizeof(vec3));
+  dst.projection      = player.camera_projection;
+  dst.view            = player.camera_view;
+  dst.camera_position = player.camera_position;
 }
 
 } // namespace
@@ -46,12 +47,12 @@ void skybox_job(ThreadJobData tjd)
 
   struct
   {
-    mat4x4 projection;
-    mat4x4 view;
+    Mat4x4 projection;
+    Mat4x4 view;
   } push = {};
 
-  mat4x4_dup(push.projection, ctx->game->player.camera_projection.mtx);
-  mat4x4_dup(push.view, ctx->game->player.camera_view.mtx);
+  push.projection = ctx->game->player.camera_projection;
+  push.view       = ctx->game->player.camera_view;
 
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.skybox.pipeline);
   vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.skybox.layout, 0, 1,
@@ -114,11 +115,10 @@ void robot_job(ThreadJobData tjd)
                             SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
   }
 
-  RenderEntityParams params = {
-      .cmd             = command,
-      .color           = {0.0f, 0.0f, 0.0f},
-      .pipeline_layout = ctx->engine->pipelines.scene3D.layout,
-  };
+  RenderEntityParams params;
+  params.cmd             = command;
+  params.color           = Vec3(0.0f, 0.0f, 0.0f);
+  params.pipeline_layout = ctx->engine->pipelines.scene3D.layout;
 
   copy_camera_settings(params, ctx->game->player);
   render_pbr_entity(ctx->game->robot_entity, ctx->game->materials.robot, *ctx->engine, params);
@@ -183,11 +183,10 @@ void helmet_job(ThreadJobData tjd)
                             SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
   }
 
-  RenderEntityParams params = {
-      .cmd             = command,
-      .color           = {0.0f, 0.0f, 0.0f},
-      .pipeline_layout = ctx->engine->pipelines.scene3D.layout,
-  };
+  RenderEntityParams params;
+  params.cmd             = command;
+  params.color           = Vec3(0.0f, 0.0f, 0.0f);
+  params.pipeline_layout = ctx->engine->pipelines.scene3D.layout;
 
   copy_camera_settings(params, ctx->game->player);
   render_pbr_entity(ctx->game->helmet_entity, ctx->game->materials.helmet, *ctx->engine, params);
@@ -205,28 +204,17 @@ void point_light_boxes(ThreadJobData tjd)
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry.pipeline);
 
-  RenderEntityParams params = {
-      .cmd             = command,
-      .color           = {0.0f, 0.0f, 0.0f},
-      .pipeline_layout = ctx->engine->pipelines.colored_geometry.layout,
-  };
+  RenderEntityParams params;
+  params.cmd             = command;
+  params.color           = Vec3(0.0f, 0.0f, 0.0f);
+  params.pipeline_layout = ctx->engine->pipelines.colored_geometry.layout;
 
   copy_camera_settings(params, ctx->game->player);
 
-  const uint32_t box_count     = SDL_arraysize(ctx->game->box_entities);
-  const uint32_t engines_count = SDL_arraysize(ctx->game->robot_engines);
-  const uint32_t total_count   = box_count + engines_count;
-
-  SimpleEntity  all[total_count] = {};
-  SimpleEntity* inserter         = all;
-
-  inserter = std::copy(ctx->game->box_entities, &ctx->game->box_entities[box_count], inserter);
-  std::copy(ctx->game->robot_engines, &ctx->game->robot_engines[engines_count], inserter);
-
-  for (unsigned i = 0; i < total_count; ++i)
+  for (unsigned i = 0; i < SDL_arraysize(ctx->game->box_entities); ++i)
   {
-    SDL_memcpy(params.color, &ctx->game->materials.pbr_light_sources_cache.colors[i].x, sizeof(vec3));
-    render_entity(all[i], ctx->game->materials.box, *ctx->engine, params);
+    params.color = ctx->game->materials.pbr_light_sources_cache[i].color.as_vec3();
+    render_entity(ctx->game->box_entities[i], ctx->game->materials.box, *ctx->engine, params);
   }
 
   vkEndCommandBuffer(command);
@@ -242,11 +230,10 @@ void matrioshka_box(ThreadJobData tjd)
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry.pipeline);
 
-  RenderEntityParams params = {
-      .cmd             = command,
-      .color           = {0.0f, 1.0f, 0.0f},
-      .pipeline_layout = ctx->engine->pipelines.colored_geometry.layout,
-  };
+  RenderEntityParams params;
+  params.cmd             = command;
+  params.color           = Vec3(0.0f, 1.0f, 0.0f);
+  params.pipeline_layout = ctx->engine->pipelines.colored_geometry.layout;
 
   copy_camera_settings(params, ctx->game->player);
   render_entity(ctx->game->matrioshka_entity, ctx->game->materials.animatedBox, *ctx->engine, params);
@@ -286,32 +273,28 @@ void vr_scene(ThreadJobData tjd)
   vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer,
                          &ctx->game->materials.vr_level_vertex_buffer_offset);
 
-  mat4x4 translation_matrix = {};
-  mat4x4_translate(translation_matrix, 0.0, 3.0, 0.0);
+  Mat4x4 translation_matrix;
+  translation_matrix.translate(Vec3(0.0, 3.0, 0.0));
 
-  mat4x4 rotation_matrix = {};
-  mat4x4_identity(rotation_matrix);
+  Mat4x4 rotation_matrix;
+  rotation_matrix.identity();
 
-  mat4x4 scale_matrix = {};
-  mat4x4_identity(scale_matrix);
-  const float scale = 100.0f;
-  mat4x4_scale_aniso(scale_matrix, scale_matrix, scale, scale, scale);
-
-  mat4x4 tmp = {};
-  mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+  Mat4x4 scale_matrix;
+  scale_matrix.identity();
+  scale_matrix.scale(Vec3(100.0f, 100.0f, 100.0f));
 
   struct SkinningUbo
   {
-    mat4x4 projection;
-    mat4x4 view;
-    mat4x4 model;
-    vec3   camera_position;
-  } ubo = {};
+    Mat4x4 projection;
+    Mat4x4 view;
+    Mat4x4 model;
+    Vec3   camera_position;
+  } ubo;
 
-  mat4x4_dup(ubo.projection, ctx->game->player.camera_projection.mtx);
-  mat4x4_dup(ubo.view, ctx->game->player.camera_view.mtx);
-  mat4x4_mul(ubo.model, tmp, scale_matrix);
-  SDL_memcpy(ubo.camera_position, &ctx->game->player.camera_position.x, sizeof(vec3));
+  ubo.projection      = ctx->game->player.camera_projection;
+  ubo.view            = ctx->game->player.camera_view;
+  ubo.model           = translation_matrix * rotation_matrix * scale_matrix;
+  ubo.camera_position = ctx->game->player.camera_position;
 
   vkCmdPushConstants(command, ctx->engine->pipelines.scene3D.layout,
                      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ubo), &ubo);
@@ -396,11 +379,10 @@ void simple_rigged(ThreadJobData tjd)
       command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry_skinned.layout, 0, 1,
       &ctx->game->materials.rig_skinning_matrices_dset, SDL_arraysize(dynamic_offsets), dynamic_offsets);
 
-  RenderEntityParams params = {
-      .cmd             = command,
-      .color           = {0.0f, 0.0f, 0.0f},
-      .pipeline_layout = ctx->engine->pipelines.colored_geometry_skinned.layout,
-  };
+  RenderEntityParams params;
+  params.cmd             = command;
+  params.color           = Vec3(0.0f, 0.0f, 0.0f);
+  params.pipeline_layout = ctx->engine->pipelines.colored_geometry_skinned.layout;
 
   copy_camera_settings(params, ctx->game->player);
   render_entity_skinned(ctx->game->rigged_simple_entity, ctx->game->materials.riggedSimple, *ctx->engine, params);
@@ -425,11 +407,10 @@ void monster_rigged(ThreadJobData tjd)
       command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry_skinned.layout, 0, 1,
       &ctx->game->materials.monster_skinning_matrices_dset, SDL_arraysize(dynamic_offsets), dynamic_offsets);
 
-  RenderEntityParams params = {
-      .cmd             = command,
-      .color           = {1.0f, 1.0f, 1.0f},
-      .pipeline_layout = ctx->engine->pipelines.colored_geometry_skinned.layout,
-  };
+  RenderEntityParams params;
+  params.cmd             = command;
+  params.color           = Vec3(1.0f, 1.0f, 1.0f);
+  params.pipeline_layout = ctx->engine->pipelines.colored_geometry_skinned.layout;
 
   copy_camera_settings(params, ctx->game->player);
   render_entity_skinned(ctx->game->monster_entity, ctx->game->materials.monster, *ctx->engine, params);
@@ -449,31 +430,20 @@ void radar(ThreadJobData tjd)
   vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer,
                          &ctx->game->materials.green_gui_billboard_vertex_buffer_offset);
 
-  mat4x4 gui_projection = {};
-  mat4x4_ortho(gui_projection, 0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
+  Mat4x4 gui_projection;
+  gui_projection.ortho(0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
 
   const float rectangle_dimension_pixels = 100.0f;
   const float offset_from_edge           = 10.0f;
 
-  const vec2 translation = {rectangle_dimension_pixels + offset_from_edge,
-                            rectangle_dimension_pixels + offset_from_edge};
+  const Mat4x4 mvp = gui_projection *
+                     Mat4x4::Translation({rectangle_dimension_pixels + offset_from_edge,
+                                          rectangle_dimension_pixels + offset_from_edge, -1.0f}) *
+                     Mat4x4::Scale({rectangle_dimension_pixels, rectangle_dimension_pixels, 1.0f});
 
-  mat4x4 translation_matrix = {};
-  mat4x4_translate(translation_matrix, translation[0], translation[1], -1.0f);
-
-  mat4x4 scale_matrix = {};
-  mat4x4_identity(scale_matrix);
-  mat4x4_scale_aniso(scale_matrix, scale_matrix, rectangle_dimension_pixels, rectangle_dimension_pixels, 1.0f);
-
-  mat4x4 world_transform = {};
-  mat4x4_mul(world_transform, translation_matrix, scale_matrix);
-
-  mat4x4 mvp = {};
-  mat4x4_mul(mvp, gui_projection, world_transform);
-
-  vkCmdPushConstants(command, ctx->engine->pipelines.green_gui.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4),
-                     mvp);
-  vkCmdPushConstants(command, ctx->engine->pipelines.green_gui.layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4),
+  vkCmdPushConstants(command, ctx->engine->pipelines.green_gui.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Mat4x4),
+                     mvp.data());
+  vkCmdPushConstants(command, ctx->engine->pipelines.green_gui.layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(Mat4x4),
                      sizeof(float), &ctx->game->current_time_sec);
 
   vkCmdDraw(command, 4, 1, 0, 0);
@@ -501,16 +471,12 @@ void robot_gui_lines(ThreadJobData tjd)
         .camera_y_pitch_radians   = ctx->game->player.camera_updown_angle,
     };
 
-    void* data = nullptr;
-    vkMapMemory(ctx->engine->device, ctx->engine->memory_blocks.host_coherent.memory,
-                ctx->game->materials.green_gui_rulers_buffer_offsets[ctx->game->image_index],
-                MAX_ROBOT_GUI_LINES * sizeof(vec2), 0, &data);
-
-    generate_gui_lines(cmd, reinterpret_cast<vec2*>(data), MAX_ROBOT_GUI_LINES,
+    MemoryMap map(ctx->engine->device, ctx->engine->memory_blocks.host_coherent.memory,
+                  ctx->game->materials.green_gui_rulers_buffer_offsets[ctx->game->image_index],
+                  MAX_ROBOT_GUI_LINES * sizeof(Vec2));
+    generate_gui_lines(cmd, reinterpret_cast<Vec2*>(*map), MAX_ROBOT_GUI_LINES,
                        ctx->game->materials.gui_green_lines_count, ctx->game->materials.gui_red_lines_count,
                        ctx->game->materials.gui_yellow_lines_count);
-
-    vkUnmapMemory(ctx->engine->device, ctx->engine->memory_blocks.host_coherent.memory);
   }
 
   uint32_t offset = 0;
@@ -524,9 +490,10 @@ void robot_gui_lines(ThreadJobData tjd)
     const GuiLineSizeCount& counts        = ctx->game->materials.gui_green_lines_count;
     const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
 
-    vec4 color = {125.0f / 255.0f, 204.0f / 255.0f, 174.0f / 255.0f, 0.9f};
+    Vec4 color(Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f), 0.9f);
+
     vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_lines.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
-                       sizeof(vec4), color);
+                       sizeof(Vec4), color.data());
 
     for (int i = 0; i < 4; ++i)
     {
@@ -552,9 +519,9 @@ void robot_gui_lines(ThreadJobData tjd)
     const GuiLineSizeCount& counts        = ctx->game->materials.gui_red_lines_count;
     const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
 
-    vec4 color = {1.0f, 0.0f, 0.0f, 0.9f};
+    Vec4 color(1.0f, 0.0f, 0.0f, 0.9f);
     vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_lines.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
-                       sizeof(vec4), color);
+                       sizeof(Vec4), color.data());
 
     for (int i = 0; i < 4; ++i)
     {
@@ -580,9 +547,9 @@ void robot_gui_lines(ThreadJobData tjd)
     const GuiLineSizeCount& counts        = ctx->game->materials.gui_yellow_lines_count;
     const int               line_counts[] = {counts.big, counts.normal, counts.small, counts.tiny};
 
-    vec4 color = {1.0f, 1.0f, 0.0f, 0.7f};
+    Vec4 color(1.0f, 1.0f, 0.0f, 0.7f);
     vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_lines.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
-                       sizeof(vec4), color);
+                       sizeof(Vec4), color.data());
 
     for (int i = 0; i < 4; ++i)
     {
@@ -615,22 +582,22 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
 
   struct VertexPushConstant
   {
-    mat4x4 mvp;
-    vec2   character_coordinate;
-    vec2   character_size;
-  } vpc = {};
+    Mat4x4 mvp;
+    Vec2   character_coordinate;
+    Vec2   character_size;
+  } vpc;
 
   struct FragmentPushConstant
   {
-    vec3  color;
+    Vec3  color;
     float time;
-  } fpc = {};
+  } fpc;
 
   fpc.time = ctx->game->current_time_sec;
 
   {
-    mat4x4 gui_projection = {};
-    mat4x4_ortho(gui_projection, 0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
+    Mat4x4 gui_projection;
+    gui_projection.ortho(0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
 
     float speed     = ctx->game->player.velocity.len() * 1500.0f;
     int   speed_int = static_cast<int>(speed);
@@ -698,9 +665,9 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
 
       GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
 
-      SDL_memcpy(vpc.character_coordinate, r.character_coordinate, sizeof(vec2));
-      SDL_memcpy(vpc.character_size, r.character_size, sizeof(vec2));
-      mat4x4_mul(vpc.mvp, gui_projection, r.transform);
+      vpc.character_coordinate = r.character_coordinate;
+      vpc.character_size       = r.character_size;
+      vpc.mvp                  = gui_projection * r.transform;
       cursor += r.cursor_movement;
 
       VkRect2D scissor = {.extent = ctx->engine->extent2D};
@@ -709,9 +676,7 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
       vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                          sizeof(vpc), &vpc);
 
-      fpc.color[0] = 125.0f / 255.0f;
-      fpc.color[1] = 204.0f / 255.0f;
-      fpc.color[2] = 174.0f / 255.0f;
+      fpc.color = Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f);
 
       vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                          sizeof(vpc), sizeof(fpc), &fpc);
@@ -735,20 +700,17 @@ void robot_gui_speed_meter_triangle(ThreadJobData tjd)
 
   struct VertPush
   {
-    vec4 offset;
-    vec4 scale;
-  } vpush = {
-      .offset = {-0.384f, -0.180f, 0.0f, 0.0f},
-      .scale  = {0.012f, 0.02f, 1.0f, 1.0f},
-  };
+    Vec4 offset = Vec4(-0.384f, -0.180f, 0.0f, 0.0f);
+    Vec4 scale  = Vec4(0.012f, 0.02f, 1.0f, 1.0f);
+  } vpush;
 
   vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_triangle.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                      sizeof(vpush), &vpush);
 
-  vec4 color = {125.0f / 255.0f, 204.0f / 255.0f, 174.0f / 255.0f, 1.0f};
+  Vec4 color = Vec4(Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f), 1.0f);
 
   vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_triangle.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                     sizeof(vpush), sizeof(vec4), color);
+                     sizeof(vpush), sizeof(Vec4), color.data());
 
   vkCmdDraw(command, 3, 1, 0, 0);
   vkEndCommandBuffer(command);
@@ -771,16 +733,16 @@ void height_ruler_text(ThreadJobData tjd)
 
   struct VertexPushConstant
   {
-    mat4x4 mvp;
-    vec2   character_coordinate;
-    vec2   character_size;
-  } vpc = {};
+    Mat4x4 mvp;
+    Vec2   character_coordinate;
+    Vec2   character_size;
+  } vpc;
 
   struct FragmentPushConstant
   {
-    vec3  color;
+    Vec3  color;
     float time;
-  } fpc = {};
+  } fpc;
 
   fpc.time = ctx->game->current_time_sec;
 
@@ -800,8 +762,8 @@ void height_ruler_text(ThreadJobData tjd)
   char buffer[256];
   for (GuiHeightRulerText& text : scheduled_text_data)
   {
-    mat4x4 gui_projection = {};
-    mat4x4_ortho(gui_projection, 0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
+    Mat4x4 gui_projection;
+    gui_projection.ortho(0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
 
     float cursor = 0.0f;
 
@@ -815,15 +777,15 @@ void height_ruler_text(ThreadJobData tjd)
           .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
           .texture_size          = {512, 256},
           .scaling               = static_cast<float>(text.size),
-          .position              = {text.offset[0], text.offset[1], -1.0f},
+          .position              = {text.offset.x, text.offset.y, -1.0f},
           .cursor                = cursor,
       };
 
       GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
 
-      SDL_memcpy(vpc.character_coordinate, r.character_coordinate, sizeof(vec2));
-      SDL_memcpy(vpc.character_size, r.character_size, sizeof(vec2));
-      mat4x4_mul(vpc.mvp, gui_projection, r.transform);
+      vpc.character_coordinate = r.character_coordinate;
+      vpc.character_size       = r.character_size;
+      vpc.mvp                  = gui_projection * r.transform;
       cursor += r.cursor_movement;
 
       VkRect2D scissor{};
@@ -833,9 +795,7 @@ void height_ruler_text(ThreadJobData tjd)
       scissor.offset.y      = line_to_pixel_length(0.29f, ctx->engine->extent2D.height);
       vkCmdSetScissor(command, 0, 1, &scissor);
 
-      fpc.color[0] = 1.0f;
-      fpc.color[1] = 0.0f;
-      fpc.color[2] = 0.0f;
+      fpc.color = Vec3(1.0f, 0.0f, 0.0f);
 
       vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                          sizeof(vpc), &vpc);
@@ -865,16 +825,16 @@ void tilt_ruler_text(ThreadJobData tjd)
 
   struct VertexPushConstant
   {
-    mat4x4 mvp;
-    vec2   character_coordinate;
-    vec2   character_size;
-  } vpc = {};
+    Mat4x4 mvp;
+    Vec2   character_coordinate;
+    Vec2   character_size;
+  } vpc;
 
   struct FragmentPushConstant
   {
-    vec3  color;
+    Vec3  color;
     float time;
-  } fpc = {};
+  } fpc;
 
   fpc.time = ctx->game->current_time_sec;
 
@@ -894,8 +854,8 @@ void tilt_ruler_text(ThreadJobData tjd)
   char buffer[256];
   for (GuiHeightRulerText& text : scheduled_text_data)
   {
-    mat4x4 gui_projection = {};
-    mat4x4_ortho(gui_projection, 0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
+    Mat4x4 gui_projection;
+    gui_projection.ortho(0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
 
     float cursor = 0.0f;
 
@@ -909,15 +869,15 @@ void tilt_ruler_text(ThreadJobData tjd)
           .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
           .texture_size          = {512, 256},
           .scaling               = static_cast<float>(text.size),
-          .position              = {text.offset[0], text.offset[1], -1.0f},
+          .position              = {text.offset.x, text.offset.y, -1.0f},
           .cursor                = cursor,
       };
 
       GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
 
-      SDL_memcpy(vpc.character_coordinate, r.character_coordinate, sizeof(vec2));
-      SDL_memcpy(vpc.character_size, r.character_size, sizeof(vec2));
-      mat4x4_mul(vpc.mvp, gui_projection, r.transform);
+      vpc.character_coordinate = r.character_coordinate;
+      vpc.character_size       = r.character_size;
+      vpc.mvp                  = gui_projection * r.transform;
       cursor += r.cursor_movement;
 
       VkRect2D scissor{};
@@ -930,10 +890,7 @@ void tilt_ruler_text(ThreadJobData tjd)
       vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                          sizeof(vpc), &vpc);
 
-      fpc.color[0] = 1.0f;
-      fpc.color[1] = 1.0f;
-      fpc.color[2] = 0.0f;
-
+      fpc.color = Vec3(1.0f, 1.0f, 0.0f);
       vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                          sizeof(vpc), sizeof(fpc), &fpc);
 
@@ -960,16 +917,18 @@ void compass_text(ThreadJobData tjd)
 
   struct VertexPushConstant
   {
-    mat4x4 mvp;
-    vec2   character_coordinate;
-    vec2   character_size;
-  } vpc = {};
+    Mat4x4 mvp;
+    Vec2   character_coordinate;
+    Vec2   character_size;
+  } vpc;
 
   struct FragmentPushConstant
   {
-    vec3  color;
+    Vec3  color;
     float time;
-  } fpc = {.time = ctx->game->current_time_sec};
+  } fpc;
+
+  fpc.time = ctx->game->current_time_sec;
 
   const char* directions[] = {"N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
                               "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"};
@@ -994,8 +953,8 @@ void compass_text(ThreadJobData tjd)
   const char* left_text   = directions[left_direction_iter];
   const char* right_text  = directions[right_direction_iter];
 
-  mat4x4 gui_projection = {};
-  mat4x4_ortho(gui_projection, 0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
+  Mat4x4 gui_projection;
+  gui_projection.ortho(0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
   float cursor = 0.0f;
 
   //////////////////////////////////////////////////////////////////////////////
@@ -1030,9 +989,9 @@ void compass_text(ThreadJobData tjd)
 
     GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
 
-    SDL_memcpy(vpc.character_coordinate, r.character_coordinate, sizeof(vec2));
-    SDL_memcpy(vpc.character_size, r.character_size, sizeof(vec2));
-    mat4x4_mul(vpc.mvp, gui_projection, r.transform);
+    vpc.character_coordinate = r.character_coordinate;
+    vpc.character_size       = r.character_size;
+    vpc.mvp                  = gui_projection * r.transform;
     cursor += r.cursor_movement;
 
     VkRect2D scissor = {.extent = ctx->engine->extent2D};
@@ -1041,9 +1000,7 @@ void compass_text(ThreadJobData tjd)
     vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                        sizeof(vpc), &vpc);
 
-    fpc.color[0] = 125.0f / 255.0f;
-    fpc.color[1] = 204.0f / 255.0f;
-    fpc.color[2] = 174.0f / 255.0f;
+    fpc.color = Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f);
 
     vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                        sizeof(vpc), sizeof(fpc), &fpc);
@@ -1085,9 +1042,9 @@ void compass_text(ThreadJobData tjd)
 
     GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
 
-    SDL_memcpy(vpc.character_coordinate, r.character_coordinate, sizeof(vec2));
-    SDL_memcpy(vpc.character_size, r.character_size, sizeof(vec2));
-    mat4x4_mul(vpc.mvp, gui_projection, r.transform);
+    vpc.character_coordinate = r.character_coordinate;
+    vpc.character_size       = r.character_size;
+    vpc.mvp                  = gui_projection * r.transform;
     cursor += r.cursor_movement;
 
     VkRect2D scissor = {.extent = ctx->engine->extent2D};
@@ -1096,9 +1053,7 @@ void compass_text(ThreadJobData tjd)
     vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                        sizeof(vpc), &vpc);
 
-    fpc.color[0] = 125.0f / 255.0f;
-    fpc.color[1] = 204.0f / 255.0f;
-    fpc.color[2] = 174.0f / 255.0f;
+    fpc.color = Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f);
 
     vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                        sizeof(vpc), sizeof(fpc), &fpc);
@@ -1140,9 +1095,9 @@ void compass_text(ThreadJobData tjd)
 
     GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
 
-    SDL_memcpy(vpc.character_coordinate, r.character_coordinate, sizeof(vec2));
-    SDL_memcpy(vpc.character_size, r.character_size, sizeof(vec2));
-    mat4x4_mul(vpc.mvp, gui_projection, r.transform);
+    vpc.character_coordinate = r.character_coordinate;
+    vpc.character_size       = r.character_size;
+    vpc.mvp                  = gui_projection * r.transform;
     cursor += r.cursor_movement;
 
     VkRect2D scissor = {.extent = ctx->engine->extent2D};
@@ -1151,9 +1106,7 @@ void compass_text(ThreadJobData tjd)
     vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                        sizeof(vpc), &vpc);
 
-    fpc.color[0] = 125.0f / 255.0f;
-    fpc.color[1] = 204.0f / 255.0f;
-    fpc.color[2] = 174.0f / 255.0f;
+    fpc.color = Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f);
 
     vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                        sizeof(vpc), sizeof(fpc), &fpc);
@@ -1181,37 +1134,32 @@ void radar_dots(ThreadJobData tjd)
   const float horizontal_length    = pixels_to_line_length(rectangle_dim, ctx->engine->extent2D.height);
   const float offset_from_top_edge = pixels_to_line_length(rectangle_dim / 10, ctx->engine->extent2D.height);
 
-  const vec2 center_radar_position = {
-      -1.0f + offset_from_screen_edge + vertical_length,
-      -1.0f + offset_from_top_edge + horizontal_length,
-  };
+  const Vec2 center_radar_position(-1.0f + offset_from_screen_edge + vertical_length,
+                                   -1.0f + offset_from_top_edge + horizontal_length);
 
   Vec2 robot_position  = Vec2(0.0f, 0.0f);
   Vec2 player_position = ctx->game->player.position.xz();
 
   // players position becomes the cartesian (0, 0) point for us, hence the substraction order
-  Vec2 distance = robot_position - player_position;
+  Vec2 distance   = robot_position - player_position;
+  Vec2 normalized = distance.normalize();
 
-  // normalization helps to
-  vec2 normalized = {};
-  vec2_norm(normalized, &distance.x);
-
-  float      robot_angle     = SDL_atan2f(normalized[0], normalized[1]);
+  float      robot_angle     = SDL_atan2f(normalized.x, normalized.y);
   float      angle           = ctx->game->player.camera_angle - robot_angle - ((float)M_PI / 2.0f);
-  float      final_distance  = 0.005f * vec2_len(&distance.x);
+  float      final_distance  = 0.005f * distance.len();
   float      aspect_ratio    = vertical_length / horizontal_length;
-  const vec2 helmet_position = {aspect_ratio * final_distance * SDL_sinf(angle), final_distance * SDL_cosf(angle)};
+  const Vec2 helmet_position = {aspect_ratio * final_distance * SDL_sinf(angle), final_distance * SDL_cosf(angle)};
 
-  vec2 relative_helmet_position = {};
-  vec2_sub(relative_helmet_position, center_radar_position, helmet_position);
+  const Vec2 relative_helmet_position = center_radar_position - helmet_position;
 
-  vec4 position = {relative_helmet_position[0], relative_helmet_position[1], 0.0f, 1.0f};
+  Vec4 position = {relative_helmet_position.x, relative_helmet_position.y, 0.0f, 1.0f};
+
   vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_radar_dots.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
-                     sizeof(vec4), position);
+                     sizeof(Vec4), position.data());
 
-  vec4 color = {1.0f, 0.0f, 0.0f, (final_distance < 0.22f) ? 0.6f : 0.0f};
+  Vec4 color = Vec4(1.0f, 0.0f, 0.0f, (final_distance < 0.22f) ? 0.6f : 0.0f);
   vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_radar_dots.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                     sizeof(vec4), sizeof(vec4), color);
+                     sizeof(Vec4), sizeof(Vec4), color.data());
 
   vkCmdDraw(command, 1, 1, 0, 0);
   vkEndCommandBuffer(command);
@@ -1241,13 +1189,12 @@ void weapon_selectors_left(ThreadJobData tjd)
     vkBeginCommandBuffer(command, &begin_info);
   }
 
-  mat4x4 gui_projection = {};
-  mat4x4_ortho(gui_projection, 0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
+  Mat4x4 gui_projection;
+  gui_projection.ortho(0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
 
-  vec2 screen_extent = {(float)ctx->engine->extent2D.width, (float)ctx->engine->extent2D.height};
-
-  vec2 box_size                = {120.0f, 25.0f};
-  vec2 offset_from_bottom_left = {25.0f, 25.0f};
+  const Vec2 screen_extent           = {(float)ctx->engine->extent2D.width, (float)ctx->engine->extent2D.height};
+  const Vec2 box_size                = {120.0f, 25.0f};
+  const Vec2 offset_from_bottom_left = {25.0f, 25.0f};
 
   float transparencies[3];
   ctx->game->weapon_selections[0].calculate(transparencies);
@@ -1257,21 +1204,15 @@ void weapon_selectors_left(ThreadJobData tjd)
     ////////////////////////////////////////////////////////////////////////////
     // Bordered box for the text inside
     ////////////////////////////////////////////////////////////////////////////
-    vec2 translation = {box_size[0] + offset_from_bottom_left[0] + (14.0f * i),
-                        screen_extent[1] - (box_size[1] * 2.00f * (i + 1)) - offset_from_bottom_left[1]};
 
-    mat4x4 translation_matrix = {};
-    mat4x4_translate(translation_matrix, translation[0], translation[1], -1.0f);
+    const Vec2 translation = Vec2(box_size.x + offset_from_bottom_left.x + (14.0f * i),
+                                  screen_extent.y - (box_size.y * 2.00f * (i + 1)) - offset_from_bottom_left.y);
 
-    mat4x4 scale_matrix = {};
-    mat4x4_identity(scale_matrix);
-    mat4x4_scale_aniso(scale_matrix, scale_matrix, box_size[0], box_size[1], 1.0f);
-
-    mat4x4 world_transform = {};
-    mat4x4_mul(world_transform, translation_matrix, scale_matrix);
-
-    mat4x4 mvp = {};
-    mat4x4_mul(mvp, gui_projection, world_transform);
+    const Mat4x4 mvp =
+        gui_projection *
+        Mat4x4::Translation(Vec3(box_size.x + offset_from_bottom_left.x + (14.0f * i),
+                                 screen_extent.y - (box_size.y * 2.00f * (i + 1)) - offset_from_bottom_left.y, -1.0f)) *
+        Mat4x4::Scale(Vec3(box_size.x, box_size.y, 1.0f));
 
     vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       ctx->engine->pipelines.green_gui_weapon_selector_box_left.pipeline);
@@ -1280,11 +1221,11 @@ void weapon_selectors_left(ThreadJobData tjd)
                            &ctx->game->materials.green_gui_billboard_vertex_buffer_offset);
 
     vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_weapon_selector_box_left.layout,
-                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
+                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Mat4x4), mvp.data());
 
-    float frag_push[] = {ctx->game->current_time_sec, box_size[1] / box_size[0], transparencies[i]};
+    float frag_push[] = {ctx->game->current_time_sec, box_size.y / box_size.x, transparencies[i]};
     vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_weapon_selector_box_left.layout,
-                       VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(frag_push), &frag_push);
+                       VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(Mat4x4), sizeof(frag_push), &frag_push);
 
     vkCmdDraw(command, 4, 1, 0, 0);
 
@@ -1300,16 +1241,16 @@ void weapon_selectors_left(ThreadJobData tjd)
 
     struct VertexPushConstant
     {
-      mat4x4 mvp;
-      vec2   character_coordinate;
-      vec2   character_size;
-    } vpc = {};
+      Mat4x4 mvp;
+      Vec2   character_coordinate;
+      Vec2   character_size;
+    } vpc;
 
     struct FragmentPushConstant
     {
-      vec3  color;
+      Vec3  color;
       float time;
-    } fpc = {};
+    } fpc;
 
     fpc.time = ctx->game->current_time_sec;
 
@@ -1335,15 +1276,15 @@ void weapon_selectors_left(ThreadJobData tjd)
           .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
           .texture_size          = {512, 256},
           .scaling               = 250.0f,
-          .position              = {translation[0] - 110.0f, translation[1] - 10.0f, -1.0f},
+          .position              = {translation.x - 110.0f, translation.y - 10.0f, -1.0f},
           .cursor                = cursor,
       };
 
       GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
 
-      SDL_memcpy(vpc.character_coordinate, r.character_coordinate, sizeof(vec2));
-      SDL_memcpy(vpc.character_size, r.character_size, sizeof(vec2));
-      mat4x4_mul(vpc.mvp, gui_projection, r.transform);
+      vpc.character_coordinate = r.character_coordinate;
+      vpc.character_size       = r.character_size;
+      vpc.mvp                  = gui_projection * r.transform;
       cursor += r.cursor_movement;
 
       VkRect2D scissor = {.extent = ctx->engine->extent2D};
@@ -1352,9 +1293,7 @@ void weapon_selectors_left(ThreadJobData tjd)
       vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                          sizeof(vpc), &vpc);
 
-      fpc.color[0] = 145.0f / 255.0f;
-      fpc.color[1] = 224.0f / 255.0f;
-      fpc.color[2] = 194.0f / 255.0f;
+      fpc.color = Vec3(145.0f, 224.0f, 194.0f).scale(1.0f / 255.0f);
 
       vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                          sizeof(vpc), sizeof(fpc), &fpc);
@@ -1374,13 +1313,14 @@ void weapon_selectors_right(ThreadJobData tjd)
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
-  mat4x4 gui_projection = {};
-  mat4x4_ortho(gui_projection, 0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
 
-  vec2 screen_extent = {(float)ctx->engine->extent2D.width, (float)ctx->engine->extent2D.height};
+  Mat4x4 gui_projection;
+  gui_projection.ortho(0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
 
-  vec2 box_size                 = {120.0f, 25.0f};
-  vec2 offset_from_bottom_right = {25.0f, 25.0f};
+  Vec2 screen_extent = {(float)ctx->engine->extent2D.width, (float)ctx->engine->extent2D.height};
+
+  Vec2 box_size                 = {120.0f, 25.0f};
+  Vec2 offset_from_bottom_right = {25.0f, 25.0f};
 
   float transparencies[3];
   ctx->game->weapon_selections[1].calculate(transparencies);
@@ -1390,21 +1330,11 @@ void weapon_selectors_right(ThreadJobData tjd)
     ////////////////////////////////////////////////////////////////////////////
     // Bordered box for the text inside
     ////////////////////////////////////////////////////////////////////////////
-    vec2 translation = {screen_extent[0] - box_size[0] - offset_from_bottom_right[0] - (14.0f * i),
-                        screen_extent[1] - (box_size[1] * 2.00f * (i + 1)) - offset_from_bottom_right[1]};
+    const Vec2 t = {screen_extent.x - box_size.x - offset_from_bottom_right.x - (14.0f * i),
+                    screen_extent.y - (box_size.y * 2.00f * (i + 1)) - offset_from_bottom_right.y};
 
-    mat4x4 translation_matrix = {};
-    mat4x4_translate(translation_matrix, translation[0], translation[1], -1.0f);
-
-    mat4x4 scale_matrix = {};
-    mat4x4_identity(scale_matrix);
-    mat4x4_scale_aniso(scale_matrix, scale_matrix, box_size[0], box_size[1], 1.0f);
-
-    mat4x4 world_transform = {};
-    mat4x4_mul(world_transform, translation_matrix, scale_matrix);
-
-    mat4x4 mvp = {};
-    mat4x4_mul(mvp, gui_projection, world_transform);
+    const Mat4x4 mvp =
+        gui_projection * Mat4x4::Translation(Vec3(t.x, t.y, -1.0f)) * Mat4x4::Scale(Vec3(box_size.x, box_size.y, 1.0f));
 
     vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       ctx->engine->pipelines.green_gui_weapon_selector_box_right.pipeline);
@@ -1413,12 +1343,12 @@ void weapon_selectors_right(ThreadJobData tjd)
                            &ctx->game->materials.green_gui_billboard_vertex_buffer_offset);
 
     vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_weapon_selector_box_right.layout,
-                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
+                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Mat4x4), mvp.data());
 
-    float frag_push[] = {ctx->game->current_time_sec, box_size[1] / box_size[0], transparencies[i]};
+    float frag_push[] = {ctx->game->current_time_sec, box_size.y / box_size.x, transparencies[i]};
 
     vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_weapon_selector_box_right.layout,
-                       VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(frag_push), &frag_push);
+                       VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(Mat4x4), sizeof(frag_push), &frag_push);
 
     vkCmdDraw(command, 4, 1, 0, 0);
 
@@ -1434,16 +1364,16 @@ void weapon_selectors_right(ThreadJobData tjd)
 
     struct VertexPushConstant
     {
-      mat4x4 mvp;
-      vec2   character_coordinate;
-      vec2   character_size;
-    } vpc = {};
+      Mat4x4 mvp;
+      Vec2   character_coordinate;
+      Vec2   character_size;
+    } vpc;
 
     struct FragmentPushConstant
     {
-      vec3  color;
+      Vec3  color;
       float time;
-    } fpc = {};
+    } fpc;
 
     fpc.time = ctx->game->current_time_sec;
 
@@ -1469,15 +1399,15 @@ void weapon_selectors_right(ThreadJobData tjd)
           .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
           .texture_size          = {512, 256},
           .scaling               = 250.0f,
-          .position = {translation[0] - 105.0f - 30.0f * (0.4f - transparencies[i]), translation[1] - 10.0f, -1.0f},
-          .cursor   = cursor,
+          .position              = {t.x - 105.0f - 30.0f * (0.4f - transparencies[i]), t.y - 10.0f, -1.0f},
+          .cursor                = cursor,
       };
 
       GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
 
-      SDL_memcpy(vpc.character_coordinate, r.character_coordinate, sizeof(vec2));
-      SDL_memcpy(vpc.character_size, r.character_size, sizeof(vec2));
-      mat4x4_mul(vpc.mvp, gui_projection, r.transform);
+      vpc.character_coordinate = r.character_coordinate;
+      vpc.character_size       = r.character_size;
+      vpc.mvp                  = gui_projection * r.transform;
       cursor += r.cursor_movement;
 
       VkRect2D scissor = {.extent = ctx->engine->extent2D};
@@ -1486,10 +1416,7 @@ void weapon_selectors_right(ThreadJobData tjd)
       vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                          sizeof(vpc), &vpc);
 
-      fpc.color[0] = 145.0f / 255.0f;
-      fpc.color[1] = 224.0f / 255.0f;
-      fpc.color[2] = 194.0f / 255.0f;
-
+      fpc.color = Vec3(145.0f, 224.0f, 194.0f).scale(1.0f / 255.0f);
       vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                          sizeof(vpc), sizeof(fpc), &fpc);
 
@@ -1741,39 +1668,34 @@ void water(ThreadJobData tjd)
   vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer,
                          &ctx->game->materials.regular_billboard_vertex_buffer_offset);
 
-  mat4x4 rotation_matrix = {};
-  mat4x4_identity(rotation_matrix);
-  mat4x4_rotate_X(rotation_matrix, rotation_matrix, to_rad(90.0f));
+  Mat4x4 rotation_matrix = Mat4x4::RotationX(to_rad(90.0f));
 
-  mat4x4 scale_matrix = {};
-  mat4x4_identity(scale_matrix);
-  mat4x4_scale_aniso(scale_matrix, scale_matrix, 20.0f, 20.0f, 1.0f);
+  Mat4x4 scale_matrix;
+  scale_matrix.identity();
+  scale_matrix.scale(Vec3(20.0f, 20.0f, 1.0f));
 
   for (int x = 0; x < 3; ++x)
   {
     for (int y = 0; y < 3; ++y)
     {
-      mat4x4 translation_matrix = {};
-      mat4x4_translate(translation_matrix, 40.0f * x - 40.0f, 10.5f + 0.02f * SDL_sinf(ctx->game->current_time_sec),
-                       40.0f * y - 40.0f);
-
-      mat4x4 tmp = {};
-      mat4x4_mul(tmp, translation_matrix, rotation_matrix);
+      Mat4x4 translation_matrix;
+      translation_matrix.translate(
+          Vec3(40.0f * x - 40.0f, 10.5f + 0.02f * SDL_sinf(ctx->game->current_time_sec), 40.0f * y - 40.0f));
 
       struct PushConst
       {
-        mat4x4 projection;
-        mat4x4 view;
-        mat4x4 model;
-        vec3   camPos;
+        Mat4x4 projection;
+        Mat4x4 view;
+        Mat4x4 model;
+        Vec3   camPos;
         float  time;
-      } push = {};
+      } push;
 
-      mat4x4_dup(push.projection, ctx->game->player.camera_projection.mtx);
-      mat4x4_dup(push.view, ctx->game->player.camera_view.mtx);
-      mat4x4_mul(push.model, tmp, scale_matrix);
-      SDL_memcpy(push.camPos, &ctx->game->player.camera_position.x, sizeof(vec3));
-      push.time = ctx->game->current_time_sec;
+      push.projection = ctx->game->player.camera_projection;
+      push.view       = ctx->game->player.camera_view;
+      push.model      = translation_matrix * rotation_matrix * scale_matrix;
+      push.camPos     = ctx->game->player.camera_position;
+      push.time       = ctx->game->current_time_sec;
 
       vkCmdPushConstants(command, ctx->engine->pipelines.pbr_water.layout,
                          VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
@@ -1812,47 +1734,37 @@ void debug_shadowmap(ThreadJobData tjd)
 
   for (uint32_t cascade = 0; cascade < SHADOWMAP_CASCADE_COUNT; ++cascade)
   {
-    mat4x4 gui_projection = {};
-    mat4x4_ortho(gui_projection, 0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
+    Mat4x4 gui_projection;
+    gui_projection.ortho(0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
 
     const float rectangle_dimension_pixels = 120.0f;
-    vec2        translation                = {rectangle_dimension_pixels + 10.0f, rectangle_dimension_pixels + 220.0f};
+    Vec2        translation                = {rectangle_dimension_pixels + 10.0f, rectangle_dimension_pixels + 220.0f};
 
     switch (cascade)
     {
     case 0:
       break;
     case 1:
-      translation[0] += (2.1f * rectangle_dimension_pixels);
+      translation.x += (2.1f * rectangle_dimension_pixels);
       break;
     case 2:
-      translation[1] += (2.1f * rectangle_dimension_pixels);
+      translation.y += (2.1f * rectangle_dimension_pixels);
       break;
     case 3:
-      translation[0] += (2.1f * rectangle_dimension_pixels);
-      translation[1] += (2.1f * rectangle_dimension_pixels);
+      translation.x += (2.1f * rectangle_dimension_pixels);
+      translation.y += (2.1f * rectangle_dimension_pixels);
       break;
     default:
       break;
     }
 
-    mat4x4 translation_matrix = {};
-    mat4x4_translate(translation_matrix, translation[0], translation[1], -1.0f);
-
-    mat4x4 scale_matrix = {};
-    mat4x4_identity(scale_matrix);
-    mat4x4_scale_aniso(scale_matrix, scale_matrix, rectangle_dimension_pixels, rectangle_dimension_pixels, 1.0f);
-
-    mat4x4 world_transform = {};
-    mat4x4_mul(world_transform, translation_matrix, scale_matrix);
-
-    mat4x4 mvp = {};
-    mat4x4_mul(mvp, gui_projection, world_transform);
+    const Mat4x4 mvp = gui_projection * Mat4x4::Translation(Vec3(translation.x, translation.y, -1.0f)) *
+                       Mat4x4::Scale(Vec3(rectangle_dimension_pixels, rectangle_dimension_pixels, 1.0f));
 
     vkCmdPushConstants(command, ctx->engine->pipelines.debug_billboard.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
-                       sizeof(mat4x4), mvp);
+                       sizeof(Mat4x4), mvp.data());
     vkCmdPushConstants(command, ctx->engine->pipelines.debug_billboard.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                       sizeof(mat4x4), sizeof(cascade), &cascade);
+                       sizeof(Mat4x4), sizeof(cascade), &cascade);
 
     vkCmdDraw(command, 4, 1, 0, 0);
   }
@@ -1870,22 +1782,21 @@ void orientation_axis(ThreadJobData tjd)
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry.pipeline);
 
-  RenderEntityParams params = {
-      .cmd             = command,
-      .pipeline_layout = ctx->engine->pipelines.colored_geometry.layout,
-  };
+  RenderEntityParams params;
+  params.cmd             = command;
+  params.pipeline_layout = ctx->engine->pipelines.colored_geometry.layout;
 
   copy_camera_settings(params, ctx->game->player);
 
-  vec3 colors[] = {
-      {1.0f, 0.0f, 0.0f},
-      {0.0f, 1.0f, 0.0f},
-      {0.0f, 0.0f, 1.0f},
+  Vec3 colors[] = {
+      Vec3(1.0f, 0.0f, 0.0f),
+      Vec3(0.0f, 1.0f, 0.0f),
+      Vec3(0.0f, 0.0f, 1.0f),
   };
 
   for (uint32_t i = 0; i < SDL_arraysize(ctx->game->axis_arrow_entities); ++i)
   {
-    SDL_memcpy(params.color, colors[i], sizeof(vec3));
+    params.color = colors[i];
     render_entity(ctx->game->axis_arrow_entities[i], ctx->game->materials.lil_arrow, *ctx->engine, params);
   }
 
@@ -1914,7 +1825,7 @@ void tesselated_ground(ThreadJobData tjd)
         : projection(game.player.camera_projection)
         , view(game.player.camera_view)
         , camera_position(game.player.camera_position)
-        , adjustment(game.DEBUG_VEC2[0])
+        , adjustment(game.DEBUG_VEC2.x)
         , time(game.current_time_sec)
     {
     }

@@ -1,35 +1,35 @@
 #include "engine.hh"
-#include "linmath.h"
+#include "math.hh"
 
 namespace {
 
 struct TrianglesVertex
 {
-  vec3 position;
-  vec3 normal;
-  vec2 tex_coord;
+  Vec3 position;
+  Vec3 normal;
+  Vec2 tex_coord;
 };
 
 struct ImguiVertex
 {
-  vec2     position;
-  vec2     tex_coord;
-  uint32_t color;
+  Vec2     position;
+  Vec2     tex_coord;
+  uint32_t color = 0u;
 };
 
 struct SkinnedVertex
 {
-  vec3     position;
-  vec3     normal;
-  vec2     texcoord;
-  uint16_t joint[4];
-  vec4     weight;
+  Vec3     position;
+  Vec3     normal;
+  Vec2     texcoord;
+  uint16_t joint[4] = {};
+  Vec4     weight;
 };
 
 struct GreenGuiVertex
 {
-  vec2 position;
-  vec2 uv;
+  Vec2 position;
+  Vec2 uv;
 };
 
 struct TwoStageShader
@@ -1597,7 +1597,7 @@ void green_gui_lines(Engine& engine)
   VkVertexInputBindingDescription vertex_binding_descriptions[] = {
       {
           .binding   = 0,
-          .stride    = sizeof(vec2),
+          .stride    = sizeof(Vec2),
           .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
       },
   };

@@ -6,7 +6,7 @@ namespace {
 class LineSink
 {
 public:
-  LineSink(vec2* dst, uint32_t capacity)
+  LineSink(Vec2* dst, uint32_t capacity)
       : vertices(dst)
       , last_idx(0)
       , capacity(capacity)
@@ -34,12 +34,12 @@ private:
   void push(float x, float y)
   {
     SDL_assert(last_idx < capacity);
-    vec2& it = vertices[last_idx++];
-    it[0]    = x;
-    it[1]    = y;
+    Vec2& it = vertices[last_idx++];
+    it.x     = x;
+    it.y     = y;
   }
 
-  vec2*    vertices;
+  Vec2*    vertices;
   uint32_t last_idx;
   uint32_t capacity;
   uint32_t counter;
@@ -47,7 +47,7 @@ private:
 
 } // namespace
 
-void generate_gui_lines(const GenerateGuiLinesCommand& cmd, vec2 dst[], uint32_t dst_capacity,
+void generate_gui_lines(const GenerateGuiLinesCommand& cmd, Vec2 dst[], uint32_t dst_capacity,
                         GuiLineSizeCount& green_counter, GuiLineSizeCount& red_counter,
                         GuiLineSizeCount& yellow_counter)
 {
@@ -74,10 +74,10 @@ void generate_gui_lines(const GenerateGuiLinesCommand& cmd, vec2 dst[], uint32_t
   //////////////////////////////////////////////////////////////////////////////
   // GREEN - BIG
   //////////////////////////////////////////////////////////////////////////////
-  sink.push_offset(max_left_x, top_y-0.005f, ruler_lid_length, 0.0f);
-  sink.push_offset(max_left_x, bottom_y+0.005f, ruler_lid_length, 0.0f);
-  sink.push_offset(max_right_x, top_y-0.005f, -ruler_lid_length, 0.0f);
-  sink.push_offset(max_right_x, bottom_y+0.005f, -ruler_lid_length, 0.0f);
+  sink.push_offset(max_left_x, top_y - 0.005f, ruler_lid_length, 0.0f);
+  sink.push_offset(max_left_x, bottom_y + 0.005f, ruler_lid_length, 0.0f);
+  sink.push_offset(max_right_x, top_y - 0.005f, -ruler_lid_length, 0.0f);
+  sink.push_offset(max_right_x, bottom_y + 0.005f, -ruler_lid_length, 0.0f);
   green_counter.big = sink.reset_counter();
 
   //////////////////////////////////////////////////////////////////////////////
@@ -224,21 +224,18 @@ void generate_gui_lines(const GenerateGuiLinesCommand& cmd, vec2 dst[], uint32_t
     {
       const float side_mod = (0 < side) ? -1.0f : 1.0f;
 
-      vec2 base_offset = {side_mod * height_ruler_left_x_position, cmd.player_y_location_meters / 8.0f};
+      Vec2 base_offset = Vec2(side_mod * height_ruler_left_x_position, cmd.player_y_location_meters / 8.0f);
 
       // endless repetition
-      while (base_offset[1] > -0.5f)
-        base_offset[1] -= 0.8f;
+      while (base_offset.y > -0.5f)
+        base_offset.y -= 0.8f;
 
-      const vec2 size = {side_mod * height_ruler_length, 0.2f};
+      const Vec2 size   = Vec2(side_mod * height_ruler_length, 0.2f);
+      const Vec2 offset = base_offset + Vec2(0.0f, i * 0.4f);
 
-      vec2 offset     = {};
-      vec2 correction = {0.0f, i * 0.4f};
-      vec2_add(offset, correction, base_offset);
-
-      sink.push_offset(offset[0], offset[1] + (0.5f * size[1]), size[0], 0.0f);
-      sink.push_offset(offset[0], offset[1] + (0.5f * size[1]), 0.0f, -size[1]);
-      sink.push_offset(offset[0], offset[1] - (0.5f * size[1]), size[0], 0.0f);
+      sink.push_offset(offset.x, offset.y + (0.5f * size.y), size.x, 0.0f);
+      sink.push_offset(offset.x, offset.y + (0.5f * size.y), 0.0f, -size.y);
+      sink.push_offset(offset.x, offset.y - (0.5f * size.y), size.x, 0.0f);
     }
   }
   red_counter.tiny = sink.reset_counter();

@@ -1,30 +1,26 @@
 #include "cubemap.hh"
 #include "../materials.hh"
-#include "engine.hh"
-#include <SDL2/SDL_log.h>
+#include <algorithm>
 
-static constexpr float calculate_mip_divisor(int mip_level) { return mip_level ? SDL_powf(2, mip_level) : 1.0f; }
-
-static void generate_cubemap_views(mat4x4 views[], vec3 centers[], vec3 ups[], uint32_t count)
+static constexpr float calculate_mip_divisor(int mip_level)
 {
-  vec3 eye = {0.0f, 0.0f, 0.0f};
-  for (uint32_t i = 0; i < count; ++i)
-    mat4x4_look_at(views[i], eye, centers[i], ups[i]);
+  return mip_level ? SDL_powf(2, static_cast<float>(mip_level)) : 1.0f;
 }
 
-static void generate_cubemap_views(mat4x4 views[6])
+static void generate_cubemap_views(Mat4x4 views[6])
 {
-  vec3 centers[] = {
-      {1.0f, 0.0f, 0.0f},  {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f},
-      {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f},  {0.0f, 0.0f, -1.0f},
+  const Vec3 centers[] = {
+      Vec3(1.0f, 0.0f, 0.0f),  Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f),
+      Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f),  Vec3(0.0f, 0.0f, -1.0f),
   };
 
-  vec3 ups[] = {
-      {0.0f, -1.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f},
-      {0.0f, 0.0f, -1.0f}, {0.0f, -1.0f, 0.0f}, {0.0f, -1.0f, 0.0f},
+  const Vec3 ups[] = {
+      Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f),
+      Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f),
   };
 
-  generate_cubemap_views(views, centers, ups, 6);
+  std::transform(centers, &centers[6], ups, views,
+                 [](const Vec3& center, const Vec3& up) { return Mat4x4::LookAt(Vec3(0.0f, 0.0f, 0.0f), center, up); });
 }
 
 static VkExtent3D create_flat_extent(int size[2])
@@ -53,7 +49,8 @@ static void allocate_memory(Engine* engine, Texture& t)
   vkBindImageMemory(engine->device, t.image, engine->memory_blocks.device_images.memory, t.memory_offset);
 }
 
-Texture generate_cubemap(Engine* engine, Materials* materials, const char* equirectangular_filepath, int desired_size[2])
+Texture generate_cubemap(Engine* engine, Materials* materials, const char* equirectangular_filepath,
+                         int desired_size[2])
 {
   const VkFormat surface_format = engine->surface_format.format;
 
@@ -497,25 +494,19 @@ Texture generate_cubemap(Engine* engine, Materials* materials, const char* equir
 
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set, 0, nullptr);
 
-    mat4x4 projection{};
-    mat4x4_perspective(projection, to_rad(90.0f), 1.0f, 0.1f, 100.0f);
+    Mat4x4 projection;
+    projection.perspective(1.0f, to_rad(90.0f), 0.1f, 100.0f);
+    projection.columns[1].y *= -1.0f;
 
-    mat4x4 views[6]{};
+    Mat4x4 views[6];
     generate_cubemap_views(views);
 
     for (int i = 0; i < 6; ++i)
     {
-      mat4x4 projectionview{};
-      mat4x4_mul(projectionview, projection, views[i]);
-
-      mat4x4 model{};
-      mat4x4_identity(model);
-
-      mat4x4 mvp = {};
-      mat4x4_mul(mvp, projectionview, model);
+      const Mat4x4 projectionview = projection * views[i];
 
       vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[i]);
-      vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
+      vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Mat4x4), projectionview.data());
 
       const Node& node = materials->box.nodes.data[1];
       Mesh&       mesh = materials->box.meshes.data[node.mesh];
@@ -573,7 +564,8 @@ Texture generate_cubemap(Engine* engine, Materials* materials, const char* equir
   return result;
 }
 
-Texture generate_irradiance_cubemap(Engine* engine, Materials* materials, Texture environment_cubemap_idx, int desired_size[2])
+Texture generate_irradiance_cubemap(Engine* engine, Materials* materials, Texture environment_cubemap_idx,
+                                    int desired_size[2])
 {
   const VkFormat surface_format = engine->surface_format.format;
 
@@ -990,26 +982,20 @@ Texture generate_irradiance_cubemap(Engine* engine, Materials* materials, Textur
       vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
     }
 
-    mat4x4 projection{};
-    mat4x4_perspective(projection, to_rad(90.0f), 1.0f, 0.1f, 100.0f);
+    Mat4x4 projection;
+    projection.perspective(1.0f, to_rad(90.0f), 0.1f, 100.0f);
+    projection.columns[1].y *= -1.0f;
 
-    mat4x4 views[6]{};
+    Mat4x4 views[6];
     generate_cubemap_views(views);
 
     for (int i = 0; i < 6; ++i)
     {
-      mat4x4 projectionview{};
-      mat4x4_mul(projectionview, projection, views[i]);
-
-      mat4x4 model{};
-      mat4x4_identity(model);
-
-      mat4x4 mvp = {};
-      mat4x4_mul(mvp, projectionview, model);
+      const Mat4x4 projectionview = projection * views[i];
 
       vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[i]);
       vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set, 0, nullptr);
-      vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
+      vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Mat4x4), projectionview.data());
 
       const Node& node = materials->box.nodes.data[1];
       Mesh&       mesh = materials->box.meshes.data[node.mesh];
@@ -1063,7 +1049,8 @@ Texture generate_irradiance_cubemap(Engine* engine, Materials* materials, Textur
   return result;
 }
 
-Texture generate_prefiltered_cubemap(Engine* engine, Materials* materials, Texture environment_cubemap_idx, int desired_size[2])
+Texture generate_prefiltered_cubemap(Engine* engine, Materials* materials, Texture environment_cubemap_idx,
+                                     int desired_size[2])
 {
   const VkFormat surface_format = engine->surface_format.format;
 
@@ -1249,11 +1236,11 @@ Texture generate_prefiltered_cubemap(Engine* engine, Materials* materials, Textu
         {
             .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
             .offset     = 0,
-            .size       = sizeof(mat4x4),
+            .size       = sizeof(Mat4x4),
         },
         {
             .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-            .offset     = sizeof(mat4x4),
+            .offset     = sizeof(Mat4x4),
             .size       = sizeof(float),
         },
     };
@@ -1501,29 +1488,23 @@ Texture generate_prefiltered_cubemap(Engine* engine, Materials* materials, Textu
         vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
       }
 
-      mat4x4 projection{};
-      mat4x4_perspective(projection, to_rad(90.0f), 1.0f, 0.1f, 100.0f);
+      Mat4x4 projection;
+      projection.perspective(1.0f, to_rad(90.0f), 0.1f, 100.0f);
+      projection.columns[1].y *= -1.0f;
 
-      mat4x4 views[6]{};
+      Mat4x4 views[6];
       generate_cubemap_views(views);
 
       const float roughness = (float)mip_level / (float)(DESIRED_MIP_LEVELS - 1);
       for (int cube_side = 0; cube_side < CUBE_SIDES; ++cube_side)
       {
-        mat4x4 projectionview{};
-        mat4x4_mul(projectionview, projection, views[cube_side]);
-
-        mat4x4 model{};
-        mat4x4_identity(model);
-
-        mat4x4 mvp = {};
-        mat4x4_mul(mvp, projectionview, model);
+        const Mat4x4 projectionview = projection * views[cube_side];
 
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[CUBE_SIDES * mip_level + cube_side]);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set, 0,
                                 nullptr);
-        vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4x4), mvp);
-        vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mat4x4), sizeof(float),
+        vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Mat4x4), projectionview.data());
+        vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(Mat4x4), sizeof(float),
                            &roughness);
 
         const Node& node = materials->box.nodes.data[1];
@@ -1744,7 +1725,7 @@ Texture generate_brdf_lookup(Engine* engine, int size)
         .depthTestEnable  = VK_FALSE,
         .depthWriteEnable = VK_FALSE,
         .depthCompareOp   = VK_COMPARE_OP_LESS_OR_EQUAL,
-        .front            = depth_stencil.back,
+        .front            = {.compareOp = VK_COMPARE_OP_ALWAYS},
         .back             = {.compareOp = VK_COMPARE_OP_ALWAYS},
     };
 

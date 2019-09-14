@@ -1,5 +1,5 @@
 #include "engine.hh"
-#include "linmath.h"
+#include "math.hh"
 
 namespace {
 
@@ -9,7 +9,7 @@ void shadowmap(Engine& engine)
       {
           .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
           .offset     = 0,
-          .size       = sizeof(mat4x4) + sizeof(uint32_t),
+          .size       = sizeof(Mat4x4) + sizeof(uint32_t),
       },
   };
 
@@ -30,7 +30,7 @@ void skybox(Engine& engine)
       {
           .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
           .offset     = 0,
-          .size       = 2 * sizeof(mat4x4),
+          .size       = 2 * sizeof(Mat4x4),
       },
   };
 
@@ -51,7 +51,7 @@ void scene3D(Engine& engine)
       {
           .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
           .offset     = 0,
-          .size       = 3 * sizeof(mat4x4) + sizeof(vec3),
+          .size       = 3 * sizeof(Mat4x4) + sizeof(Vec3),
       },
   };
 
@@ -80,7 +80,7 @@ void pbr_water(Engine& engine)
       {
           .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
           .offset     = 0,
-          .size       = 3 * sizeof(mat4x4) + sizeof(vec3) + sizeof(float),
+          .size       = 3 * sizeof(Mat4x4) + sizeof(Vec3) + sizeof(float),
       },
   };
 
@@ -107,12 +107,12 @@ void colored_geometry(Engine& engine)
       {
           .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
           .offset     = 0,
-          .size       = sizeof(mat4x4),
+          .size       = sizeof(Mat4x4),
       },
       {
 
           .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .offset     = sizeof(mat4x4),
+          .offset     = sizeof(Mat4x4),
           .size       = 3 * sizeof(float),
       },
   };
@@ -132,12 +132,12 @@ void colored_geometry_triangle_strip(Engine& engine)
       {
           .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
           .offset     = 0,
-          .size       = sizeof(mat4x4),
+          .size       = sizeof(Mat4x4),
       },
       {
 
           .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .offset     = sizeof(mat4x4),
+          .offset     = sizeof(Mat4x4),
           .size       = 3 * sizeof(float),
       },
   };
@@ -157,11 +157,11 @@ void colored_geometry_skinned(Engine& engine)
       {
           .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
           .offset     = 0,
-          .size       = sizeof(mat4x4),
+          .size       = sizeof(Mat4x4),
       },
       {
           .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .offset     = sizeof(mat4x4),
+          .offset     = sizeof(Mat4x4),
           .size       = 3 * sizeof(float),
       },
   };
@@ -183,11 +183,11 @@ void green_gui(Engine& engine)
       {
           .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
           .offset     = 0,
-          .size       = sizeof(mat4x4),
+          .size       = sizeof(Mat4x4),
       },
       {
           .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .offset     = sizeof(mat4x4),
+          .offset     = sizeof(Mat4x4),
           .size       = sizeof(float),
       },
   };
@@ -209,11 +209,11 @@ void green_gui_weapon_selector_box_left(Engine& engine)
       {
           .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
           .offset     = 0,
-          .size       = sizeof(mat4x4),
+          .size       = sizeof(Mat4x4),
       },
       {
           .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .offset     = sizeof(mat4x4),
+          .offset     = sizeof(Mat4x4),
           .size       = 3 * sizeof(float),
       },
   };
@@ -235,11 +235,11 @@ void green_gui_weapon_selector_box_right(Engine& engine)
       {
           .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
           .offset     = 0,
-          .size       = sizeof(mat4x4),
+          .size       = sizeof(Mat4x4),
       },
       {
           .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .offset     = sizeof(mat4x4),
+          .offset     = sizeof(Mat4x4),
           .size       = 3 * sizeof(float),
       },
   };
@@ -261,7 +261,7 @@ void green_gui_lines(Engine& engine)
       {
           .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
           .offset     = 0,
-          .size       = sizeof(vec4),
+          .size       = sizeof(Vec4),
       },
   };
 
@@ -280,15 +280,15 @@ void green_gui_sdf_font(Engine& engine)
 {
   struct VertexPushConstant
   {
-    mat4x4 mvp;
-    vec2   character_coordinate;
-    vec2   character_size;
+    Mat4x4 mvp;
+    Vec2   character_coordinate;
+    Vec2   character_size;
   };
 
   struct FragmentPushConstant
   {
-    vec3  color;
-    float time;
+    Vec3  color;
+    float time = 0.0f;
   };
 
   VkPushConstantRange ranges[] = {
@@ -321,12 +321,12 @@ void green_gui_triangle(Engine& engine)
       {
           .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
           .offset     = 0,
-          .size       = 2 * sizeof(vec4),
+          .size       = 2 * sizeof(Vec4),
       },
       {
           .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .offset     = 2 * sizeof(vec4),
-          .size       = sizeof(vec4),
+          .offset     = 2 * sizeof(Vec4),
+          .size       = sizeof(Vec4),
       },
   };
 
@@ -345,12 +345,12 @@ void green_gui_radar_dots(Engine& engine)
       {
           .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
           .offset     = 0,
-          .size       = sizeof(vec4),
+          .size       = sizeof(Vec4),
       },
       {
           .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .offset     = sizeof(vec4),
-          .size       = sizeof(vec4),
+          .offset     = sizeof(Vec4),
+          .size       = sizeof(Vec4),
       },
   };
 
@@ -390,11 +390,11 @@ void debug_shadowmap_billboard(Engine& engine)
       {
           .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
           .offset     = 0,
-          .size       = sizeof(mat4x4),
+          .size       = sizeof(Mat4x4),
       },
       {
           .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .offset     = sizeof(mat4x4),
+          .offset     = sizeof(Mat4x4),
           .size       = sizeof(uint32_t),
       },
   };
@@ -416,12 +416,12 @@ void colored_model_wireframe(Engine& engine)
       {
           .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
           .offset     = 0,
-          .size       = sizeof(mat4x4),
+          .size       = sizeof(Mat4x4),
       },
       {
           .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .offset     = sizeof(mat4x4),
-          .size       = sizeof(vec3),
+          .offset     = sizeof(Mat4x4),
+          .size       = sizeof(Vec3),
       },
   };
 
@@ -440,7 +440,7 @@ void tesselated_ground(Engine& engine)
       {
           .stageFlags = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
           .offset     = 0,
-          .size       = 2 * sizeof(mat4x4) + 2 * sizeof(float) + sizeof(vec3),
+          .size       = 2 * sizeof(Mat4x4) + 2 * sizeof(float) + sizeof(Vec3),
       },
   };
 

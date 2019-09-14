@@ -1,6 +1,5 @@
 #include "game.hh"
 #include <SDL2/SDL_assert.h>
-#include <SDL2/SDL_stdinc.h>
 
 GenerateSdfFontCommandResult generate_sdf_font(const GenerateSdfFontCommand& cmd)
 {
@@ -27,13 +26,11 @@ GenerateSdfFontCommandResult generate_sdf_font(const GenerateSdfFontCommand& cmd
   float x_model_adjustment_offset_factor = cmd.scaling * char_data.xoffset / (cmd.texture_size[0] * 2.0f);
   float x_model_adjustment = cmd.cursor + x_model_adjustment_size_factor + x_model_adjustment_offset_factor;
 
-  mat4x4 translation_matrix = {};
-  mat4x4_translate(translation_matrix, x_model_adjustment + cmd.position[0], y_model_adjustment + cmd.position[1],
-                   cmd.position[2]);
+  Mat4x4 translation_matrix;
+  translation_matrix.translate(
+      Vec3(x_model_adjustment + cmd.position.x, y_model_adjustment + cmd.position.y, cmd.position.z));
 
-  mat4x4 scale_matrix = {};
-  mat4x4_identity(scale_matrix);
-  mat4x4_scale_aniso(scale_matrix, scale_matrix, x_scaling, y_scaling, 1.0f);
+  Mat4x4 scale_matrix = Mat4x4::Scale(Vec3(x_scaling, y_scaling, 1.0f));
 
   GenerateSdfFontCommandResult result = {
       .character_coordinate =
@@ -49,7 +46,7 @@ GenerateSdfFontCommandResult generate_sdf_font(const GenerateSdfFontCommand& cmd
       .cursor_movement = cmd.scaling * float_div(char_data.xadvance, cmd.texture_size[0]),
   };
 
-  mat4x4_mul(result.transform, translation_matrix, scale_matrix);
+  result.transform = translation_matrix * scale_matrix;
 
   return result;
 }

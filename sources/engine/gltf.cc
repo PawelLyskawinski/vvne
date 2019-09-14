@@ -3,7 +3,6 @@
 #include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_log.h>
 #include <SDL2/SDL_timer.h>
-#include <linmath.h>
 
 #ifndef __linux__
 #include <stdlib.h>
@@ -362,18 +361,18 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     struct Vertex
     {
-      vec3 position;
-      vec3 normal;
-      vec2 texcoord;
+      Vec3 position;
+      Vec3 normal;
+      Vec2 texcoord;
     };
 
     struct SkinnedVertex
     {
-      vec3     position;
-      vec3     normal;
-      vec2     texcoord;
+      Vec3     position;
+      Vec3     normal;
+      Vec2     texcoord;
       uint16_t joint[4];
-      vec4     weight;
+      Vec4     weight;
     };
 
     const bool is_index_type_uint16 = (IndexType::UINT16 == index_type);
@@ -427,7 +426,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
           static_cast<int>(is_skinning_used ? offsetof(SkinnedVertex, position) : offsetof(Vertex, position));
 
       int src_stride = buffer_view.integer("stride");
-      src_stride     = src_stride ? src_stride : sizeof(vec3);
+      src_stride     = src_stride ? src_stride : sizeof(Vec3);
 
       for (int i = 0; i < position_count; ++i)
       {
@@ -435,7 +434,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
         uint8_t*     dst_raw_ptr          = &upload_buffer[upload_buffer_offset];
         float*       dst                  = reinterpret_cast<float*>(dst_raw_ptr);
         const float* src = reinterpret_cast<const float*>(&binary_data[start_offset + (src_stride * i)]);
-        SDL_memcpy(dst, src, sizeof(vec3));
+        SDL_memcpy(dst, src, sizeof(Vec3));
       }
     }
 
@@ -450,7 +449,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
           static_cast<int>(is_skinning_used ? offsetof(SkinnedVertex, normal) : offsetof(Vertex, normal));
 
       int src_stride = buffer_view.integer("stride");
-      src_stride     = src_stride ? src_stride : sizeof(vec3);
+      src_stride     = src_stride ? src_stride : sizeof(Vec3);
 
       for (int i = 0; i < position_count; ++i)
       {
@@ -458,7 +457,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
         uint8_t*     dst_raw_ptr          = &upload_buffer[upload_buffer_offset];
         float*       dst                  = reinterpret_cast<float*>(dst_raw_ptr);
         const float* src = reinterpret_cast<const float*>(&binary_data[start_offset + (src_stride * i)]);
-        SDL_memcpy(dst, src, sizeof(vec3));
+        SDL_memcpy(dst, src, sizeof(Vec3));
       }
     }
 
@@ -474,7 +473,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
           static_cast<int>(is_skinning_used ? offsetof(SkinnedVertex, texcoord) : offsetof(Vertex, texcoord));
 
       int src_stride = buffer_view.integer("stride");
-      src_stride     = src_stride ? src_stride : sizeof(vec2);
+      src_stride     = src_stride ? src_stride : sizeof(Vec2);
 
       for (int i = 0; i < position_count; ++i)
       {
@@ -482,7 +481,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
         uint8_t*     dst_raw_ptr          = &upload_buffer[upload_buffer_offset];
         float*       dst                  = reinterpret_cast<float*>(dst_raw_ptr);
         const float* src = reinterpret_cast<const float*>(&binary_data[start_offset + (src_stride * i)]);
-        SDL_memcpy(dst, src, sizeof(vec2));
+        SDL_memcpy(dst, src, sizeof(Vec2));
       }
     }
 
@@ -516,13 +515,13 @@ SceneGraph loadGLB(Engine& engine, const char* path)
         SkinnedVertex* dst_vertices        = reinterpret_cast<SkinnedVertex*>(&upload_buffer[required_index_space]);
 
         int src_stride = buffer_view.integer("stride");
-        src_stride     = src_stride ? src_stride : sizeof(vec4);
+        src_stride     = src_stride ? src_stride : sizeof(Vec4);
 
         for (int i = 0; i < position_count; ++i)
         {
-          float*       dst = dst_vertices[i].weight;
+          float*       dst = &dst_vertices[i].weight.x;
           const float* src = reinterpret_cast<const float*>(&binary_data[start_offset + (src_stride * i)]);
-          SDL_memcpy(dst, src, sizeof(vec4));
+          SDL_memcpy(dst, src, sizeof(Vec4));
         }
       }
     }
@@ -678,7 +677,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
       for (int row = 0; row < 4; ++row)
         for (int column = 0; column < 4; ++column)
-          node.matrix[column][row] = matrix.idx_float((4 * row) + column);
+          node.matrix.columns[column][row] = matrix.idx_float((4 * row) + column);
     }
 
     if (node_json.has("rotation"))
@@ -687,7 +686,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
       Seeker rotation = node_json.node("rotation");
       for (int i = 0; i < 4; ++i)
       {
-        node.rotation[i] = rotation.idx_float(i);
+        node.rotation.data[i] = rotation.idx_float(i);
       }
     }
 
@@ -695,20 +694,20 @@ SceneGraph loadGLB(Engine& engine, const char* path)
     {
       node.flags |= Node::Property::Translation;
       Seeker translation = node_json.node("translation");
-      for (int i = 0; i < 3; ++i)
-      {
-        node.translation[i] = translation.idx_float(i);
-      }
+
+      node.translation.x = translation.idx_float(0);
+      node.translation.y = translation.idx_float(1);
+      node.translation.z = translation.idx_float(2);
     }
 
     if (node_json.has("scale"))
     {
       node.flags |= Node::Property::Scale;
       Seeker scale = node_json.node("scale");
-      for (int i = 0; i < 3; ++i)
-      {
-        node.scale[i] = scale.idx_float(i);
-      }
+
+      node.scale.x = scale.idx_float(0);
+      node.scale.y = scale.idx_float(1);
+      node.scale.z = scale.idx_float(2);
     }
 
     if (node_json.has("mesh"))
@@ -941,18 +940,18 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     skin.inverse_bind_matrices.count = accessor.integer("count");
     skin.inverse_bind_matrices.data =
-        engine.generic_allocator.allocate<mat4x4>(static_cast<uint32_t>(skin.inverse_bind_matrices.count));
+        engine.generic_allocator.allocate<Mat4x4>(static_cast<uint32_t>(skin.inverse_bind_matrices.count));
 
     Seeker buffer_view = buffer_views.idx(accessor.integer("bufferView"));
 
     int glb_start_offset = buffer_view.integer("byteOffset") + accessor.integer("byteOffset");
     int glb_stride       = buffer_view.integer("stride");
-    glb_stride           = glb_stride ? glb_stride : sizeof(mat4x4);
+    glb_stride           = glb_stride ? glb_stride : sizeof(Mat4x4);
 
     for (int i = 0; i < skin.inverse_bind_matrices.count; ++i)
     {
       const uint8_t* src = &binary_data[glb_start_offset + (glb_stride * i)];
-      SDL_memcpy(skin.inverse_bind_matrices[i], src, sizeof(mat4x4));
+      skin.inverse_bind_matrices[i] = Mat4x4(reinterpret_cast<const float*>(src));
     }
   }
 

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "engine.hh"
-#include "linmath.h"
+#include "math.hh"
 #include <SDL2/SDL_stdinc.h>
 #include <vulkan/vulkan.h>
 
@@ -26,28 +26,28 @@ struct Mesh
 class Node
 {
 public:
-  ArrayView<int> children;
+  ArrayView<int> children = {};
 
-  quat   rotation;
-  vec3   translation;
-  vec3   scale;
-  mat4x4 matrix;
+  Quaternion rotation;
+  Vec3       translation;
+  Vec3       scale;
+  Mat4x4     matrix;
 
-  int mesh;
-  int skin;
+  int mesh = 0;
+  int skin = 0;
 
   enum Property : uint64_t
   {
-    Children    = (1 << 0),
-    Rotation    = (1 << 1),
-    Translation = (1 << 2),
-    Scale       = (1 << 3),
-    Matrix      = (1 << 4),
-    Mesh        = (1 << 5),
-    Skin        = (1 << 6)
+    Children    = uint64_t(1) << 0u,
+    Rotation    = uint64_t(1) << 1u,
+    Translation = uint64_t(1) << 2u,
+    Scale       = uint64_t(1) << 3u,
+    Matrix      = uint64_t(1) << 4u,
+    Mesh        = uint64_t(1) << 5u,
+    Skin        = uint64_t(1) << 6u
   };
 
-  uint64_t flags;
+  uint64_t flags = 0;
 };
 
 struct Scene
@@ -94,7 +94,7 @@ struct Animation
 
 struct Skin
 {
-  ArrayView<mat4x4> inverse_bind_matrices;
+  ArrayView<Mat4x4> inverse_bind_matrices;
   ArrayView<int>    joints;
   int               skeleton;
 };

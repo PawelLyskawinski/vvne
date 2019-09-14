@@ -1,5 +1,4 @@
 #include "terrain_as_a_function.hh"
-#include "linmath.h"
 
 uint32_t tesellated_patches_nonindexed_calculate_count(uint32_t layers)
 {
@@ -21,36 +20,41 @@ namespace {
 
 struct VertexBuilder
 {
-  TerrainVertex build(const vec2 cursor) const
+  TerrainVertex build(const Vec2 cursor) const
   {
     TerrainVertex v = {
-        .position = Vec3(cursor[0], 0.0f, cursor[1]),
+        .position = Vec3(cursor.x, 0.0f, cursor.y),
         .normal   = Vec3(0.0f, -1.0f, 0.0f),
         .uv =
-            Vec2(SDL_fabsf(static_cast<float>(top_left_point[0] - cursor[0])) / static_cast<float>(vertices_on_edge),
-                 SDL_fabsf(static_cast<float>(top_left_point[1] - cursor[1])) / static_cast<float>(vertices_on_edge))};
+            Vec2(SDL_fabsf(static_cast<float>(top_left_point.x - cursor.x)) / static_cast<float>(vertices_on_edge),
+                 SDL_fabsf(static_cast<float>(top_left_point.y - cursor.y)) / static_cast<float>(vertices_on_edge))};
 
     return v;
   }
 
-  vec2     top_left_point   = {};
+  Vec2     top_left_point   = {};
   uint32_t vertices_on_edge = {};
 };
 
 struct Cursor
 {
-  Cursor(float initial_x, float initial_y)
+  explicit Cursor(const Vec2& in)
+      :cursor(in)
   {
-    cursor[0] = initial_x;
-    cursor[1] = initial_y;
   }
 
-  Cursor operator+(const Cursor& rhs) const { return Cursor(cursor[0] + rhs.cursor[0], cursor[1] + rhs.cursor[1]); }
-  const vec2& as_table() { return cursor; }
-  float&      x() { return cursor[0]; }
-  float&      y() { return cursor[1]; }
+  Cursor(float initial_x, float initial_y)
+  {
+    cursor.x = initial_x;
+    cursor.y = initial_y;
+  }
 
-  vec2 cursor = {};
+  Cursor operator+(const Cursor& rhs) const { return Cursor(cursor + rhs.cursor); }
+  const Vec2& as_table() { return cursor; }
+  float&      x() { return cursor.x; }
+  float&      y() { return cursor.y; }
+
+  Vec2 cursor = {};
 };
 
 } // namespace
@@ -61,8 +65,8 @@ void tesellated_patches_nonindexed_generate(const uint32_t layers, const float p
   // - vertices are in distance 1.0 to any neighbour. Any scaling will be done during rendering
 
   VertexBuilder builder;
-  builder.top_left_point[0] = -patch_dimention * layers;
-  builder.top_left_point[1] = patch_dimention * layers;
+  builder.top_left_point.x = -patch_dimention * layers;
+  builder.top_left_point.y = patch_dimention * layers;
   builder.vertices_on_edge  = (2 * layers) + 1;
 
   uint32_t added_verts_counter = 0;

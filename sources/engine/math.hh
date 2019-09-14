@@ -1,76 +1,54 @@
 #pragma once
 
 #include <SDL2/SDL_stdinc.h>
-#include <linmath.h>
 #include <vulkan/vulkan.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846f
 #endif
 
-constexpr float                   to_rad(float deg) noexcept { return (float(M_PI) * deg) / 180.0f; }
-constexpr float                   to_deg(float rad) noexcept { return (180.0f * rad) / float(M_PI); }
+#ifndef M_PI_2
+#define M_PI_2 (0.5f * M_PI)
+#endif
+
+constexpr float to_rad(float deg) noexcept { return (float(M_PI) * deg) / 180.0f; }
+constexpr float to_deg(float rad) noexcept { return (180.0f * rad) / float(M_PI); }
+
 template <typename T> constexpr T clamp(T val, T min, T max) { return (val < min) ? min : (val > max) ? max : val; }
 
 struct Vec2
 {
-  Vec2(float x, float y)
-      : x(x)
-      , y(y)
-  {
-  }
+  Vec2() = default;
+  Vec2(float x, float y);
+  [[nodiscard]] Vec2  operator-(const Vec2& rhs) const;
+  [[nodiscard]] Vec2  operator+(const Vec2& rhs) const;
+  [[nodiscard]] Vec2  scale(float s) const;
+  [[nodiscard]] float len() const;
+  [[nodiscard]] Vec2 normalize() const;
 
-  Vec2 operator-(const Vec2& rhs) const { return Vec2(x - rhs.x, y - rhs.y); }
-
-  float x;
-  float y;
+  float x = 0.0f;
+  float y = 0.0f;
 };
 
 struct Vec3
 {
-  explicit Vec3(float val = 0.0f)
-      : x(val)
-      , y(val)
-      , z(val)
-  {
-  }
+  explicit Vec3(float val = 0.0f);
+  Vec3(float x, float y, float z);
 
-  Vec3(float x, float y, float z)
-      : x(x)
-      , y(y)
-      , z(z)
-  {
-  }
+  [[nodiscard]] Vec3         operator-(const Vec3& rhs) const;
+  [[nodiscard]] Vec3         operator+(const Vec3& rhs) const;
+  [[nodiscard]] Vec3         scale(float s) const;
+  [[nodiscard]] float        len() const;
+  [[nodiscard]] Vec3         invert_signs() const;
+  [[nodiscard]] Vec3         normalize() const;
+  [[nodiscard]] Vec2         xz() const;
+  [[nodiscard]] Vec3         lerp(const Vec3& dst, float t) const;
+  [[nodiscard]] Vec3         mul_cross(const Vec3& rhs) const;
+  [[nodiscard]] float        mul_inner(const Vec3& rhs) const;
+  [[nodiscard]] const float* data() const { return &x; }
 
-  Vec3 operator-(const Vec3& rhs) const { return Vec3(x - rhs.x, y - rhs.y, z - rhs.z); }
-  Vec3 operator+(const Vec3& rhs) const { return Vec3(x + rhs.x, y + rhs.y, z + rhs.z); }
-  Vec3 scale(float s) const { return Vec3(x * s, y * s, z * s); }
-
-  void operator+=(const Vec3& rhs)
-  {
-    x += rhs.x;
-    y += rhs.y;
-    z += rhs.z;
-  }
-
-  float len() const { return SDL_sqrtf(x * x + y * y + z * z); }
-  Vec3  invert_signs() const { return Vec3(-x, -y, -z); }
-
-  void clamp(float min, float max)
-  {
-    x = ::clamp(x, min, max);
-    y = ::clamp(y, min, max);
-    z = ::clamp(z, min, max);
-  }
-
-  Vec3 normalize() const
-  {
-      Vec3 r;
-      vec3_norm(&r.x, &x);
-      return r;
-  }
-
-  Vec2 xz() const { return Vec2(x, z); }
+  void operator+=(const Vec3& rhs);
+  void clamp(float min, float max);
 
   float x = 0.0f;
   float y = 0.0f;
@@ -80,28 +58,28 @@ struct Vec3
 struct Vec4
 {
   Vec4() = default;
+  Vec4(float x, float y, float z, float w);
+  explicit Vec4(const Vec3& v, float w = 0.0f);
 
-  Vec4(float x, float y, float z, float w)
-      : x(x)
-      , y(y)
-      , z(z)
-      , w(w)
+  [[nodiscard]] inline Vec4         scale(float s) const { return Vec4(x * s, y * s, z * s, w * s); }
+  [[nodiscard]] inline Vec3&        as_vec3() { return *reinterpret_cast<Vec3*>(this); }
+  [[nodiscard]] inline const Vec3&  as_vec3() const { return *reinterpret_cast<const Vec3*>(this); }
+  [[nodiscard]] inline float&       operator[](uint32_t i) { return *(&x + i); }
+  [[nodiscard]] inline const float& operator[](uint32_t i) const { return *(&x + i); }
+  [[nodiscard]] float               mul_inner(const Vec4& rhs) const;
+  [[nodiscard]] Vec4                lerp(const Vec4& dst, float t) const;
+  [[nodiscard]] float               len() const;
+  [[nodiscard]] Vec4                normalize() const;
+  [[nodiscard]] inline const float* data() const { return reinterpret_cast<const float*>(&x); }
+
+  inline Vec4& operator+=(const Vec4& rhs)
   {
+    x += rhs.x;
+    y += rhs.y;
+    z += rhs.z;
+    w += rhs.w;
+    return *this;
   }
-
-  explicit Vec4(const Vec3& v, float w = 0.0f)
-      : x(v.x)
-      , y(v.y)
-      , z(v.z)
-      , w(w)
-  {
-  }
-
-  Vec4  scale(float s) const { return Vec4(x * s, y * s, z * s, w * s); }
-  Vec3& as_vec3() { return *reinterpret_cast<Vec3*>(this); }
-
-  float& operator[](uint32_t i) { return *(&x + i); }
-  const float& operator[](uint32_t i) const { return *(&x + i); }
 
   float x = 0.0f;
   float y = 0.0f;
@@ -109,66 +87,66 @@ struct Vec4
   float w = 0.0f;
 };
 
+struct Quaternion
+{
+  Quaternion() = default;
+  Quaternion(float angle, const Vec3& axis);
+
+  [[nodiscard]] Quaternion operator*(const Quaternion& rhs) const;
+  void                     rotate(float angle, const Vec3& axis);
+
+  Vec4 data;
+};
+
 struct Mat4x4
 {
   Mat4x4() = default;
-  explicit Mat4x4(mat4x4 input) { mat4x4_dup(mtx, input); }
+  explicit Mat4x4(const float* data);
+  explicit Mat4x4(const Quaternion& quat);
 
-  void translate(const Vec3 v) { mat4x4_translate(mtx, v.x, v.y, v.z); }
-  void identity() { mat4x4_identity(mtx); }
-  void scale(const Vec3 s) { mat4x4_scale_aniso(mtx, mtx, s.x, s.y, s.z); }
+  [[nodiscard]] Mat4x4              operator*(const Mat4x4& rhs) const;
+  [[nodiscard]] Vec4                operator*(const Vec4& rhs) const;
+  [[nodiscard]] inline const float& at(uint32_t r, uint32_t c) const { return columns[c][r]; }
+  [[nodiscard]] Mat4x4              invert() const;
+  [[nodiscard]] Vec4                row(uint32_t i) const;
+  [[nodiscard]] inline const float* data() const { return reinterpret_cast<const float*>(&columns[0].x); };
 
-  Mat4x4 operator*(Mat4x4& rhs)
-  {
-    Mat4x4 r;
-    mat4x4_mul(r.mtx, mtx, rhs.mtx);
-    return r;
-  }
+  void perspective(uint32_t width, uint32_t height, float fov_rads, float near_clipping_plane,
+                   float far_clipping_plane);
+  void perspective(const VkExtent2D& extent, float fov_rads, float near_cp, float far_cp);
+  void perspective(float aspect_ratio, float fov_rads, float near_cp, float far_cp);
 
-  Vec4 operator*(const Vec4& rhs) const
-  {
-    Vec4 r;
-    for (int j = 0; j < 4; ++j)
-    {
-      for (int i = 0; i < 4; ++i)
-      {
-        r[j] += mtx[i][j] * rhs[i];
-      }
-    }
-    return r;
-  }
+  void ortho(float l, float r, float b, float t, float n, float f);
+  void set_diagonal(const Vec3& values);
 
-  void perspective(const uint32_t width, const uint32_t height, float fov_rads, float near_clipping_plane,
-                   float far_clipping_plane)
-  {
-    float extent_width  = static_cast<float>(width);
-    float extent_height = static_cast<float>(height);
-    float aspect_ratio  = extent_width / extent_height;
-    mat4x4_perspective(mtx, fov_rads, aspect_ratio, near_clipping_plane, far_clipping_plane);
-    mtx[1][1] *= -1.0f;
-  }
+  void identity();
+  void transpose();
+  void translate(Vec3 v);
+  void translate_in_place(const Vec3& v);
+  void scale(Vec3 s);
 
-  void perspective(const VkExtent2D& extent, float fov_rads, float near_cp, float far_cp)
-  {
-    perspective(extent.width, extent.height, fov_rads, near_cp, far_cp);
-  }
+  [[nodiscard]] static Mat4x4 RotationX(float r);
+  [[nodiscard]] static Mat4x4 RotationY(float r);
+  [[nodiscard]] static Mat4x4 RotationZ(float r);
+  [[nodiscard]] static Mat4x4 LookAt(const Vec3& eye, const Vec3& center, const Vec3& up);
+  [[nodiscard]] static Mat4x4 Translation(const Vec3& t);
+  [[nodiscard]] static Mat4x4 Scale(const Vec3& s);
 
-  void look_at(Vec3& eye, Vec3& center, Vec3& up) { mat4x4_look_at(mtx, &eye.x, &center.x, &up.x); }
-
-  void ortho(float l, float r, float b, float t, float n, float f)
-  {
-    mat4x4_ortho(mtx, l, r, b, t, n, f);
-    mtx[1][1] *= -1.0f;
-  }
-
-  Mat4x4 invert()
-  {
-    Mat4x4 r;
-    mat4x4_invert(r.mtx, mtx);
-    return r;
-  }
-
-  const float& at(uint32_t r, uint32_t c) const { return mtx[r][c]; }
-
-  mat4x4 mtx = {};
+  //
+  // SPIR-V specification 2.18.1. Memory Layout
+  //
+  // in a matrix, lower-numbered columns appear at smaller offsets than higher-numbered columns,
+  // and lower-numbered components within the matrix’s vectors appearing at smaller offsets than high-numbered c
+  // mponents,
+  //
+  // Column-major layout maps to mathematical view:
+  // [0].x [1].x [2].x [3].x
+  // [0].y [1].y [2].y [3].y
+  // [0].z [1].z [2].z [3].z
+  // [0].w [1].w [2].w [3].w
+  //
+  // And in memory:
+  // [0]{x, y, z, w} [1]{x, y, z, w} [2]{x, y, z, w} [3]{x, y, z, w}
+  //
+  Vec4 columns[4] = {};
 };

@@ -25,10 +25,6 @@ constexpr uint64_t scancode_to_mask(SDL_Scancode scancode)
   }
 }
 
-#ifndef M_PI_2
-#define M_PI_2 (M_PI * 0.5)
-#endif
-
 } // namespace
 
 void Player::setup(uint32_t width, uint32_t height)
@@ -123,9 +119,5 @@ void Player::update(const float current_time_sec, const float delta_ms, const Ex
           .scale(camera_distance) -
       Vec3(0.0f, 1.5f, 0.0f);
 
-  {
-    Vec3 center = position - Vec3(0.0f, 1.5f, 0.0f);
-    Vec3 up     = Vec3(0.0f, -1.0f, 0.0f);
-    camera_view.look_at(camera_position, center, up);
-  }
+  camera_view = Mat4x4::LookAt(camera_position, position - Vec3(0.0f, 1.5f, 0.0f), Vec3(0.0f, -1.0f, 0.0f));
 }
