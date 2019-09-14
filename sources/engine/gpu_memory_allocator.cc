@@ -1,72 +1,43 @@
 #include "gpu_memory_allocator.hh"
 #include <SDL2/SDL_assert.h>
-#include <SDL2/SDL_log.h>
 #include <SDL2/SDL_stdinc.h>
 
-void GpuMemoryAllocator::init(VkDeviceSize max_size)
+#include <algorithm>
+
+void GpuMemoryAllocator::init(const VkDeviceSize init_max_size)
 {
-  this->max_size  = max_size;
+  max_size = init_max_size;
   reset();
 }
 
 void GpuMemoryAllocator::reset()
 {
-  nodes_count     = 1;
-  nodes[0].offset = 0;
-  nodes[0].size   = max_size;
+  nodes_count = 1;
+  nodes[0]    = {0, max_size};
 }
 
-namespace {
-
-class DestructorPrinter
+VkDeviceSize GpuMemoryAllocator::allocate_bytes(const VkDeviceSize size)
 {
-public:
-  explicit DestructorPrinter(const char* issuer, uint32_t& observed)
-      : m_issuer(issuer)
-      , m_observed(observed)
+  Node* end = nodes + nodes_count;
+  auto  it  = std::find_if(nodes, end, [size](const Node& n) { return n.size >= size; });
+
+  SDL_assert(it != end);
+
+  const VkDeviceSize result = it->offset;
+  if (size == it->size)
   {
+    std::rotate(it, it + 1, end);
   }
-  ~DestructorPrinter() { SDL_Log("%s - %u", m_issuer, m_observed); }
-
-private:
-  const char* m_issuer;
-  uint32_t&   m_observed;
-};
-
-} // namespace
-
-VkDeviceSize GpuMemoryAllocator::allocate_bytes(VkDeviceSize size)
-{
-  // DestructorPrinter p(__FUNCTION__, nodes_count);
-  for (uint32_t i = 0; i < nodes_count; ++i)
+  else
   {
-    Node& current_node = nodes[i];
-    if (current_node.size > size)
-    {
-      VkDeviceSize result = current_node.offset;
-      current_node.offset += size;
-      current_node.size -= size;
-      return result;
-    }
-    else if (current_node.size == size)
-    {
-      VkDeviceSize result = current_node.offset;
-      SDL_memmove(&nodes[i], &nodes[i + 1], sizeof(Node) * (nodes_count - i - 1));
-      return result;
-    }
+    it->offset += size;
+    it->size -= size;
   }
-
-  // Reaching this point means it's impossible to perform allocation.
-  // Extend the buffer!
-  SDL_assert(false);
-
-  return 0;
+  return result;
 }
 
 void GpuMemoryAllocator::free_bytes(VkDeviceSize offset, VkDeviceSize size)
 {
-  // DestructorPrinter p(__FUNCTION__, nodes_count);
-
   // basically a sorted container insertion problem
   const Node insertion = {offset, size};
 
