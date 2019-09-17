@@ -23,6 +23,7 @@ struct Vec2
   [[nodiscard]] Vec2  operator-(const Vec2& rhs) const;
   [[nodiscard]] Vec2  operator+(const Vec2& rhs) const;
   [[nodiscard]] Vec2  scale(float s) const;
+  [[nodiscard]] Vec2  scale(const Vec2& s) const;
   [[nodiscard]] float len() const;
   [[nodiscard]] Vec2 normalize() const;
 
