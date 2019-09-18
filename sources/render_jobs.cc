@@ -1798,10 +1798,6 @@ void orientation_axis(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-namespace {
-
-} // namespace
-
 void tesselated_ground(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
