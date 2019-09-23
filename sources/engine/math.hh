@@ -26,6 +26,7 @@ struct Vec2
   [[nodiscard]] Vec2  scale(const Vec2& s) const;
   [[nodiscard]] float len() const;
   [[nodiscard]] Vec2 normalize() const;
+  [[nodiscard]] Vec2 invert() const;
 
   float x = 0.0f;
   float y = 0.0f;
@@ -34,6 +35,7 @@ struct Vec2
 struct Vec3
 {
   explicit Vec3(float val = 0.0f);
+  Vec3(const Vec2& vec, float val);
   Vec3(float x, float y, float z);
 
   [[nodiscard]] Vec3         operator-(const Vec3& rhs) const;

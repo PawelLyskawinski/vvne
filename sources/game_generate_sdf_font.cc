@@ -11,47 +11,26 @@ static uint32_t find_character_index(const uint8_t* begin, const uint8_t* end, c
 
 GenerateSdfFontCommandResult generate_sdf_font(const GenerateSdfFontCommand& cmd)
 {
-  const uint8_t* begin     = cmd.lookup_table;
-  const uint8_t* end       = begin + cmd.characters_pool_count;
-  const SdfChar& char_data = cmd.character_data[find_character_index(begin, end, cmd.character)];
-
-  const Vec2  char_size          = Vec2(char_data.width, char_data.height);
-
-  float width_uv_adjusted  = char_data.width / (cmd.texture_size.x * 2.0f);
-  float height_uv_adjusted = char_data.height / (cmd.texture_size.y * 4.0f);
-
-  float x_scaling = cmd.scaling * width_uv_adjusted;
-  float y_scaling = cmd.scaling * height_uv_adjusted;
-
-  float y_model_adjustment_size_factor   = y_scaling - 1.0f;
-  float y_model_adjustment_offset_factor = cmd.scaling * char_data.yoffset / (cmd.texture_size.y * 2.0f);
-  float y_model_adjustment               = y_model_adjustment_offset_factor + y_model_adjustment_size_factor;
-
-  float x_model_adjustment_size_factor   = x_scaling - 2.0f;
-  float x_model_adjustment_offset_factor = cmd.scaling * char_data.xoffset / (cmd.texture_size.x * 2.0f);
-  float x_model_adjustment = cmd.cursor + x_model_adjustment_size_factor + x_model_adjustment_offset_factor;
-
-  Mat4x4 translation_matrix;
-  translation_matrix.translate(
-      Vec3(x_model_adjustment + cmd.position.x, y_model_adjustment + cmd.position.y, cmd.position.z));
-
-  Mat4x4 scale_matrix = Mat4x4::Scale(Vec3(x_scaling, y_scaling, 1.0f));
+  const uint8_t* begin                 = cmd.lookup_table;
+  const uint8_t* end                   = begin + cmd.characters_pool_count;
+  const SdfChar& char_data             = cmd.character_data[find_character_index(begin, end, cmd.character)];
+  const Vec2     char_size             = Vec2(char_data.width, char_data.height);
+  const Vec2     char_offsets          = Vec2(char_data.xoffset, char_data.yoffset);
+  const Vec2     char_position         = Vec2(char_data.x, char_data.y);
+  const Vec2     uv_adjusted           = char_size.scale(cmd.texture_size).scale(Vec2(0.5f, 0.25f));
+  const Vec2     scaling               = uv_adjusted.scale(cmd.scaling);
+  const Vec2     inverted_texture_size = cmd.texture_size.invert();
+  const Vec2     model_adjustment =
+      scaling + (char_offsets.scale(cmd.scaling).scale(cmd.texture_size.scale(2.0f))) - Vec2(1.0f + cmd.cursor, 2.0f);
+  const Mat4x4 translation = Mat4x4::Translation(Vec3(model_adjustment, 0.0f) + cmd.position);
+  const Mat4x4 scale       = Mat4x4::Scale(Vec3(uv_adjusted.scale(cmd.scaling), 1.0f));
 
   GenerateSdfFontCommandResult result = {
-      .character_coordinate =
-          {
-              static_cast<float>(char_data.x) / cmd.texture_size.x,
-              static_cast<float>(char_data.y) / cmd.texture_size.y,
-          },
-      .character_size =
-          {
-              static_cast<float>(char_data.width) / cmd.texture_size.x,
-              static_cast<float>(char_data.height) / cmd.texture_size.y,
-          },
-      .cursor_movement = cmd.scaling * (static_cast<float>(char_data.xadvance) / cmd.texture_size.x),
+      .character_coordinate = char_position.scale(inverted_texture_size),
+      .character_size       = char_size.scale(inverted_texture_size),
+      .transform            = translation * scale,
+      .cursor_movement      = cmd.scaling * (static_cast<float>(char_data.xadvance) / cmd.texture_size.x),
   };
-
-  result.transform = translation_matrix * scale_matrix;
 
   return result;
 }
