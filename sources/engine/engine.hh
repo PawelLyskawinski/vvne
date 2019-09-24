@@ -168,6 +168,21 @@ struct Engine
   Texture        load_texture(const char* filepath, bool register_for_destruction = true);
   Texture        load_texture(SDL_Surface* surface, bool register_for_destruction = true);
 
+  [[nodiscard]] static inline uint32_t to_pixel_length(const float line_len, const float max_len)
+  {
+      return static_cast<uint32_t>((line_len * max_len * 0.5f));
+  }
+
+  [[nodiscard]] inline uint32_t to_pixel_length_x(const float line_len) const
+  {
+    return to_pixel_length(line_len, extent2D.width);
+  }
+
+  [[nodiscard]] inline uint32_t to_pixel_length_y(const float line_len) const
+  {
+    return to_pixel_length(line_len, extent2D.height);
+  }
+
 private:
   void setup_render_passes();
   void setup_framebuffers();

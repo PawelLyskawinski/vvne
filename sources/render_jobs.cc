@@ -9,11 +9,6 @@ GenerateSdfFontCommandResult generate_sdf_font(const GenerateSdfFontCommand& cmd
 
 namespace {
 
-uint32_t line_to_pixel_length(float coord, int pixel_max_size)
-{
-  return static_cast<uint32_t>((coord * pixel_max_size * 0.5f));
-}
-
 float pixels_to_line_length(int pixels, int pixels_max_size)
 {
   return static_cast<float>(2 * pixels) / static_cast<float>(pixels_max_size);
@@ -496,10 +491,10 @@ void robot_gui_lines(ThreadJobData tjd)
   // ------ RED ------
   {
     VkRect2D scissor{};
-    scissor.extent.width  = line_to_pixel_length(1.50f, ctx->engine->extent2D.width);
-    scissor.extent.height = line_to_pixel_length(1.02f, ctx->engine->extent2D.height);
+    scissor.extent.width  = ctx->engine->to_pixel_length_x(1.5f);
+    scissor.extent.height = ctx->engine->to_pixel_length_y(1.02f);
     scissor.offset.x      = (ctx->engine->extent2D.width / 2) - (scissor.extent.width / 2);
-    scissor.offset.y      = line_to_pixel_length(0.29f, ctx->engine->extent2D.height); // 118
+    scissor.offset.y      = ctx->engine->to_pixel_length_y(0.29f);
     vkCmdSetScissor(command, 0, 1, &scissor);
 
     const float             line_widths[] = {7.0f, 5.0f, 3.0f, 1.0f};
@@ -524,10 +519,10 @@ void robot_gui_lines(ThreadJobData tjd)
   // ------ YELLOW ------
   {
     VkRect2D scissor      = {};
-    scissor.extent.width  = line_to_pixel_length(0.5f, ctx->engine->extent2D.width);
-    scissor.extent.height = line_to_pixel_length(1.3f, ctx->engine->extent2D.height);
+    scissor.extent.width  = ctx->engine->to_pixel_length_x(0.5f);
+    scissor.extent.height = ctx->engine->to_pixel_length_y(1.3f);
     scissor.offset.x      = (ctx->engine->extent2D.width / 2) - (scissor.extent.width / 2);
-    scissor.offset.y      = line_to_pixel_length(0.2f, ctx->engine->extent2D.height);
+    scissor.offset.y      = ctx->engine->to_pixel_length_y(0.2f);
     vkCmdSetScissor(command, 0, 1, &scissor);
 
     const float             line_widths[] = {7.0f, 5.0f, 3.0f, 1.0f};
@@ -776,10 +771,10 @@ void height_ruler_text(ThreadJobData tjd)
       cursor += r.cursor_movement;
 
       VkRect2D scissor{};
-      scissor.extent.width  = line_to_pixel_length(0.75f, ctx->engine->extent2D.width);
-      scissor.extent.height = line_to_pixel_length(1.02f, ctx->engine->extent2D.height);
+      scissor.extent.width  = ctx->engine->to_pixel_length_x(0.75f);
+      scissor.extent.height = ctx->engine->to_pixel_length_y(1.02f);
       scissor.offset.x      = (ctx->engine->extent2D.width / 2) - (scissor.extent.width / 2);
-      scissor.offset.y      = line_to_pixel_length(0.29f, ctx->engine->extent2D.height);
+      scissor.offset.y      = ctx->engine->to_pixel_length_y(0.29f);
       vkCmdSetScissor(command, 0, 1, &scissor);
 
       fpc.color = Vec3(1.0f, 0.0f, 0.0f);
@@ -868,10 +863,10 @@ void tilt_ruler_text(ThreadJobData tjd)
       cursor += r.cursor_movement;
 
       VkRect2D scissor{};
-      scissor.extent.width  = line_to_pixel_length(0.5f, ctx->engine->extent2D.width);
-      scissor.extent.height = line_to_pixel_length(1.3f, ctx->engine->extent2D.height);
+      scissor.extent.width  = ctx->engine->to_pixel_length_x(0.5f);
+      scissor.extent.height = ctx->engine->to_pixel_length_y(1.3f);
       scissor.offset.x      = (ctx->engine->extent2D.width / 2) - (scissor.extent.width / 2);
-      scissor.offset.y      = line_to_pixel_length(0.2f, ctx->engine->extent2D.height);
+      scissor.offset.y      = ctx->engine->to_pixel_length_y(0.2f);
       vkCmdSetScissor(command, 0, 1, &scissor);
 
       vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
