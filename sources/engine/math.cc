@@ -13,11 +13,22 @@ float Vec2::len() const { return SDL_sqrtf(x * x + y * y); }
 
 Vec2 Vec2::scale(float s) const { return Vec2(x * s, y * s); }
 
+Vec2 Vec2::scale(const Vec2& s) const { return Vec2(x * s.x, y * s.y); }
+
 Vec2 Vec2::normalize() const { return scale(1.0f / len()); };
+
+Vec2 Vec2::invert() const { return Vec2(1.0f / x, 1.0f / y); }
 
 Vec3::Vec3(float val)
     : x(val)
     , y(val)
+    , z(val)
+{
+}
+
+Vec3::Vec3(const Vec2& vec, float val)
+    : x(vec.x)
+    , y(vec.y)
     , z(val)
 {
 }

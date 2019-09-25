@@ -37,7 +37,7 @@ struct GenerateSdfFontCommand
   uint8_t* lookup_table;
   SdfChar* character_data;
   int      characters_pool_count;
-  int      texture_size[2];
+  Vec2     texture_size;
   float    scaling;
   Vec3     position;
   float    cursor;

@@ -35,12 +35,15 @@ struct ShadowmapCommandBuffer
 
 struct RenderEntityParams
 {
-  VkCommandBuffer  cmd;
+  RenderEntityParams() = default;
+  explicit RenderEntityParams(const Player& player);
+
+  VkCommandBuffer  cmd = VK_NULL_HANDLE;
   Mat4x4           projection;
   Mat4x4           view;
   Vec3             camera_position;
   Vec3             color;
-  VkPipelineLayout pipeline_layout;
+  VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
 };
 
 struct WeaponSelection

@@ -9,11 +9,6 @@ GenerateSdfFontCommandResult generate_sdf_font(const GenerateSdfFontCommand& cmd
 
 namespace {
 
-uint32_t line_to_pixel_length(float coord, int pixel_max_size)
-{
-  return static_cast<uint32_t>((coord * pixel_max_size * 0.5f));
-}
-
 float pixels_to_line_length(int pixels, int pixels_max_size)
 {
   return static_cast<float>(2 * pixels) / static_cast<float>(pixels_max_size);
@@ -23,13 +18,6 @@ VkCommandBuffer acquire_command_buffer(ThreadJobData& tjd)
 {
   JobContext* ctx = reinterpret_cast<JobContext*>(tjd.user_data);
   return ctx->engine->job_system.acquire(tjd.thread_id, ctx->game->image_index);
-}
-
-void copy_camera_settings(RenderEntityParams& dst, Player& player)
-{
-  dst.projection      = player.camera_projection;
-  dst.view            = player.camera_view;
-  dst.camera_position = player.camera_position;
 }
 
 } // namespace
@@ -100,12 +88,13 @@ void robot_job(ThreadJobData tjd)
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.scene3D.pipeline);
 
   {
+    const Materials& mats = ctx->game->materials;
     VkDescriptorSet dsets[] = {
-        ctx->game->materials.robot_pbr_material_dset,
-        ctx->game->materials.pbr_ibl_environment_dset,
-        ctx->game->materials.debug_shadow_map_dset,
-        ctx->game->materials.pbr_dynamic_lights_dset,
-        ctx->game->materials.cascade_view_proj_matrices_render_dset[ctx->game->image_index],
+        mats.robot_pbr_material_dset,
+        mats.pbr_ibl_environment_dset,
+        mats.debug_shadow_map_dset,
+        mats.pbr_dynamic_lights_dset,
+        mats.cascade_view_proj_matrices_render_dset[ctx->game->image_index],
     };
 
     uint32_t dynamic_offsets[] = {
@@ -115,12 +104,11 @@ void robot_job(ThreadJobData tjd)
                             SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
   }
 
-  RenderEntityParams params;
+  RenderEntityParams params(ctx->game->player);
   params.cmd             = command;
   params.color           = Vec3(0.0f, 0.0f, 0.0f);
   params.pipeline_layout = ctx->engine->pipelines.scene3D.layout;
 
-  copy_camera_settings(params, ctx->game->player);
   render_pbr_entity(ctx->game->robot_entity, ctx->game->materials.robot, *ctx->engine, params);
 
 #if 0
@@ -183,12 +171,11 @@ void helmet_job(ThreadJobData tjd)
                             SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
   }
 
-  RenderEntityParams params;
+  RenderEntityParams params(ctx->game->player);
   params.cmd             = command;
   params.color           = Vec3(0.0f, 0.0f, 0.0f);
   params.pipeline_layout = ctx->engine->pipelines.scene3D.layout;
 
-  copy_camera_settings(params, ctx->game->player);
   render_pbr_entity(ctx->game->helmet_entity, ctx->game->materials.helmet, *ctx->engine, params);
 
   vkEndCommandBuffer(command);
@@ -204,12 +191,10 @@ void point_light_boxes(ThreadJobData tjd)
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry.pipeline);
 
-  RenderEntityParams params;
+  RenderEntityParams params(ctx->game->player);
   params.cmd             = command;
   params.color           = Vec3(0.0f, 0.0f, 0.0f);
   params.pipeline_layout = ctx->engine->pipelines.colored_geometry.layout;
-
-  copy_camera_settings(params, ctx->game->player);
 
   for (unsigned i = 0; i < SDL_arraysize(ctx->game->box_entities); ++i)
   {
@@ -230,12 +215,11 @@ void matrioshka_box(ThreadJobData tjd)
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry.pipeline);
 
-  RenderEntityParams params;
+  RenderEntityParams params(ctx->game->player);
   params.cmd             = command;
   params.color           = Vec3(0.0f, 1.0f, 0.0f);
   params.pipeline_layout = ctx->engine->pipelines.colored_geometry.layout;
 
-  copy_camera_settings(params, ctx->game->player);
   render_entity(ctx->game->matrioshka_entity, ctx->game->materials.animatedBox, *ctx->engine, params);
 
   vkEndCommandBuffer(command);
@@ -379,12 +363,11 @@ void simple_rigged(ThreadJobData tjd)
       command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry_skinned.layout, 0, 1,
       &ctx->game->materials.rig_skinning_matrices_dset, SDL_arraysize(dynamic_offsets), dynamic_offsets);
 
-  RenderEntityParams params;
+  RenderEntityParams params(ctx->game->player);
   params.cmd             = command;
   params.color           = Vec3(0.0f, 0.0f, 0.0f);
   params.pipeline_layout = ctx->engine->pipelines.colored_geometry_skinned.layout;
 
-  copy_camera_settings(params, ctx->game->player);
   render_entity_skinned(ctx->game->rigged_simple_entity, ctx->game->materials.riggedSimple, *ctx->engine, params);
 
   vkEndCommandBuffer(command);
@@ -407,12 +390,11 @@ void monster_rigged(ThreadJobData tjd)
       command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry_skinned.layout, 0, 1,
       &ctx->game->materials.monster_skinning_matrices_dset, SDL_arraysize(dynamic_offsets), dynamic_offsets);
 
-  RenderEntityParams params;
+  RenderEntityParams params(ctx->game->player);
   params.cmd             = command;
   params.color           = Vec3(1.0f, 1.0f, 1.0f);
   params.pipeline_layout = ctx->engine->pipelines.colored_geometry_skinned.layout;
 
-  copy_camera_settings(params, ctx->game->player);
   render_entity_skinned(ctx->game->monster_entity, ctx->game->materials.monster, *ctx->engine, params);
 
   vkEndCommandBuffer(command);
@@ -509,10 +491,10 @@ void robot_gui_lines(ThreadJobData tjd)
   // ------ RED ------
   {
     VkRect2D scissor{};
-    scissor.extent.width  = line_to_pixel_length(1.50f, ctx->engine->extent2D.width);
-    scissor.extent.height = line_to_pixel_length(1.02f, ctx->engine->extent2D.height);
+    scissor.extent.width  = ctx->engine->to_pixel_length_x(1.5f);
+    scissor.extent.height = ctx->engine->to_pixel_length_y(1.02f);
     scissor.offset.x      = (ctx->engine->extent2D.width / 2) - (scissor.extent.width / 2);
-    scissor.offset.y      = line_to_pixel_length(0.29f, ctx->engine->extent2D.height); // 118
+    scissor.offset.y      = ctx->engine->to_pixel_length_y(0.29f);
     vkCmdSetScissor(command, 0, 1, &scissor);
 
     const float             line_widths[] = {7.0f, 5.0f, 3.0f, 1.0f};
@@ -537,10 +519,10 @@ void robot_gui_lines(ThreadJobData tjd)
   // ------ YELLOW ------
   {
     VkRect2D scissor      = {};
-    scissor.extent.width  = line_to_pixel_length(0.5f, ctx->engine->extent2D.width);
-    scissor.extent.height = line_to_pixel_length(1.3f, ctx->engine->extent2D.height);
+    scissor.extent.width  = ctx->engine->to_pixel_length_x(0.5f);
+    scissor.extent.height = ctx->engine->to_pixel_length_y(1.3f);
     scissor.offset.x      = (ctx->engine->extent2D.width / 2) - (scissor.extent.width / 2);
-    scissor.offset.y      = line_to_pixel_length(0.2f, ctx->engine->extent2D.height);
+    scissor.offset.y      = ctx->engine->to_pixel_length_y(0.2f);
     vkCmdSetScissor(command, 0, 1, &scissor);
 
     const float             line_widths[] = {7.0f, 5.0f, 3.0f, 1.0f};
@@ -650,7 +632,7 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
           .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
           .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
           .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
-          .texture_size          = {512, 256},
+          .texture_size          = {512.0f, 256.0f},
           .scaling               = ctx->engine->extent2D.height / 4.1f,
           .position =
               {
@@ -775,7 +757,7 @@ void height_ruler_text(ThreadJobData tjd)
           .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
           .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
           .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
-          .texture_size          = {512, 256},
+          .texture_size          = {512.0f, 256.0f},
           .scaling               = static_cast<float>(text.size),
           .position              = {text.offset.x, text.offset.y, -1.0f},
           .cursor                = cursor,
@@ -789,10 +771,10 @@ void height_ruler_text(ThreadJobData tjd)
       cursor += r.cursor_movement;
 
       VkRect2D scissor{};
-      scissor.extent.width  = line_to_pixel_length(0.75f, ctx->engine->extent2D.width);
-      scissor.extent.height = line_to_pixel_length(1.02f, ctx->engine->extent2D.height);
+      scissor.extent.width  = ctx->engine->to_pixel_length_x(0.75f);
+      scissor.extent.height = ctx->engine->to_pixel_length_y(1.02f);
       scissor.offset.x      = (ctx->engine->extent2D.width / 2) - (scissor.extent.width / 2);
-      scissor.offset.y      = line_to_pixel_length(0.29f, ctx->engine->extent2D.height);
+      scissor.offset.y      = ctx->engine->to_pixel_length_y(0.29f);
       vkCmdSetScissor(command, 0, 1, &scissor);
 
       fpc.color = Vec3(1.0f, 0.0f, 0.0f);
@@ -867,7 +849,7 @@ void tilt_ruler_text(ThreadJobData tjd)
           .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
           .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
           .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
-          .texture_size          = {512, 256},
+          .texture_size          = {512.0f, 256.0f},
           .scaling               = static_cast<float>(text.size),
           .position              = {text.offset.x, text.offset.y, -1.0f},
           .cursor                = cursor,
@@ -881,10 +863,10 @@ void tilt_ruler_text(ThreadJobData tjd)
       cursor += r.cursor_movement;
 
       VkRect2D scissor{};
-      scissor.extent.width  = line_to_pixel_length(0.5f, ctx->engine->extent2D.width);
-      scissor.extent.height = line_to_pixel_length(1.3f, ctx->engine->extent2D.height);
+      scissor.extent.width  = ctx->engine->to_pixel_length_x(0.5f);
+      scissor.extent.height = ctx->engine->to_pixel_length_y(1.3f);
       scissor.offset.x      = (ctx->engine->extent2D.width / 2) - (scissor.extent.width / 2);
-      scissor.offset.y      = line_to_pixel_length(0.2f, ctx->engine->extent2D.height);
+      scissor.offset.y      = ctx->engine->to_pixel_length_y(0.2f);
       vkCmdSetScissor(command, 0, 1, &scissor);
 
       vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
@@ -976,7 +958,7 @@ void compass_text(ThreadJobData tjd)
         .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
         .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
         .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
-        .texture_size          = {512, 256},
+        .texture_size          = {512.0f, 256.0f},
         .scaling               = 300.0f,
         .position =
             {
@@ -1029,7 +1011,7 @@ void compass_text(ThreadJobData tjd)
         .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
         .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
         .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
-        .texture_size          = {512, 256},
+        .texture_size          = {512.0f, 256.0f},
         .scaling               = 200.0f, // ctx->game->DEBUG_VEC2[0],
         .position =
             {
@@ -1777,11 +1759,9 @@ void orientation_axis(ThreadJobData tjd)
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry.pipeline);
 
-  RenderEntityParams params;
+  RenderEntityParams params(ctx->game->player);
   params.cmd             = command;
   params.pipeline_layout = ctx->engine->pipelines.colored_geometry.layout;
-
-  copy_camera_settings(params, ctx->game->player);
 
   const Vec3 colors[] = {
       Vec3(1.0f, 0.0f, 0.0f),
@@ -1835,13 +1815,14 @@ void tesselated_ground(ThreadJobData tjd)
                          VK_SHADER_STAGE_FRAGMENT_BIT,
                      0, sizeof(pc), &pc);
 
+  const Materials& mats = ctx->game->materials;
   VkDescriptorSet dsets[] = {
-      ctx->game->materials.frustum_planes_dset[ctx->game->image_index],
-      ctx->game->materials.sandy_level_pbr_material_dset,
-      ctx->game->materials.pbr_ibl_environment_dset,
-      ctx->game->materials.debug_shadow_map_dset,
-      ctx->game->materials.pbr_dynamic_lights_dset,
-      ctx->game->materials.cascade_view_proj_matrices_render_dset[ctx->game->image_index],
+      mats.frustum_planes_dset[ctx->game->image_index],
+      mats.sandy_level_pbr_material_dset,
+      mats.pbr_ibl_environment_dset,
+      mats.debug_shadow_map_dset,
+      mats.pbr_dynamic_lights_dset,
+      mats.cascade_view_proj_matrices_render_dset[ctx->game->image_index],
   };
 
   uint32_t dynamic_offsets[] = {

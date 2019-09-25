@@ -27,6 +27,13 @@ float ease_in_out_quart(float t)
 
 } // namespace
 
+RenderEntityParams::RenderEntityParams(const Player& p)
+    : projection(p.camera_projection)
+    , view(p.camera_view)
+    , camera_position(p.camera_position)
+{
+}
+
 void WeaponSelection::init()
 {
   src                   = 1;
