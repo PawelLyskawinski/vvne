@@ -1,4 +1,5 @@
-#include "game.hh"
+#include "game_generate_sdf_font.hh"
+#include "materials.hh"
 #include <SDL2/SDL_assert.h>
 #include <algorithm>
 

@@ -31,26 +31,6 @@ struct SdfChar
   uint8_t  xadvance;
 };
 
-struct GenerateSdfFontCommand
-{
-  char     character;
-  uint8_t* lookup_table;
-  SdfChar* character_data;
-  int      characters_pool_count;
-  Vec2     texture_size;
-  float    scaling;
-  Vec3     position;
-  float    cursor;
-};
-
-struct GenerateSdfFontCommandResult
-{
-  Vec2   character_coordinate;
-  Vec2   character_size;
-  Mat4x4 transform;
-  float  cursor_movement;
-};
-
 #define LUCIDA_SANS_SDF_CHARS_COUNT 97
 
 struct Materials

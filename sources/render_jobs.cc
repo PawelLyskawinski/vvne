@@ -1,11 +1,8 @@
 #include "render_jobs.hh"
 #include "engine/memory_map.hh"
+#include "game_generate_sdf_font.hh"
 #include "game_render_entity.hh"
-
 #include <SDL2/SDL_log.h>
-
-// game_generate_sdf_font.cc
-GenerateSdfFontCommandResult generate_sdf_font(const GenerateSdfFontCommand& cmd);
 
 namespace {
 
