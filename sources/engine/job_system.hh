@@ -1,11 +1,12 @@
 #pragma once
 
-#include "allocators.hh"
 #include "engine_constants.hh"
 #include <SDL2/SDL_atomic.h>
 #include <SDL2/SDL_mutex.h>
 #include <SDL2/SDL_thread.h>
 #include <vulkan/vulkan.h>
+
+struct Stack;
 
 struct ThreadJobData
 {

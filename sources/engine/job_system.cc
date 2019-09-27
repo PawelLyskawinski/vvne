@@ -1,4 +1,5 @@
 #include "job_system.hh"
+#include "allocators.hh"
 
 void JobSystem::setup(VkDevice device, uint32_t graphics_queue_family_index)
 {
