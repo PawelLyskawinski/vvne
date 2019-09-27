@@ -51,10 +51,10 @@ void DebugGui::process_event(SDL_Event& event)
   {
     io.KeysDown[event.key.keysym.scancode] = (SDL_KEYDOWN == event.type);
 
-    io.KeyShift = ((SDL_GetModState() & KMOD_SHIFT) != 0);
-    io.KeyCtrl  = ((SDL_GetModState() & KMOD_CTRL) != 0);
-    io.KeyAlt   = ((SDL_GetModState() & KMOD_ALT) != 0);
-    io.KeySuper = ((SDL_GetModState() & KMOD_GUI) != 0);
+    io.KeyShift = SDL_GetModState() & SDL_Keymod(KMOD_SHIFT);
+    io.KeyCtrl  = SDL_GetModState() & SDL_Keymod(KMOD_CTRL);
+    io.KeyAlt   = SDL_GetModState() & SDL_Keymod(KMOD_ALT);
+    io.KeySuper = SDL_GetModState() & SDL_Keymod(KMOD_GUI);
 
     switch (event.key.keysym.scancode)
     {
