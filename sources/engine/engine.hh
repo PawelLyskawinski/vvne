@@ -168,9 +168,14 @@ struct Engine
   Texture        load_texture(const char* filepath, bool register_for_destruction = true);
   Texture        load_texture(SDL_Surface* surface, bool register_for_destruction = true);
 
+  //
+  // Converting lengths in pixels (xy) to normalized texel coordinates (st).
+  // https://www.khronos.org/registry/vulkan/specs/1.0/html/vkspec.html#_image_operations_overview
+  //
+
   [[nodiscard]] static inline uint32_t to_pixel_length(const float line_len, const float max_len)
   {
-      return static_cast<uint32_t>((line_len * max_len * 0.5f));
+    return static_cast<uint32_t>((line_len * max_len * 0.5f));
   }
 
   [[nodiscard]] inline uint32_t to_pixel_length_x(const float line_len) const
@@ -181,6 +186,21 @@ struct Engine
   [[nodiscard]] inline uint32_t to_pixel_length_y(const float line_len) const
   {
     return to_pixel_length(line_len, extent2D.height);
+  }
+
+  [[nodiscard]] static inline float to_line_length(const float pixels, const float max_size)
+  {
+    return (2.0f * pixels) / max_size;
+  }
+
+  [[nodiscard]] inline float to_line_length_x(uint32_t pixels) const
+  {
+    return to_line_length(static_cast<float>(pixels), extent2D.width);
+  }
+
+  [[nodiscard]] inline float to_line_length_y(uint32_t pixels) const
+  {
+    return to_line_length(static_cast<float>(pixels), extent2D.height);
   }
 
 private:

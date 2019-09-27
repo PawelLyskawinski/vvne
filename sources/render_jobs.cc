@@ -9,11 +9,6 @@ GenerateSdfFontCommandResult generate_sdf_font(const GenerateSdfFontCommand& cmd
 
 namespace {
 
-float pixels_to_line_length(int pixels, int pixels_max_size)
-{
-  return static_cast<float>(2 * pixels) / static_cast<float>(pixels_max_size);
-}
-
 VkCommandBuffer acquire_command_buffer(ThreadJobData& tjd)
 {
   JobContext* ctx = reinterpret_cast<JobContext*>(tjd.user_data);
@@ -88,8 +83,8 @@ void robot_job(ThreadJobData tjd)
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.scene3D.pipeline);
 
   {
-    const Materials& mats = ctx->game->materials;
-    VkDescriptorSet dsets[] = {
+    const Materials& mats    = ctx->game->materials;
+    VkDescriptorSet  dsets[] = {
         mats.robot_pbr_material_dset,
         mats.pbr_ibl_environment_dset,
         mats.debug_shadow_map_dset,
@@ -1109,12 +1104,12 @@ void radar_dots(ThreadJobData tjd)
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_radar_dots.pipeline);
 
-  int   rectangle_dim           = 100;
-  float vertical_length         = pixels_to_line_length(rectangle_dim, ctx->engine->extent2D.width);
-  float offset_from_screen_edge = pixels_to_line_length(rectangle_dim / 10, ctx->engine->extent2D.width);
+  uint32_t rectangle_dim           = 100u;
+  float    vertical_length         = ctx->engine->to_line_length_x(rectangle_dim);
+  float    offset_from_screen_edge = ctx->engine->to_line_length_x(rectangle_dim / 10);
 
-  const float horizontal_length    = pixels_to_line_length(rectangle_dim, ctx->engine->extent2D.height);
-  const float offset_from_top_edge = pixels_to_line_length(rectangle_dim / 10, ctx->engine->extent2D.height);
+  const float horizontal_length    = ctx->engine->to_line_length_y(rectangle_dim);
+  const float offset_from_top_edge = ctx->engine->to_line_length_y(rectangle_dim / 10);
 
   const Vec2 center_radar_position(-1.0f + offset_from_screen_edge + vertical_length,
                                    -1.0f + offset_from_top_edge + horizontal_length);
@@ -1815,8 +1810,8 @@ void tesselated_ground(ThreadJobData tjd)
                          VK_SHADER_STAGE_FRAGMENT_BIT,
                      0, sizeof(pc), &pc);
 
-  const Materials& mats = ctx->game->materials;
-  VkDescriptorSet dsets[] = {
+  const Materials& mats    = ctx->game->materials;
+  VkDescriptorSet  dsets[] = {
       mats.frustum_planes_dset[ctx->game->image_index],
       mats.sandy_level_pbr_material_dset,
       mats.pbr_ibl_environment_dset,
