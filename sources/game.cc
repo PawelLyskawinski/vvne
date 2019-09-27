@@ -693,12 +693,12 @@ void Game::render(Engine& engine)
 
         if (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT)
         {
-          clear_values[0].color = {{0.0f, 0.0f, 0.2f, 1.0f}};
+          clear_values[0].color = DEFAULT_COLOR_CLEAR;
         }
         else
         {
-          clear_values[0].color = {{0.0f, 0.0f, 0.2f, 1.0f}};
-          clear_values[1].color = {{0.0f, 0.0f, 0.2f, 1.0f}};
+          clear_values[0].color = DEFAULT_COLOR_CLEAR;
+          clear_values[1].color = DEFAULT_COLOR_CLEAR;
         }
 
         VkRenderPassBeginInfo begin = {
@@ -724,14 +724,14 @@ void Game::render(Engine& engine)
 
         if (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT)
         {
-          clear_values[0].color        = {{0.0f, 0.0f, 0.2f, 1.0f}};
+          clear_values[0].color        = DEFAULT_COLOR_CLEAR;
           clear_values[1].depthStencil = {1.0, 0};
         }
         else
         {
-          clear_values[0].color        = {{0.0f, 0.0f, 0.2f, 1.0f}};
+          clear_values[0].color        = DEFAULT_COLOR_CLEAR;
           clear_values[1].depthStencil = {1.0, 0};
-          clear_values[2].color        = {{0.0f, 0.0f, 0.2f, 1.0f}};
+          clear_values[2].color        = DEFAULT_COLOR_CLEAR;
         }
 
         VkRenderPassBeginInfo begin = {
@@ -744,8 +744,7 @@ void Game::render(Engine& engine)
         };
 
         vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-        for (VkCommandBuffer secondary_command : scene_rendering_commands)
-          vkCmdExecuteCommands(cmd, 1, &secondary_command);
+        vkCmdExecuteCommands(cmd, scene_rendering_commands.size(), scene_rendering_commands.begin());
         vkCmdEndRenderPass(cmd);
       }
 
@@ -758,12 +757,12 @@ void Game::render(Engine& engine)
 
         if (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT)
         {
-          clear_values[0].color = {{0.0f, 0.0f, 0.2f, 0.0f}};
+          clear_values[0].color = DEFAULT_COLOR_CLEAR;
         }
         else
         {
-          clear_values[0].color = {{0.0f, 0.0f, 0.2f, 0.0f}};
-          clear_values[1].color = {{0.0f, 0.0f, 0.2f, 0.0f}};
+          clear_values[0].color = DEFAULT_COLOR_CLEAR;
+          clear_values[1].color = DEFAULT_COLOR_CLEAR;
         }
 
         VkRenderPassBeginInfo begin = {
@@ -776,8 +775,7 @@ void Game::render(Engine& engine)
         };
 
         vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-        for (VkCommandBuffer secondary_command : gui_commands)
-          vkCmdExecuteCommands(cmd, 1, &secondary_command);
+        vkCmdExecuteCommands(cmd, gui_commands.size(), gui_commands.begin());
         vkCmdEndRenderPass(cmd);
       }
 

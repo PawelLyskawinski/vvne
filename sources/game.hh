@@ -23,6 +23,8 @@ template <typename T, int SIZE> struct AtomicStack
   T*   end() { return &stack[SDL_AtomicGet(&count)]; }
   void reset() { SDL_AtomicSet(&count, 0); }
 
+  [[nodiscard]] uint32_t size() { return SDL_AtomicGet(&count); }
+
   T            stack[SIZE];
   SDL_atomic_t count;
 };
