@@ -1542,7 +1542,7 @@ struct ImguiVertex
 
 } // namespace
 
-VkShaderModule Engine::load_shader(const char* file_path)
+VkShaderModule Engine::load_shader(const char* file_path) const
 {
   //
   // offline compilation process:

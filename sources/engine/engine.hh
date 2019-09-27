@@ -163,7 +163,7 @@ struct Engine
   void           startup(bool vulkan_validation_enabled);
   void           teardown();
   void           change_resolution(VkExtent2D new_size);
-  VkShaderModule load_shader(const char* file_path);
+  VkShaderModule load_shader(const char* file_path) const;
   Texture        load_texture_hdr(const char* filename);
   Texture        load_texture(const char* filepath, bool register_for_destruction = true);
   Texture        load_texture(SDL_Surface* surface, bool register_for_destruction = true);
