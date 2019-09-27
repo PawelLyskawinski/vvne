@@ -24,14 +24,14 @@ struct SimpleEntity
   uint64_t node_anim_translation_applicability;
   float    animation_start_time;
 
-  enum Property : uint64_t
+  struct Flags
   {
-    NodeRotations                    = uint64_t(1) << 0u,
-    NodeTranslations                 = uint64_t(1) << 1u,
-    NodeAnimRotationApplicability    = uint64_t(1) << 2u,
-    NodeAnimTranslationApplicability = uint64_t(1) << 3u,
-    AnimationStartTime               = uint64_t(1) << 4u,
+    bool rotations : 1;
+    bool translations : 1;
+    bool anim_rotation_applicability : 1;
+    bool anim_translation_applicability : 1;
+    bool animation_start_time : 1;
   };
 
-  uint64_t flags;
+  Flags flags;
 };

@@ -181,10 +181,10 @@ void DebugGui::update(Engine& engine, Game& game)
       }
       if (ImGui::Button(names[i]))
       {
-        if (0 == (e->flags & SimpleEntity::AnimationStartTime))
+        if (not e->flags.animation_start_time)
         {
-          e->animation_start_time = game.current_time_sec;
-          e->flags |= SimpleEntity::AnimationStartTime;
+          e->animation_start_time       = game.current_time_sec;
+          e->flags.animation_start_time = true;
         }
       }
     }

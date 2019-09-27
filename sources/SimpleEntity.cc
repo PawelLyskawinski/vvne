@@ -28,6 +28,20 @@ void depth_first_node_transform(Mat4x4* transforms, Node* nodes, const int paren
 //
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#appendix-c-spline-interpolation
 //
+
+[[nodiscard]] float hermite_cubic_spline(const Vec2& P, const Vec2& M, const float& t)
+{
+  const float a = (2.0f * P.x) + M.x + (-2.0f * P.y) + M.y;
+  const float b = (-3.0f * P.x) - (2.0f * M.x) + (3.0f * P.y) - M.y;
+  return (a * t * t * t) + (b * t * t) + (M.x * t) + P.x;
+}
+
+//
+// Keyframe data layout:
+//   Vec<DIM> in_tangent
+//   Vec<DIM> spline vertex
+//   Vec<DIM> out_tangent
+//
 void hermite_cubic_spline_interpolation(const float a_in[], const float b_in[], float result[], int dim, float t,
                                         float total_duration)
 {
@@ -39,13 +53,15 @@ void hermite_cubic_spline_interpolation(const float a_in[], const float b_in[], 
 
   for (int i = 0; i < dim; ++i)
   {
-    const Vec2  P = Vec2(a_spline_vertex[i], b_spline_vertex[i]);
-    const Vec2  M = Vec2(a_out_tangent[i], b_in_tangent[i]).scale(total_duration);
-    const float a = (2.0f * P.x) + M.x + (-2.0f * P.y) + M.y;
-    const float b = (-3.0f * P.x) - (2.0f * M.x) + (3.0f * P.y) - M.y;
-
-    result[i] = (a * t * t * t) + (b * t * t) + (M.x * t) + P.x;
+    const Vec2 P = Vec2(a_spline_vertex[i], b_spline_vertex[i]);
+    const Vec2 M = Vec2(a_out_tangent[i], b_in_tangent[i]).scale(total_duration);
+    result[i]    = hermite_cubic_spline(P, M, t);
   }
+}
+
+bool is_sampler_active(const AnimationSampler& sampler, const float& animation_time)
+{
+  return (sampler.time_frame[0] < animation_time) and (sampler.time_frame[1] > animation_time);
 }
 
 } // namespace
@@ -100,7 +116,7 @@ void SimpleEntity::recalculate_node_transforms(const SceneGraph& model, const Ma
     Mat4x4 translation_matrix;
     translation_matrix.identity();
 
-    if (flags & (Property::NodeTranslations | Property::NodeAnimTranslationApplicability))
+    if (flags.translations | flags.anim_translation_applicability)
     {
       if (node_anim_translation_applicability & (uint64_t(1) << static_cast<uint32_t>(i)))
       {
@@ -127,7 +143,7 @@ void SimpleEntity::recalculate_node_transforms(const SceneGraph& model, const Ma
     Mat4x4 rotation_matrix;
     rotation_matrix.identity();
 
-    if (flags & (Property::NodeRotations | Property::NodeAnimRotationApplicability))
+    if (flags.rotations | flags.anim_translation_applicability)
     {
       if (node_anim_rotation_applicability & (uint64_t(1) << static_cast<uint32_t>(i)))
       {
@@ -194,7 +210,7 @@ void SimpleEntity::animate(FreeListAllocator& allocator, const SceneGraph& scene
   // In case it doesn't have it, we can skip executing this function.
   //
 
-  if (0 == (flags & SimpleEntity::AnimationStartTime))
+  if (not flags.animation_start_time)
   {
     return;
   }
@@ -202,105 +218,110 @@ void SimpleEntity::animate(FreeListAllocator& allocator, const SceneGraph& scene
   const Animation& animation      = scene_graph.animations.data[0];
   const float      animation_time = current_time_sec - animation_start_time;
 
+  //
+  // If animation was started, but it reached the end time - then it should be stopped.
+  //
+
   if (std::none_of(
           animation.samplers.begin(), animation.samplers.end(),
           [animation_time](const AnimationSampler& sampler) { return sampler.time_frame[1] > animation_time; }))
   {
-    const uint64_t clear_mask = SimpleEntity::NodeAnimRotationApplicability |
-                                SimpleEntity::NodeAnimTranslationApplicability | SimpleEntity::AnimationStartTime;
-
-    flags &= ~clear_mask;
-    animation_start_time                = 0.0f;
-    node_anim_rotation_applicability    = 0;
-    node_anim_translation_applicability = 0;
+    flags.anim_rotation_applicability    = false;
+    flags.anim_translation_applicability = false;
+    flags.animation_start_time           = false;
+    animation_start_time                 = 0.0f;
+    node_anim_rotation_applicability     = 0;
+    node_anim_translation_applicability  = 0;
     return;
   }
 
   for (const AnimationChannel& channel : animation.channels)
   {
     const AnimationSampler& sampler = animation.samplers[channel.sampler_idx];
-    if ((sampler.time_frame[1] > animation_time) and (sampler.time_frame[0] < animation_time))
+
+    if (not is_sampler_active(sampler, animation_time))
     {
-      int keyframe_upper = std::distance(
-          sampler.times, std::lower_bound(sampler.times, sampler.times + sampler.keyframes_count, animation_time));
+      continue;
+    }
 
-      int keyframe_lower = keyframe_upper - 1;
+    int keyframe_upper = std::distance(
+        sampler.times, std::lower_bound(sampler.times, sampler.times + sampler.keyframes_count, animation_time));
+    int keyframe_lower = keyframe_upper - 1;
 
-      float time_between_keyframes = sampler.times[keyframe_upper] - sampler.times[keyframe_lower];
-      float keyframe_uniform_time  = (animation_time - sampler.times[keyframe_lower]) / time_between_keyframes;
+    float time_between_keyframes = sampler.times[keyframe_upper] - sampler.times[keyframe_lower];
+    float keyframe_uniform_time  = (animation_time - sampler.times[keyframe_lower]) / time_between_keyframes;
 
-      if (AnimationChannel::Path::Rotation == channel.target_path)
+    if (AnimationChannel::Path::Rotation == channel.target_path)
+    {
+      if (not flags.rotations)
       {
-        if (0 == (flags & SimpleEntity::NodeRotations))
-        {
-          node_rotations = allocator.allocate<Quaternion>(static_cast<uint32_t>(scene_graph.nodes.count));
-          flags |= SimpleEntity::NodeRotations;
-        }
-
-        if (0 == (flags & SimpleEntity::NodeAnimRotationApplicability))
-        {
-          std::fill(node_rotations, node_rotations + scene_graph.nodes.count, Quaternion());
-          flags |= SimpleEntity::NodeAnimRotationApplicability;
-        }
-
-        node_anim_rotation_applicability |= (uint64_t(1) << channel.target_node_idx);
-
-        if (AnimationSampler::Interpolation::Linear == sampler.interpolation)
-        {
-          const Vec4* samples = reinterpret_cast<Vec4*>(sampler.values);
-          const Vec4& a       = samples[keyframe_lower];
-          const Vec4& b       = samples[keyframe_upper];
-
-          Vec4* c = reinterpret_cast<Vec4*>(&node_rotations[channel.target_node_idx].data.x);
-
-          *c = a.lerp(b, keyframe_uniform_time).normalize();
-        }
-        else if (AnimationSampler::Interpolation::CubicSpline == sampler.interpolation)
-        {
-          float* a = &sampler.values[3 * 4 * keyframe_lower];
-          float* b = &sampler.values[3 * 4 * keyframe_upper];
-          float* c = &node_rotations[channel.target_node_idx].data.x;
-
-          hermite_cubic_spline_interpolation(a, b, c, 4, keyframe_uniform_time,
-                                             sampler.time_frame[1] - sampler.time_frame[0]);
-
-          Vec4* c_as_vec4 = reinterpret_cast<Vec4*>(c);
-          *c_as_vec4      = c_as_vec4->normalize();
-        }
+        node_rotations  = allocator.allocate<Quaternion>(static_cast<uint32_t>(scene_graph.nodes.count));
+        flags.rotations = true;
       }
-      else if (AnimationChannel::Path::Translation == channel.target_path)
+
+      if (not flags.anim_rotation_applicability)
       {
-        if (0 == (flags & SimpleEntity::NodeTranslations))
-        {
-          node_translations = allocator.allocate<Vec3>(static_cast<uint32_t>(scene_graph.nodes.count));
-          flags |= SimpleEntity::NodeTranslations;
-        }
+        std::fill(node_rotations, node_rotations + scene_graph.nodes.count, Quaternion());
+        flags.anim_rotation_applicability = true;
+      }
 
-        if (0 == (flags & SimpleEntity::NodeAnimTranslationApplicability))
-        {
-          std::fill(node_translations, node_translations + scene_graph.nodes.count, Vec3());
-          flags |= SimpleEntity::NodeAnimTranslationApplicability;
-        }
+      node_anim_rotation_applicability |= (uint64_t(1) << channel.target_node_idx);
 
-        node_anim_translation_applicability |= (uint64_t(1) << channel.target_node_idx);
+      if (AnimationSampler::Interpolation::Linear == sampler.interpolation)
+      {
+        const Vec4* samples = reinterpret_cast<Vec4*>(sampler.values);
+        const Vec4& a       = samples[keyframe_lower];
+        const Vec4& b       = samples[keyframe_upper];
 
-        if (AnimationSampler::Interpolation::Linear == sampler.interpolation)
-        {
-          Vec3* a = reinterpret_cast<Vec3*>(&sampler.values[3 * keyframe_lower]);
-          Vec3* b = reinterpret_cast<Vec3*>(&sampler.values[3 * keyframe_upper]);
-          Vec3* c = reinterpret_cast<Vec3*>(&node_translations[channel.target_node_idx].x);
+        Vec4* c = reinterpret_cast<Vec4*>(&node_rotations[channel.target_node_idx].data.x);
 
-          *c = a->lerp(*b, keyframe_uniform_time);
-        }
-        else if (AnimationSampler::Interpolation::CubicSpline == sampler.interpolation)
-        {
-          float* a = &sampler.values[3 * 3 * keyframe_lower];
-          float* b = &sampler.values[3 * 3 * keyframe_upper];
-          float* c = &node_translations[channel.target_node_idx].x;
+        *c = a.lerp(b, keyframe_uniform_time).normalize();
+      }
+      else if (AnimationSampler::Interpolation::CubicSpline == sampler.interpolation)
+      {
+        float* a = &sampler.values[3 * 4 * keyframe_lower];
+        float* b = &sampler.values[3 * 4 * keyframe_upper];
+        float* c = &node_rotations[channel.target_node_idx].data.x;
 
-          hermite_cubic_spline_interpolation(a, b, c, 3, keyframe_uniform_time,
-                                             sampler.time_frame[1] - sampler.time_frame[0]);
-        }
+        hermite_cubic_spline_interpolation(a, b, c, 4, keyframe_uniform_time,
+                                           sampler.time_frame[1] - sampler.time_frame[0]);
+
+        Vec4* c_as_vec4 = reinterpret_cast<Vec4*>(c);
+        *c_as_vec4      = c_as_vec4->normalize();
+      }
+    }
+    else if (AnimationChannel::Path::Translation == channel.target_path)
+    {
+      if (not flags.translations)
+      {
+        node_translations  = allocator.allocate<Vec3>(static_cast<uint32_t>(scene_graph.nodes.count));
+        flags.translations = true;
+      }
+
+      if (not flags.anim_translation_applicability)
+      {
+        std::fill(node_translations, node_translations + scene_graph.nodes.count, Vec3());
+        flags.anim_translation_applicability = true;
+      }
+
+      node_anim_translation_applicability |= (uint64_t(1) << channel.target_node_idx);
+
+      if (AnimationSampler::Interpolation::Linear == sampler.interpolation)
+      {
+        Vec3* a = reinterpret_cast<Vec3*>(&sampler.values[3 * keyframe_lower]);
+        Vec3* b = reinterpret_cast<Vec3*>(&sampler.values[3 * keyframe_upper]);
+        Vec3* c = reinterpret_cast<Vec3*>(&node_translations[channel.target_node_idx].x);
+
+        *c = a->lerp(*b, keyframe_uniform_time);
+      }
+      else if (AnimationSampler::Interpolation::CubicSpline == sampler.interpolation)
+      {
+        float* a = &sampler.values[3 * 3 * keyframe_lower];
+        float* b = &sampler.values[3 * 3 * keyframe_upper];
+        float* c = &node_translations[channel.target_node_idx].x;
+
+        hermite_cubic_spline_interpolation(a, b, c, 3, keyframe_uniform_time,
+                                           sampler.time_frame[1] - sampler.time_frame[0]);
       }
     }
   }
