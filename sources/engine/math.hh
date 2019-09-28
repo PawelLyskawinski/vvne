@@ -114,6 +114,7 @@ struct Mat4x4
   [[nodiscard]] Mat4x4              invert() const;
   [[nodiscard]] Vec4                row(uint32_t i) const;
   [[nodiscard]] inline const float* data() const { return reinterpret_cast<const float*>(&columns[0].x); };
+  [[nodiscard]] Vec3                get_position() const { return columns[3].as_vec3(); }
 
   void perspective(uint32_t width, uint32_t height, float fov_rads, float near_clipping_plane,
                    float far_clipping_plane);

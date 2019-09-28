@@ -431,6 +431,12 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
   const float acceleration_length = 5.0f * 1000.0f * player.acceleration.len();
 
+  //
+  // engines precalculation
+  //
+  const Mat4x4 transform_a = Mat4x4::Translation(player.position + Vec3(0.0f, -0.4f, 0.0f)) * Mat4x4::RotationY(-player.camera_angle) * Mat4x4::Translation(Vec3(0.2f, 0.0f, -0.3f));
+  const Mat4x4 transform_b = Mat4x4::Translation(player.position + Vec3(0.0f, -0.4f, 0.0f)) * Mat4x4::RotationY(-player.camera_angle) * Mat4x4::Translation(Vec3(0.2f, 0.0f, 0.3f));
+
   LightSource dynamic_lights[] = {
       {
           {SDL_sinf(current_time_sec), 0.0f, 3.0f + SDL_cosf(current_time_sec), 1.0f},
@@ -454,11 +460,11 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
       },
       // player engines
       {
-          {player.position.x - 1.0f, player.position.y, player.position.z, 1.0f},
+          Vec4(transform_a.get_position(), 1.0f),
           {0.01f, 0.01f, acceleration_length, 1.0f},
       },
       {
-          {player.position.x + 1.0f, player.position.y, player.position.z, 1.0f},
+          Vec4(transform_b.get_position(), 1.0f),
           {0.01f, 0.01f, acceleration_length, 1.0f},
       },
   };
@@ -468,14 +474,6 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     LightSource& light = dynamic_lights[i];
     light.position.y   = level.get_height(light.position.x, light.position.z) - 1.0f;
   }
-
-#if 0
-  for (uint32_t i = 5; i < 7; ++i)
-  {
-    LightSource& light = dynamic_lights[i];
-    light.position *= Vec4(SDL_cosf(player.camera_angle), SDL_sinf(clamp(player.camera_updown_angle, -1.5f, 1.5f)), -SDL_sinf(player.camera_angle), 0.0f);
-  }
-#endif
 
   materials.pbr_light_sources_cache_last =
       std::copy(dynamic_lights, &dynamic_lights[SDL_arraysize(dynamic_lights)], materials.pbr_light_sources_cache);
