@@ -615,10 +615,6 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
 
     for (const char c : text_form)
     {
-      auto line_to_pixel_length = [](float coord, int pixel_max_size) -> float {
-        return (coord * pixel_max_size * 0.5f);
-      };
-
       GenerateSdfFontCommand cmd = {
           .character             = c,
           .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
@@ -628,10 +624,8 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
           .scaling               = ctx->engine->extent2D.height / 4.1f,
           .position =
               {
-                  line_to_pixel_length(0.48f,
-                                       ctx->engine->extent2D.width), // 0.65f
-                  line_to_pixel_length(0.80f,
-                                       ctx->engine->extent2D.height), // 0.42f
+                  static_cast<float>(ctx->engine->to_pixel_length_x(0.48f)),
+                  static_cast<float>(ctx->engine->to_pixel_length_y(0.80f)),
                   -1.0f,
               },
           .cursor = cursor,
@@ -941,10 +935,6 @@ void compass_text(ThreadJobData tjd)
     if ('\0' == c)
       continue;
 
-    auto line_to_pixel_length = [](float coord, int pixel_max_size) -> float {
-      return (coord * pixel_max_size * 0.5f);
-    };
-
     GenerateSdfFontCommand cmd = {
         .character             = c,
         .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
@@ -954,8 +944,8 @@ void compass_text(ThreadJobData tjd)
         .scaling               = 300.0f,
         .position =
             {
-                line_to_pixel_length(1.0f - angle_mod + (0.5f * direction_increment), ctx->engine->extent2D.width),
-                line_to_pixel_length(1.335f, ctx->engine->extent2D.height),
+                static_cast<float>(ctx->engine->to_pixel_length_x(1.0f - angle_mod + (0.5f * direction_increment))),
+                static_cast<float>(ctx->engine->to_pixel_length_y(1.335f)),
                 -1.0f,
             },
         .cursor = cursor,
@@ -994,10 +984,6 @@ void compass_text(ThreadJobData tjd)
     if ('\0' == c)
       continue;
 
-    auto line_to_pixel_length = [](float coord, int pixel_max_size) -> float {
-      return (coord * pixel_max_size * 0.5f);
-    };
-
     GenerateSdfFontCommand cmd = {
         .character             = c,
         .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
@@ -1007,8 +993,8 @@ void compass_text(ThreadJobData tjd)
         .scaling               = 200.0f, // ctx->game->DEBUG_VEC2[0],
         .position =
             {
-                line_to_pixel_length(0.8f, ctx->engine->extent2D.width),    // 0.65f
-                line_to_pixel_length(1.345f, ctx->engine->extent2D.height), // 0.42f
+                static_cast<float>(ctx->engine->to_pixel_length_x(0.8f)),
+                static_cast<float>(ctx->engine->to_pixel_length_y(1.345f)),
                 -1.0f,
             },
         .cursor = cursor,
@@ -1047,10 +1033,6 @@ void compass_text(ThreadJobData tjd)
     if ('\0' == c)
       continue;
 
-    auto line_to_pixel_length = [](float coord, int pixel_max_size) -> float {
-      return (coord * pixel_max_size * 0.5f);
-    };
-
     GenerateSdfFontCommand cmd = {
         .character             = c,
         .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
@@ -1060,8 +1042,8 @@ void compass_text(ThreadJobData tjd)
         .scaling               = 200.0f, // ctx->game->DEBUG_VEC2[0],
         .position =
             {
-                line_to_pixel_length(1.2f, ctx->engine->extent2D.width),    // 0.65f
-                line_to_pixel_length(1.345f, ctx->engine->extent2D.height), // 0.42f
+                static_cast<float>(ctx->engine->to_pixel_length_x(1.2f)),
+                static_cast<float>(ctx->engine->to_pixel_length_y(1.345f)),
                 -1.0f,
             },
         .cursor = cursor,
