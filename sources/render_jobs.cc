@@ -642,17 +642,14 @@ void robot_gui_speed_meter_triangle(ThreadJobData tjd)
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_triangle.pipeline);
 
-  struct VertPush
-  {
-    Vec4 offset = Vec4(-0.384f, -0.180f, 0.0f, 0.0f);
-    Vec4 scale  = Vec4(0.012f, 0.02f, 1.0f, 1.0f);
-  } vpush;
-
-  Vec4 color = Vec4(Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f), 1.0f);
+  const Vec4 offset = Vec4(-0.384f, -0.180f, 0.0f, 0.0f);
+  const Vec4 scale  = Vec4(0.012f, 0.02f, 1.0f, 1.0f);
+  const Vec4 color  = Vec4(Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f), 1.0f);
 
   AlignedPushConsts(command, ctx->engine->pipelines.green_gui_triangle.layout)
-      .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(vpush), &vpush)
-      .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(Vec4), color.data());
+      .push(VK_SHADER_STAGE_VERTEX_BIT, offset)
+      .push(VK_SHADER_STAGE_VERTEX_BIT, scale)
+      .push(VK_SHADER_STAGE_FRAGMENT_BIT, color);
 
   vkCmdDraw(command, 3, 1, 0, 0);
   vkEndCommandBuffer(command);
@@ -673,6 +670,7 @@ void height_ruler_text(ThreadJobData tjd)
   vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer,
                          &ctx->game->materials.green_gui_billboard_vertex_buffer_offset);
 
+#if 0
   struct VertexPushConstant
   {
     Mat4x4 mvp;
@@ -685,8 +683,10 @@ void height_ruler_text(ThreadJobData tjd)
     Vec3  color;
     float time;
   } fpc;
+#endif
 
-  fpc.time = ctx->game->current_time_sec;
+  const float time  = ctx->game->current_time_sec;
+  const Vec3  color = Vec3(1.0f, 0.0f, 0.0f);
 
   //--------------------------------------------------------------------------
   // height rulers values
@@ -725,9 +725,12 @@ void height_ruler_text(ThreadJobData tjd)
 
       GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
 
-      vpc.character_coordinate = r.character_coordinate;
-      vpc.character_size       = r.character_size;
-      vpc.mvp                  = gui_projection * r.transform;
+      // vpc.mvp                  = gui_projection * r.transform;
+
+      const Mat4x4 mvp                  = gui_projection * r.transform;
+      const Vec2   character_coordinate = r.character_coordinate;
+      const Vec2   character_size       = r.character_size;
+
       cursor += r.cursor_movement;
 
       VkRect2D scissor{};
@@ -737,11 +740,12 @@ void height_ruler_text(ThreadJobData tjd)
       scissor.offset.y      = ctx->engine->to_pixel_length_y(0.29f);
       vkCmdSetScissor(command, 0, 1, &scissor);
 
-      fpc.color = Vec3(1.0f, 0.0f, 0.0f);
-
       AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
-          .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(vpc), &vpc)
-          .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(fpc), &fpc);
+          .push(VK_SHADER_STAGE_VERTEX_BIT, mvp)
+          .push(VK_SHADER_STAGE_VERTEX_BIT, character_coordinate)
+          .push(VK_SHADER_STAGE_VERTEX_BIT, character_size)
+          .push(VK_SHADER_STAGE_FRAGMENT_BIT, color)
+          .push(VK_SHADER_STAGE_FRAGMENT_BIT, time);
 
       vkCmdDraw(command, 4, 1, 0, 0);
     }

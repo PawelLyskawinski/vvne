@@ -19,8 +19,13 @@ public:
     return *this;
   }
 
+  template <typename T> AlignedPushConsts& push(const VkShaderStageFlags stage, const T& data)
+  {
+    return push(stage, sizeof(T), &data);
+  }
+
 private:
-  VkCommandBuffer    command;
-  VkPipelineLayout   layout;
-  size_t             offset;
+  VkCommandBuffer  command;
+  VkPipelineLayout layout;
+  size_t           offset;
 };
