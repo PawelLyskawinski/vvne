@@ -576,40 +576,18 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
     float speed     = ctx->game->player.velocity.len() * 1500.0f;
     int   speed_int = static_cast<int>(speed);
 
-    char thousands = 0;
-    while (1000 <= speed_int)
-    {
-      thousands += 1;
-      speed_int -= 1000;
-    }
+    auto count_and_substract = [&speed_int](const int counted) -> char {
+      int r = speed_int / counted;
+      speed_int -= counted * r;
+      return static_cast<char>(r);
+    };
 
-    char hundreds = 0;
-    while (100 <= speed_int)
-    {
-      hundreds += 1;
-      speed_int -= 100;
-    }
-
-    char tens = 0;
-    while (10 <= speed_int)
-    {
-      tens += 1;
-      speed_int -= 10;
-    }
-
-    char singles = 0;
-    while (1 <= speed_int)
-    {
-      singles += 1;
-      speed_int -= 1;
-    }
-
-    char text_form[4] = {};
-
-    text_form[0] = thousands + '0';
-    text_form[1] = hundreds + '0';
-    text_form[2] = tens + '0';
-    text_form[3] = singles + '0';
+    char text_form[] = {
+        char('0' + count_and_substract(1000)),
+        char('0' + count_and_substract(100)),
+        char('0' + count_and_substract(10)),
+        char('0' + static_cast<char>(speed_int)),
+    };
 
     float cursor = 0.0f;
 
@@ -654,7 +632,7 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
   }
 
   vkEndCommandBuffer(command);
-}
+} // namespace render
 
 void robot_gui_speed_meter_triangle(ThreadJobData tjd)
 {
