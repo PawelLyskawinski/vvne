@@ -1,4 +1,5 @@
 #include "render_jobs.hh"
+#include "engine/aligned_push_consts.hh"
 #include "engine/memory_map.hh"
 #include "game_generate_sdf_font.hh"
 #include "game_render_entity.hh"
@@ -415,10 +416,9 @@ void radar(ThreadJobData tjd)
                                           rectangle_dimension_pixels + offset_from_edge, -1.0f}) *
                      Mat4x4::Scale({rectangle_dimension_pixels, rectangle_dimension_pixels, 1.0f});
 
-  vkCmdPushConstants(command, ctx->engine->pipelines.green_gui.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Mat4x4),
-                     mvp.data());
-  vkCmdPushConstants(command, ctx->engine->pipelines.green_gui.layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(Mat4x4),
-                     sizeof(float), &ctx->game->current_time_sec);
+  AlignedPushConsts(command, ctx->engine->pipelines.green_gui.layout)
+      .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(Mat4x4), mvp.data())
+      .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(float), &ctx->game->current_time_sec);
 
   vkCmdDraw(command, 4, 1, 0, 0);
   vkEndCommandBuffer(command);
@@ -619,13 +619,11 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
       VkRect2D scissor = {.extent = ctx->engine->extent2D};
       vkCmdSetScissor(command, 0, 1, &scissor);
 
-      vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
-                         sizeof(vpc), &vpc);
-
       fpc.color = Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f);
 
-      vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                         sizeof(vpc), sizeof(fpc), &fpc);
+      AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
+          .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(vpc), &vpc)
+          .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(fpc), &fpc);
 
       vkCmdDraw(command, 4, 1, 0, 0);
     }
@@ -650,13 +648,11 @@ void robot_gui_speed_meter_triangle(ThreadJobData tjd)
     Vec4 scale  = Vec4(0.012f, 0.02f, 1.0f, 1.0f);
   } vpush;
 
-  vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_triangle.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
-                     sizeof(vpush), &vpush);
-
   Vec4 color = Vec4(Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f), 1.0f);
 
-  vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_triangle.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                     sizeof(vpush), sizeof(Vec4), color.data());
+  AlignedPushConsts(command, ctx->engine->pipelines.green_gui_triangle.layout)
+      .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(vpush), &vpush)
+      .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(Vec4), color.data());
 
   vkCmdDraw(command, 3, 1, 0, 0);
   vkEndCommandBuffer(command);
@@ -743,10 +739,9 @@ void height_ruler_text(ThreadJobData tjd)
 
       fpc.color = Vec3(1.0f, 0.0f, 0.0f);
 
-      vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
-                         sizeof(vpc), &vpc);
-      vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                         sizeof(vpc), sizeof(fpc), &fpc);
+      AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
+          .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(vpc), &vpc)
+          .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(fpc), &fpc);
 
       vkCmdDraw(command, 4, 1, 0, 0);
     }
@@ -833,12 +828,11 @@ void tilt_ruler_text(ThreadJobData tjd)
       scissor.offset.y      = ctx->engine->to_pixel_length_y(0.2f);
       vkCmdSetScissor(command, 0, 1, &scissor);
 
-      vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
-                         sizeof(vpc), &vpc);
-
       fpc.color = Vec3(1.0f, 1.0f, 0.0f);
-      vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                         sizeof(vpc), sizeof(fpc), &fpc);
+
+      AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
+          .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(vpc), &vpc)
+          .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(fpc), &fpc);
 
       vkCmdDraw(command, 4, 1, 0, 0);
     }
@@ -939,13 +933,11 @@ void compass_text(ThreadJobData tjd)
     VkRect2D scissor = {.extent = ctx->engine->extent2D};
     vkCmdSetScissor(command, 0, 1, &scissor);
 
-    vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
-                       sizeof(vpc), &vpc);
-
     fpc.color = Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f);
 
-    vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                       sizeof(vpc), sizeof(fpc), &fpc);
+    AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
+        .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(vpc), &vpc)
+        .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(fpc), &fpc);
 
     vkCmdDraw(command, 4, 1, 0, 0);
   }
@@ -988,13 +980,11 @@ void compass_text(ThreadJobData tjd)
     VkRect2D scissor = {.extent = ctx->engine->extent2D};
     vkCmdSetScissor(command, 0, 1, &scissor);
 
-    vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
-                       sizeof(vpc), &vpc);
-
     fpc.color = Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f);
 
-    vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                       sizeof(vpc), sizeof(fpc), &fpc);
+    AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
+        .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(vpc), &vpc)
+        .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(fpc), &fpc);
 
     vkCmdDraw(command, 4, 1, 0, 0);
   }
@@ -1037,13 +1027,11 @@ void compass_text(ThreadJobData tjd)
     VkRect2D scissor = {.extent = ctx->engine->extent2D};
     vkCmdSetScissor(command, 0, 1, &scissor);
 
-    vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
-                       sizeof(vpc), &vpc);
-
     fpc.color = Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f);
 
-    vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                       sizeof(vpc), sizeof(fpc), &fpc);
+    AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
+        .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(vpc), &vpc)
+        .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(fpc), &fpc);
 
     vkCmdDraw(command, 4, 1, 0, 0);
   }
@@ -1087,13 +1075,11 @@ void radar_dots(ThreadJobData tjd)
   const Vec2 relative_helmet_position = center_radar_position - helmet_position;
 
   Vec4 position = {relative_helmet_position.x, relative_helmet_position.y, 0.0f, 1.0f};
+  Vec4 color    = Vec4(1.0f, 0.0f, 0.0f, (final_distance < 0.22f) ? 0.6f : 0.0f);
 
-  vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_radar_dots.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
-                     sizeof(Vec4), position.data());
-
-  Vec4 color = Vec4(1.0f, 0.0f, 0.0f, (final_distance < 0.22f) ? 0.6f : 0.0f);
-  vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_radar_dots.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                     sizeof(Vec4), sizeof(Vec4), color.data());
+  AlignedPushConsts(command, ctx->engine->pipelines.green_gui_radar_dots.layout)
+      .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(Vec4), position.data())
+      .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(Vec4), color.data());
 
   vkCmdDraw(command, 1, 1, 0, 0);
   vkEndCommandBuffer(command);
@@ -1154,12 +1140,11 @@ void weapon_selectors_left(ThreadJobData tjd)
     vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer,
                            &ctx->game->materials.green_gui_billboard_vertex_buffer_offset);
 
-    vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_weapon_selector_box_left.layout,
-                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Mat4x4), mvp.data());
-
     float frag_push[] = {ctx->game->current_time_sec, box_size.y / box_size.x, transparencies[i]};
-    vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_weapon_selector_box_left.layout,
-                       VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(Mat4x4), sizeof(frag_push), &frag_push);
+
+    AlignedPushConsts(command, ctx->engine->pipelines.green_gui_weapon_selector_box_left.layout)
+        .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(Mat4x4), mvp.data())
+        .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(frag_push), &frag_push);
 
     vkCmdDraw(command, 4, 1, 0, 0);
 
@@ -1224,13 +1209,11 @@ void weapon_selectors_left(ThreadJobData tjd)
       VkRect2D scissor = {.extent = ctx->engine->extent2D};
       vkCmdSetScissor(command, 0, 1, &scissor);
 
-      vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
-                         sizeof(vpc), &vpc);
-
       fpc.color = Vec3(145.0f, 224.0f, 194.0f).scale(1.0f / 255.0f);
 
-      vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                         sizeof(vpc), sizeof(fpc), &fpc);
+      AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
+          .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(vpc), &vpc)
+          .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(fpc), &fpc);
 
       vkCmdDraw(command, 4, 1, 0, 0);
     }
@@ -1276,13 +1259,11 @@ void weapon_selectors_right(ThreadJobData tjd)
     vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer,
                            &ctx->game->materials.green_gui_billboard_vertex_buffer_offset);
 
-    vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_weapon_selector_box_right.layout,
-                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Mat4x4), mvp.data());
-
     float frag_push[] = {ctx->game->current_time_sec, box_size.y / box_size.x, transparencies[i]};
 
-    vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_weapon_selector_box_right.layout,
-                       VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(Mat4x4), sizeof(frag_push), &frag_push);
+    AlignedPushConsts(command, ctx->engine->pipelines.green_gui_weapon_selector_box_right.layout)
+        .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(Mat4x4), mvp.data())
+        .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(frag_push), &frag_push);
 
     vkCmdDraw(command, 4, 1, 0, 0);
 
@@ -1347,12 +1328,11 @@ void weapon_selectors_right(ThreadJobData tjd)
       VkRect2D scissor = {.extent = ctx->engine->extent2D};
       vkCmdSetScissor(command, 0, 1, &scissor);
 
-      vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
-                         sizeof(vpc), &vpc);
-
       fpc.color = Vec3(145.0f, 224.0f, 194.0f).scale(1.0f / 255.0f);
-      vkCmdPushConstants(command, ctx->engine->pipelines.green_gui_sdf_font.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                         sizeof(vpc), sizeof(fpc), &fpc);
+
+      AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
+          .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(Mat4x4), mvp.data())
+          .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(frag_push), &frag_push);
 
       vkCmdDraw(command, 4, 1, 0, 0);
     }
@@ -1494,11 +1474,9 @@ void imgui(ThreadJobData tjd)
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
 
-  ImDrawData* draw_data = ImGui::GetDrawData();
-  ImGuiIO&    io        = ImGui::GetIO();
-
-  size_t vertex_size = draw_data->TotalVtxCount * sizeof(ImDrawVert);
-  size_t index_size  = draw_data->TotalIdxCount * sizeof(ImDrawIdx);
+  const ImDrawData* draw_data   = ImGui::GetDrawData();
+  const size_t      vertex_size = draw_data->TotalVtxCount * sizeof(ImDrawVert);
+  const size_t      index_size  = draw_data->TotalIdxCount * sizeof(ImDrawIdx);
 
   if ((0 == vertex_size) or (0 == index_size))
     return;
@@ -1506,17 +1484,7 @@ void imgui(ThreadJobData tjd)
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
-
-  if (ctx->engine->renderdoc_marker_naming_enabled)
-  {
-    VkDebugMarkerMarkerInfoEXT marker_info = {
-        .sType       = VK_STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT,
-        .pMarkerName = "imgui",
-        .color       = {1.0f, 0.0f, 0.0f, 1.0f},
-    };
-
-    ctx->engine->vkCmdDebugMarkerInsert(command, &marker_info);
-  }
+  ctx->engine->insert_debug_marker(command, "imgui", {1.0f, 0.0f, 0.0f, 1.0f});
 
   if (vertex_size and index_size)
   {
@@ -1531,6 +1499,8 @@ void imgui(ThreadJobData tjd)
     vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_host_coherent_memory_buffer,
                            &ctx->game->materials.imgui_vertex_buffer_offsets[ctx->game->image_index]);
 
+    ImGuiIO& io = ImGui::GetIO();
+
     {
       VkViewport viewport = {
           .width    = io.DisplaySize.x,
@@ -1544,10 +1514,9 @@ void imgui(ThreadJobData tjd)
     float scale[]     = {2.0f / io.DisplaySize.x, 2.0f / io.DisplaySize.y};
     float translate[] = {-1.0f, -1.0f};
 
-    vkCmdPushConstants(command, ctx->engine->pipelines.imgui.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float) * 2,
-                       scale);
-    vkCmdPushConstants(command, ctx->engine->pipelines.imgui.layout, VK_SHADER_STAGE_VERTEX_BIT, sizeof(float) * 2,
-                       sizeof(float) * 2, translate);
+    AlignedPushConsts(command, ctx->engine->pipelines.imgui.layout)
+        .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(scale), scale)
+        .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(translate), translate);
 
     {
       int vtx_offset = 0;
@@ -1690,10 +1659,9 @@ void debug_shadowmap(ThreadJobData tjd)
     const Mat4x4 mvp = gui_projection * Mat4x4::Translation(Vec3(translation.x, translation.y, -1.0f)) *
                        Mat4x4::Scale(Vec3(rectangle_dimension_pixels, rectangle_dimension_pixels, 1.0f));
 
-    vkCmdPushConstants(command, ctx->engine->pipelines.debug_billboard.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
-                       sizeof(Mat4x4), mvp.data());
-    vkCmdPushConstants(command, ctx->engine->pipelines.debug_billboard.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                       sizeof(Mat4x4), sizeof(cascade), &cascade);
+    AlignedPushConsts(command, ctx->engine->pipelines.debug_billboard.layout)
+        .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(Mat4x4), mvp.data())
+        .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(cascade), &cascade);
 
     vkCmdDraw(command, 4, 1, 0, 0);
   }

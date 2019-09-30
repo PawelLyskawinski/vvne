@@ -1863,3 +1863,17 @@ void Engine::change_resolution(const VkExtent2D new_size)
   setup_pipeline_layouts();
   setup_pipelines();
 }
+
+void Engine::insert_debug_marker(VkCommandBuffer cmd, const char* name, const Vec4& color) const
+{
+  if (not renderdoc_marker_naming_enabled)
+    return;
+
+  VkDebugMarkerMarkerInfoEXT marker_info = {
+      .sType       = VK_STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT,
+      .pMarkerName = name,
+      .color       = {color.x, color.y, color.z, color.w},
+  };
+
+  vkCmdDebugMarkerInsert(cmd, &marker_info);
+}

@@ -8,6 +8,8 @@
 #include <SDL2/SDL_video.h>
 #include <vulkan/vulkan.h>
 
+struct Vec4;
+
 constexpr uint32_t operator"" _KB(unsigned long long in) { return 1024u * static_cast<uint32_t>(in); }
 constexpr uint32_t operator"" _MB(unsigned long long in) { return 1024u * 1024u * static_cast<uint32_t>(in); }
 
@@ -167,6 +169,7 @@ struct Engine
   Texture        load_texture_hdr(const char* filename);
   Texture        load_texture(const char* filepath, bool register_for_destruction = true);
   Texture        load_texture(SDL_Surface* surface, bool register_for_destruction = true);
+  void           insert_debug_marker(VkCommandBuffer cmd, const char* name, const Vec4& color) const;
 
   //
   // Converting lengths in pixels (xy) to normalized texel coordinates (st).
