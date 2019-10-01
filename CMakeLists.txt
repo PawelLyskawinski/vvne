@@ -50,7 +50,7 @@ set(SOURCES
         sources/engine/cubemap.cc
         sources/render_jobs.cc
         sources/update_jobs.cc
-        sources/SimpleEntity.cc
+        sources/simple_entity.cc
         sources/player.cc
         sources/terrain_as_a_function.cc
         sources/profiler.cc

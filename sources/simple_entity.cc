@@ -1,4 +1,4 @@
-#include "SimpleEntity.hh"
+#include "simple_entity.hh"
 #include <SDL2/SDL_assert.h>
 #include <algorithm>
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "SimpleEntity.hh"
+#include "simple_entity.hh"
 #include "debug_gui.hh"
 #include "engine/atomic_stack.hh"
 #include "engine/engine.hh"
