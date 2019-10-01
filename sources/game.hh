@@ -2,6 +2,7 @@
 
 #include "SimpleEntity.hh"
 #include "debug_gui.hh"
+#include "engine/atomic_stack.hh"
 #include "engine/engine.hh"
 #include "engine/gltf.hh"
 #include "game_constants.hh"
@@ -15,19 +16,6 @@
 #include <SDL2/SDL_mutex.h>
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_thread.h>
-
-template <typename T, int SIZE> struct AtomicStack
-{
-  void push(const T& in) { stack[SDL_AtomicIncRef(&count)] = in; }
-  T*   begin() { return stack; }
-  T*   end() { return &stack[SDL_AtomicGet(&count)]; }
-  void reset() { SDL_AtomicSet(&count, 0); }
-
-  [[nodiscard]] uint32_t size() { return SDL_AtomicGet(&count); }
-
-  T            stack[SIZE];
-  SDL_atomic_t count;
-};
 
 struct ShadowmapCommandBuffer
 {
