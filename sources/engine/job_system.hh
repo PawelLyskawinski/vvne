@@ -12,10 +12,15 @@ struct ThreadJobData
 {
   int    thread_id;
   Stack& allocator;
-  void*  user_data;
 };
 
-using Job = void (*)(ThreadJobData);
+struct Job
+{
+  inline void operator()(ThreadJobData tjd) { function(tjd, user_data); }
+
+  void (*function)(ThreadJobData, void*);
+  void* user_data;
+};
 
 struct WorkerCommands
 {

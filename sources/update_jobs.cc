@@ -3,9 +3,9 @@
 
 namespace update {
 
-void helmet_job(ThreadJobData tjd)
+void helmet_job(ThreadJobData tjd, void* user_data)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
+  JobContext*     ctx = reinterpret_cast<JobContext*>(user_data);
   ScopedPerfEvent perf_event(ctx->game->update_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
 
   const Mat4x4 world_transform = Mat4x4::Translation(Vec3(0.0f, 6.0f, 0.0f)) *
@@ -14,7 +14,7 @@ void helmet_job(ThreadJobData tjd)
   ctx->game->helmet_entity.recalculate_node_transforms(ctx->game->materials.helmet, world_transform);
 }
 
-void robot_job(ThreadJobData tjd)
+void robot_job(ThreadJobData tjd, void* user_data)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
   ScopedPerfEvent perf_event(ctx->game->update_profiler, __PRETTY_FUNCTION__, tjd.thread_id);

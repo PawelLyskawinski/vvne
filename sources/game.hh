@@ -36,21 +36,6 @@ struct RenderEntityParams
   VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
 };
 
-struct WeaponSelection
-{
-public:
-  void init();
-  void select(int new_dst);
-  void animate(float step);
-  void calculate(float transparencies[3]);
-
-private:
-  int   src;
-  int   dst;
-  bool  switch_animation;
-  float switch_animation_time;
-};
-
 struct Game;
 
 struct JobContext
@@ -86,26 +71,11 @@ struct Game
   int  lmb_current_cursor_position[2];
 
   //////////////////////////////////////////////////////////////////////////////
-  // Gameplay logic
+  // Gameplay
   //////////////////////////////////////////////////////////////////////////////
 
   Player       player;
   ExampleLevel level;
-
-  // gameplay mechanics
-  float           booster_jet_fuel;
-  WeaponSelection weapon_selections[2];
-
-  SimpleEntity helmet_entity;
-  SimpleEntity robot_entity;
-
-  // light test
-  SimpleEntity box_entities[7];
-
-  SimpleEntity matrioshka_entity;
-  SimpleEntity monster_entity;
-  SimpleEntity rigged_simple_entity;
-  SimpleEntity axis_arrow_entities[3];
 
   void startup(Engine& engine);
   void teardown(Engine& engine);

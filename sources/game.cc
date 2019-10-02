@@ -9,92 +9,11 @@
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_stdinc.h>
 
-namespace {
-
-float ease_in_out_quart(float t)
-{
-  if (t < 0.5)
-  {
-    t *= t;
-    return 8 * t * t;
-  }
-  else
-  {
-    t = (t - 1.0f) * t;
-    return 1 - 8 * t * t;
-  }
-}
-
-} // namespace
-
 RenderEntityParams::RenderEntityParams(const Player& p)
     : projection(p.camera_projection)
     , view(p.camera_view)
     , camera_position(p.camera_position)
 {
-}
-
-void WeaponSelection::init()
-{
-  src                   = 1;
-  dst                   = 1;
-  switch_animation      = false;
-  switch_animation_time = 0.0f;
-}
-
-void WeaponSelection::select(int new_dst)
-{
-  if ((not switch_animation) and (new_dst != src))
-  {
-    dst                   = new_dst;
-    switch_animation      = true;
-    switch_animation_time = 0.0f;
-  }
-}
-
-void WeaponSelection::animate(float step)
-{
-  if (not switch_animation)
-    return;
-
-  switch_animation_time += step;
-  if (switch_animation_time > 1.0f)
-  {
-    switch_animation_time = 1.0f;
-    switch_animation      = false;
-    src                   = dst;
-  }
-}
-
-void WeaponSelection::calculate(float transparencies[3])
-{
-  const float highlighted_value = 1.0f;
-  const float dimmed_value      = 0.4f;
-
-  if (not switch_animation)
-  {
-    for (int i = 0; i < 3; ++i)
-      transparencies[i] = (i == dst) ? highlighted_value : dimmed_value;
-  }
-  else
-  {
-
-    for (int i = 0; i < 3; ++i)
-    {
-      if (i == src)
-      {
-        transparencies[i] = 1.0f - (0.6f * ease_in_out_quart(switch_animation_time));
-      }
-      else if (i == dst)
-      {
-        transparencies[i] = 0.4f + (0.6f * ease_in_out_quart(switch_animation_time));
-      }
-      else
-      {
-        transparencies[i] = 0.4f;
-      }
-    }
-  }
 }
 
 void Game::startup(Engine& engine)
@@ -171,22 +90,8 @@ void Game::startup(Engine& engine)
 
   materials.setup(engine);
   materials.light_source_position = Vec3(0.0f, -1.0f, 1.0f);
-
-  helmet_entity.init(engine.generic_allocator, materials.helmet);
-  robot_entity.init(engine.generic_allocator, materials.robot);
-  monster_entity.init(engine.generic_allocator, materials.monster);
-
-  for (SimpleEntity& entity : box_entities)
-    entity.init(engine.generic_allocator, materials.box);
-
-  matrioshka_entity.init(engine.generic_allocator, materials.animatedBox);
-  rigged_simple_entity.init(engine.generic_allocator, materials.riggedSimple);
-
-  for (SimpleEntity& entity : axis_arrow_entities)
-    entity.init(engine.generic_allocator, materials.lil_arrow);
-
   player.setup(engine.extent2D.width, engine.extent2D.height);
-  booster_jet_fuel = 1.0f;
+  level.setup(engine.generic_allocator, materials);
 
   DEBUG_VEC2.x = 0.1f;
   DEBUG_VEC2.y = -1.0f;
@@ -198,9 +103,6 @@ void Game::startup(Engine& engine)
   DEBUG_LIGHT_ORTHO_PARAMS[1] = 10.0f;
   DEBUG_LIGHT_ORTHO_PARAMS[2] = -10.0f;
   DEBUG_LIGHT_ORTHO_PARAMS[3] = 10.0f;
-
-  for (WeaponSelection& sel : weapon_selections)
-    sel.init();
 
   {
     VkCommandBufferAllocateInfo info = {
@@ -346,6 +248,8 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     {
       player.process_event(event);
       debug_gui.process_event(event);
+      level.process_event(event);
+
       switch (event.type)
       {
       case SDL_MOUSEBUTTONDOWN:
@@ -383,24 +287,6 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
       {
         switch (event.key.keysym.scancode)
         {
-        case SDL_SCANCODE_1:
-          weapon_selections[0].select(0);
-          break;
-        case SDL_SCANCODE_2:
-          weapon_selections[0].select(1);
-          break;
-        case SDL_SCANCODE_3:
-          weapon_selections[0].select(2);
-          break;
-        case SDL_SCANCODE_4:
-          weapon_selections[1].select(0);
-          break;
-        case SDL_SCANCODE_5:
-          weapon_selections[1].select(1);
-          break;
-        case SDL_SCANCODE_6:
-          weapon_selections[1].select(2);
-          break;
         case SDL_SCANCODE_ESCAPE:
           quit_requested = true;
           break;
@@ -423,19 +309,19 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     }
   }
 
-  for (WeaponSelection& sel : weapon_selections)
-    sel.animate(0.008f * time_delta_since_last_frame_ms);
-
   debug_gui.update(engine, *this);
   player.update(current_time_sec, time_delta_since_last_frame_ms, level);
+  level.update(time_delta_since_last_frame_ms);
 
   const float acceleration_length = 5.0f * 1000.0f * player.acceleration.len();
 
   //
   // engines precalculation
   //
-  const Mat4x4 transform_a = Mat4x4::Translation(player.position + Vec3(0.0f, -0.4f, 0.0f)) * Mat4x4::RotationY(-player.camera_angle) * Mat4x4::Translation(Vec3(0.2f, 0.0f, -0.3f));
-  const Mat4x4 transform_b = Mat4x4::Translation(player.position + Vec3(0.0f, -0.4f, 0.0f)) * Mat4x4::RotationY(-player.camera_angle) * Mat4x4::Translation(Vec3(0.2f, 0.0f, 0.3f));
+  const Mat4x4 transform_a = Mat4x4::Translation(player.position + Vec3(0.0f, -0.4f, 0.0f)) *
+                             Mat4x4::RotationY(-player.camera_angle) * Mat4x4::Translation(Vec3(0.2f, 0.0f, -0.3f));
+  const Mat4x4 transform_b = Mat4x4::Translation(player.position + Vec3(0.0f, -0.4f, 0.0f)) *
+                             Mat4x4::RotationY(-player.camera_angle) * Mat4x4::Translation(Vec3(0.2f, 0.0f, 0.3f));
 
   LightSource dynamic_lights[] = {
       {
