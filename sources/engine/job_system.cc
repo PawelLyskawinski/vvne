@@ -109,6 +109,7 @@ void JobSystem::worker_loop()
       ThreadJobData tjd = {
           .thread_id = threadId,
           .allocator = allocator,
+          .user_data = user_data,
       };
 
       jobs[job_idx](tjd);

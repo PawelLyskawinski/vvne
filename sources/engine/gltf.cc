@@ -3,6 +3,7 @@
 #include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_log.h>
 #include <SDL2/SDL_timer.h>
+#include <algorithm>
 
 #ifndef __linux__
 #include <stdlib.h>
@@ -912,6 +913,13 @@ SceneGraph loadGLB(Engine& engine, const char* path)
         }
       }
     }
+
+    auto has_path = [](const ArrayView<AnimationChannel>& c, AnimationChannel::Path path) {
+      return c.end() != std::find(c.begin(), c.end(), path);
+    };
+
+    current_animation.has_rotations    = has_path(current_animation.channels, AnimationChannel::Path::Rotation);
+    current_animation.has_translations = has_path(current_animation.channels, AnimationChannel::Path::Translation);
   }
 
   // ---------------------------------------------------------------------------
@@ -950,7 +958,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     for (int i = 0; i < skin.inverse_bind_matrices.count; ++i)
     {
-      const uint8_t* src = &binary_data[glb_start_offset + (glb_stride * i)];
+      const uint8_t* src            = &binary_data[glb_start_offset + (glb_stride * i)];
       skin.inverse_bind_matrices[i] = Mat4x4(reinterpret_cast<const float*>(src));
     }
   }

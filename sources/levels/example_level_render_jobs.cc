@@ -1,4 +1,3 @@
-#include "render_jobs.hh"
 #include "engine/aligned_push_consts.hh"
 #include "engine/memory_map.hh"
 #include "game_generate_sdf_font.hh"
@@ -105,7 +104,7 @@ void robot_job(ThreadJobData tjd)
   render_pbr_entity(ctx->game->robot_entity, ctx->game->materials.robot, *ctx->engine, params);
 
 #if 0
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_model_wireframe.pipeline);
+        vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_model_wireframe.pipeline);
   params.pipeline_layout = ctx->engine->pipelines.colored_model_wireframe.layout;
 
   params.color[0] = SDL_fabsf(SDL_sinf(ctx->game->current_time_sec));
@@ -281,7 +280,7 @@ void vr_scene(ThreadJobData tjd)
 }
 
 #if 0
-void vr_scene_depth(ThreadJobData tjd)
+    void vr_scene_depth(ThreadJobData tjd)
 {
   for (int cascade_idx = 0; cascade_idx < Engine::SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
   {
@@ -671,7 +670,7 @@ void height_ruler_text(ThreadJobData tjd)
                          &ctx->game->materials.green_gui_billboard_vertex_buffer_offset);
 
 #if 0
-  struct VertexPushConstant
+        struct VertexPushConstant
   {
     Mat4x4 mvp;
     Vec2   character_coordinate;
@@ -1346,7 +1345,7 @@ void weapon_selectors_right(ThreadJobData tjd)
 }
 
 #if 0
-void hello_world_text(ThreadJobData tjd)
+    void hello_world_text(ThreadJobData tjd)
 {
   VkCommandBuffer    command = acquire_command_buffer(tjd);
   SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RobotGui};
@@ -1762,3 +1761,5 @@ void tesselated_ground(ThreadJobData tjd)
 }
 
 } // namespace render
+
+Job* ExampleLevel::copy_render_jobs(Job* end_ptr) { return end_ptr; }

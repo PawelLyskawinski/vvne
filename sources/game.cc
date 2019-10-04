@@ -1,9 +1,7 @@
 #include "game.hh"
 #include "engine/cubemap.hh"
 #include "engine/memory_map.hh"
-#include "render_jobs.hh"
 #include "terrain_as_a_function.hh"
-#include "update_jobs.hh"
 #include <SDL2/SDL_clipboard.h>
 #include <SDL2/SDL_events.h>
 #include <SDL2/SDL_scancode.h>
@@ -367,13 +365,12 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   recalculate_cascade_view_proj_matrices(materials.cascade_view_proj_mat, materials.cascade_split_depths,
                                          player.camera_projection, player.camera_view, materials.light_source_position);
 
-  const Job jobs[] = {
-      update::moving_lights_job, update::helmet_job,        update::robot_job,
-      update::monster_job,       update::rigged_simple_job, update::matrioshka_job,
-  };
+  Job* jobs_begin              = engine.job_system.jobs;
+  Job* jobs_end                = level.copy_update_jobs(jobs_begin);
+  engine.job_system.jobs_count = std::distance(jobs_begin, jobs_end);
 
-  engine.job_system.jobs_count = SDL_arraysize(jobs);
-  SDL_memcpy(engine.job_system.jobs, jobs, sizeof(jobs));
+  SDL_assert(SDL_arraysize(engine.job_system.jobs) > engine.job_system.jobs_count);
+
   engine.job_system.start();
   ImGui::Render();
   engine.job_system.wait_for_finish();
@@ -501,7 +498,7 @@ void Game::render(Engine& engine)
     {
       const uint32_t count = materials.riggedSimple.skins[0].joints.count;
       const uint32_t size  = count * sizeof(Mat4x4);
-      const Mat4x4*  begin = reinterpret_cast<Mat4x4*>(rigged_simple_entity.joint_matrices);
+      const Mat4x4*  begin = reinterpret_cast<Mat4x4*>(level.rigged_simple_entity.joint_matrices);
       const Mat4x4*  end   = &begin[count];
 
       MemoryMap joint_matrices(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
@@ -515,7 +512,7 @@ void Game::render(Engine& engine)
     {
       const uint32_t count = materials.monster.skins[0].joints.count;
       const uint32_t size  = count * sizeof(Mat4x4);
-      const Mat4x4*  begin = reinterpret_cast<Mat4x4*>(monster_entity.joint_matrices);
+      const Mat4x4*  begin = reinterpret_cast<Mat4x4*>(level.monster_entity.joint_matrices);
       const Mat4x4*  end   = &begin[count];
 
       MemoryMap joint_matrices(engine.device, engine.memory_blocks.host_coherent_ubo.memory,

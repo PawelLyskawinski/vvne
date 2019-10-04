@@ -48,20 +48,21 @@ set(SOURCES
         sources/game_render_entity.cc
         sources/engine/gltf.cc
         sources/engine/cubemap.cc
-        sources/render_jobs.cc
-        sources/update_jobs.cc
         sources/simple_entity.cc
         sources/player.cc
         sources/terrain_as_a_function.cc
         sources/profiler.cc
         sources/profiler_visualizer.cc
         sources/levels/example_level.cc
+        sources/levels/example_level_update_jobs.cc
+        sources/levels/example_level_render_jobs.cc
         sources/materials.cc
         sources/debug_gui.cc
         thirdparty/imgui.cpp
         thirdparty/imgui_draw.cpp
         thirdparty/imgui_widgets.cpp
-        thirdparty/sha256.cpp sources/engine/aligned_push_consts.hh sources/systems/component_system.cc sources/systems/component_system.hh)
+        thirdparty/sha256.cpp
+        )
 
 if(WIN32)
 add_executable(${PROJECT_NAME} ${SOURCES} assets/applicationIcon.rc)

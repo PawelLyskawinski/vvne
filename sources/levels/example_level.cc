@@ -1,9 +1,13 @@
 #include "example_level.hh"
+#include "game.hh"
 #include "materials.hh"
+#include "player.hh"
 #include <SDL2/SDL_events.h>
 #include <SDL2/SDL_stdinc.h>
 
-static float ease_in_out_quart(float t)
+namespace {
+
+float ease_in_out_quart(float t)
 {
   if (t < 0.5)
   {
@@ -16,6 +20,8 @@ static float ease_in_out_quart(float t)
     return 1 - 8 * t * t;
   }
 }
+
+} // namespace
 
 void WeaponSelection::init()
 {
@@ -151,16 +157,6 @@ void ExampleLevel::update(float time_delta_since_last_frame_ms)
   {
     sel.animate(0.008f * time_delta_since_last_frame_ms);
   }
-}
-
-Job* ExampleLevel::copy_update_jobs(Job* end_ptr)
-{
-    return end_ptr;
-}
-
-Job* ExampleLevel::copy_render_jobs(Job* end_ptr)
-{
-    return end_ptr;
 }
 
 //
