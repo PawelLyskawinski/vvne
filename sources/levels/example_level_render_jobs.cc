@@ -25,23 +25,6 @@ void render_skybox(VkCommandBuffer command, VkBuffer buffer, const Player& playe
   vkCmdDrawIndexed(command, mesh.indices_count, 1, 0, 0, 0);
 }
 
-void render_robot_depth()
-{
-  for (int cascade_idx = 0; cascade_idx < SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
-  {
-    VkCommandBuffer command = acquire_command_buffer(tjd);
-    ctx->game->shadow_mapping_pass_commands.push({command, cascade_idx});
-    ctx->engine->render_passes.shadowmap.begin(command, static_cast<uint32_t>(cascade_idx));
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.shadowmap.pipeline);
-    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.shadowmap.layout, 0, 1,
-                            &ctx->game->materials.cascade_view_proj_matrices_depth_pass_dset[ctx->game->image_index], 0,
-                            nullptr);
-    render_pbr_entity_shadow(ctx->game->robot_entity, ctx->game->materials.robot, *ctx->engine, *ctx->game, command,
-                             cascade_idx);
-    vkEndCommandBuffer(command);
-  }
-}
-
 struct RenderJob
 {
   RenderJob(JobContext& ctx, uint32_t thread_id, const char* name)
@@ -72,29 +55,57 @@ void skybox_job(ThreadJobData tjd)
   RenderJob job(tjd, __PRETTY_FUNCTION__);
   job.game.skybox_command = job.command;
   job.start(job.engine.render_passes.skybox);
-
   render_skybox(job.command, job.engine.gpu_device_local_memory_buffer, job.game.player, job.engine.pipelines.skybox,
                 job.game.materials);
 }
 
 void robot_depth_job(ThreadJobData tjd)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
-
   for (int cascade_idx = 0; cascade_idx < SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
   {
-    VkCommandBuffer command = acquire_command_buffer(tjd);
-    ctx->game->shadow_mapping_pass_commands.push({command, cascade_idx});
-    ctx->engine->render_passes.shadowmap.begin(command, static_cast<uint32_t>(cascade_idx));
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.shadowmap.pipeline);
-    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.shadowmap.layout, 0, 1,
-                            &ctx->game->materials.cascade_view_proj_matrices_depth_pass_dset[ctx->game->image_index], 0,
+    RenderJob job(tjd, __PRETTY_FUNCTION__);
+    job.game.shadow_mapping_pass_commands.push({job.command, cascade_idx});
+    job.engine.render_passes.shadowmap.begin(job.command, static_cast<uint32_t>(cascade_idx));
+    const auto& pipe = job.engine.pipelines.shadowmap;
+    vkCmdBindPipeline(job.command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe.pipeline);
+    vkCmdBindDescriptorSets(job.command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe.layout, 0, 1,
+                            &job.game.materials.cascade_view_proj_matrices_depth_pass_dset[job.game.image_index], 0,
                             nullptr);
-    render_pbr_entity_shadow(ctx->game->robot_entity, ctx->game->materials.robot, *ctx->engine, *ctx->game, command,
+    render_pbr_entity_shadow(job.game.level.robot_entity, job.game.materials.robot, job.engine, job.game, job.command,
                              cascade_idx);
-    vkEndCommandBuffer(command);
   }
+}
+
+void robot_job2(ThreadJobData tjd)
+{
+  RenderJob job(tjd, __PRETTY_FUNCTION__);
+  job.game.scene_rendering_commands.push(job.command);
+  job.start(job.engine.render_passes.color_and_depth);
+
+  const auto&      pipe = job.engine.pipelines.scene3D;
+  const Materials& mats = job.game.materials;
+
+  vkCmdBindPipeline(job.command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe.pipeline);
+
+  VkDescriptorSet dsets[] = {
+      mats.robot_pbr_material_dset,
+      mats.pbr_ibl_environment_dset,
+      mats.debug_shadow_map_dset,
+      mats.pbr_dynamic_lights_dset,
+      mats.cascade_view_proj_matrices_render_dset[job.game.image_index],
+  };
+
+  uint32_t dynamic_offset = static_cast<uint32_t>(mats.pbr_dynamic_lights_ubo_offsets[job.game.image_index]);
+
+  vkCmdBindDescriptorSets(job.command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe.layout, 0, SDL_arraysize(dsets), dsets, 1,
+                          &dynamic_offset);
+
+  RenderEntityParams params(job.game.player);
+  params.cmd             = job.command;
+  params.color           = Vec3(0.0f, 0.0f, 0.0f);
+  params.pipeline_layout = pipe.layout;
+
+  render_pbr_entity(job.game.level.robot_entity, mats.robot, job.engine, params);
 }
 
 void robot_job(ThreadJobData tjd)
