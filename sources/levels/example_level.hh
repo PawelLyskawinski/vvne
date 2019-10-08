@@ -27,8 +27,9 @@ public:
   void teardown();
   void process_event(const SDL_Event& event);
   void update(float time_delta_since_last_frame_ms);
-  Job* copy_update_jobs(Job* dst);
-  Job* copy_render_jobs(Job* dst);
+
+  static Job* copy_update_jobs(Job* dst);
+  static Job* copy_render_jobs(Job* dst);
 
   [[nodiscard]] float get_height(float x, float y) const;
 

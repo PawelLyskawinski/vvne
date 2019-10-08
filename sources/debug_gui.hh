@@ -11,6 +11,8 @@ struct DebugGui
   bool        mousepressed[3];
   SDL_Cursor* mousecursors[ImGuiMouseCursor_Count_];
 
+  void setup();
+  void teardown();
   void process_event(SDL_Event& event);
   void update(Engine& engine, Game& game);
 

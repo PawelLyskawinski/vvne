@@ -5,10 +5,88 @@
 #include "engine/memory_map.hh"
 #include "game.hh"
 #include "profiler_visualizer.hh"
+#include <SDL2/SDL_clipboard.h>
 #include <SDL2/SDL_log.h>
-
 #include <algorithm>
 #include <numeric>
+
+void DebugGui::setup()
+{
+  ImGui::CreateContext();
+  ImGuiIO& io = ImGui::GetIO();
+  ImGui::StyleColorsClassic();
+
+  {
+    struct KeyMapping
+    {
+      ImGuiKey_    imgui;
+      SDL_Scancode sdl;
+    };
+
+    KeyMapping mappings[] = {
+        {ImGuiKey_Tab, SDL_SCANCODE_TAB},
+        {ImGuiKey_LeftArrow, SDL_SCANCODE_LEFT},
+        {ImGuiKey_RightArrow, SDL_SCANCODE_RIGHT},
+        {ImGuiKey_UpArrow, SDL_SCANCODE_UP},
+        {ImGuiKey_DownArrow, SDL_SCANCODE_DOWN},
+        {ImGuiKey_PageUp, SDL_SCANCODE_PAGEUP},
+        {ImGuiKey_PageDown, SDL_SCANCODE_PAGEDOWN},
+        {ImGuiKey_Home, SDL_SCANCODE_HOME},
+        {ImGuiKey_End, SDL_SCANCODE_END},
+        {ImGuiKey_Insert, SDL_SCANCODE_INSERT},
+        {ImGuiKey_Delete, SDL_SCANCODE_DELETE},
+        {ImGuiKey_Backspace, SDL_SCANCODE_BACKSPACE},
+        {ImGuiKey_Space, SDL_SCANCODE_SPACE},
+        {ImGuiKey_Enter, SDL_SCANCODE_RETURN},
+        {ImGuiKey_Escape, SDL_SCANCODE_ESCAPE},
+        {ImGuiKey_A, SDL_SCANCODE_A},
+        {ImGuiKey_C, SDL_SCANCODE_C},
+        {ImGuiKey_V, SDL_SCANCODE_V},
+        {ImGuiKey_X, SDL_SCANCODE_X},
+        {ImGuiKey_Y, SDL_SCANCODE_Y},
+        {ImGuiKey_Z, SDL_SCANCODE_Z},
+    };
+
+    for (KeyMapping mapping : mappings)
+      io.KeyMap[mapping.imgui] = mapping.sdl;
+  }
+
+  io.RenderDrawListsFn  = nullptr;
+  io.GetClipboardTextFn = [](void*) -> const char* { return SDL_GetClipboardText(); };
+  io.SetClipboardTextFn = [](void*, const char* text) { SDL_SetClipboardText(text); };
+  io.ClipboardUserData  = nullptr;
+
+  {
+    struct CursorMapping
+    {
+      ImGuiMouseCursor_ imgui;
+      SDL_SystemCursor  sdl;
+    };
+
+    CursorMapping mappings[] = {
+        {ImGuiMouseCursor_Arrow, SDL_SYSTEM_CURSOR_ARROW},
+        {ImGuiMouseCursor_TextInput, SDL_SYSTEM_CURSOR_IBEAM},
+        {ImGuiMouseCursor_ResizeAll, SDL_SYSTEM_CURSOR_SIZEALL},
+        {ImGuiMouseCursor_ResizeNS, SDL_SYSTEM_CURSOR_SIZENS},
+        {ImGuiMouseCursor_ResizeEW, SDL_SYSTEM_CURSOR_SIZEWE},
+        {ImGuiMouseCursor_ResizeNESW, SDL_SYSTEM_CURSOR_SIZENESW},
+        {ImGuiMouseCursor_ResizeNWSE, SDL_SYSTEM_CURSOR_SIZENWSE},
+    };
+
+    for (CursorMapping mapping : mappings)
+    {
+      mousecursors[mapping.imgui] = SDL_CreateSystemCursor(mapping.sdl);
+    }
+  }
+}
+
+void DebugGui::teardown()
+{
+  for (SDL_Cursor* cursor : mousecursors)
+  {
+    SDL_FreeCursor(cursor);
+  }
+}
 
 void DebugGui::process_event(SDL_Event& event)
 {
@@ -170,7 +248,8 @@ void DebugGui::update(Engine& engine, Game& game)
   if (ImGui::CollapsingHeader("Animations"))
   {
     const char*   names[]    = {"CUBE", "RIGGED", "MONSTER"};
-    SimpleEntity* entities[] = {&game.matrioshka_entity, &game.rigged_simple_entity, &game.monster_entity};
+    SimpleEntity* entities[] = {&game.level.matrioshka_entity, &game.level.rigged_simple_entity,
+                                &game.level.monster_entity};
 
     for (uint32_t i = 0; i < 3; ++i)
     {
@@ -193,7 +272,7 @@ void DebugGui::update(Engine& engine, Game& game)
   if (ImGui::CollapsingHeader("Gameplay features"))
   {
     ImGui::Text("Booster jet fluel");
-    ImGui::ProgressBar(game.booster_jet_fuel);
+    ImGui::ProgressBar(game.level.booster_jet_fuel);
     ImGui::Text("%d %d | %d %d", game.lmb_last_cursor_position[0], game.lmb_last_cursor_position[1],
                 game.lmb_current_cursor_position[0], game.lmb_current_cursor_position[1]);
   }

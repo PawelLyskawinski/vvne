@@ -16,76 +16,7 @@ RenderEntityParams::RenderEntityParams(const Player& p)
 
 void Game::startup(Engine& engine)
 {
-  //
-  // IMGUI preliminary setup
-  //
-  {
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO();
-    ImGui::StyleColorsClassic();
-
-    {
-      struct KeyMapping
-      {
-        ImGuiKey_    imgui;
-        SDL_Scancode sdl;
-      };
-
-      KeyMapping mappings[] = {
-          {ImGuiKey_Tab, SDL_SCANCODE_TAB},
-          {ImGuiKey_LeftArrow, SDL_SCANCODE_LEFT},
-          {ImGuiKey_RightArrow, SDL_SCANCODE_RIGHT},
-          {ImGuiKey_UpArrow, SDL_SCANCODE_UP},
-          {ImGuiKey_DownArrow, SDL_SCANCODE_DOWN},
-          {ImGuiKey_PageUp, SDL_SCANCODE_PAGEUP},
-          {ImGuiKey_PageDown, SDL_SCANCODE_PAGEDOWN},
-          {ImGuiKey_Home, SDL_SCANCODE_HOME},
-          {ImGuiKey_End, SDL_SCANCODE_END},
-          {ImGuiKey_Insert, SDL_SCANCODE_INSERT},
-          {ImGuiKey_Delete, SDL_SCANCODE_DELETE},
-          {ImGuiKey_Backspace, SDL_SCANCODE_BACKSPACE},
-          {ImGuiKey_Space, SDL_SCANCODE_SPACE},
-          {ImGuiKey_Enter, SDL_SCANCODE_RETURN},
-          {ImGuiKey_Escape, SDL_SCANCODE_ESCAPE},
-          {ImGuiKey_A, SDL_SCANCODE_A},
-          {ImGuiKey_C, SDL_SCANCODE_C},
-          {ImGuiKey_V, SDL_SCANCODE_V},
-          {ImGuiKey_X, SDL_SCANCODE_X},
-          {ImGuiKey_Y, SDL_SCANCODE_Y},
-          {ImGuiKey_Z, SDL_SCANCODE_Z},
-      };
-
-      for (KeyMapping mapping : mappings)
-        io.KeyMap[mapping.imgui] = mapping.sdl;
-    }
-
-    io.RenderDrawListsFn  = nullptr;
-    io.GetClipboardTextFn = [](void*) -> const char* { return SDL_GetClipboardText(); };
-    io.SetClipboardTextFn = [](void*, const char* text) { SDL_SetClipboardText(text); };
-    io.ClipboardUserData  = nullptr;
-
-    {
-      struct CursorMapping
-      {
-        ImGuiMouseCursor_ imgui;
-        SDL_SystemCursor  sdl;
-      };
-
-      CursorMapping mappings[] = {
-          {ImGuiMouseCursor_Arrow, SDL_SYSTEM_CURSOR_ARROW},
-          {ImGuiMouseCursor_TextInput, SDL_SYSTEM_CURSOR_IBEAM},
-          {ImGuiMouseCursor_ResizeAll, SDL_SYSTEM_CURSOR_SIZEALL},
-          {ImGuiMouseCursor_ResizeNS, SDL_SYSTEM_CURSOR_SIZENS},
-          {ImGuiMouseCursor_ResizeEW, SDL_SYSTEM_CURSOR_SIZEWE},
-          {ImGuiMouseCursor_ResizeNESW, SDL_SYSTEM_CURSOR_SIZENESW},
-          {ImGuiMouseCursor_ResizeNWSE, SDL_SYSTEM_CURSOR_SIZENWSE},
-      };
-
-      for (CursorMapping mapping : mappings)
-        debug_gui.mousecursors[mapping.imgui] = SDL_CreateSystemCursor(mapping.sdl);
-    }
-  }
-
+  debug_gui.setup();
   materials.setup(engine);
   materials.light_source_position = Vec3(0.0f, -1.0f, 1.0f);
   player.setup(engine.extent2D.width, engine.extent2D.height);
@@ -120,10 +51,8 @@ void Game::startup(Engine& engine)
 
 void Game::teardown(Engine& engine)
 {
-  for (SDL_Cursor* cursor : debug_gui.mousecursors)
-    SDL_FreeCursor(cursor);
+  debug_gui.teardown();
   materials.teardown(engine);
-
   vkDeviceWaitIdle(engine.device);
 }
 
@@ -366,7 +295,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
                                          player.camera_projection, player.camera_view, materials.light_source_position);
 
   Job* jobs_begin              = engine.job_system.jobs;
-  Job* jobs_end                = level.copy_update_jobs(jobs_begin);
+  Job* jobs_end                = ExampleLevel::copy_update_jobs(jobs_begin);
   engine.job_system.jobs_count = std::distance(jobs_begin, jobs_end);
 
   SDL_assert(SDL_arraysize(engine.job_system.jobs) > engine.job_system.jobs_count);

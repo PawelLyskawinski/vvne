@@ -6,47 +6,75 @@
 
 namespace {
 
-VkCommandBuffer acquire_command_buffer(ThreadJobData& tjd)
+void render_skybox(VkCommandBuffer command, VkBuffer buffer, const Player& player, const Pipelines::Pair& pipe,
+                   const Materials& materials)
 {
-  JobContext* ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  return ctx->engine->job_system.acquire(tjd.thread_id, ctx->game->image_index);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe.pipeline);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe.layout, 0, 1, &materials.skybox_cubemap_dset,
+                          0, nullptr);
+
+  AlignedPushConsts(command, pipe.layout)
+      .push(VK_SHADER_STAGE_VERTEX_BIT, player.camera_projection)
+      .push(VK_SHADER_STAGE_VERTEX_BIT, player.camera_view);
+
+  const Node& node = materials.box.nodes.data[1];
+  const Mesh& mesh = materials.box.meshes.data[node.mesh];
+
+  vkCmdBindIndexBuffer(command, buffer, mesh.indices_offset, mesh.indices_type);
+  vkCmdBindVertexBuffers(command, 0, 1, &buffer, &mesh.vertices_offset);
+  vkCmdDrawIndexed(command, mesh.indices_count, 1, 0, 0, 0);
 }
 
-} // namespace
+void render_robot_depth()
+{
+  for (int cascade_idx = 0; cascade_idx < SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
+  {
+    VkCommandBuffer command = acquire_command_buffer(tjd);
+    ctx->game->shadow_mapping_pass_commands.push({command, cascade_idx});
+    ctx->engine->render_passes.shadowmap.begin(command, static_cast<uint32_t>(cascade_idx));
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.shadowmap.pipeline);
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.shadowmap.layout, 0, 1,
+                            &ctx->game->materials.cascade_view_proj_matrices_depth_pass_dset[ctx->game->image_index], 0,
+                            nullptr);
+    render_pbr_entity_shadow(ctx->game->robot_entity, ctx->game->materials.robot, *ctx->engine, *ctx->game, command,
+                             cascade_idx);
+    vkEndCommandBuffer(command);
+  }
+}
 
-namespace render {
+struct RenderJob
+{
+  RenderJob(JobContext& ctx, uint32_t thread_id, const char* name)
+      : game(*ctx.game)
+      , engine(*ctx.engine)
+      , perf_event(game.render_profiler, name, thread_id)
+      , command(engine.job_system.acquire(thread_id, game.image_index))
+  {
+  }
+
+  RenderJob(ThreadJobData& tjd, const char* name)
+      : RenderJob(*reinterpret_cast<JobContext*>(tjd.user_data), tjd.thread_id, name)
+  {
+  }
+
+  void start(const RenderPass& pass) { pass.begin(command, game.image_index); }
+
+  ~RenderJob() { vkEndCommandBuffer(command); }
+
+  Game&           game;
+  Engine&         engine;
+  ScopedPerfEvent perf_event;
+  VkCommandBuffer command;
+};
 
 void skybox_job(ThreadJobData tjd)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  RenderJob job(tjd, __PRETTY_FUNCTION__);
+  job.game.skybox_command = job.command;
+  job.start(job.engine.render_passes.skybox);
 
-  VkCommandBuffer command   = acquire_command_buffer(tjd);
-  ctx->game->skybox_command = command;
-  ctx->engine->render_passes.skybox.begin(command, ctx->game->image_index);
-
-  struct
-  {
-    Mat4x4 projection;
-    Mat4x4 view;
-  } push = {};
-
-  push.projection = ctx->game->player.camera_projection;
-  push.view       = ctx->game->player.camera_view;
-
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.skybox.pipeline);
-  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.skybox.layout, 0, 1,
-                          &ctx->game->materials.skybox_cubemap_dset, 0, nullptr);
-  vkCmdPushConstants(command, ctx->engine->pipelines.skybox.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), &push);
-
-  const Node& node = ctx->game->materials.box.nodes.data[1];
-  Mesh&       mesh = ctx->game->materials.box.meshes.data[node.mesh];
-
-  vkCmdBindIndexBuffer(command, ctx->engine->gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
-  vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer, &mesh.vertices_offset);
-  vkCmdDrawIndexed(command, mesh.indices_count, 1, 0, 0, 0);
-
-  vkEndCommandBuffer(command);
+  render_skybox(job.command, job.engine.gpu_device_local_memory_buffer, job.game.player, job.engine.pipelines.skybox,
+                job.game.materials);
 }
 
 void robot_depth_job(ThreadJobData tjd)
@@ -1760,6 +1788,6 @@ void tesselated_ground(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-} // namespace render
+} // namespace
 
 Job* ExampleLevel::copy_render_jobs(Job* end_ptr) { return end_ptr; }
