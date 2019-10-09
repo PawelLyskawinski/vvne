@@ -3,37 +3,15 @@
 #include "simple_entity.hh"
 #include "debug_gui.hh"
 #include "engine/atomic_stack.hh"
-#include "engine/engine.hh"
-#include "engine/gltf.hh"
-#include "game_constants.hh"
-#include "game_generate_gui_lines.hh"
-#include "imgui.h"
 #include "levels/example_level.hh"
 #include "materials.hh"
 #include "player.hh"
 #include "profiler.hh"
-#include <SDL2/SDL_mouse.h>
-#include <SDL2/SDL_mutex.h>
-#include <SDL2/SDL_scancode.h>
-#include <SDL2/SDL_thread.h>
 
 struct ShadowmapCommandBuffer
 {
   VkCommandBuffer cmd;
   int             cascade_idx;
-};
-
-struct RenderEntityParams
-{
-  RenderEntityParams() = default;
-  explicit RenderEntityParams(const Player& player);
-
-  VkCommandBuffer  cmd = VK_NULL_HANDLE;
-  Mat4x4           projection;
-  Mat4x4           view;
-  Vec3             camera_position;
-  Vec3             color;
-  VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
 };
 
 struct Game;

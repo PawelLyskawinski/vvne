@@ -6,13 +6,6 @@
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_stdinc.h>
 
-RenderEntityParams::RenderEntityParams(const Player& p)
-    : projection(p.camera_projection)
-    , view(p.camera_view)
-    , camera_position(p.camera_position)
-{
-}
-
 void Game::startup(Engine& engine)
 {
   debug_gui.setup();
