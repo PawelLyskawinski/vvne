@@ -62,7 +62,7 @@ set(SOURCES
         thirdparty/imgui_draw.cpp
         thirdparty/imgui_widgets.cpp
         thirdparty/sha256.cpp
-        )
+        "sources/engine/cascade_shadow_mapping.cc" "sources/engine/cascade_shadow_mapping.hh")
 
 if(WIN32)
 add_executable(${PROJECT_NAME} ${SOURCES} assets/applicationIcon.rc)
