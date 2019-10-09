@@ -74,19 +74,45 @@ void SimpleEntity::init(FreeListAllocator& allocator, const SceneGraph& model)
   node_parent_hierarchy = allocator.allocate<uint8_t>(nodes_count);
   node_transforms       = allocator.allocate<Mat4x4>(nodes_count);
 
+  //
+  // TODO: move this to scenegraph
+  //
   for (int scene_node_idx : model.scenes[0].nodes)
+  {
     propagate_node_renderability_hierarchy(scene_node_idx, node_renderabilities, model.nodes);
+  }
 
   for (uint8_t i = 0; i < nodes_count; ++i)
+  {
     node_parent_hierarchy[i] = i;
+  }
 
   for (uint8_t node_idx = 0; node_idx < nodes_count; ++node_idx)
+  {
     for (int child_idx : model.nodes[node_idx].children)
+    {
       depth_first_node_parent_hierarchy(node_parent_hierarchy, model.nodes.data, node_idx,
                                         static_cast<uint8_t>(child_idx));
+    }
+  }
 
   if (model.skins.count)
+  {
     joint_matrices = allocator.allocate<Mat4x4>(static_cast<uint32_t>(model.skins[0].joints.count));
+  }
+
+  if (std::any_of(model.animations.begin(), model.animations.end(), [](const Animation& a) { return a.has_rotations; }))
+  {
+    node_rotations  = allocator.allocate<Quaternion>(static_cast<uint32_t>(model.nodes.count));
+    flags.rotations = true;
+  }
+
+  if (std::any_of(model.animations.begin(), model.animations.end(),
+                  [](const Animation& a) { return a.has_translations; }))
+  {
+    node_translations  = allocator.allocate<Vec3>(static_cast<uint32_t>(model.nodes.count));
+    flags.translations = true;
+  }
 }
 
 void SimpleEntity::recalculate_node_transforms(const SceneGraph& model, const Mat4x4& world_transform)
@@ -203,7 +229,7 @@ void SimpleEntity::recalculate_node_transforms(const SceneGraph& model, const Ma
   }
 }
 
-void SimpleEntity::animate(FreeListAllocator& allocator, const SceneGraph& scene_graph, float current_time_sec)
+void SimpleEntity::animate(const SceneGraph& scene_graph, float current_time_sec)
 {
   //
   // Animation is considered running ONLY when entity has a proper flag setup.
@@ -253,12 +279,6 @@ void SimpleEntity::animate(FreeListAllocator& allocator, const SceneGraph& scene
 
     if (AnimationChannel::Path::Rotation == channel.target_path)
     {
-      if (not flags.rotations)
-      {
-        node_rotations  = allocator.allocate<Quaternion>(static_cast<uint32_t>(scene_graph.nodes.count));
-        flags.rotations = true;
-      }
-
       if (not flags.anim_rotation_applicability)
       {
         std::fill(node_rotations, node_rotations + scene_graph.nodes.count, Quaternion());
@@ -292,12 +312,6 @@ void SimpleEntity::animate(FreeListAllocator& allocator, const SceneGraph& scene
     }
     else if (AnimationChannel::Path::Translation == channel.target_path)
     {
-      if (not flags.translations)
-      {
-        node_translations  = allocator.allocate<Vec3>(static_cast<uint32_t>(scene_graph.nodes.count));
-        flags.translations = true;
-      }
-
       if (not flags.anim_translation_applicability)
       {
         std::fill(node_translations, node_translations + scene_graph.nodes.count, Vec3());

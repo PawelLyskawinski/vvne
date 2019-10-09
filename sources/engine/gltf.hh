@@ -64,6 +64,8 @@ struct AnimationChannel
     Scale
   };
 
+  [[nodiscard]] bool operator==(const Path& path) const { return path == target_path; }
+
   int  sampler_idx;
   int  target_node_idx;
   Path target_path;
@@ -90,6 +92,9 @@ struct Animation
 {
   ArrayView<AnimationChannel> channels;
   ArrayView<AnimationSampler> samplers;
+
+  bool has_rotations;
+  bool has_translations;
 };
 
 struct Skin

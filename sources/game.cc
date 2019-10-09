@@ -1,192 +1,18 @@
 #include "game.hh"
 #include "engine/cubemap.hh"
 #include "engine/memory_map.hh"
-#include "render_jobs.hh"
-#include "terrain_as_a_function.hh"
-#include "update_jobs.hh"
-#include <SDL2/SDL_clipboard.h>
 #include <SDL2/SDL_events.h>
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_stdinc.h>
-
-namespace {
-
-float ease_in_out_quart(float t)
-{
-  if (t < 0.5)
-  {
-    t *= t;
-    return 8 * t * t;
-  }
-  else
-  {
-    t = (t - 1.0f) * t;
-    return 1 - 8 * t * t;
-  }
-}
-
-} // namespace
-
-RenderEntityParams::RenderEntityParams(const Player& p)
-    : projection(p.camera_projection)
-    , view(p.camera_view)
-    , camera_position(p.camera_position)
-{
-}
-
-void WeaponSelection::init()
-{
-  src                   = 1;
-  dst                   = 1;
-  switch_animation      = false;
-  switch_animation_time = 0.0f;
-}
-
-void WeaponSelection::select(int new_dst)
-{
-  if ((not switch_animation) and (new_dst != src))
-  {
-    dst                   = new_dst;
-    switch_animation      = true;
-    switch_animation_time = 0.0f;
-  }
-}
-
-void WeaponSelection::animate(float step)
-{
-  if (not switch_animation)
-    return;
-
-  switch_animation_time += step;
-  if (switch_animation_time > 1.0f)
-  {
-    switch_animation_time = 1.0f;
-    switch_animation      = false;
-    src                   = dst;
-  }
-}
-
-void WeaponSelection::calculate(float transparencies[3])
-{
-  const float highlighted_value = 1.0f;
-  const float dimmed_value      = 0.4f;
-
-  if (not switch_animation)
-  {
-    for (int i = 0; i < 3; ++i)
-      transparencies[i] = (i == dst) ? highlighted_value : dimmed_value;
-  }
-  else
-  {
-
-    for (int i = 0; i < 3; ++i)
-    {
-      if (i == src)
-      {
-        transparencies[i] = 1.0f - (0.6f * ease_in_out_quart(switch_animation_time));
-      }
-      else if (i == dst)
-      {
-        transparencies[i] = 0.4f + (0.6f * ease_in_out_quart(switch_animation_time));
-      }
-      else
-      {
-        transparencies[i] = 0.4f;
-      }
-    }
-  }
-}
+#include "engine/cascade_shadow_mapping.hh"
 
 void Game::startup(Engine& engine)
 {
-  //
-  // IMGUI preliminary setup
-  //
-  {
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO();
-    ImGui::StyleColorsClassic();
-
-    {
-      struct KeyMapping
-      {
-        ImGuiKey_    imgui;
-        SDL_Scancode sdl;
-      };
-
-      KeyMapping mappings[] = {
-          {ImGuiKey_Tab, SDL_SCANCODE_TAB},
-          {ImGuiKey_LeftArrow, SDL_SCANCODE_LEFT},
-          {ImGuiKey_RightArrow, SDL_SCANCODE_RIGHT},
-          {ImGuiKey_UpArrow, SDL_SCANCODE_UP},
-          {ImGuiKey_DownArrow, SDL_SCANCODE_DOWN},
-          {ImGuiKey_PageUp, SDL_SCANCODE_PAGEUP},
-          {ImGuiKey_PageDown, SDL_SCANCODE_PAGEDOWN},
-          {ImGuiKey_Home, SDL_SCANCODE_HOME},
-          {ImGuiKey_End, SDL_SCANCODE_END},
-          {ImGuiKey_Insert, SDL_SCANCODE_INSERT},
-          {ImGuiKey_Delete, SDL_SCANCODE_DELETE},
-          {ImGuiKey_Backspace, SDL_SCANCODE_BACKSPACE},
-          {ImGuiKey_Space, SDL_SCANCODE_SPACE},
-          {ImGuiKey_Enter, SDL_SCANCODE_RETURN},
-          {ImGuiKey_Escape, SDL_SCANCODE_ESCAPE},
-          {ImGuiKey_A, SDL_SCANCODE_A},
-          {ImGuiKey_C, SDL_SCANCODE_C},
-          {ImGuiKey_V, SDL_SCANCODE_V},
-          {ImGuiKey_X, SDL_SCANCODE_X},
-          {ImGuiKey_Y, SDL_SCANCODE_Y},
-          {ImGuiKey_Z, SDL_SCANCODE_Z},
-      };
-
-      for (KeyMapping mapping : mappings)
-        io.KeyMap[mapping.imgui] = mapping.sdl;
-    }
-
-    io.RenderDrawListsFn  = nullptr;
-    io.GetClipboardTextFn = [](void*) -> const char* { return SDL_GetClipboardText(); };
-    io.SetClipboardTextFn = [](void*, const char* text) { SDL_SetClipboardText(text); };
-    io.ClipboardUserData  = nullptr;
-
-    {
-      struct CursorMapping
-      {
-        ImGuiMouseCursor_ imgui;
-        SDL_SystemCursor  sdl;
-      };
-
-      CursorMapping mappings[] = {
-          {ImGuiMouseCursor_Arrow, SDL_SYSTEM_CURSOR_ARROW},
-          {ImGuiMouseCursor_TextInput, SDL_SYSTEM_CURSOR_IBEAM},
-          {ImGuiMouseCursor_ResizeAll, SDL_SYSTEM_CURSOR_SIZEALL},
-          {ImGuiMouseCursor_ResizeNS, SDL_SYSTEM_CURSOR_SIZENS},
-          {ImGuiMouseCursor_ResizeEW, SDL_SYSTEM_CURSOR_SIZEWE},
-          {ImGuiMouseCursor_ResizeNESW, SDL_SYSTEM_CURSOR_SIZENESW},
-          {ImGuiMouseCursor_ResizeNWSE, SDL_SYSTEM_CURSOR_SIZENWSE},
-      };
-
-      for (CursorMapping mapping : mappings)
-        debug_gui.mousecursors[mapping.imgui] = SDL_CreateSystemCursor(mapping.sdl);
-    }
-  }
-
+  debug_gui.setup();
   materials.setup(engine);
   materials.light_source_position = Vec3(0.0f, -1.0f, 1.0f);
-
-  helmet_entity.init(engine.generic_allocator, materials.helmet);
-  robot_entity.init(engine.generic_allocator, materials.robot);
-  monster_entity.init(engine.generic_allocator, materials.monster);
-
-  for (SimpleEntity& entity : box_entities)
-    entity.init(engine.generic_allocator, materials.box);
-
-  matrioshka_entity.init(engine.generic_allocator, materials.animatedBox);
-  rigged_simple_entity.init(engine.generic_allocator, materials.riggedSimple);
-
-  for (SimpleEntity& entity : axis_arrow_entities)
-    entity.init(engine.generic_allocator, materials.lil_arrow);
-
   player.setup(engine.extent2D.width, engine.extent2D.height);
-  booster_jet_fuel = 1.0f;
+  level.setup(engine.generic_allocator, materials);
 
   DEBUG_VEC2.x = 0.1f;
   DEBUG_VEC2.y = -1.0f;
@@ -198,9 +24,6 @@ void Game::startup(Engine& engine)
   DEBUG_LIGHT_ORTHO_PARAMS[1] = 10.0f;
   DEBUG_LIGHT_ORTHO_PARAMS[2] = -10.0f;
   DEBUG_LIGHT_ORTHO_PARAMS[3] = 10.0f;
-
-  for (WeaponSelection& sel : weapon_selections)
-    sel.init();
 
   {
     VkCommandBufferAllocateInfo info = {
@@ -220,117 +43,9 @@ void Game::startup(Engine& engine)
 
 void Game::teardown(Engine& engine)
 {
-  for (SDL_Cursor* cursor : debug_gui.mousecursors)
-    SDL_FreeCursor(cursor);
+  debug_gui.teardown();
   materials.teardown(engine);
-
   vkDeviceWaitIdle(engine.device);
-}
-
-// CASCADE SHADOW MAPPING --------------------------------------------------------------------------------------------
-// Based on:
-// https://github.com/SaschaWillems/Vulkan/blob/master/examples/shadowmappingcascade/shadowmappingcascade.cpp
-// -------------------------------------------------------------------------------------------------------------------
-static void recalculate_cascade_view_proj_matrices(Mat4x4* cascade_view_proj_mat, float* cascade_split_depths,
-                                                   Mat4x4 camera_projection, Mat4x4 camera_view,
-                                                   Vec3 light_source_position)
-{
-  constexpr float cascade_split_lambda = 0.95f;
-  constexpr float near_clip            = 0.001f;
-  constexpr float far_clip             = 500.0f;
-  constexpr float clip_range           = far_clip - near_clip;
-  constexpr float min_z                = near_clip;
-  constexpr float max_z                = near_clip + clip_range;
-  constexpr float range                = max_z - min_z;
-  constexpr float ratio                = max_z / min_z;
-
-  //
-  // This calculates the distances between frustums. For example:
-  // near:      0.1
-  // far:    1000.0
-  // splits: 0.013, 0.034, 0.132, 1.000
-  //
-  float cascade_splits[SHADOWMAP_CASCADE_COUNT] = {};
-  for (uint32_t i = 0; i < SHADOWMAP_CASCADE_COUNT; i++)
-  {
-    const float p       = static_cast<float>(i + 1) / static_cast<float>(SHADOWMAP_CASCADE_COUNT);
-    const float log     = min_z * SDL_powf(ratio, p);
-    const float uniform = min_z + range * p;
-    const float d       = cascade_split_lambda * (log - uniform) + uniform;
-    cascade_splits[i]   = (d - near_clip) / clip_range;
-  }
-
-  float last_split_dist = 0.0;
-  for (uint32_t cascade_idx = 0; cascade_idx < SHADOWMAP_CASCADE_COUNT; cascade_idx++)
-  {
-    //
-    // Frustum edges overview
-    //
-    //         4 --- 5     Y
-    //       /     / |     /\  Z
-    //     0 --- 1   |     | /
-    //     |     |   6     .--> X
-    //     |     | /
-    //     3 --- 2
-    //
-    Vec3 frustum_corners[] = {
-        {-1.0f, 1.0f, -1.0f}, {1.0f, 1.0f, -1.0f}, {1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, -1.0f},
-        {-1.0f, 1.0f, 1.0f},  {1.0f, 1.0f, 1.0f},  {1.0f, -1.0f, 1.0f},  {-1.0f, -1.0f, 1.0f},
-    };
-
-    //
-    // LoD change should follow main game camera and not the light projection.
-    // Because of that frustums have to "come out" from viewer camera.
-    //
-    Mat4x4 inv_cam = (camera_projection * camera_view).invert();
-
-    for (Vec3& in : frustum_corners)
-    {
-      Vec4 inv_corner = inv_cam * Vec4(in, 1.0f);
-      in              = inv_corner.as_vec3().scale(1.0f / inv_corner.w);
-    }
-
-    const float split_dist = cascade_splits[cascade_idx];
-    for (uint32_t i = 0; i < 4; i++)
-    {
-      const Vec3 dist        = frustum_corners[i + 4] - frustum_corners[i];
-      frustum_corners[i + 4] = frustum_corners[i] + dist.scale(split_dist);
-      frustum_corners[i] += dist.scale(last_split_dist);
-    }
-
-    Vec3 frustum_center;
-    for (Vec3& frustum_corner : frustum_corners)
-    {
-      frustum_center += frustum_corner;
-    }
-    frustum_center = frustum_center.scale(1.0f / 8.0f);
-
-    float radius = 0.0f;
-    for (const Vec3& frustum_corner : frustum_corners)
-    {
-      const float distance = (frustum_corner - frustum_center).len();
-      radius               = SDL_max(radius, distance);
-    }
-
-    Vec3 max_extents = Vec3(SDL_ceilf(radius * 16.0f) / 16.0f);
-    Vec3 min_extents = max_extents.invert_signs();
-    Vec3 light_dir   = light_source_position.invert_signs().normalize();
-
-    const Mat4x4 light_view_mat =
-        Mat4x4::LookAt(frustum_center - light_dir.scale(-min_extents.z), frustum_center, Vec3(0.0f, -1.0f, 0.0f));
-
-    // todo: I don't know why the near clipping plane has to be a huge negative number! If used with 0 as in tutorials,
-    //       the depth is not calculated properly.. I guess for now it'll have to be this way.
-
-    Mat4x4 light_ortho_mat;
-    light_ortho_mat.ortho(min_extents.x, max_extents.x, min_extents.y, max_extents.y, -50.0f,
-                          max_extents.z - min_extents.z);
-
-    cascade_view_proj_mat[cascade_idx] = light_ortho_mat * light_view_mat;
-    float cascade_split_depth          = near_clip + split_dist * clip_range;
-    cascade_split_depths[cascade_idx]  = cascade_split_depth;
-    last_split_dist                    = cascade_splits[cascade_idx];
-  }
 }
 
 void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
@@ -346,6 +61,8 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     {
       player.process_event(event);
       debug_gui.process_event(event);
+      level.process_event(event);
+
       switch (event.type)
       {
       case SDL_MOUSEBUTTONDOWN:
@@ -383,24 +100,6 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
       {
         switch (event.key.keysym.scancode)
         {
-        case SDL_SCANCODE_1:
-          weapon_selections[0].select(0);
-          break;
-        case SDL_SCANCODE_2:
-          weapon_selections[0].select(1);
-          break;
-        case SDL_SCANCODE_3:
-          weapon_selections[0].select(2);
-          break;
-        case SDL_SCANCODE_4:
-          weapon_selections[1].select(0);
-          break;
-        case SDL_SCANCODE_5:
-          weapon_selections[1].select(1);
-          break;
-        case SDL_SCANCODE_6:
-          weapon_selections[1].select(2);
-          break;
         case SDL_SCANCODE_ESCAPE:
           quit_requested = true;
           break;
@@ -423,19 +122,19 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     }
   }
 
-  for (WeaponSelection& sel : weapon_selections)
-    sel.animate(0.008f * time_delta_since_last_frame_ms);
-
   debug_gui.update(engine, *this);
   player.update(current_time_sec, time_delta_since_last_frame_ms, level);
+  level.update(time_delta_since_last_frame_ms);
 
   const float acceleration_length = 5.0f * 1000.0f * player.acceleration.len();
 
   //
   // engines precalculation
   //
-  const Mat4x4 transform_a = Mat4x4::Translation(player.position + Vec3(0.0f, -0.4f, 0.0f)) * Mat4x4::RotationY(-player.camera_angle) * Mat4x4::Translation(Vec3(0.2f, 0.0f, -0.3f));
-  const Mat4x4 transform_b = Mat4x4::Translation(player.position + Vec3(0.0f, -0.4f, 0.0f)) * Mat4x4::RotationY(-player.camera_angle) * Mat4x4::Translation(Vec3(0.2f, 0.0f, 0.3f));
+  const Mat4x4 transform_a = Mat4x4::Translation(player.position + Vec3(0.0f, -0.4f, 0.0f)) *
+                             Mat4x4::RotationY(-player.camera_angle) * Mat4x4::Translation(Vec3(0.2f, 0.0f, -0.3f));
+  const Mat4x4 transform_b = Mat4x4::Translation(player.position + Vec3(0.0f, -0.4f, 0.0f)) *
+                             Mat4x4::RotationY(-player.camera_angle) * Mat4x4::Translation(Vec3(0.2f, 0.0f, 0.3f));
 
   LightSource dynamic_lights[] = {
       {
@@ -481,65 +180,14 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   recalculate_cascade_view_proj_matrices(materials.cascade_view_proj_mat, materials.cascade_split_depths,
                                          player.camera_projection, player.camera_view, materials.light_source_position);
 
-  const Job jobs[] = {
-      update::moving_lights_job, update::helmet_job,        update::robot_job,
-      update::monster_job,       update::rigged_simple_job, update::matrioshka_job,
-  };
+  Job* jobs_begin              = engine.job_system.jobs;
+  Job* jobs_end                = ExampleLevel::copy_update_jobs(jobs_begin);
+  engine.job_system.jobs_count = std::distance(jobs_begin, jobs_end);
 
-  engine.job_system.jobs_count = SDL_arraysize(jobs);
-  SDL_memcpy(engine.job_system.jobs, jobs, sizeof(jobs));
   engine.job_system.start();
   ImGui::Render();
   engine.job_system.wait_for_finish();
 }
-
-namespace {
-
-void frustum_planes_generate(const Mat4x4& matrix, Vec4 planes[])
-{
-  enum
-  {
-    LEFT   = 0,
-    RIGHT  = 1,
-    TOP    = 2,
-    BOTTOM = 3,
-    BACK   = 4,
-    FRONT  = 5
-  };
-
-  planes[LEFT].x   = matrix.at(3, 0) + matrix.at(0, 0);
-  planes[LEFT].y   = matrix.at(3, 1) + matrix.at(0, 1);
-  planes[LEFT].z   = matrix.at(3, 2) + matrix.at(0, 2);
-  planes[LEFT].w   = matrix.at(3, 3) + matrix.at(0, 3);
-  planes[RIGHT].x  = matrix.at(3, 0) - matrix.at(0, 0);
-  planes[RIGHT].y  = matrix.at(3, 1) - matrix.at(0, 1);
-  planes[RIGHT].z  = matrix.at(3, 2) - matrix.at(0, 2);
-  planes[RIGHT].w  = matrix.at(3, 3) - matrix.at(0, 3);
-  planes[TOP].x    = matrix.at(3, 0) - matrix.at(1, 0);
-  planes[TOP].y    = matrix.at(3, 1) - matrix.at(1, 1);
-  planes[TOP].z    = matrix.at(3, 2) - matrix.at(1, 2);
-  planes[TOP].w    = matrix.at(3, 3) - matrix.at(1, 3);
-  planes[BOTTOM].x = matrix.at(3, 0) + matrix.at(1, 0);
-  planes[BOTTOM].y = matrix.at(3, 1) + matrix.at(1, 1);
-  planes[BOTTOM].z = matrix.at(3, 2) + matrix.at(1, 2);
-  planes[BOTTOM].w = matrix.at(3, 3) + matrix.at(1, 3);
-  planes[BACK].x   = matrix.at(3, 0) + matrix.at(2, 0);
-  planes[BACK].y   = matrix.at(3, 1) + matrix.at(2, 1);
-  planes[BACK].z   = matrix.at(3, 2) + matrix.at(2, 2);
-  planes[BACK].w   = matrix.at(3, 3) + matrix.at(2, 3);
-  planes[FRONT].x  = matrix.at(3, 0) - matrix.at(2, 0);
-  planes[FRONT].y  = matrix.at(3, 1) - matrix.at(2, 1);
-  planes[FRONT].z  = matrix.at(3, 2) - matrix.at(2, 2);
-  planes[FRONT].w  = matrix.at(3, 3) - matrix.at(2, 3);
-
-  for (auto i = 0; i < 6; i++)
-  {
-    const float length = planes[i].as_vec3().len();
-    planes[i]          = planes[i].scale(1.0f / length);
-  }
-}
-
-} // namespace
 
 void Game::render(Engine& engine)
 {
@@ -553,35 +201,13 @@ void Game::render(Engine& engine)
   {
     ScopedPerfEvent perf_event(render_profiler, __PRETTY_FUNCTION__, 0);
 
-    const Job jobs[] = {
-        render::radar,
-        render::robot_gui_lines,
-        render::height_ruler_text,
-        render::tilt_ruler_text,
-        render::robot_gui_speed_meter_text,
-        render::robot_gui_speed_meter_triangle,
-        render::compass_text,
-        render::radar_dots,
-        render::weapon_selectors_left,
-        render::weapon_selectors_right,
-        render::skybox_job,
-        render::tesselated_ground,
-        render::robot_job,
-        render::helmet_job,
-        render::point_light_boxes,
-        render::matrioshka_box,
-        render::water,
-        render::simple_rigged,
-        render::monster_rigged,
-        render::robot_depth_job,
-        render::helmet_depth_job,
-        render::imgui,
-        // render::debug_shadowmap,
-    };
+    {
+      Job* jobs_begin = engine.job_system.jobs;
+      Job* jobs_end   = ExampleLevel::copy_render_jobs(jobs_begin);
 
-    engine.job_system.jobs_count = SDL_arraysize(jobs);
-    SDL_memcpy(engine.job_system.jobs, jobs, sizeof(jobs));
-    engine.job_system.start();
+      engine.job_system.jobs_count = std::distance(jobs_begin, jobs_end);
+      engine.job_system.start();
+    }
 
     // While we await for tasks to be finished by worker threads, this one will handle memory synchronization
 
@@ -615,7 +241,7 @@ void Game::render(Engine& engine)
     {
       const uint32_t count = materials.riggedSimple.skins[0].joints.count;
       const uint32_t size  = count * sizeof(Mat4x4);
-      const Mat4x4*  begin = reinterpret_cast<Mat4x4*>(rigged_simple_entity.joint_matrices);
+      const Mat4x4*  begin = reinterpret_cast<Mat4x4*>(level.rigged_simple_entity.joint_matrices);
       const Mat4x4*  end   = &begin[count];
 
       MemoryMap joint_matrices(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
@@ -629,7 +255,7 @@ void Game::render(Engine& engine)
     {
       const uint32_t count = materials.monster.skins[0].joints.count;
       const uint32_t size  = count * sizeof(Mat4x4);
-      const Mat4x4*  begin = reinterpret_cast<Mat4x4*>(monster_entity.joint_matrices);
+      const Mat4x4*  begin = reinterpret_cast<Mat4x4*>(level.monster_entity.joint_matrices);
       const Mat4x4*  end   = &begin[count];
 
       MemoryMap joint_matrices(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
@@ -643,11 +269,20 @@ void Game::render(Engine& engine)
     {
       MemoryMap frustums(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
                          materials.frustum_planes_ubo_offsets[image_index], 6 * sizeof(Vec4));
-      frustum_planes_generate(player.camera_projection * player.camera_view, reinterpret_cast<Vec4*>(*frustums));
+      (player.camera_projection * player.camera_view).generate_frustum_planes(reinterpret_cast<Vec4*>(*frustums));
     }
 
-    engine.job_system.wait_for_finish();
+    //
+    // GUI
+    //
+    {
+      MemoryMap map(engine.device, engine.memory_blocks.host_coherent.memory,
+                    materials.green_gui_rulers_buffer_offsets[image_index], MAX_ROBOT_GUI_LINES * sizeof(Vec2));
+      std::copy(materials.gui_lines_memory_cache, materials.gui_lines_memory_cache + MAX_ROBOT_GUI_LINES,
+                reinterpret_cast<Vec2*>(*map));
+    }
     DebugGui::render(engine, *this);
+    engine.job_system.wait_for_finish();
 
     {
       VkCommandBuffer cmd = primary_command_buffers[image_index];
@@ -672,7 +307,6 @@ void Game::render(Engine& engine)
             .clearValueCount = 1,
             .pClearValues    = &clear_value,
         };
-
         vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 
         for (const ShadowmapCommandBuffer& iter : shadow_mapping_pass_commands)

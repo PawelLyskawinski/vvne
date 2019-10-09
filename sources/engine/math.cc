@@ -434,3 +434,47 @@ Mat4x4 Mat4x4::Scale(const Vec3& s)
   r.scale(s);
   return r;
 }
+
+void Mat4x4::generate_frustum_planes(Vec4 planes[6]) const
+{
+  enum
+  {
+    LEFT   = 0,
+    RIGHT  = 1,
+    TOP    = 2,
+    BOTTOM = 3,
+    BACK   = 4,
+    FRONT  = 5
+  };
+
+  planes[LEFT].x   = at(3, 0) + at(0, 0);
+  planes[LEFT].y   = at(3, 1) + at(0, 1);
+  planes[LEFT].z   = at(3, 2) + at(0, 2);
+  planes[LEFT].w   = at(3, 3) + at(0, 3);
+  planes[RIGHT].x  = at(3, 0) - at(0, 0);
+  planes[RIGHT].y  = at(3, 1) - at(0, 1);
+  planes[RIGHT].z  = at(3, 2) - at(0, 2);
+  planes[RIGHT].w  = at(3, 3) - at(0, 3);
+  planes[TOP].x    = at(3, 0) - at(1, 0);
+  planes[TOP].y    = at(3, 1) - at(1, 1);
+  planes[TOP].z    = at(3, 2) - at(1, 2);
+  planes[TOP].w    = at(3, 3) - at(1, 3);
+  planes[BOTTOM].x = at(3, 0) + at(1, 0);
+  planes[BOTTOM].y = at(3, 1) + at(1, 1);
+  planes[BOTTOM].z = at(3, 2) + at(1, 2);
+  planes[BOTTOM].w = at(3, 3) + at(1, 3);
+  planes[BACK].x   = at(3, 0) + at(2, 0);
+  planes[BACK].y   = at(3, 1) + at(2, 1);
+  planes[BACK].z   = at(3, 2) + at(2, 2);
+  planes[BACK].w   = at(3, 3) + at(2, 3);
+  planes[FRONT].x  = at(3, 0) - at(2, 0);
+  planes[FRONT].y  = at(3, 1) - at(2, 1);
+  planes[FRONT].z  = at(3, 2) - at(2, 2);
+  planes[FRONT].w  = at(3, 3) - at(2, 3);
+
+  for (auto i = 0; i < 6; i++)
+  {
+    const float length = planes[i].as_vec3().len();
+    planes[i]          = planes[i].scale(1.0f / length);
+  }
+}

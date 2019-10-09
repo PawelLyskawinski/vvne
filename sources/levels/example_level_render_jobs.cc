@@ -1,6 +1,5 @@
-#include "render_jobs.hh"
 #include "engine/aligned_push_consts.hh"
-#include "engine/memory_map.hh"
+#include "game.hh"
 #include "game_generate_sdf_font.hh"
 #include "game_render_entity.hh"
 #include <SDL2/SDL_log.h>
@@ -13,9 +12,24 @@ VkCommandBuffer acquire_command_buffer(ThreadJobData& tjd)
   return ctx->engine->job_system.acquire(tjd.thread_id, ctx->game->image_index);
 }
 
-} // namespace
+void render_skybox(VkCommandBuffer command, VkBuffer buffer, const Player& player, const Pipelines::Pair& pipe,
+                   const Materials& materials)
+{
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe.pipeline);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe.layout, 0, 1, &materials.skybox_cubemap_dset,
+                          0, nullptr);
 
-namespace render {
+  AlignedPushConsts(command, pipe.layout)
+      .push(VK_SHADER_STAGE_VERTEX_BIT, player.camera_projection)
+      .push(VK_SHADER_STAGE_VERTEX_BIT, player.camera_view);
+
+  const Node& node = materials.box.nodes.data[1];
+  const Mesh& mesh = materials.box.meshes.data[node.mesh];
+
+  vkCmdBindIndexBuffer(command, buffer, mesh.indices_offset, mesh.indices_type);
+  vkCmdBindVertexBuffers(command, 0, 1, &buffer, &mesh.vertices_offset);
+  vkCmdDrawIndexed(command, mesh.indices_count, 1, 0, 0, 0);
+}
 
 void skybox_job(ThreadJobData tjd)
 {
@@ -64,8 +78,8 @@ void robot_depth_job(ThreadJobData tjd)
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.shadowmap.layout, 0, 1,
                             &ctx->game->materials.cascade_view_proj_matrices_depth_pass_dset[ctx->game->image_index], 0,
                             nullptr);
-    render_pbr_entity_shadow(ctx->game->robot_entity, ctx->game->materials.robot, *ctx->engine, *ctx->game, command,
-                             cascade_idx);
+    render_pbr_entity_shadow(ctx->game->level.robot_entity, ctx->game->materials.robot, *ctx->engine, *ctx->game,
+                             command, cascade_idx);
     vkEndCommandBuffer(command);
   }
 }
@@ -102,10 +116,10 @@ void robot_job(ThreadJobData tjd)
   params.color           = Vec3(0.0f, 0.0f, 0.0f);
   params.pipeline_layout = ctx->engine->pipelines.scene3D.layout;
 
-  render_pbr_entity(ctx->game->robot_entity, ctx->game->materials.robot, *ctx->engine, params);
+  render_pbr_entity(ctx->game->level.robot_entity, ctx->game->materials.robot, *ctx->engine, params);
 
 #if 0
-  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_model_wireframe.pipeline);
+        vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_model_wireframe.pipeline);
   params.pipeline_layout = ctx->engine->pipelines.colored_model_wireframe.layout;
 
   params.color[0] = SDL_fabsf(SDL_sinf(ctx->game->current_time_sec));
@@ -132,8 +146,8 @@ void helmet_depth_job(ThreadJobData tjd)
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.shadowmap.layout, 0, 1,
                             &ctx->game->materials.cascade_view_proj_matrices_depth_pass_dset[ctx->game->image_index], 0,
                             nullptr);
-    render_pbr_entity_shadow(ctx->game->helmet_entity, ctx->game->materials.helmet, *ctx->engine, *ctx->game, command,
-                             cascade_idx);
+    render_pbr_entity_shadow(ctx->game->level.helmet_entity, ctx->game->materials.helmet, *ctx->engine, *ctx->game,
+                             command, cascade_idx);
     vkEndCommandBuffer(command);
   }
 }
@@ -169,7 +183,7 @@ void helmet_job(ThreadJobData tjd)
   params.color           = Vec3(0.0f, 0.0f, 0.0f);
   params.pipeline_layout = ctx->engine->pipelines.scene3D.layout;
 
-  render_pbr_entity(ctx->game->helmet_entity, ctx->game->materials.helmet, *ctx->engine, params);
+  render_pbr_entity(ctx->game->level.helmet_entity, ctx->game->materials.helmet, *ctx->engine, params);
 
   vkEndCommandBuffer(command);
 }
@@ -189,10 +203,10 @@ void point_light_boxes(ThreadJobData tjd)
   params.color           = Vec3(0.0f, 0.0f, 0.0f);
   params.pipeline_layout = ctx->engine->pipelines.colored_geometry.layout;
 
-  for (unsigned i = 0; i < SDL_arraysize(ctx->game->box_entities); ++i)
+  for (unsigned i = 0; i < SDL_arraysize(ctx->game->level.box_entities); ++i)
   {
     params.color = ctx->game->materials.pbr_light_sources_cache[i].color.as_vec3();
-    render_entity(ctx->game->box_entities[i], ctx->game->materials.box, *ctx->engine, params);
+    render_entity(ctx->game->level.box_entities[i], ctx->game->materials.box, *ctx->engine, params);
   }
 
   vkEndCommandBuffer(command);
@@ -213,7 +227,7 @@ void matrioshka_box(ThreadJobData tjd)
   params.color           = Vec3(0.0f, 1.0f, 0.0f);
   params.pipeline_layout = ctx->engine->pipelines.colored_geometry.layout;
 
-  render_entity(ctx->game->matrioshka_entity, ctx->game->materials.animatedBox, *ctx->engine, params);
+  render_entity(ctx->game->level.matrioshka_entity, ctx->game->materials.animatedBox, *ctx->engine, params);
 
   vkEndCommandBuffer(command);
 }
@@ -281,7 +295,7 @@ void vr_scene(ThreadJobData tjd)
 }
 
 #if 0
-void vr_scene_depth(ThreadJobData tjd)
+    void vr_scene_depth(ThreadJobData tjd)
 {
   for (int cascade_idx = 0; cascade_idx < Engine::SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
   {
@@ -361,7 +375,7 @@ void simple_rigged(ThreadJobData tjd)
   params.color           = Vec3(0.0f, 0.0f, 0.0f);
   params.pipeline_layout = ctx->engine->pipelines.colored_geometry_skinned.layout;
 
-  render_entity_skinned(ctx->game->rigged_simple_entity, ctx->game->materials.riggedSimple, *ctx->engine, params);
+  render_entity_skinned(ctx->game->level.rigged_simple_entity, ctx->game->materials.riggedSimple, *ctx->engine, params);
 
   vkEndCommandBuffer(command);
 }
@@ -388,7 +402,7 @@ void monster_rigged(ThreadJobData tjd)
   params.color           = Vec3(1.0f, 1.0f, 1.0f);
   params.pipeline_layout = ctx->engine->pipelines.colored_geometry_skinned.layout;
 
-  render_entity_skinned(ctx->game->monster_entity, ctx->game->materials.monster, *ctx->engine, params);
+  render_entity_skinned(ctx->game->level.monster_entity, ctx->game->materials.monster, *ctx->engine, params);
 
   vkEndCommandBuffer(command);
 }
@@ -435,23 +449,6 @@ void robot_gui_lines(ThreadJobData tjd)
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_lines.pipeline);
   vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_host_coherent_memory_buffer,
                          &ctx->game->materials.green_gui_rulers_buffer_offsets[ctx->game->image_index]);
-
-  {
-    // in vulkan coordinate system Y axis is pointing down, so we'll have to invert the value to get
-    // something more reasonable
-    GenerateGuiLinesCommand cmd = {
-        .player_y_location_meters = -ctx->game->player.position.y,
-        .camera_x_pitch_radians   = 0.0f, // to_rad(10) * SDL_sinf(current_time_sec), // simulating future strafe tilts,
-        .camera_y_pitch_radians   = ctx->game->player.camera_updown_angle,
-    };
-
-    MemoryMap map(ctx->engine->device, ctx->engine->memory_blocks.host_coherent.memory,
-                  ctx->game->materials.green_gui_rulers_buffer_offsets[ctx->game->image_index],
-                  MAX_ROBOT_GUI_LINES * sizeof(Vec2));
-    generate_gui_lines(cmd, reinterpret_cast<Vec2*>(*map), MAX_ROBOT_GUI_LINES,
-                       ctx->game->materials.gui_green_lines_count, ctx->game->materials.gui_red_lines_count,
-                       ctx->game->materials.gui_yellow_lines_count);
-  }
 
   uint32_t offset = 0;
 
@@ -671,7 +668,7 @@ void height_ruler_text(ThreadJobData tjd)
                          &ctx->game->materials.green_gui_billboard_vertex_buffer_offset);
 
 #if 0
-  struct VertexPushConstant
+        struct VertexPushConstant
   {
     Mat4x4 mvp;
     Vec2   character_coordinate;
@@ -1121,7 +1118,7 @@ void weapon_selectors_left(ThreadJobData tjd)
   const Vec2 offset_from_bottom_left = {25.0f, 25.0f};
 
   float transparencies[3];
-  ctx->game->weapon_selections[0].calculate(transparencies);
+  ctx->game->level.weapon_selections[0].calculate(transparencies);
 
   for (int i = 0; i < 3; ++i)
   {
@@ -1244,7 +1241,7 @@ void weapon_selectors_right(ThreadJobData tjd)
   Vec2 offset_from_bottom_right = {25.0f, 25.0f};
 
   float transparencies[3];
-  ctx->game->weapon_selections[1].calculate(transparencies);
+  ctx->game->level.weapon_selections[1].calculate(transparencies);
 
   for (int i = 0; i < 3; ++i)
   {
@@ -1346,7 +1343,7 @@ void weapon_selectors_right(ThreadJobData tjd)
 }
 
 #if 0
-void hello_world_text(ThreadJobData tjd)
+    void hello_world_text(ThreadJobData tjd)
 {
   VkCommandBuffer    command = acquire_command_buffer(tjd);
   SimpleRenderingCmd result  = {.command = command, .subpass = Engine::SimpleRendering::Pass::RobotGui};
@@ -1693,10 +1690,10 @@ void orientation_axis(ThreadJobData tjd)
       Vec3(0.0f, 0.0f, 1.0f),
   };
 
-  for (uint32_t i = 0; i < SDL_arraysize(ctx->game->axis_arrow_entities); ++i)
+  for (uint32_t i = 0; i < SDL_arraysize(ctx->game->level.axis_arrow_entities); ++i)
   {
     params.color = colors[i];
-    render_entity(ctx->game->axis_arrow_entities[i], ctx->game->materials.lil_arrow, *ctx->engine, params);
+    render_entity(ctx->game->level.axis_arrow_entities[i], ctx->game->materials.lil_arrow, *ctx->engine, params);
   }
 
   vkEndCommandBuffer(command);
@@ -1714,30 +1711,15 @@ void tesselated_ground(ThreadJobData tjd)
   vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_host_coherent_memory_buffer,
                          &ctx->game->materials.tesselation_vb_offset);
 
-  struct PushConst
-  {
-    explicit PushConst(Game& game)
-        : projection(game.player.camera_projection)
-        , view(game.player.camera_view)
-        , camera_position(game.player.camera_position)
-        , adjustment(game.DEBUG_VEC2.x)
-        , time(game.current_time_sec)
-    {
-    }
+  const VkShaderStageFlags stages = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT |
+                                    VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-    Mat4x4 projection;
-    Mat4x4 view;
-    Vec3   camera_position;
-    float  adjustment;
-    float  time;
-  };
-
-  PushConst pc(*ctx->game);
-
-  vkCmdPushConstants(command, ctx->engine->pipelines.tesselated_ground.layout,
-                     VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT |
-                         VK_SHADER_STAGE_FRAGMENT_BIT,
-                     0, sizeof(pc), &pc);
+  AlignedPushConsts(command, ctx->engine->pipelines.tesselated_ground.layout)
+      .push(stages, ctx->game->player.camera_projection)
+      .push(stages, ctx->game->player.camera_view)
+      .push(stages, ctx->game->player.camera_position)
+      .push(stages, ctx->game->DEBUG_VEC2.x)
+      .push(stages, ctx->game->current_time_sec);
 
   const Materials& mats    = ctx->game->materials;
   VkDescriptorSet  dsets[] = {
@@ -1761,4 +1743,34 @@ void tesselated_ground(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-} // namespace render
+} // namespace
+
+Job* ExampleLevel::copy_render_jobs(Job* dst)
+{
+  const Job jobs[] = {
+      radar,
+      robot_gui_lines,
+      height_ruler_text,
+      tilt_ruler_text,
+      robot_gui_speed_meter_text,
+      robot_gui_speed_meter_triangle,
+      compass_text,
+      radar_dots,
+      weapon_selectors_left,
+      weapon_selectors_right,
+      skybox_job,
+      tesselated_ground,
+      robot_job,
+      helmet_job,
+      point_light_boxes,
+      matrioshka_box,
+      water,
+      simple_rigged,
+      monster_rigged,
+      robot_depth_job,
+      helmet_depth_job,
+      imgui,
+  };
+
+  return std::copy(jobs, &jobs[SDL_arraysize(jobs)], dst);
+}

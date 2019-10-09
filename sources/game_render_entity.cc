@@ -1,4 +1,7 @@
+#include "game_render_entity.hh"
 #include "game.hh"
+#include "player.hh"
+#include "simple_entity.hh"
 
 namespace {
 
@@ -20,6 +23,13 @@ struct SkinningUbo
 };
 
 } // namespace
+
+RenderEntityParams::RenderEntityParams(const Player& p)
+    : projection(p.camera_projection)
+    , view(p.camera_view)
+    , camera_position(p.camera_position)
+{
+}
 
 void render_pbr_entity_shadow(const SimpleEntity& entity, const SceneGraph& scene_graph, const Engine& engine,
                               const Game& game, VkCommandBuffer cmd, const int cascade_idx)

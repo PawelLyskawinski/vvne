@@ -67,6 +67,9 @@ void Player::process_event(const SDL_Event& event)
   }
 }
 
+static Vec2 rotation_2D(float angle) { return Vec2(SDL_sinf(angle), SDL_cosf(angle)); }
+static Vec3 to_vec3_xz(const Vec2& in) { return Vec3(in.x, 0.0f, in.y); }
+
 void Player::update(const float current_time_sec, const float delta_ms, const ExampleLevel& level)
 {
   (void)current_time_sec;
@@ -84,24 +87,20 @@ void Player::update(const float current_time_sec, const float delta_ms, const Ex
 
   if (scancode_to_mask(SDL_SCANCODE_W) & internal_key_flags)
   {
-    acceleration.x += SDL_sinf(camera_angle - float(M_PI_2)) * acceleration_const;
-    acceleration.z += SDL_cosf(camera_angle - float(M_PI_2)) * acceleration_const;
+    acceleration += to_vec3_xz(rotation_2D(camera_angle - float(M_PI_2)).scale(acceleration_const));
   }
   else if (scancode_to_mask(SDL_SCANCODE_S) & internal_key_flags)
   {
-    acceleration.x += SDL_sinf(camera_angle + float(M_PI_2)) * acceleration_const;
-    acceleration.z += SDL_cosf(camera_angle + float(M_PI_2)) * acceleration_const;
+    acceleration += to_vec3_xz(rotation_2D(camera_angle + float(M_PI_2)).scale(acceleration_const));
   }
 
   if (scancode_to_mask(SDL_SCANCODE_A) & internal_key_flags)
   {
-    acceleration.x += SDL_sinf(camera_angle + float(M_PI)) * acceleration_const;
-    acceleration.z += SDL_cosf(camera_angle + float(M_PI)) * acceleration_const;
+    acceleration = to_vec3_xz(rotation_2D(camera_angle + float(M_PI)).scale(acceleration_const));
   }
   else if (scancode_to_mask(SDL_SCANCODE_D) & internal_key_flags)
   {
-    acceleration.x += SDL_sinf(camera_angle) * acceleration_const;
-    acceleration.z += SDL_cosf(camera_angle) * acceleration_const;
+    acceleration = to_vec3_xz(rotation_2D(camera_angle).scale(acceleration_const));
   }
 
   if (scancode_to_mask(SDL_SCANCODE_LSHIFT) & internal_key_flags)
