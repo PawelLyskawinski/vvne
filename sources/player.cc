@@ -96,11 +96,11 @@ void Player::update(const float current_time_sec, const float delta_ms, const Ex
 
   if (scancode_to_mask(SDL_SCANCODE_A) & internal_key_flags)
   {
-    acceleration = to_vec3_xz(rotation_2D(camera_angle + float(M_PI)).scale(acceleration_const));
+    acceleration += to_vec3_xz(rotation_2D(camera_angle + float(M_PI)).scale(acceleration_const));
   }
   else if (scancode_to_mask(SDL_SCANCODE_D) & internal_key_flags)
   {
-    acceleration = to_vec3_xz(rotation_2D(camera_angle).scale(acceleration_const));
+    acceleration += to_vec3_xz(rotation_2D(camera_angle).scale(acceleration_const));
   }
 
   if (scancode_to_mask(SDL_SCANCODE_LSHIFT) & internal_key_flags)
