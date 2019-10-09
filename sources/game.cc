@@ -2,7 +2,6 @@
 #include "engine/cubemap.hh"
 #include "engine/memory_map.hh"
 #include "terrain_as_a_function.hh"
-#include <SDL2/SDL_clipboard.h>
 #include <SDL2/SDL_events.h>
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_stdinc.h>
@@ -298,8 +297,6 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   Job* jobs_end                = ExampleLevel::copy_update_jobs(jobs_begin);
   engine.job_system.jobs_count = std::distance(jobs_begin, jobs_end);
 
-  SDL_assert(SDL_arraysize(engine.job_system.jobs) > engine.job_system.jobs_count);
-
   engine.job_system.start();
   ImGui::Render();
   engine.job_system.wait_for_finish();
@@ -365,35 +362,13 @@ void Game::render(Engine& engine)
   {
     ScopedPerfEvent perf_event(render_profiler, __PRETTY_FUNCTION__, 0);
 
-    const Job jobs[] = {
-        render::radar,
-        render::robot_gui_lines,
-        render::height_ruler_text,
-        render::tilt_ruler_text,
-        render::robot_gui_speed_meter_text,
-        render::robot_gui_speed_meter_triangle,
-        render::compass_text,
-        render::radar_dots,
-        render::weapon_selectors_left,
-        render::weapon_selectors_right,
-        render::skybox_job,
-        render::tesselated_ground,
-        render::robot_job,
-        render::helmet_job,
-        render::point_light_boxes,
-        render::matrioshka_box,
-        render::water,
-        render::simple_rigged,
-        render::monster_rigged,
-        render::robot_depth_job,
-        render::helmet_depth_job,
-        render::imgui,
-        // render::debug_shadowmap,
-    };
+    {
+      Job* jobs_begin = engine.job_system.jobs;
+      Job* jobs_end   = ExampleLevel::copy_render_jobs(jobs_begin);
 
-    engine.job_system.jobs_count = SDL_arraysize(jobs);
-    SDL_memcpy(engine.job_system.jobs, jobs, sizeof(jobs));
-    engine.job_system.start();
+      engine.job_system.jobs_count = std::distance(jobs_begin, jobs_end);
+      engine.job_system.start();
+    }
 
     // While we await for tasks to be finished by worker threads, this one will handle memory synchronization
 
@@ -458,8 +433,17 @@ void Game::render(Engine& engine)
       frustum_planes_generate(player.camera_projection * player.camera_view, reinterpret_cast<Vec4*>(*frustums));
     }
 
-    engine.job_system.wait_for_finish();
+    //
+    // GUI
+    //
+    {
+      MemoryMap map(engine.device, engine.memory_blocks.host_coherent.memory,
+                    materials.green_gui_rulers_buffer_offsets[image_index], MAX_ROBOT_GUI_LINES * sizeof(Vec2));
+      std::copy(materials.gui_lines_memory_cache, materials.gui_lines_memory_cache + MAX_ROBOT_GUI_LINES,
+                reinterpret_cast<Vec2*>(*map));
+    }
     DebugGui::render(engine, *this);
+    engine.job_system.wait_for_finish();
 
     {
       VkCommandBuffer cmd = primary_command_buffers[image_index];
@@ -484,7 +468,6 @@ void Game::render(Engine& engine)
             .clearValueCount = 1,
             .pClearValues    = &clear_value,
         };
-
         vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 
         for (const ShadowmapCommandBuffer& iter : shadow_mapping_pass_commands)

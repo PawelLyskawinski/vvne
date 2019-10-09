@@ -6,6 +6,12 @@
 
 namespace {
 
+VkCommandBuffer acquire_command_buffer(ThreadJobData& tjd)
+{
+  JobContext* ctx = reinterpret_cast<JobContext*>(tjd.user_data);
+  return ctx->engine->job_system.acquire(tjd.thread_id, ctx->game->image_index);
+}
+
 void render_skybox(VkCommandBuffer command, VkBuffer buffer, const Player& player, const Pipelines::Pair& pipe,
                    const Materials& materials)
 {
@@ -25,87 +31,57 @@ void render_skybox(VkCommandBuffer command, VkBuffer buffer, const Player& playe
   vkCmdDrawIndexed(command, mesh.indices_count, 1, 0, 0, 0);
 }
 
-struct RenderJob
-{
-  RenderJob(JobContext& ctx, uint32_t thread_id, const char* name)
-      : game(*ctx.game)
-      , engine(*ctx.engine)
-      , perf_event(game.render_profiler, name, thread_id)
-      , command(engine.job_system.acquire(thread_id, game.image_index))
-  {
-  }
-
-  RenderJob(ThreadJobData& tjd, const char* name)
-      : RenderJob(*reinterpret_cast<JobContext*>(tjd.user_data), tjd.thread_id, name)
-  {
-  }
-
-  void start(const RenderPass& pass) { pass.begin(command, game.image_index); }
-
-  ~RenderJob() { vkEndCommandBuffer(command); }
-
-  Game&           game;
-  Engine&         engine;
-  ScopedPerfEvent perf_event;
-  VkCommandBuffer command;
-};
-
 void skybox_job(ThreadJobData tjd)
 {
-  RenderJob job(tjd, __PRETTY_FUNCTION__);
-  job.game.skybox_command = job.command;
-  job.start(job.engine.render_passes.skybox);
-  render_skybox(job.command, job.engine.gpu_device_local_memory_buffer, job.game.player, job.engine.pipelines.skybox,
-                job.game.materials);
+  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+
+  VkCommandBuffer command   = acquire_command_buffer(tjd);
+  ctx->game->skybox_command = command;
+  ctx->engine->render_passes.skybox.begin(command, ctx->game->image_index);
+
+  struct
+  {
+    Mat4x4 projection;
+    Mat4x4 view;
+  } push = {};
+
+  push.projection = ctx->game->player.camera_projection;
+  push.view       = ctx->game->player.camera_view;
+
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.skybox.pipeline);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.skybox.layout, 0, 1,
+                          &ctx->game->materials.skybox_cubemap_dset, 0, nullptr);
+  vkCmdPushConstants(command, ctx->engine->pipelines.skybox.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), &push);
+
+  const Node& node = ctx->game->materials.box.nodes.data[1];
+  Mesh&       mesh = ctx->game->materials.box.meshes.data[node.mesh];
+
+  vkCmdBindIndexBuffer(command, ctx->engine->gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
+  vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer, &mesh.vertices_offset);
+  vkCmdDrawIndexed(command, mesh.indices_count, 1, 0, 0, 0);
+
+  vkEndCommandBuffer(command);
 }
 
 void robot_depth_job(ThreadJobData tjd)
 {
+  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+
   for (int cascade_idx = 0; cascade_idx < SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
   {
-    RenderJob job(tjd, __PRETTY_FUNCTION__);
-    job.game.shadow_mapping_pass_commands.push({job.command, cascade_idx});
-    job.engine.render_passes.shadowmap.begin(job.command, static_cast<uint32_t>(cascade_idx));
-    const auto& pipe = job.engine.pipelines.shadowmap;
-    vkCmdBindPipeline(job.command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe.pipeline);
-    vkCmdBindDescriptorSets(job.command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe.layout, 0, 1,
-                            &job.game.materials.cascade_view_proj_matrices_depth_pass_dset[job.game.image_index], 0,
+    VkCommandBuffer command = acquire_command_buffer(tjd);
+    ctx->game->shadow_mapping_pass_commands.push({command, cascade_idx});
+    ctx->engine->render_passes.shadowmap.begin(command, static_cast<uint32_t>(cascade_idx));
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.shadowmap.pipeline);
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.shadowmap.layout, 0, 1,
+                            &ctx->game->materials.cascade_view_proj_matrices_depth_pass_dset[ctx->game->image_index], 0,
                             nullptr);
-    render_pbr_entity_shadow(job.game.level.robot_entity, job.game.materials.robot, job.engine, job.game, job.command,
-                             cascade_idx);
+    render_pbr_entity_shadow(ctx->game->level.robot_entity, ctx->game->materials.robot, *ctx->engine, *ctx->game,
+                             command, cascade_idx);
+    vkEndCommandBuffer(command);
   }
-}
-
-void robot_job2(ThreadJobData tjd)
-{
-  RenderJob job(tjd, __PRETTY_FUNCTION__);
-  job.game.scene_rendering_commands.push(job.command);
-  job.start(job.engine.render_passes.color_and_depth);
-
-  const auto&      pipe = job.engine.pipelines.scene3D;
-  const Materials& mats = job.game.materials;
-
-  vkCmdBindPipeline(job.command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe.pipeline);
-
-  VkDescriptorSet dsets[] = {
-      mats.robot_pbr_material_dset,
-      mats.pbr_ibl_environment_dset,
-      mats.debug_shadow_map_dset,
-      mats.pbr_dynamic_lights_dset,
-      mats.cascade_view_proj_matrices_render_dset[job.game.image_index],
-  };
-
-  uint32_t dynamic_offset = static_cast<uint32_t>(mats.pbr_dynamic_lights_ubo_offsets[job.game.image_index]);
-
-  vkCmdBindDescriptorSets(job.command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe.layout, 0, SDL_arraysize(dsets), dsets, 1,
-                          &dynamic_offset);
-
-  RenderEntityParams params(job.game.player);
-  params.cmd             = job.command;
-  params.color           = Vec3(0.0f, 0.0f, 0.0f);
-  params.pipeline_layout = pipe.layout;
-
-  render_pbr_entity(job.game.level.robot_entity, mats.robot, job.engine, params);
 }
 
 void robot_job(ThreadJobData tjd)
@@ -140,7 +116,7 @@ void robot_job(ThreadJobData tjd)
   params.color           = Vec3(0.0f, 0.0f, 0.0f);
   params.pipeline_layout = ctx->engine->pipelines.scene3D.layout;
 
-  render_pbr_entity(ctx->game->robot_entity, ctx->game->materials.robot, *ctx->engine, params);
+  render_pbr_entity(ctx->game->level.robot_entity, ctx->game->materials.robot, *ctx->engine, params);
 
 #if 0
         vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_model_wireframe.pipeline);
@@ -170,8 +146,8 @@ void helmet_depth_job(ThreadJobData tjd)
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.shadowmap.layout, 0, 1,
                             &ctx->game->materials.cascade_view_proj_matrices_depth_pass_dset[ctx->game->image_index], 0,
                             nullptr);
-    render_pbr_entity_shadow(ctx->game->helmet_entity, ctx->game->materials.helmet, *ctx->engine, *ctx->game, command,
-                             cascade_idx);
+    render_pbr_entity_shadow(ctx->game->level.helmet_entity, ctx->game->materials.helmet, *ctx->engine, *ctx->game,
+                             command, cascade_idx);
     vkEndCommandBuffer(command);
   }
 }
@@ -207,7 +183,7 @@ void helmet_job(ThreadJobData tjd)
   params.color           = Vec3(0.0f, 0.0f, 0.0f);
   params.pipeline_layout = ctx->engine->pipelines.scene3D.layout;
 
-  render_pbr_entity(ctx->game->helmet_entity, ctx->game->materials.helmet, *ctx->engine, params);
+  render_pbr_entity(ctx->game->level.helmet_entity, ctx->game->materials.helmet, *ctx->engine, params);
 
   vkEndCommandBuffer(command);
 }
@@ -227,10 +203,10 @@ void point_light_boxes(ThreadJobData tjd)
   params.color           = Vec3(0.0f, 0.0f, 0.0f);
   params.pipeline_layout = ctx->engine->pipelines.colored_geometry.layout;
 
-  for (unsigned i = 0; i < SDL_arraysize(ctx->game->box_entities); ++i)
+  for (unsigned i = 0; i < SDL_arraysize(ctx->game->level.box_entities); ++i)
   {
     params.color = ctx->game->materials.pbr_light_sources_cache[i].color.as_vec3();
-    render_entity(ctx->game->box_entities[i], ctx->game->materials.box, *ctx->engine, params);
+    render_entity(ctx->game->level.box_entities[i], ctx->game->materials.box, *ctx->engine, params);
   }
 
   vkEndCommandBuffer(command);
@@ -251,7 +227,7 @@ void matrioshka_box(ThreadJobData tjd)
   params.color           = Vec3(0.0f, 1.0f, 0.0f);
   params.pipeline_layout = ctx->engine->pipelines.colored_geometry.layout;
 
-  render_entity(ctx->game->matrioshka_entity, ctx->game->materials.animatedBox, *ctx->engine, params);
+  render_entity(ctx->game->level.matrioshka_entity, ctx->game->materials.animatedBox, *ctx->engine, params);
 
   vkEndCommandBuffer(command);
 }
@@ -399,7 +375,7 @@ void simple_rigged(ThreadJobData tjd)
   params.color           = Vec3(0.0f, 0.0f, 0.0f);
   params.pipeline_layout = ctx->engine->pipelines.colored_geometry_skinned.layout;
 
-  render_entity_skinned(ctx->game->rigged_simple_entity, ctx->game->materials.riggedSimple, *ctx->engine, params);
+  render_entity_skinned(ctx->game->level.rigged_simple_entity, ctx->game->materials.riggedSimple, *ctx->engine, params);
 
   vkEndCommandBuffer(command);
 }
@@ -426,7 +402,7 @@ void monster_rigged(ThreadJobData tjd)
   params.color           = Vec3(1.0f, 1.0f, 1.0f);
   params.pipeline_layout = ctx->engine->pipelines.colored_geometry_skinned.layout;
 
-  render_entity_skinned(ctx->game->monster_entity, ctx->game->materials.monster, *ctx->engine, params);
+  render_entity_skinned(ctx->game->level.monster_entity, ctx->game->materials.monster, *ctx->engine, params);
 
   vkEndCommandBuffer(command);
 }
@@ -473,23 +449,6 @@ void robot_gui_lines(ThreadJobData tjd)
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_lines.pipeline);
   vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_host_coherent_memory_buffer,
                          &ctx->game->materials.green_gui_rulers_buffer_offsets[ctx->game->image_index]);
-
-  {
-    // in vulkan coordinate system Y axis is pointing down, so we'll have to invert the value to get
-    // something more reasonable
-    GenerateGuiLinesCommand cmd = {
-        .player_y_location_meters = -ctx->game->player.position.y,
-        .camera_x_pitch_radians   = 0.0f, // to_rad(10) * SDL_sinf(current_time_sec), // simulating future strafe tilts,
-        .camera_y_pitch_radians   = ctx->game->player.camera_updown_angle,
-    };
-
-    MemoryMap map(ctx->engine->device, ctx->engine->memory_blocks.host_coherent.memory,
-                  ctx->game->materials.green_gui_rulers_buffer_offsets[ctx->game->image_index],
-                  MAX_ROBOT_GUI_LINES * sizeof(Vec2));
-    generate_gui_lines(cmd, reinterpret_cast<Vec2*>(*map), MAX_ROBOT_GUI_LINES,
-                       ctx->game->materials.gui_green_lines_count, ctx->game->materials.gui_red_lines_count,
-                       ctx->game->materials.gui_yellow_lines_count);
-  }
 
   uint32_t offset = 0;
 
@@ -1159,7 +1118,7 @@ void weapon_selectors_left(ThreadJobData tjd)
   const Vec2 offset_from_bottom_left = {25.0f, 25.0f};
 
   float transparencies[3];
-  ctx->game->weapon_selections[0].calculate(transparencies);
+  ctx->game->level.weapon_selections[0].calculate(transparencies);
 
   for (int i = 0; i < 3; ++i)
   {
@@ -1282,7 +1241,7 @@ void weapon_selectors_right(ThreadJobData tjd)
   Vec2 offset_from_bottom_right = {25.0f, 25.0f};
 
   float transparencies[3];
-  ctx->game->weapon_selections[1].calculate(transparencies);
+  ctx->game->level.weapon_selections[1].calculate(transparencies);
 
   for (int i = 0; i < 3; ++i)
   {
@@ -1731,10 +1690,10 @@ void orientation_axis(ThreadJobData tjd)
       Vec3(0.0f, 0.0f, 1.0f),
   };
 
-  for (uint32_t i = 0; i < SDL_arraysize(ctx->game->axis_arrow_entities); ++i)
+  for (uint32_t i = 0; i < SDL_arraysize(ctx->game->level.axis_arrow_entities); ++i)
   {
     params.color = colors[i];
-    render_entity(ctx->game->axis_arrow_entities[i], ctx->game->materials.lil_arrow, *ctx->engine, params);
+    render_entity(ctx->game->level.axis_arrow_entities[i], ctx->game->materials.lil_arrow, *ctx->engine, params);
   }
 
   vkEndCommandBuffer(command);
@@ -1801,4 +1760,32 @@ void tesselated_ground(ThreadJobData tjd)
 
 } // namespace
 
-Job* ExampleLevel::copy_render_jobs(Job* end_ptr) { return end_ptr; }
+Job* ExampleLevel::copy_render_jobs(Job* dst)
+{
+  const Job jobs[] = {
+      radar,
+      robot_gui_lines,
+      height_ruler_text,
+      tilt_ruler_text,
+      robot_gui_speed_meter_text,
+      robot_gui_speed_meter_triangle,
+      compass_text,
+      radar_dots,
+      weapon_selectors_left,
+      weapon_selectors_right,
+      skybox_job,
+      tesselated_ground,
+      robot_job,
+      helmet_job,
+      point_light_boxes,
+      matrioshka_box,
+      water,
+      simple_rigged,
+      monster_rigged,
+      robot_depth_job,
+      helmet_depth_job,
+      imgui,
+  };
+
+  return std::copy(jobs, &jobs[SDL_arraysize(jobs)], dst);
+}

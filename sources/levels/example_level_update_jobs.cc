@@ -181,18 +181,38 @@ void orientation_axis_job(ThreadJobData tjd)
   update_orientation_axis_right(ctx.level.axis_arrow_entities[2], ctx.game.materials.lil_arrow, ctx.game.player);
 }
 
+void gui_lines_generation_job(ThreadJobData tjd)
+{
+  UpdateJob ctx(tjd, __PRETTY_FUNCTION__);
+
+  //
+  // in vulkan coordinate system Y axis is pointing down, so we'll have to invert the value to get
+  // something more reasonable
+  //
+  GenerateGuiLinesCommand cmd = {
+      .player_y_location_meters = -ctx.game.player.position.y,
+      .camera_x_pitch_radians   = 0.0f, // to_rad(10) * SDL_sinf(current_time_sec), // simulating future strafe tilts,
+      .camera_y_pitch_radians   = ctx.game.player.camera_updown_angle,
+  };
+
+  generate_gui_lines(cmd, ctx.game.materials.gui_lines_memory_cache, MAX_ROBOT_GUI_LINES,
+                     ctx.game.materials.gui_green_lines_count, ctx.game.materials.gui_red_lines_count,
+                     ctx.game.materials.gui_yellow_lines_count);
+}
+
 } // namespace
 
 Job* ExampleLevel::copy_update_jobs(Job* dst)
 {
   const Job jobs[] = {
-      helmet_job,          //
-      robot_job,           //
-      monster_job,         //
-      rigged_simple_job,   //
-      moving_lights_job,   //
-      matrioshka_job,      //
-      orientation_axis_job //
+      helmet_job,              //
+      robot_job,               //
+      monster_job,             //
+      rigged_simple_job,       //
+      moving_lights_job,       //
+      matrioshka_job,          //
+      orientation_axis_job,    //
+      gui_lines_generation_job //
   };
   return std::copy(jobs, &jobs[SDL_arraysize(jobs)], dst);
 }

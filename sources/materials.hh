@@ -3,6 +3,7 @@
 #include "engine/engine.hh"
 #include "engine/gltf.hh"
 #include "engine/math.hh"
+#include "game_constants.hh"
 #include "game_generate_gui_lines.hh"
 
 struct LightSource
@@ -85,6 +86,7 @@ struct Materials
   // frame cache
   LightSource  pbr_light_sources_cache[64];
   LightSource* pbr_light_sources_cache_last;
+  Vec2         gui_lines_memory_cache[MAX_ROBOT_GUI_LINES];
 
   // models
   SceneGraph helmet;
