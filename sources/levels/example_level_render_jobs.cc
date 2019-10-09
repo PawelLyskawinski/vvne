@@ -1711,30 +1711,15 @@ void tesselated_ground(ThreadJobData tjd)
   vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_host_coherent_memory_buffer,
                          &ctx->game->materials.tesselation_vb_offset);
 
-  struct PushConst
-  {
-    explicit PushConst(Game& game)
-        : projection(game.player.camera_projection)
-        , view(game.player.camera_view)
-        , camera_position(game.player.camera_position)
-        , adjustment(game.DEBUG_VEC2.x)
-        , time(game.current_time_sec)
-    {
-    }
+  const VkShaderStageFlags stages = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT |
+                                    VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-    Mat4x4 projection;
-    Mat4x4 view;
-    Vec3   camera_position;
-    float  adjustment;
-    float  time;
-  };
-
-  PushConst pc(*ctx->game);
-
-  vkCmdPushConstants(command, ctx->engine->pipelines.tesselated_ground.layout,
-                     VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT |
-                         VK_SHADER_STAGE_FRAGMENT_BIT,
-                     0, sizeof(pc), &pc);
+  AlignedPushConsts(command, ctx->engine->pipelines.tesselated_ground.layout)
+      .push(stages, ctx->game->player.camera_projection)
+      .push(stages, ctx->game->player.camera_view)
+      .push(stages, ctx->game->player.camera_position)
+      .push(stages, ctx->game->DEBUG_VEC2.x)
+      .push(stages, ctx->game->current_time_sec);
 
   const Materials& mats    = ctx->game->materials;
   VkDescriptorSet  dsets[] = {
