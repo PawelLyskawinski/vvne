@@ -302,54 +302,6 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   engine.job_system.wait_for_finish();
 }
 
-namespace {
-
-void frustum_planes_generate(const Mat4x4& matrix, Vec4 planes[])
-{
-  enum
-  {
-    LEFT   = 0,
-    RIGHT  = 1,
-    TOP    = 2,
-    BOTTOM = 3,
-    BACK   = 4,
-    FRONT  = 5
-  };
-
-  planes[LEFT].x   = matrix.at(3, 0) + matrix.at(0, 0);
-  planes[LEFT].y   = matrix.at(3, 1) + matrix.at(0, 1);
-  planes[LEFT].z   = matrix.at(3, 2) + matrix.at(0, 2);
-  planes[LEFT].w   = matrix.at(3, 3) + matrix.at(0, 3);
-  planes[RIGHT].x  = matrix.at(3, 0) - matrix.at(0, 0);
-  planes[RIGHT].y  = matrix.at(3, 1) - matrix.at(0, 1);
-  planes[RIGHT].z  = matrix.at(3, 2) - matrix.at(0, 2);
-  planes[RIGHT].w  = matrix.at(3, 3) - matrix.at(0, 3);
-  planes[TOP].x    = matrix.at(3, 0) - matrix.at(1, 0);
-  planes[TOP].y    = matrix.at(3, 1) - matrix.at(1, 1);
-  planes[TOP].z    = matrix.at(3, 2) - matrix.at(1, 2);
-  planes[TOP].w    = matrix.at(3, 3) - matrix.at(1, 3);
-  planes[BOTTOM].x = matrix.at(3, 0) + matrix.at(1, 0);
-  planes[BOTTOM].y = matrix.at(3, 1) + matrix.at(1, 1);
-  planes[BOTTOM].z = matrix.at(3, 2) + matrix.at(1, 2);
-  planes[BOTTOM].w = matrix.at(3, 3) + matrix.at(1, 3);
-  planes[BACK].x   = matrix.at(3, 0) + matrix.at(2, 0);
-  planes[BACK].y   = matrix.at(3, 1) + matrix.at(2, 1);
-  planes[BACK].z   = matrix.at(3, 2) + matrix.at(2, 2);
-  planes[BACK].w   = matrix.at(3, 3) + matrix.at(2, 3);
-  planes[FRONT].x  = matrix.at(3, 0) - matrix.at(2, 0);
-  planes[FRONT].y  = matrix.at(3, 1) - matrix.at(2, 1);
-  planes[FRONT].z  = matrix.at(3, 2) - matrix.at(2, 2);
-  planes[FRONT].w  = matrix.at(3, 3) - matrix.at(2, 3);
-
-  for (auto i = 0; i < 6; i++)
-  {
-    const float length = planes[i].as_vec3().len();
-    planes[i]          = planes[i].scale(1.0f / length);
-  }
-}
-
-} // namespace
-
 void Game::render(Engine& engine)
 {
   vkAcquireNextImageKHR(engine.device, engine.swapchain, UINT64_MAX, engine.image_available, VK_NULL_HANDLE,
@@ -430,7 +382,7 @@ void Game::render(Engine& engine)
     {
       MemoryMap frustums(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
                          materials.frustum_planes_ubo_offsets[image_index], 6 * sizeof(Vec4));
-      frustum_planes_generate(player.camera_projection * player.camera_view, reinterpret_cast<Vec4*>(*frustums));
+      (player.camera_projection * player.camera_view).generate_frustum_planes(reinterpret_cast<Vec4*>(*frustums));
     }
 
     //

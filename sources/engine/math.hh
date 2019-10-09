@@ -123,6 +123,7 @@ struct Mat4x4
 
   void ortho(float l, float r, float b, float t, float n, float f);
   void set_diagonal(const Vec3& values);
+  void generate_frustum_planes(Vec4 planes[6]) const;
 
   void identity();
   void transpose();
@@ -136,6 +137,7 @@ struct Mat4x4
   [[nodiscard]] static Mat4x4 LookAt(const Vec3& eye, const Vec3& center, const Vec3& up);
   [[nodiscard]] static Mat4x4 Translation(const Vec3& t);
   [[nodiscard]] static Mat4x4 Scale(const Vec3& s);
+
 
   //
   // SPIR-V specification 2.18.1. Memory Layout
