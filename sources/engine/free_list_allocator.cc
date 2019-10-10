@@ -21,12 +21,12 @@ uint8_t* FreeListAllocator::allocate_bytes(unsigned size)
     if (B->size == size)
     {
       A->next = B->next;
-      return reinterpret_cast<uint8_t*>(B);
+      return B->as_address();
     }
     else if (B->size > size)
     {
       B->size -= size;
-      return reinterpret_cast<uint8_t*>(B) + B->size;
+      return B->as_address() + B->size;
     }
     else
     {
@@ -47,47 +47,52 @@ void FreeListAllocator::free_bytes(uint8_t* free_me, unsigned size)
   SDL_assert(free_me >= pool);
   SDL_assert(&free_me[size] <= &pool[FREELIST_ALLOCATOR_CAPACITY_BYTES]);
 
-  Node* previous = &head;
-  Node* current  = previous->next;
+  Node* A = &head;
+  Node* B = A->next;
 
-  // deallocation occured before first free node!
-  if (free_me < reinterpret_cast<uint8_t*>(current))
+  //
+  // Deallocation occured before first free node!
+  //
+  if (free_me < B->as_address())
   {
-    Node* new_node = reinterpret_cast<Node*>(free_me);
+    Node* C = reinterpret_cast<Node*>(free_me);
+    C->size = size;
+    C->next = B;
 
-    // are the two free list nodes mergable?
-    if ((free_me + size) == reinterpret_cast<uint8_t*>(current))
+    auto are_mergable = [](const Node* left, const Node* right) {
+      return (left->as_address() + left->size) == right->as_address();
+    };
+
+    if (are_mergable(C, B))
     {
-      new_node->size = size + current->size;
-      new_node->next = current->next;
+      C->size += B->size;
+      C->next = B->next;
     }
-    else
-    {
-      new_node->size = size;
-      new_node->next = current;
-    }
-    previous->next = new_node;
+
+    A->next = C;
   }
   else
   {
-    while (nullptr != current)
+    while (nullptr != B)
     {
-      uint8_t* begin_address = reinterpret_cast<uint8_t*>(current);
-      uint8_t* end_address   = &begin_address[current->size];
+      const uint8_t* end_address = B->as_address() + B->size;
 
+      //
       // de-allocation can't happen inside the already freed memory!
+      //
       SDL_assert(end_address <= free_me);
 
-      uint8_t* next_address = reinterpret_cast<uint8_t*>(current->next);
+      uint8_t* next_address = B->next->as_address();
+
       if (end_address == free_me)
       {
-        current->size += size;
+        B->size += size;
 
         // is it 3 blocks merge combo?
         if (&free_me[size] == next_address)
         {
-          current->size += current->next->size;
-          current->next = current->next->next;
+          B->size += B->next->size;
+          B->next = B->next->next;
         }
         return;
       }
@@ -98,26 +103,26 @@ void FreeListAllocator::free_bytes(uint8_t* free_me, unsigned size)
           if (&free_me[size] == next_address)
           {
             // merging case
-            Node* new_node = reinterpret_cast<Node*>(free_me);
-            *new_node      = *current->next;
-            new_node->size += size;
-            current->next = new_node;
+            Node* C = reinterpret_cast<Node*>(free_me);
+            C->size += size;
+            C->next = B->next->next;
+            B->next = C;
             return;
           }
           else
           {
             // non-merging case (new node insertion)
-            Node* new_node = reinterpret_cast<Node*>(free_me);
-            new_node->next = current->next;
-            new_node->size = size;
-            current->next  = new_node;
+            Node* C = reinterpret_cast<Node*>(free_me);
+            C->size = size;
+            C->next = B->next;
+            B->next = C;
             return;
           }
         }
       }
 
-      previous = current;
-      current  = previous->next;
+      A = B;
+      B = A->next;
     }
   }
 }
