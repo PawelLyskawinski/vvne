@@ -4,46 +4,34 @@ using Node = FreeListAllocator::Node;
 
 void FreeListAllocator::init()
 {
-  Node* first_element = reinterpret_cast<Node*>(pool);
-  first_element->next = nullptr;
-  first_element->size = FREELIST_ALLOCATOR_CAPACITY_BYTES;
-
-  head.next = first_element;
-  head.size = FREELIST_ALLOCATOR_CAPACITY_BYTES;
+  Node* first = reinterpret_cast<Node*>(pool);
+  *first      = Node{nullptr, FREELIST_ALLOCATOR_CAPACITY_BYTES};
+  head        = Node{first, FREELIST_ALLOCATOR_CAPACITY_BYTES};
 }
 
 uint8_t* FreeListAllocator::allocate_bytes(unsigned size)
 {
-  if (size < sizeof(Node))
-    size = sizeof(Node);
+  size = (size < sizeof(Node)) ? sizeof(Node) : size;
 
-  Node* previous = &head;
-  Node* current  = previous->next;
+  Node* A = &head;
+  Node* B = A->next;
 
-  while (nullptr != current)
+  while (nullptr != B)
   {
-    if (current->size == size)
+    if (B->size == size)
     {
-      previous->next = current->next;
-      return reinterpret_cast<uint8_t*>(current);
+      A->next = B->next;
+      return reinterpret_cast<uint8_t*>(B);
     }
-    else if (current->size > size)
+    else if (B->size > size)
     {
-      uint8_t* old_pointer = reinterpret_cast<uint8_t*>(current);
-
-      Node current_copy = *current;
-      current_copy.size -= size;
-
-      current        = reinterpret_cast<Node*>(old_pointer + size);
-      previous->next = current;
-      *current       = current_copy;
-
-      return old_pointer;
+      B->size -= size;
+      return reinterpret_cast<uint8_t*>(B) + B->size;
     }
     else
     {
-      previous = current;
-      current  = current->next;
+      A = B;
+      B = B->next;
     }
   }
 
@@ -53,8 +41,7 @@ uint8_t* FreeListAllocator::allocate_bytes(unsigned size)
 
 void FreeListAllocator::free_bytes(uint8_t* free_me, unsigned size)
 {
-  if (size < sizeof(Node))
-    size = sizeof(Node);
+  size = (size < sizeof(Node)) ? sizeof(Node) : size;
 
   SDL_assert(free_me);
   SDL_assert(free_me >= pool);
