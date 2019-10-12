@@ -140,7 +140,7 @@ void Engine::startup(bool vulkan_validation_enabled)
     };
 
     vkCreateInstance(&ci, nullptr, &instance);
-    generic_allocator.free(extensions, count);
+    generic_allocator.free(extensions, count + SDL_arraysize(validation_extensions));
   }
 
   if (vulkan_validation_enabled)

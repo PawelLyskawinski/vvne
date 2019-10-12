@@ -70,6 +70,7 @@ void FreeListAllocator::free_bytes(uint8_t* free_me, unsigned size)
     }
 
     A->next = C;
+    return;
   }
   else
   {
@@ -84,7 +85,22 @@ void FreeListAllocator::free_bytes(uint8_t* free_me, unsigned size)
 
       uint8_t* next_address = B->next->as_address();
 
-      if (end_address == free_me)
+      if(nullptr == next_address)
+      {
+          if(end_address == free_me)
+          {
+              B->size += size;
+          }
+          else
+          {
+              Node* C = reinterpret_cast<Node*>(free_me);
+              C->size = size;
+              C->next = nullptr;
+              B->next = C;
+          }
+          return;
+      }
+      else if (end_address == free_me)
       {
         B->size += size;
 
@@ -125,4 +141,6 @@ void FreeListAllocator::free_bytes(uint8_t* free_me, unsigned size)
       B = A->next;
     }
   }
+
+  SDL_assert(false);
 }
