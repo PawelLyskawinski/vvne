@@ -1,10 +1,10 @@
 #include "game.hh"
+#include "engine/cascade_shadow_mapping.hh"
 #include "engine/cubemap.hh"
 #include "engine/memory_map.hh"
 #include <SDL2/SDL_events.h>
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_stdinc.h>
-#include "engine/cascade_shadow_mapping.hh"
 
 void Game::startup(Engine& engine)
 {
@@ -126,64 +126,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   player.update(current_time_sec, time_delta_since_last_frame_ms, level);
   level.update(time_delta_since_last_frame_ms);
 
-  const float acceleration_length = 5.0f * 1000.0f * player.acceleration.len();
-
-  //
-  // engines precalculation
-  //
-  const Mat4x4 transform_a = Mat4x4::Translation(player.position + Vec3(0.0f, -0.4f, 0.0f)) *
-                             Mat4x4::RotationY(-player.camera_angle) * Mat4x4::Translation(Vec3(0.2f, 0.0f, -0.3f));
-  const Mat4x4 transform_b = Mat4x4::Translation(player.position + Vec3(0.0f, -0.4f, 0.0f)) *
-                             Mat4x4::RotationY(-player.camera_angle) * Mat4x4::Translation(Vec3(0.2f, 0.0f, 0.3f));
-
-  LightSource dynamic_lights[] = {
-      {
-          {SDL_sinf(current_time_sec), 0.0f, 3.0f + SDL_cosf(current_time_sec), 1.0f},
-          {20.0f + (5.0f * SDL_sinf(current_time_sec + 0.4f)), 0.0f, 0.0f, 1.0f},
-      },
-      {
-          {12.8f * SDL_cosf(current_time_sec), 0.0f, -10.0f + (8.8f * SDL_sinf(current_time_sec)), 1.0f},
-          {0.0f, 20.0f, 0.0f, 1.0f},
-      },
-      {
-          {20.8f * SDL_sinf(current_time_sec / 2.0f), 0.0f, 3.0f + (0.8f * SDL_cosf(current_time_sec / 2.0f)), 1.0f},
-          {0.0f, 0.0f, 20.0f, 1.0f},
-      },
-      {
-          {SDL_sinf(current_time_sec / 1.2f), 0.0f, 2.5f * SDL_cosf(current_time_sec / 1.2f), 1.0f},
-          {8.0f, 8.0f, 8.0f, 1.0f},
-      },
-      {
-          {0.0f, 0.0f, -4.0f, 1.0f},
-          {10.0f, 0.0f, 10.0f, 1.0f},
-      },
-      // player engines
-      {
-          Vec4(transform_a.get_position(), 1.0f),
-          {0.01f, 0.01f, acceleration_length, 1.0f},
-      },
-      {
-          Vec4(transform_b.get_position(), 1.0f),
-          {0.01f, 0.01f, acceleration_length, 1.0f},
-      },
-  };
-
-  for (uint32_t i = 0; i < 5; ++i)
-  {
-    LightSource& light = dynamic_lights[i];
-    light.position.y   = level.get_height(light.position.x, light.position.z) - 1.0f;
-  }
-
-  materials.pbr_light_sources_cache_last =
-      std::copy(dynamic_lights, &dynamic_lights[SDL_arraysize(dynamic_lights)], materials.pbr_light_sources_cache);
-
-  recalculate_cascade_view_proj_matrices(materials.cascade_view_proj_mat, materials.cascade_split_depths,
-                                         player.camera_projection, player.camera_view, materials.light_source_position);
-
-  Job* jobs_begin              = engine.job_system.jobs;
-  Job* jobs_end                = ExampleLevel::copy_update_jobs(jobs_begin);
-  engine.job_system.jobs_count = std::distance(jobs_begin, jobs_end);
-
+  engine.job_system.fill_jobs(ExampleLevel::copy_update_jobs);
   engine.job_system.start();
   ImGui::Render();
   engine.job_system.wait_for_finish();
@@ -195,93 +138,14 @@ void Game::render(Engine& engine)
                         &image_index);
   vkWaitForFences(engine.device, 1, &engine.submition_fences[image_index], VK_TRUE, UINT64_MAX);
   vkResetFences(engine.device, 1, &engine.submition_fences[image_index]);
-
   engine.job_system.reset_command_buffers(image_index);
 
   {
     ScopedPerfEvent perf_event(render_profiler, __PRETTY_FUNCTION__, 0);
 
-    {
-      Job* jobs_begin = engine.job_system.jobs;
-      Job* jobs_end   = ExampleLevel::copy_render_jobs(jobs_begin);
-
-      engine.job_system.jobs_count = std::distance(jobs_begin, jobs_end);
-      engine.job_system.start();
-    }
-
-    // While we await for tasks to be finished by worker threads, this one will handle memory synchronization
-
-    //
-    // Cascade shadow map projection matrices
-    //
-    {
-      MemoryMap csm(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
-                    materials.cascade_view_proj_mat_ubo_offsets[image_index],
-                    SHADOWMAP_CASCADE_COUNT * (sizeof(Mat4x4) + sizeof(float)));
-
-      std::copy(materials.cascade_split_depths, &materials.cascade_split_depths[SHADOWMAP_CASCADE_COUNT],
-                reinterpret_cast<float*>(std::copy(materials.cascade_view_proj_mat,
-                                                   &materials.cascade_view_proj_mat[SHADOWMAP_CASCADE_COUNT],
-                                                   reinterpret_cast<Mat4x4*>(*csm))));
-    }
-
-    //
-    // light sources
-    //
-    {
-      MemoryMap light_sources(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
-                              materials.pbr_dynamic_lights_ubo_offsets[image_index], sizeof(LightSourcesSoA));
-      *reinterpret_cast<LightSourcesSoA*>(*light_sources) =
-          convert_light_sources(materials.pbr_light_sources_cache, materials.pbr_light_sources_cache_last);
-    }
-
-    //
-    // rigged simple skinning matrices
-    //
-    {
-      const uint32_t count = materials.riggedSimple.skins[0].joints.count;
-      const uint32_t size  = count * sizeof(Mat4x4);
-      const Mat4x4*  begin = reinterpret_cast<Mat4x4*>(level.rigged_simple_entity.joint_matrices);
-      const Mat4x4*  end   = &begin[count];
-
-      MemoryMap joint_matrices(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
-                               materials.rig_skinning_matrices_ubo_offsets[image_index], size);
-      std::copy(begin, end, reinterpret_cast<Mat4x4*>(*joint_matrices));
-    }
-
-    //
-    // monster skinning matrices
-    //
-    {
-      const uint32_t count = materials.monster.skins[0].joints.count;
-      const uint32_t size  = count * sizeof(Mat4x4);
-      const Mat4x4*  begin = reinterpret_cast<Mat4x4*>(level.monster_entity.joint_matrices);
-      const Mat4x4*  end   = &begin[count];
-
-      MemoryMap joint_matrices(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
-                               materials.monster_skinning_matrices_ubo_offsets[image_index], size);
-      std::copy(begin, end, reinterpret_cast<Mat4x4*>(*joint_matrices));
-    }
-
-    //
-    // frustum planes
-    //
-    {
-      MemoryMap frustums(engine.device, engine.memory_blocks.host_coherent_ubo.memory,
-                         materials.frustum_planes_ubo_offsets[image_index], 6 * sizeof(Vec4));
-      (player.camera_projection * player.camera_view).generate_frustum_planes(reinterpret_cast<Vec4*>(*frustums));
-    }
-
-    //
-    // GUI
-    //
-    {
-      MemoryMap map(engine.device, engine.memory_blocks.host_coherent.memory,
-                    materials.green_gui_rulers_buffer_offsets[image_index], MAX_ROBOT_GUI_LINES * sizeof(Vec2));
-      std::copy(materials.gui_lines_memory_cache, materials.gui_lines_memory_cache + MAX_ROBOT_GUI_LINES,
-                reinterpret_cast<Vec2*>(*map));
-    }
-    DebugGui::render(engine, *this);
+    engine.job_system.fill_jobs(ExampleLevel::copy_render_jobs);
+    engine.job_system.start();
+    // @todo: do something useful here as well?
     engine.job_system.wait_for_finish();
 
     {
