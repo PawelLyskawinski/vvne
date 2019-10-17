@@ -47,33 +47,37 @@ int main()
     uint32_t size;
   };
 
-  Allocation allocs[CAPACITY];
+  Allocation allocs[CAPACITY] = {};
 
   for (uint32_t i = 0; i < CAPACITY; ++i)
   {
-    allocs[i].size = 15 * i;
+    allocs[i].size = 15 * (i + 1);
   }
 
+  SDL_Log("Allocating memory ... ");
   for (uint8_t i = 0; i < CAPACITY; ++i)
   {
     Allocation& a = allocs[i];
     SDL_Log("Allocating %u bytes and filling memory with 0x%X", a.size, i+1);
     a.ptr         = allocator->allocate<uint8_t>(a.size);
     SDL_assert(is_memory_zeroed(a.ptr, a.ptr + a.size));
-    std::fill(a.ptr, a.ptr + a.size, i);
+    std::fill(a.ptr, a.ptr + a.size, i+1);
   }
+  SDL_Log("Allocating memory ... DONE");
 
   for (uint32_t i = 0; i < CAPACITY / 2; i += 2)
   {
     std::swap(allocs[i], allocs[CAPACITY - i - 1]);
   }
 
+  SDL_Log("Freeing memory ... ");
   for (Allocation& a : allocs)
   {
     SDL_assert(same_value_in_memory(a.ptr, a.ptr + a.size));
     std::fill(a.ptr, a.ptr + a.size, 0u);
     allocator->free(a.ptr, a.size);
   }
+  SDL_Log("Freeing memory ... DONE");
 
   SDL_assert(is_memory_zeroed(allocator->pool, allocator->pool + FreeListAllocator::FREELIST_ALLOCATOR_CAPACITY_BYTES));
   SDL_assert(reinterpret_cast<uint8_t*>(allocator->head.next) == allocator->pool);
