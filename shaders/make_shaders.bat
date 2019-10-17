@@ -46,6 +46,6 @@ pause
 goto:eof
 
 :compile
-for /f "usebackq delims=" %%x in (`hasher.py %~1`) do set arg=%%x
+for /f "usebackq delims=" %%x in (`hasher37.py %~1`) do set arg=%%x
 C:/VulkanSDK/1.1.106.0/Bin/glslangValidator.exe -V %~1 -o ../bin/%arg%
 goto:eof
