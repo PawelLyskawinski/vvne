@@ -5,10 +5,7 @@
 
 template <typename T> T align(T unaligned, T alignment)
 {
-  T result = unaligned;
-  if (unaligned % alignment)
-    result = unaligned + alignment - (unaligned % alignment);
-  return result;
+  return (unaligned + (alignment - 1)) & (~(alignment - 1));
 }
 
 struct Stack

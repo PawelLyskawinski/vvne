@@ -11,7 +11,7 @@ include_directories(C:/Users/plyskawinski/Downloads/MinGW/include
                     C:/VulkanSDK/1.1.85.0/Include)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libstdc++ -static-libgcc")
-set(SDL_LIBRARY    ${CMAKE_CURRENT_LIST_DIR}/bin/SDL2.dll)
+set(SDL_LIBRARY    C:/Users/plyskawinski/Downloads/MinGW/lib/libSDL2.a)
 set(VULKAN_LIBRARY C:/Windows/System32/vulkan-1.dll)
 # set(VULKAN_LIBRARY ${CMAKE_CURRENT_LIST_DIR}/bin/vulkan-1.dll)
 else()
@@ -73,6 +73,7 @@ endif()
 target_link_libraries(${PROJECT_NAME} ${SDL_LIBRARY} ${VULKAN_LIBRARY})
 if(WIN32)
 target_link_libraries(${PROJECT_NAME}
+        mingw32 opengl32 m dinput8 dxguid dxerr8 user32 gdi32 winmm imm32 ole32 oleaut32 shell32 version uuid pthread setupapi
         -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive
         )
 endif()

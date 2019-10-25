@@ -1,3 +1,4 @@
+#include "engine/cascade_shadow_mapping.hh"
 #include "game.hh"
 
 namespace {
@@ -157,13 +158,65 @@ void moving_lights_job(ThreadJobData tjd)
 {
   UpdateJob ctx(tjd, __PRETTY_FUNCTION__);
 
-  const LightSource* it  = ctx.game.materials.pbr_light_sources_cache;
-  const LightSource* end = ctx.game.materials.pbr_light_sources_cache_last;
-  SimpleEntity*      dst = ctx.level.box_entities;
+  const float acceleration_length = 5.0f * 1000.0f * ctx.game.player.acceleration.len();
 
-  for (; end != it; ++it, ++dst)
+  //
+  // engines precalculation
+  //
+  const Mat4x4 transform_a = Mat4x4::Translation(ctx.game.player.position + Vec3(0.0f, -0.4f, 0.0f)) *
+                             Mat4x4::RotationY(-ctx.game.player.camera_angle) *
+                             Mat4x4::Translation(Vec3(0.2f, 0.0f, -0.3f));
+  const Mat4x4 transform_b = Mat4x4::Translation(ctx.game.player.position + Vec3(0.0f, -0.4f, 0.0f)) *
+                             Mat4x4::RotationY(-ctx.game.player.camera_angle) *
+                             Mat4x4::Translation(Vec3(0.2f, 0.0f, 0.3f));
+
+  LightSource dynamic_lights[] = {
+      {
+          {SDL_sinf(ctx.game.current_time_sec), 0.0f, 3.0f + SDL_cosf(ctx.game.current_time_sec), 1.0f},
+          {20.0f + (5.0f * SDL_sinf(ctx.game.current_time_sec + 0.4f)), 0.0f, 0.0f, 1.0f},
+      },
+      {
+          {12.8f * SDL_cosf(ctx.game.current_time_sec), 0.0f, -10.0f + (8.8f * SDL_sinf(ctx.game.current_time_sec)),
+           1.0f},
+          {0.0f, 20.0f, 0.0f, 1.0f},
+      },
+      {
+          {20.8f * SDL_sinf(ctx.game.current_time_sec / 2.0f), 0.0f,
+           3.0f + (0.8f * SDL_cosf(ctx.game.current_time_sec / 2.0f)), 1.0f},
+          {0.0f, 0.0f, 20.0f, 1.0f},
+      },
+      {
+          {SDL_sinf(ctx.game.current_time_sec / 1.2f), 0.0f, 2.5f * SDL_cosf(ctx.game.current_time_sec / 1.2f), 1.0f},
+          {8.0f, 8.0f, 8.0f, 1.0f},
+      },
+      {
+          {0.0f, 0.0f, -4.0f, 1.0f},
+          {10.0f, 0.0f, 10.0f, 1.0f},
+      },
+      // player engines
+      {
+          Vec4(transform_a.get_position(), 1.0f),
+          {0.01f, 0.01f, acceleration_length, 1.0f},
+      },
+      {
+          Vec4(transform_b.get_position(), 1.0f),
+          {0.01f, 0.01f, acceleration_length, 1.0f},
+      },
+  };
+
+  for (uint32_t i = 0; i < 5; ++i)
   {
-    update_moving_light(*dst, ctx.game.materials.box, *it, ctx.game.current_time_sec);
+    LightSource& light = dynamic_lights[i];
+    light.position.y   = ctx.game.level.get_height(light.position.x, light.position.z) - 1.0f;
+  }
+
+  ctx.game.materials.pbr_light_sources_cache =
+      convert_light_sources(dynamic_lights, &dynamic_lights[SDL_arraysize(dynamic_lights)]);
+
+  SimpleEntity* dst = ctx.level.box_entities;
+  for (uint32_t i = 0; i < static_cast<uint32_t>(SDL_arraysize(dynamic_lights)); ++i)
+  {
+    update_moving_light(dst[i], ctx.game.materials.box, dynamic_lights[i], ctx.game.current_time_sec);
   }
 }
 
@@ -200,19 +253,28 @@ void gui_lines_generation_job(ThreadJobData tjd)
                      ctx.game.materials.gui_yellow_lines_count);
 }
 
+void recalculate_csm_matrices(ThreadJobData tjd)
+{
+  UpdateJob ctx(tjd, __PRETTY_FUNCTION__);
+  recalculate_cascade_view_proj_matrices(ctx.game.materials.cascade_view_proj_mat,
+                                         ctx.game.materials.cascade_split_depths, ctx.game.player.camera_projection,
+                                         ctx.game.player.camera_view, ctx.game.materials.light_source_position);
+}
+
 } // namespace
 
 Job* ExampleLevel::copy_update_jobs(Job* dst)
 {
   const Job jobs[] = {
-      helmet_job,              //
-      robot_job,               //
-      monster_job,             //
-      rigged_simple_job,       //
-      moving_lights_job,       //
-      matrioshka_job,          //
-      orientation_axis_job,    //
-      gui_lines_generation_job //
+      helmet_job,               //
+      robot_job,                //
+      monster_job,              //
+      rigged_simple_job,        //
+      moving_lights_job,        //
+      matrioshka_job,           //
+      orientation_axis_job,     //
+      gui_lines_generation_job, //
+      recalculate_csm_matrices  //
   };
   return std::copy(jobs, &jobs[SDL_arraysize(jobs)], dst);
 }

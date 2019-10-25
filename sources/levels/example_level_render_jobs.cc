@@ -1,4 +1,5 @@
 #include "engine/aligned_push_consts.hh"
+#include "engine/memory_map.hh"
 #include "game.hh"
 #include "game_generate_sdf_font.hh"
 #include "game_render_entity.hh"
@@ -205,7 +206,7 @@ void point_light_boxes(ThreadJobData tjd)
 
   for (unsigned i = 0; i < SDL_arraysize(ctx->game->level.box_entities); ++i)
   {
-    params.color = ctx->game->materials.pbr_light_sources_cache[i].color.as_vec3();
+    params.color = ctx->game->materials.pbr_light_sources_cache.colors[i].as_vec3();
     render_entity(ctx->game->level.box_entities[i], ctx->game->materials.box, *ctx->engine, params);
   }
 
@@ -1743,11 +1744,98 @@ void tesselated_ground(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
+void update_memory_host_coherent_ubo(ThreadJobData tjd)
+{
+  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+
+  Engine& e = *ctx->engine;
+  Game&   g = *ctx->game;
+
+  //
+  // Cascade shadow map projection matrices
+  //
+  {
+    MemoryMap csm(e.device, e.memory_blocks.host_coherent_ubo.memory,
+                  g.materials.cascade_view_proj_mat_ubo_offsets[g.image_index],
+                  SHADOWMAP_CASCADE_COUNT * (sizeof(Mat4x4) + sizeof(float)));
+
+    std::copy(g.materials.cascade_split_depths, &g.materials.cascade_split_depths[SHADOWMAP_CASCADE_COUNT],
+              reinterpret_cast<float*>(std::copy(g.materials.cascade_view_proj_mat,
+                                                 &g.materials.cascade_view_proj_mat[SHADOWMAP_CASCADE_COUNT],
+                                                 reinterpret_cast<Mat4x4*>(*csm))));
+  }
+
+  //
+  // light sources
+  //
+  {
+    MemoryMap light_sources(e.device, e.memory_blocks.host_coherent_ubo.memory,
+                            g.materials.pbr_dynamic_lights_ubo_offsets[g.image_index], sizeof(LightSourcesSoA));
+    *reinterpret_cast<LightSourcesSoA*>(*light_sources) = g.materials.pbr_light_sources_cache;
+  }
+
+  //
+  // rigged simple skinning matrices
+  //
+  {
+    const uint32_t count = g.materials.riggedSimple.skins[0].joints.count;
+    const uint32_t size  = count * sizeof(Mat4x4);
+    const Mat4x4*  begin = reinterpret_cast<Mat4x4*>(g.level.rigged_simple_entity.joint_matrices);
+    const Mat4x4*  end   = &begin[count];
+
+    MemoryMap joint_matrices(e.device, e.memory_blocks.host_coherent_ubo.memory,
+                             g.materials.rig_skinning_matrices_ubo_offsets[g.image_index], size);
+    std::copy(begin, end, reinterpret_cast<Mat4x4*>(*joint_matrices));
+  }
+
+  //
+  // monster skinning matrices
+  //
+  {
+    const uint32_t count = g.materials.monster.skins[0].joints.count;
+    const uint32_t size  = count * sizeof(Mat4x4);
+    const Mat4x4*  begin = reinterpret_cast<Mat4x4*>(g.level.monster_entity.joint_matrices);
+    const Mat4x4*  end   = &begin[count];
+
+    MemoryMap joint_matrices(e.device, e.memory_blocks.host_coherent_ubo.memory,
+                             g.materials.monster_skinning_matrices_ubo_offsets[g.image_index], size);
+    std::copy(begin, end, reinterpret_cast<Mat4x4*>(*joint_matrices));
+  }
+
+  //
+  // frustum planes
+  //
+  {
+    MemoryMap frustums(e.device, e.memory_blocks.host_coherent_ubo.memory,
+                       g.materials.frustum_planes_ubo_offsets[g.image_index], 6 * sizeof(Vec4));
+    (g.player.camera_projection * g.player.camera_view).generate_frustum_planes(reinterpret_cast<Vec4*>(*frustums));
+  }
+}
+
+void update_memory_host_coherent(ThreadJobData tjd)
+{
+  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+
+  {
+    MemoryMap map(ctx->engine->device, ctx->engine->memory_blocks.host_coherent.memory,
+                  ctx->game->materials.green_gui_rulers_buffer_offsets[ctx->game->image_index],
+                  MAX_ROBOT_GUI_LINES * sizeof(Vec2));
+    std::copy(ctx->game->materials.gui_lines_memory_cache,
+              ctx->game->materials.gui_lines_memory_cache + MAX_ROBOT_GUI_LINES, reinterpret_cast<Vec2*>(*map));
+  }
+
+  DebugGui::render(*ctx->engine, *ctx->game);
+}
+
 } // namespace
 
 Job* ExampleLevel::copy_render_jobs(Job* dst)
 {
   const Job jobs[] = {
+      update_memory_host_coherent_ubo,
+      update_memory_host_coherent,
       radar,
       robot_gui_lines,
       height_ruler_text,

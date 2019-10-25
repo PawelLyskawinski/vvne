@@ -15,8 +15,6 @@ struct ThreadJobData
   void*  user_data;
 };
 
-using Job = void (*)(ThreadJobData);
-
 struct WorkerCommands
 {
   VkCommandBuffer commands[64];
@@ -29,6 +27,9 @@ struct WorkerThread
   VkCommandPool  pool;
   WorkerCommands commands[SWAPCHAIN_IMAGES_COUNT];
 };
+
+using Job          = void (*)(ThreadJobData);
+using JobGenerator = Job*(Job*);
 
 struct JobSystem
 {
@@ -50,6 +51,7 @@ struct JobSystem
   void            reset_command_buffers(uint32_t image_index);
   VkCommandBuffer acquire(uint32_t worker_id, uint32_t image_index);
   void            worker_loop();
+  inline void     fill_jobs(JobGenerator g) { jobs_count = (g(jobs) - jobs); }
 
   void start();
   void wait_for_finish();

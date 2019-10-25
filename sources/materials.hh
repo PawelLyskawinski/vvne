@@ -84,9 +84,8 @@ struct Materials
   VkDeviceSize regular_billboard_vertex_buffer_offset;
 
   // frame cache
-  LightSource  pbr_light_sources_cache[64];
-  LightSource* pbr_light_sources_cache_last;
-  Vec2         gui_lines_memory_cache[MAX_ROBOT_GUI_LINES];
+  LightSourcesSoA pbr_light_sources_cache;
+  Vec2            gui_lines_memory_cache[MAX_ROBOT_GUI_LINES];
 
   // models
   SceneGraph helmet;
