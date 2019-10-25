@@ -1,4 +1,5 @@
 #include "free_list_allocator.hh"
+#include "allocators.hh"
 
 using Node = FreeListAllocator::Node;
 
@@ -11,7 +12,7 @@ void FreeListAllocator::init()
 
 uint8_t* FreeListAllocator::allocate_bytes(unsigned size)
 {
-  size = (size < sizeof(Node)) ? sizeof(Node) : size;
+  size = (size < sizeof(Node)) ? sizeof(Node) : align(size, 16u);
 
   Node* A = &head;
   Node* B = A->next;
@@ -50,7 +51,7 @@ bool are_mergable(const Node* left, const Node* right)
 
 void FreeListAllocator::free_bytes(uint8_t* free_me, unsigned size)
 {
-  size = (size < sizeof(Node)) ? sizeof(Node) : size;
+  size = (size < sizeof(Node)) ? sizeof(Node) : align(size, 16u);
 
   SDL_assert(free_me);
   SDL_assert(free_me >= pool);
