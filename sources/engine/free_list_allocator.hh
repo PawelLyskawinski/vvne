@@ -22,9 +22,7 @@ struct FreeListAllocator
   Node    head;
   uint8_t pool[FREELIST_ALLOCATOR_CAPACITY_BYTES];
 
-  void     init();
-  uint8_t* allocate_bytes(unsigned size);
-  void     free_bytes(uint8_t* free_me, unsigned size);
+  void init();
 
   template <typename T> T* allocate(uint32_t n = 1) { return reinterpret_cast<T*>(allocate_bytes(sizeof(T) * n)); }
   template <typename T> T* allocate_zeroed(uint32_t n = 1)
@@ -39,4 +37,8 @@ struct FreeListAllocator
   {
     free_bytes(reinterpret_cast<uint8_t*>(ptr), sizeof(T) * n);
   }
+
+private:
+  uint8_t* allocate_bytes(unsigned size);
+  void     free_bytes(uint8_t* free_me, unsigned size);
 };

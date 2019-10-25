@@ -39,6 +39,15 @@ uint8_t* FreeListAllocator::allocate_bytes(unsigned size)
   return nullptr;
 }
 
+namespace {
+
+bool are_mergable(const Node* left, const Node* right)
+{
+  return (left->as_address() + left->size) == right->as_address();
+}
+
+} // namespace
+
 void FreeListAllocator::free_bytes(uint8_t* free_me, unsigned size)
 {
   size = (size < sizeof(Node)) ? sizeof(Node) : size;
@@ -49,22 +58,35 @@ void FreeListAllocator::free_bytes(uint8_t* free_me, unsigned size)
 
   Node* A = &head;
   Node* B = A->next;
+  Node* C = reinterpret_cast<Node*>(free_me);
 
-  //
-  // Deallocation occured before first free node!
-  //
   if (free_me < B->as_address())
   {
-    Node* C = reinterpret_cast<Node*>(free_me);
+    // BEFORE:
+    //     [Head] ------------------*
+    //                              |
+    //     [Pool] ... [free_me] ... [Node] ---> ...
+    //
+    // AFTER:
+    //     [Head] ----*
+    //                |
+    //     [Pool] ... [Node] ---> [Node] ---> ...
+    //
     C->size = size;
     C->next = B;
 
-    auto are_mergable = [](const Node* left, const Node* right) {
-      return (left->as_address() + left->size) == right->as_address();
-    };
-
     if (are_mergable(C, B))
     {
+      // BEFORE:
+      //     [Head] -------------*
+      //                         |
+      //     [Pool] ... [free_me][Node] ---> ...
+      //
+      // AFTER:
+      //     [Head] ----*
+      //                |
+      //     [Pool] ... [_____Node____] ---> ...
+      //
       C->size += B->size;
       C->next = B->next;
     }
@@ -77,68 +99,121 @@ void FreeListAllocator::free_bytes(uint8_t* free_me, unsigned size)
     while (nullptr != B)
     {
       const uint8_t* end_address = B->as_address() + B->size;
-
-      //
-      // de-allocation can't happen inside the already freed memory!
-      //
       SDL_assert(end_address <= free_me);
 
       uint8_t* next_address = B->next->as_address();
 
-      if(nullptr == next_address)
+      if (nullptr == next_address)
       {
-          if(end_address == free_me)
-          {
-              B->size += size;
-          }
-          else
-          {
-              Node* C = reinterpret_cast<Node*>(free_me);
-              C->size = size;
-              C->next = nullptr;
-              B->next = C;
-          }
-          return;
+        //
+        // [Head] ----*
+        //            |
+        // [Pool] ... [Node] ... [free_me]
+        //                 |
+        //                 *---> null
+        //
+        if(are_mergable(B, C))
+        {
+          //
+          // [Head] ----*
+          //            |
+          // [Pool] ... [_______Node_______] ---> null
+          //
+          B->size += size;
+        }
+        else
+        {
+          //
+          // [Head] ----*
+          //            |
+          // [Pool] ... [Node] ---> [Node] ---> null
+          //
+          C->size = size;
+          C->next = nullptr;
+          B->next = C;
+        }
+        return;
       }
-      else if (end_address == free_me)
+      else if (are_mergable(B, C))
       {
+        //
+        // BEFORE:
+        //     [Head] ----*
+        //                |
+        //     [Pool] ... [Node][free_me] ... ---> ...
+        //                     |              |
+        //                     *--------------*
+        // AFTER:
+        //     [Head] ----*
+        //                |
+        //     [Pool] ... [_____Node____] ---> ...
+        //
         B->size += size;
 
-        // is it 3 blocks merge combo?
-        if (&free_me[size] == next_address)
+        if(are_mergable(B, B->next))
         {
+          //
+          // BEFORE:
+          //     [Head] ----*
+          //                |
+          //     [Pool] ... [Node][free_me][Node] ---> ...
+          //                     |         |
+          //                     *---------*
+          // AFTER:
+          //     [Head] ----*
+          //                |
+          //     [Pool] ... [________Node_______] ---> ...
+          //
           B->size += B->next->size;
           B->next = B->next->next;
         }
         return;
       }
-      else
+      else if (next_address > free_me)
       {
-        if (next_address > free_me)
+        if (&free_me[size] == next_address)
         {
-          if (&free_me[size] == next_address)
-          {
-            // merging case
-            Node* C = reinterpret_cast<Node*>(free_me);
-            C->size += size;
-            C->next = B->next->next;
-            B->next = C;
-            return;
-          }
-          else
-          {
-            // non-merging case (new node insertion)
-            Node* C = reinterpret_cast<Node*>(free_me);
-            C->size = size;
-            C->next = B->next;
-            B->next = C;
-            return;
-          }
+          // BEFORE:
+          //     [Head] ----*
+          //                |
+          //     [Pool] ... [Node] ... [free_me][Node] ---> ...
+          //                     |              |
+          //                     *--------------*
+          // AFTER:
+          //     [Head] ----*
+          //                |
+          //     [Pool] ... [Node] --> [_____Node____] ---> ...
+          //
+          C->size = B->next->size + size;
+          C->next = B->next->next;
+          B->next = C;
+          return;
+        }
+        else
+        {
+          // BEFORE:
+          //     [Head] ----*
+          //                |
+          //     [Pool] ... [Node] ... [free_me] ... [Node] ---> ...
+          //                     |                   |
+          //                     *-------------------*
+          //
+          // AFTER:
+          //     [Head] ----*
+          //                |
+          //     [Pool] ... [Node] ---> [Node] ----> [Node] ---> ...
+          //
+          C->size = size;
+          C->next = B->next;
+          B->next = C;
+          return;
         }
       }
-
-      A = B;
-      B = A->next;
+      else
+      {
+        A = B;
+        B = A->next;
+      }
     }
   }
 
