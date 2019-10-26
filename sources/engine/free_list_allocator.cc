@@ -54,7 +54,7 @@ void FreeListAllocator::free_bytes(uint8_t* free_me, unsigned size)
   size = (size < sizeof(Node)) ? sizeof(Node) : align(size, 16u);
 
   SDL_assert(free_me);
-  SDL_assert(free_me >= pool);
+  SDL_assert(reinterpret_cast<uint8_t*>(pool) <= free_me);
   SDL_assert(&free_me[size] <= &pool[FREELIST_ALLOCATOR_CAPACITY_BYTES]);
 
   Node* A = &head;
@@ -113,7 +113,7 @@ void FreeListAllocator::free_bytes(uint8_t* free_me, unsigned size)
         //                 |
         //                 *---> null
         //
-        if(are_mergable(B, C))
+        if (are_mergable(B, C))
         {
           //
           // [Head] ----*
@@ -151,7 +151,7 @@ void FreeListAllocator::free_bytes(uint8_t* free_me, unsigned size)
         //
         B->size += size;
 
-        if(are_mergable(B, B->next))
+        if (are_mergable(B, B->next))
         {
           //
           // BEFORE:
