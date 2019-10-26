@@ -10,7 +10,7 @@ void update_helmet(SimpleEntity& entity, const SceneGraph& scene_graph)
   entity.recalculate_node_transforms(scene_graph, world_transform);
 }
 
-void update_robot(SimpleEntity& entity, const SceneGraph& scene_graph, const Player& player)
+Quaternion calculate_player_orientation(const Player& player)
 {
   const float x_delta                 = player.position.x - player.camera_position.x;
   const float z_delta                 = player.position.z - player.camera_position.z;
@@ -21,14 +21,18 @@ void update_robot(SimpleEntity& entity, const SceneGraph& scene_graph, const Pla
   const Vec2 corrected_velocity_vector =
       Vec2(SDL_cosf(relative_velocity_angle), SDL_sinf(relative_velocity_angle)).scale(velocity_vector.len());
 
-  const Quaternion orientation =
-      Quaternion(to_rad(180.0), Vec3(1.0f, 0.0f, 0.0f)) *
-      Quaternion(player.position.x < player.camera_position.x ? to_rad(180.0f) : to_rad(0.0f), Vec3(0.0f, 1.0f, 0.0f)) *
-      Quaternion(static_cast<float>(SDL_atan(z_delta / x_delta)), Vec3(0.0f, 1.0f, 0.0f)) *
-      Quaternion(8.0f * corrected_velocity_vector.x, Vec3(1.0f, 0.0f, 0.0f)) *
-      Quaternion(-8.0f * corrected_velocity_vector.y, Vec3(0.0f, 0.0f, 1.0f));
+  return Quaternion(to_rad(180.0), Vec3(1.0f, 0.0f, 0.0f)) *
+         Quaternion(player.position.x < player.camera_position.x ? to_rad(180.0f) : to_rad(0.0f),
+                    Vec3(0.0f, 1.0f, 0.0f)) *
+         Quaternion(static_cast<float>(SDL_atan(z_delta / x_delta)), Vec3(0.0f, 1.0f, 0.0f)) *
+         Quaternion(8.0f * corrected_velocity_vector.x, Vec3(1.0f, 0.0f, 0.0f)) *
+         Quaternion(-8.0f * corrected_velocity_vector.y, Vec3(0.0f, 0.0f, 1.0f));
+}
 
-  const Mat4x4 world_transform = Mat4x4::Translation(player.position) * Mat4x4(orientation) * Mat4x4::Scale(Vec3(0.5f));
+void update_robot(SimpleEntity& entity, const SceneGraph& scene_graph, const Player& player)
+{
+  const Mat4x4 world_transform =
+      Mat4x4::Translation(player.position) * Mat4x4(calculate_player_orientation(player)) * Mat4x4::Scale(Vec3(0.5f));
   entity.recalculate_node_transforms(scene_graph, world_transform);
 }
 
@@ -163,12 +167,11 @@ void moving_lights_job(ThreadJobData tjd)
   //
   // engines precalculation
   //
-  const Mat4x4 transform_a = Mat4x4::Translation(ctx.game.player.position + Vec3(0.0f, -0.4f, 0.0f)) *
-                             Mat4x4::RotationY(-ctx.game.player.camera_angle) *
-                             Mat4x4::Translation(Vec3(0.2f, 0.0f, -0.3f));
-  const Mat4x4 transform_b = Mat4x4::Translation(ctx.game.player.position + Vec3(0.0f, -0.4f, 0.0f)) *
-                             Mat4x4::RotationY(-ctx.game.player.camera_angle) *
-                             Mat4x4::Translation(Vec3(0.2f, 0.0f, 0.3f));
+  const Mat4x4 player_rotation = Mat4x4(calculate_player_orientation(ctx.game.player));
+  const Mat4x4 transform_a =
+      Mat4x4::Translation(ctx.game.player.position) * player_rotation * Mat4x4::Translation(Vec3(-0.2f, 0.4f, -0.35f));
+  const Mat4x4 transform_b =
+      Mat4x4::Translation(ctx.game.player.position) * player_rotation * Mat4x4::Translation(Vec3(-0.2f, 0.4f, 0.35f));
 
   LightSource dynamic_lights[] = {
       {
