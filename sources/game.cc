@@ -14,6 +14,11 @@ void Game::startup(Engine& engine)
   player.setup(engine.extent2D.width, engine.extent2D.height);
   level.setup(engine.generic_allocator, materials);
 
+  SDL_SetRelativeMouseMode(SDL_TRUE);
+
+  update_profiler.paused = true;
+  render_profiler.paused = true;
+
   DEBUG_VEC2.x = 0.1f;
   DEBUG_VEC2.y = -1.0f;
 
@@ -107,7 +112,6 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
           break;
         }
       }
-
       break;
 
       default:

@@ -10,6 +10,7 @@ struct DebugGui
 {
   bool        mousepressed[3];
   SDL_Cursor* mousecursors[ImGuiMouseCursor_Count_];
+  bool        engine_console_open;
 
   void setup();
   void teardown();

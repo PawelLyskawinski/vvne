@@ -6,6 +6,7 @@
 #include "game.hh"
 #include "profiler_visualizer.hh"
 #include <SDL2/SDL_clipboard.h>
+
 #include <SDL2/SDL_log.h>
 #include <algorithm>
 #include <numeric>
@@ -105,8 +106,7 @@ void DebugGui::process_event(SDL_Event& event)
     io.AddInputCharactersUTF8(event.text.text);
     break;
 
-  case SDL_MOUSEBUTTONDOWN:
-  {
+  case SDL_MOUSEBUTTONDOWN: {
     switch (event.button.button)
     {
     case SDL_BUTTON_LEFT:
@@ -125,8 +125,7 @@ void DebugGui::process_event(SDL_Event& event)
   break;
 
   case SDL_KEYDOWN:
-  case SDL_KEYUP:
-  {
+  case SDL_KEYUP: {
     io.KeysDown[event.key.keysym.scancode] = (SDL_KEYDOWN == event.type);
 
     io.KeyShift = SDL_GetModState() & SDL_Keymod(KMOD_SHIFT);
@@ -136,13 +135,19 @@ void DebugGui::process_event(SDL_Event& event)
 
     switch (event.key.keysym.scancode)
     {
-    case SDL_SCANCODE_F1:
-      if (SDL_KEYDOWN == event.type)
-        SDL_SetRelativeMouseMode(SDL_TRUE);
-      break;
-    case SDL_SCANCODE_F2:
-      if (SDL_KEYDOWN == event.type)
-        SDL_SetRelativeMouseMode(SDL_FALSE);
+    case SDL_SCANCODE_GRAVE:
+      if ((SDL_KEYUP == event.type))
+      {
+        engine_console_open = !engine_console_open;
+        if (engine_console_open)
+        {
+          SDL_SetRelativeMouseMode(SDL_FALSE);
+        }
+        else
+        {
+          SDL_SetRelativeMouseMode(SDL_TRUE);
+        }
+      }
       break;
     default:
       break;
@@ -156,6 +161,8 @@ void DebugGui::process_event(SDL_Event& event)
 }
 
 void tesselated_ground(Engine& engine, float y_scale, float y_offset);
+
+static uint32_t bytes_as_mb(uint32_t in) { return in / (1024u * 1024u); }
 
 void DebugGui::update(Engine& engine, Game& game)
 {
@@ -219,143 +226,131 @@ void DebugGui::update(Engine& engine, Game& game)
 
   ImGui::NewFrame();
 
-  ImGui::Begin("profiler");
+  if (!engine_console_open)
   {
-    static char highlight_filter[64];
-
-    ImGui::SetCursorPos(ImVec2(5, 20.0f));
-    ImGui::Text("Update");
-    ImGui::Separator();
-    profiler_visualize(game.update_profiler, "update", highlight_filter, 40.0f);
-    ImGui::SetCursorPos(ImVec2(5, 100.0f));
-    ImGui::Text("Render");
-    ImGui::Separator();
-    profiler_visualize(game.render_profiler, "render", highlight_filter, 120.0f);
-    ImGui::SetCursorPos(ImVec2(5, 200.0f));
-
-    if (ImGui::Button("pause"))
-    {
-      game.update_profiler.paused = !game.update_profiler.paused;
-      game.render_profiler.paused = !game.render_profiler.paused;
-    }
-
-    ImGui::SetCursorPos(ImVec2(5, 230.0f));
-    ImGui::InputText("filter", highlight_filter, SDL_arraysize(highlight_filter));
+    return;
   }
-  ImGui::End();
 
-  ImGui::Begin("Main Panel");
-  if (ImGui::CollapsingHeader("Animations"))
+  ImGui::SetNextWindowPos({0, 0});
+  const ImVec2 extent_as_vec2(engine.extent2D.width, engine.extent2D.height);
+  ImGui::SetNextWindowSize(extent_as_vec2);
+
+  ImGui::Begin("engine console", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
   {
-    const char*   names[]    = {"CUBE", "RIGGED", "MONSTER"};
-    SimpleEntity* entities[] = {&game.level.matrioshka_entity, &game.level.rigged_simple_entity,
-                                &game.level.monster_entity};
-
-    for (uint32_t i = 0; i < 3; ++i)
+    if (ImGui::BeginTabBar("main selector"))
     {
-      SimpleEntity* e = entities[i];
-      if (i > 0)
+      if (ImGui::BeginTabItem("Profiler"))
       {
-        ImGui::SameLine();
-      }
-      if (ImGui::Button(names[i]))
-      {
-        if (not e->flags.animation_start_time)
+        static char highlight_filter[64];
+
+        ImGui::Text("Update");
+        ImGui::Separator();
+        profiler_visualize(game.update_profiler, "update", highlight_filter, 50.0f);
+
+        // Cursor reposition is needed because the rendering above finishes up with variable height.
+        // In the end everything rendered afterwards shakes teremdously without this
+        ImGui::SetCursorPos(ImVec2(5, 100.0f));
+        ImGui::Text("Render");
+        ImGui::Separator();
+        profiler_visualize(game.render_profiler, "render", highlight_filter, 130.0f);
+
+        ImGui::SetCursorPos(ImVec2(5, 200.0f));
+        if (ImGui::Button("pause"))
         {
-          e->animation_start_time       = game.current_time_sec;
-          e->flags.animation_start_time = true;
+          game.update_profiler.paused = !game.update_profiler.paused;
+          game.render_profiler.paused = !game.render_profiler.paused;
         }
+
+        ImGui::SetCursorPos(ImVec2(5, 230.0f));
+        ImGui::InputText("filter", highlight_filter, SDL_arraysize(highlight_filter));
+        ImGui::Separator();
+
+        auto gpu_mem_printer = [](const char* name, GpuMemoryAllocator& allocator) {
+          ImGui::Text("[GPU] %s memory (%uMB pool)", name, bytes_as_mb(allocator.max_size));
+          gpu_memory_visualize(allocator);
+        };
+
+        gpu_mem_printer("image", engine.memory_blocks.device_images.allocator);
+        gpu_mem_printer("device-visible", engine.memory_blocks.device_local.allocator);
+        gpu_mem_printer("host-visible", engine.memory_blocks.host_coherent.allocator);
+        gpu_mem_printer("UBO", engine.memory_blocks.host_coherent_ubo.allocator);
+
+        ImGui::Text("[HOST] general purpose allocator (%uMB pool)",
+                    bytes_as_mb(engine.generic_allocator.FREELIST_ALLOCATOR_CAPACITY_BYTES));
+        free_list_visualize(engine.generic_allocator);
+
+        ImGui::EndTabItem();
       }
+      if (ImGui::BeginTabItem("Debug"))
+      {
+        ImGui::Text("Animations");
+        ImGui::Separator();
+        {
+          const char*   names[]    = {"CUBE", "RIGGED", "MONSTER"};
+          SimpleEntity* entities[] = {&game.level.matrioshka_entity, &game.level.rigged_simple_entity,
+                                      &game.level.monster_entity};
+
+          for (uint32_t i = 0; i < 3; ++i)
+          {
+            SimpleEntity* e = entities[i];
+            if (i > 0)
+            {
+              ImGui::SameLine();
+            }
+            if (ImGui::Button(names[i]))
+            {
+              if (not e->flags.animation_start_time)
+              {
+                e->animation_start_time       = game.current_time_sec;
+                e->flags.animation_start_time = true;
+              }
+            }
+          }
+        }
+
+        ImGui::Text("Debug Variables");
+        ImGui::Separator();
+        if (ImGui::RadioButton("debug flag 1", game.DEBUG_FLAG_1))
+        {
+          game.DEBUG_FLAG_1 = !game.DEBUG_FLAG_1;
+        }
+
+        if (ImGui::RadioButton("debug flag 2", game.DEBUG_FLAG_2))
+        {
+          game.DEBUG_FLAG_2 = !game.DEBUG_FLAG_2;
+        }
+
+        ImGui::InputFloat2("debug vec2", &game.DEBUG_VEC2.x);
+        ImGui::InputFloat2("debug vec2 additional", &game.DEBUG_VEC2_ADDITIONAL.x);
+        ImGui::InputFloat4("light ortho projection", &game.DEBUG_LIGHT_ORTHO_PARAMS.x);
+
+        ImGui::Text("Resolution");
+        ImGui::Separator();
+        {
+          static int         current_resolution = 0;
+          static const char* resolution_names[] = {"1200x900  (custom dev)", "1280x720  (HD)", "1366x768  (WXGA)",
+                                                   "1600x900  (HD+)", "1920x1080 (Full HD)"};
+          if (ImGui::Combo("resolutions", &current_resolution, resolution_names, SDL_arraysize(resolution_names)))
+          {
+            SDL_Log("Resolution change: %s", resolution_names[current_resolution]);
+            static const VkExtent2D resolutions[] = {
+                {1200, 900}, {1280, 720}, {1366, 768}, {1600, 900}, {1920, 1080},
+            };
+            engine.change_resolution(resolutions[current_resolution]);
+            game.player.camera_projection.perspective(engine.extent2D, to_rad(90.0f), 0.1f, 1000.0f);
+          }
+        }
+
+        ImGui::Text("Info");
+        ImGui::Separator();
+        ImGui::Text("%.4f %.4f %.4f", game.player.position.x, game.player.position.y, game.player.position.z);
+        ImGui::Text("acceleration len: %.4f", game.player.acceleration.len());
+        ImGui::EndTabItem();
+      }
+
+      ImGui::EndTabBar();
     }
   }
-
-  if (ImGui::CollapsingHeader("Gameplay features"))
-  {
-    ImGui::Text("Booster jet fluel");
-    ImGui::ProgressBar(game.level.booster_jet_fuel);
-    ImGui::Text("%d %d | %d %d", game.lmb_last_cursor_position[0], game.lmb_last_cursor_position[1],
-                game.lmb_current_cursor_position[0], game.lmb_current_cursor_position[1]);
-  }
-
-  if (ImGui::CollapsingHeader("Memory"))
-  {
-    auto bytes_as_mb = [](uint32_t in) { return in / (1024u * 1024u); };
-
-    ImGui::Text("[GPU] image memory (%uMB pool)", bytes_as_mb(engine.memory_blocks.device_images.allocator.max_size));
-    gpu_memory_visualize(engine.memory_blocks.device_images.allocator);
-
-    ImGui::Text("[GPU] device-visible memory (%uMB pool)",
-                bytes_as_mb(engine.memory_blocks.device_local.allocator.max_size));
-    gpu_memory_visualize(engine.memory_blocks.device_local.allocator);
-
-    ImGui::Text("[GPU] host-visible memory (%uMB pool)",
-                bytes_as_mb(engine.memory_blocks.host_coherent.allocator.max_size));
-    gpu_memory_visualize(engine.memory_blocks.host_coherent.allocator);
-
-    ImGui::Text("[GPU] UBO memory (%uMB pool)", bytes_as_mb(engine.memory_blocks.host_coherent_ubo.allocator.max_size));
-    gpu_memory_visualize(engine.memory_blocks.host_coherent_ubo.allocator);
-
-    ImGui::Text("[HOST] general purpose allocator (%uMB pool)",
-                bytes_as_mb(engine.generic_allocator.FREELIST_ALLOCATOR_CAPACITY_BYTES));
-    free_list_visualize(engine.generic_allocator);
-  }
-
-  if (ImGui::RadioButton("debug flag 1", game.DEBUG_FLAG_1))
-  {
-    game.DEBUG_FLAG_1 = !game.DEBUG_FLAG_1;
-  }
-
-  if (ImGui::RadioButton("debug flag 2", game.DEBUG_FLAG_2))
-  {
-    game.DEBUG_FLAG_2 = !game.DEBUG_FLAG_2;
-  }
-
-  ImGui::InputFloat2("debug vec2", &game.DEBUG_VEC2.x);
-  ImGui::InputFloat2("debug vec2 additional", &game.DEBUG_VEC2_ADDITIONAL.x);
-  ImGui::InputFloat4("light ortho projection", &game.DEBUG_LIGHT_ORTHO_PARAMS.x);
-
-  // Resolution change
-  {
-    static int         current_resolution = 0;
-    static const char* resolution_names[] = {"1200x900  (custom dev)", "1280x720  (HD)", "1366x768  (WXGA)",
-                                             "1600x900  (HD+)", "1920x1080 (Full HD)"};
-    if (ImGui::Combo("resolutions", &current_resolution, resolution_names, SDL_arraysize(resolution_names)))
-    {
-      SDL_Log("Resolution change: %s", resolution_names[current_resolution]);
-      static const VkExtent2D resolutions[] = {
-          {1200, 900}, {1280, 720}, {1366, 768}, {1600, 900}, {1920, 1080},
-      };
-      engine.change_resolution(resolutions[current_resolution]);
-      game.player.camera_projection.perspective(engine.extent2D, to_rad(90.0f), 0.1f, 1000.0f);
-    }
-  }
-
-  if (ImGui::CollapsingHeader("Ground testing"))
-  {
-    static float y_scale  = 0.0f;
-    static float y_offset = 0.0f;
-    ImGui::InputFloat("y_scale", &y_scale);
-    ImGui::InputFloat("y_offset", &y_offset);
-
-    if (ImGui::Button("Reload tesselation pipeline"))
-    {
-      vkDeviceWaitIdle(engine.device);
-      vkDestroyPipeline(engine.device, engine.pipelines.tesselated_ground.pipeline, nullptr);
-      tesselated_ground(engine, y_scale, y_offset);
-    }
-  }
-
-  ImGui::Text("%.4f %.4f %.4f", game.player.position.x, game.player.position.y, game.player.position.z);
-  ImGui::Text("acceleration len: %.4f", game.player.acceleration.len());
-
-  // players position becomes the cartesian (0, 0) point for us, hence the substraction order
-  // vec2 distance = {};
-  // vec2_sub(distance, robot_position, player_position);
-
-  // normalization helps to
-  // vec2 normalized = {};
-  // vec2_norm(normalized, distance);
-
   ImGui::End();
 }
 

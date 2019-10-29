@@ -1,4 +1,5 @@
 #include "math.hh"
+#include <algorithm>
 
 Vec2::Vec2(float x, float y)
     : x(x)

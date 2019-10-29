@@ -120,8 +120,7 @@ void ExampleLevel::process_event(const SDL_Event& event)
   switch (event.type)
   {
   case SDL_KEYDOWN:
-  case SDL_KEYUP:
-  {
+  case SDL_KEYUP: {
     switch (event.key.keysym.scancode)
     {
     case SDL_SCANCODE_1:
@@ -142,6 +141,7 @@ void ExampleLevel::process_event(const SDL_Event& event)
     case SDL_SCANCODE_6:
       weapon_selections[1].select(2);
       break;
+
     default:
       break;
     }
