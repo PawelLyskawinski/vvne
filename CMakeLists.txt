@@ -45,7 +45,7 @@ set(SOURCES
         sources/game.cc
         sources/game_generate_gui_lines.cc
         sources/game_generate_sdf_font.cc
-        sources/game_render_entity.cc
+        sources/simple_entity_render.cc
         sources/engine/gltf.cc
         sources/engine/cubemap.cc
         sources/simple_entity.cc
@@ -81,5 +81,5 @@ target_link_libraries(${PROJECT_NAME} ${SDL_LIBRARY} ${VULKAN_LIBRARY})
 target_link_libraries(tests ${SDL_LIBRARY})
 target_link_libraries(level_generator_tests ${SDL_LIBRARY})
 target_link_libraries(jobsytem ${SDL_LIBRARY})
-target_link_libraries(allocator_tests ${SDL_LIBRARY})
+target_link_libraries(allocator_tests ${CMAKE_CURRENT_LIST_DIR}/bin/SDL2.dll)
 

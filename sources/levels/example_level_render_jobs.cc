@@ -2,7 +2,6 @@
 #include "engine/memory_map.hh"
 #include "game.hh"
 #include "game_generate_sdf_font.hh"
-#include "game_render_entity.hh"
 #include <SDL2/SDL_log.h>
 
 namespace {
@@ -79,8 +78,8 @@ void robot_depth_job(ThreadJobData tjd)
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.shadowmap.layout, 0, 1,
                             &ctx->game->materials.cascade_view_proj_matrices_depth_pass_dset[ctx->game->image_index], 0,
                             nullptr);
-    render_pbr_entity_shadow(ctx->game->level.robot_entity, ctx->game->materials.robot, *ctx->engine, *ctx->game,
-                             command, cascade_idx);
+    ctx->game->level.robot_entity.render_pbr_shadow(ctx->game->materials.robot, *ctx->engine, *ctx->game, command,
+                                                    cascade_idx);
     vkEndCommandBuffer(command);
   }
 }
@@ -117,7 +116,7 @@ void robot_job(ThreadJobData tjd)
   params.color           = Vec3(0.0f, 0.0f, 0.0f);
   params.pipeline_layout = ctx->engine->pipelines.scene3D.layout;
 
-  render_pbr_entity(ctx->game->level.robot_entity, ctx->game->materials.robot, *ctx->engine, params);
+  ctx->game->level.robot_entity.render_pbr(ctx->game->materials.robot, *ctx->engine, params);
 
 #if 0
         vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_model_wireframe.pipeline);
@@ -147,8 +146,8 @@ void helmet_depth_job(ThreadJobData tjd)
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.shadowmap.layout, 0, 1,
                             &ctx->game->materials.cascade_view_proj_matrices_depth_pass_dset[ctx->game->image_index], 0,
                             nullptr);
-    render_pbr_entity_shadow(ctx->game->level.helmet_entity, ctx->game->materials.helmet, *ctx->engine, *ctx->game,
-                             command, cascade_idx);
+    ctx->game->level.helmet_entity.render_pbr_shadow(ctx->game->materials.helmet, *ctx->engine, *ctx->game, command,
+                                                     cascade_idx);
     vkEndCommandBuffer(command);
   }
 }
@@ -184,7 +183,7 @@ void helmet_job(ThreadJobData tjd)
   params.color           = Vec3(0.0f, 0.0f, 0.0f);
   params.pipeline_layout = ctx->engine->pipelines.scene3D.layout;
 
-  render_pbr_entity(ctx->game->level.helmet_entity, ctx->game->materials.helmet, *ctx->engine, params);
+  ctx->game->level.helmet_entity.render_pbr(ctx->game->materials.helmet, *ctx->engine, params);
 
   vkEndCommandBuffer(command);
 }
@@ -207,7 +206,7 @@ void point_light_boxes(ThreadJobData tjd)
   for (unsigned i = 0; i < SDL_arraysize(ctx->game->level.box_entities); ++i)
   {
     params.color = ctx->game->materials.pbr_light_sources_cache.colors[i].as_vec3();
-    render_entity(ctx->game->level.box_entities[i], ctx->game->materials.box, *ctx->engine, params);
+    ctx->game->level.box_entities[i].render(ctx->game->materials.box, *ctx->engine, params);
   }
 
   vkEndCommandBuffer(command);
@@ -228,7 +227,7 @@ void matrioshka_box(ThreadJobData tjd)
   params.color           = Vec3(0.0f, 1.0f, 0.0f);
   params.pipeline_layout = ctx->engine->pipelines.colored_geometry.layout;
 
-  render_entity(ctx->game->level.matrioshka_entity, ctx->game->materials.animatedBox, *ctx->engine, params);
+  ctx->game->level.matrioshka_entity.render(ctx->game->materials.animatedBox, *ctx->engine, params);
 
   vkEndCommandBuffer(command);
 }
@@ -376,7 +375,7 @@ void simple_rigged(ThreadJobData tjd)
   params.color           = Vec3(0.0f, 0.0f, 0.0f);
   params.pipeline_layout = ctx->engine->pipelines.colored_geometry_skinned.layout;
 
-  render_entity_skinned(ctx->game->level.rigged_simple_entity, ctx->game->materials.riggedSimple, *ctx->engine, params);
+  ctx->game->level.rigged_simple_entity.render_skinned(ctx->game->materials.riggedSimple, *ctx->engine, params);
 
   vkEndCommandBuffer(command);
 }
@@ -403,7 +402,7 @@ void monster_rigged(ThreadJobData tjd)
   params.color           = Vec3(1.0f, 1.0f, 1.0f);
   params.pipeline_layout = ctx->engine->pipelines.colored_geometry_skinned.layout;
 
-  render_entity_skinned(ctx->game->level.monster_entity, ctx->game->materials.monster, *ctx->engine, params);
+  ctx->game->level.monster_entity.render_skinned(ctx->game->materials.monster, *ctx->engine, params);
 
   vkEndCommandBuffer(command);
 }
@@ -1694,7 +1693,7 @@ void orientation_axis(ThreadJobData tjd)
   for (uint32_t i = 0; i < SDL_arraysize(ctx->game->level.axis_arrow_entities); ++i)
   {
     params.color = colors[i];
-    render_entity(ctx->game->level.axis_arrow_entities[i], ctx->game->materials.lil_arrow, *ctx->engine, params);
+    ctx->game->level.axis_arrow_entities[i].render(ctx->game->materials.lil_arrow, *ctx->engine, params);
   }
 
   vkEndCommandBuffer(command);

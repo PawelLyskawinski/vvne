@@ -1,4 +1,3 @@
-#include "game_render_entity.hh"
 #include "game.hh"
 #include "player.hh"
 #include "simple_entity.hh"
@@ -31,11 +30,11 @@ RenderEntityParams::RenderEntityParams(const Player& p)
 {
 }
 
-void render_pbr_entity_shadow(const SimpleEntity& entity, const SceneGraph& scene_graph, const Engine& engine,
-                              const Game& game, VkCommandBuffer cmd, const int cascade_idx)
+void SimpleEntity::render_pbr_shadow(const SceneGraph& scene_graph, const Engine& engine, const Game& game,
+                                     VkCommandBuffer cmd, const int cascade_idx) const
 {
   const uint64_t nodes_with_mesh_bitmap = filter_nodes_with_mesh(scene_graph.nodes);
-  const uint64_t bitmap                 = entity.node_renderabilities & nodes_with_mesh_bitmap;
+  const uint64_t bitmap                 = node_renderabilities & nodes_with_mesh_bitmap;
 
   struct Push
   {
@@ -51,7 +50,7 @@ void render_pbr_entity_shadow(const SimpleEntity& entity, const SceneGraph& scen
     {
       const int   mesh_idx = scene_graph.nodes.data[node_idx].mesh;
       const Mesh& mesh     = scene_graph.meshes.data[mesh_idx];
-      push.model           = entity.node_transforms[node_idx];
+      push.model           = node_transforms[node_idx];
 
       vkCmdBindIndexBuffer(cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
@@ -61,11 +60,10 @@ void render_pbr_entity_shadow(const SimpleEntity& entity, const SceneGraph& scen
   }
 }
 
-void render_pbr_entity(const SimpleEntity& entity, const SceneGraph& scene_graph, const Engine& engine,
-                       const RenderEntityParams& p)
+void SimpleEntity::render_pbr(const SceneGraph& scene_graph, const Engine& engine, const RenderEntityParams& p) const
 {
   const uint64_t nodes_with_mesh_bitmap = filter_nodes_with_mesh(scene_graph.nodes);
-  const uint64_t bitmap                 = entity.node_renderabilities & nodes_with_mesh_bitmap;
+  const uint64_t bitmap                 = node_renderabilities & nodes_with_mesh_bitmap;
 
   SkinningUbo ubo;
 
@@ -79,7 +77,7 @@ void render_pbr_entity(const SimpleEntity& entity, const SceneGraph& scene_graph
     {
       const int   mesh_idx = scene_graph.nodes.data[node_idx].mesh;
       const Mesh& mesh     = scene_graph.meshes.data[mesh_idx];
-      ubo.model            = entity.node_transforms[node_idx];
+      ubo.model            = node_transforms[node_idx];
 
       vkCmdBindIndexBuffer(p.cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(p.cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
@@ -90,11 +88,11 @@ void render_pbr_entity(const SimpleEntity& entity, const SceneGraph& scene_graph
   }
 }
 
-void render_wireframe_entity(const SimpleEntity& entity, const SceneGraph& scene_graph, const Engine& engine,
-                             const RenderEntityParams& p)
+void SimpleEntity::render_wireframe(const SceneGraph& scene_graph, const Engine& engine,
+                                    const RenderEntityParams& p) const
 {
   const uint64_t nodes_with_mesh_bitmap = filter_nodes_with_mesh(scene_graph.nodes);
-  const uint64_t bitmap                 = entity.node_renderabilities & nodes_with_mesh_bitmap;
+  const uint64_t bitmap                 = node_renderabilities & nodes_with_mesh_bitmap;
 
   for (uint32_t node_idx = 0; node_idx < static_cast<uint32_t>(scene_graph.nodes.count); ++node_idx)
   {
@@ -102,7 +100,7 @@ void render_wireframe_entity(const SimpleEntity& entity, const SceneGraph& scene
     {
       const int    mesh_idx = scene_graph.nodes.data[node_idx].mesh;
       const Mesh&  mesh     = scene_graph.meshes.data[mesh_idx];
-      const Mat4x4 mvp      = p.projection * p.view * entity.node_transforms[node_idx];
+      const Mat4x4 mvp      = p.projection * p.view * node_transforms[node_idx];
 
       vkCmdBindIndexBuffer(p.cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(p.cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
@@ -114,10 +112,9 @@ void render_wireframe_entity(const SimpleEntity& entity, const SceneGraph& scene
   }
 }
 
-void render_entity(const SimpleEntity& entity, const SceneGraph& scene_graph, const Engine& engine,
-                   const RenderEntityParams& p)
+void SimpleEntity::render(const SceneGraph& scene_graph, const Engine& engine, const RenderEntityParams& p) const
 {
-  const uint64_t bitmap          = entity.node_renderabilities & filter_nodes_with_mesh(scene_graph.nodes);
+  const uint64_t bitmap          = node_renderabilities & filter_nodes_with_mesh(scene_graph.nodes);
   const Mat4x4   projection_view = p.projection * p.view;
 
   for (uint32_t node_idx = 0; node_idx < static_cast<uint32_t>(scene_graph.nodes.count); ++node_idx)
@@ -130,7 +127,7 @@ void render_entity(const SimpleEntity& entity, const SceneGraph& scene_graph, co
       vkCmdBindIndexBuffer(p.cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(p.cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
 
-      const Mat4x4 calculated_mvp = projection_view * entity.node_transforms[node_idx];
+      const Mat4x4 calculated_mvp = projection_view * node_transforms[node_idx];
       vkCmdPushConstants(p.cmd, p.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Mat4x4),
                          calculated_mvp.data());
       vkCmdPushConstants(p.cmd, p.pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(Mat4x4), sizeof(Vec3),
@@ -140,10 +137,10 @@ void render_entity(const SimpleEntity& entity, const SceneGraph& scene_graph, co
   }
 }
 
-void render_entity_skinned(const SimpleEntity& entity, const SceneGraph& scene_graph, const Engine& engine,
-                           const RenderEntityParams& p)
+void SimpleEntity::render_skinned(const SceneGraph& scene_graph, const Engine& engine,
+                                  const RenderEntityParams& p) const
 {
-  const uint64_t bitmap          = entity.node_renderabilities & filter_nodes_with_mesh(scene_graph.nodes);
+  const uint64_t bitmap          = node_renderabilities & filter_nodes_with_mesh(scene_graph.nodes);
   const Mat4x4   projection_view = p.projection * p.view;
 
   for (uint32_t node_idx = 0; node_idx < static_cast<uint32_t>(scene_graph.nodes.count); ++node_idx)
