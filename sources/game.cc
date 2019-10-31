@@ -64,9 +64,12 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     SDL_Event event          = {};
     while (SDL_PollEvent(&event))
     {
-      player.process_event(event);
       debug_gui.process_event(event);
-      level.process_event(event);
+      if(!debug_gui.engine_console_open)
+      {
+        player.process_event(event);
+        level.process_event(event);
+      }
 
       switch (event.type)
       {
