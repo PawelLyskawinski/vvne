@@ -3,10 +3,7 @@
 #include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_stdinc.h>
 
-template <typename T> T align(T unaligned, T alignment)
-{
-  return (unaligned + (alignment - 1)) & (~(alignment - 1));
-}
+template <typename T> constexpr T align(T unaligned, T alignment) { return (unaligned + (alignment - 1)) & (~(alignment - 1)); }
 
 struct Stack
 {
@@ -97,5 +94,6 @@ template <typename T> struct ArrayView
   T*       end() { return &data[count]; }
   T*       begin() const { return data; }
   T*       end() const { return &data[count]; }
-  bool     empty() const { return 0 == count; }
+
+  [[nodiscard]] bool empty() const { return 0 == count; }
 };
