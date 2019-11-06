@@ -144,9 +144,9 @@ void shadow_mapping(Engine& engine)
   VkPipelineMultisampleStateCreateInfo multisample_state = {
       .sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
       .rasterizationSamples  = VK_SAMPLE_COUNT_1_BIT,
-      .sampleShadingEnable   = VK_TRUE,
+      .sampleShadingEnable   = VK_FALSE,
       .minSampleShading      = 1.0f,
-      .alphaToCoverageEnable = VK_TRUE,
+      .alphaToCoverageEnable = VK_FALSE,
       .alphaToOneEnable      = VK_FALSE,
   };
 
@@ -2573,8 +2573,6 @@ void colored_model_wireframe(Engine& engine)
                             &engine.pipelines.colored_model_wireframe.pipeline);
 }
 
-} // namespace
-
 void tesselated_ground(Engine& engine, float y_scale = 2.0f, float y_offset = -12.0f)
 {
   VkPipelineShaderStageCreateInfo shader_stages[] = {
@@ -2849,6 +2847,8 @@ void tesselated_ground(Engine& engine, float y_scale = 2.0f, float y_offset = -1
   for (VkPipelineShaderStageCreateInfo& shader_stage : shader_stages)
     vkDestroyShaderModule(engine.device, shader_stage.module, nullptr);
 }
+
+} // namespace
 
 void Engine::setup_pipelines()
 {
