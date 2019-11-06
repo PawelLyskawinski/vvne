@@ -19,7 +19,8 @@ Current preview (still a veeeery long road ahead)
 short distance goals:
 - Parallelized pipeline creation
 - Shader preloading and reuse
-- Textured tesselated level
+- Small object suballocators (x < 1kB < y < 256kB)
+- Texture LoDs generation
 - Particle system (engine boost effect)
 
 long distance goals:
