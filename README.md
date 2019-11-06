@@ -17,7 +17,6 @@ Current preview (still a veeeery long road ahead)
 
 ### TODO - engine
 short distance goals:
-- Parallelized pipeline creation
 - Shader preloading and reuse
 - Small object suballocators (x < 1kB < y < 256kB)
 - Texture LoDs generation
@@ -27,6 +26,7 @@ long distance goals:
 - Editor for level design
 - Global illumination (got to understand spherical harmonics and light probes first)
 - Occluders (AABB trees)
+- Parallelized pipeline creation (postponed since now it takes ~50ms in non-parallel form)
 
 ### TODO - game
 short distance goals:

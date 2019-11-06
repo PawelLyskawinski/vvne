@@ -837,7 +837,12 @@ void Engine::startup(bool vulkan_validation_enabled)
   setup_framebuffers();
   setup_descriptor_set_layouts();
   setup_pipeline_layouts();
-  setup_pipelines();
+
+  {
+    uint64_t a = SDL_GetTicks();
+    setup_pipelines();
+    SDL_Log("setup_pipelines took %lums", SDL_GetTicks() - a);
+  }
 
   for (VkFence& submition_fence : submition_fences)
   {
