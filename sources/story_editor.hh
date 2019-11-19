@@ -31,7 +31,6 @@ struct Connection
 struct EditorData
 {
   Vec2 position = {};
-  Vec2 size     = {};
 };
 
 struct Data
