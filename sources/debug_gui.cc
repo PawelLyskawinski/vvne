@@ -269,6 +269,11 @@ void draw_debug_tab(Engine& engine, Game& game)
   ImGui::Separator();
   ImGui::Text("%.4f %.4f %.4f", game.player.position.x, game.player.position.y, game.player.position.z);
   ImGui::Text("acceleration len: %.4f", game.player.acceleration.len());
+
+  ImGui::Text("Profiler");
+  ImGui::Separator();
+  ImGui::InputInt("update lag", &game.update_profiler.skip_frames);
+  ImGui::InputInt("render lag", &game.render_profiler.skip_frames);
 }
 
 } // namespace
@@ -348,6 +353,11 @@ void DebugGui::update(Engine& engine, Game& game)
   {
     if (ImGui::BeginTabBar("main selector"))
     {
+      if (ImGui::BeginTabItem("Story Editor"))
+      {
+        game.story_data.editor_render();
+        ImGui::EndTabItem();
+      }
       if (ImGui::BeginTabItem("Profiler"))
       {
         draw_performence_tab(engine, game);

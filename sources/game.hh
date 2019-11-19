@@ -1,12 +1,13 @@
 #pragma once
 
-#include "simple_entity.hh"
 #include "debug_gui.hh"
 #include "engine/atomic_stack.hh"
 #include "levels/example_level.hh"
 #include "materials.hh"
 #include "player.hh"
 #include "profiler.hh"
+#include "simple_entity.hh"
+#include "story_editor.hh"
 
 struct ShadowmapCommandBuffer
 {
@@ -24,10 +25,11 @@ struct JobContext
 
 struct Game
 {
-  DebugGui  debug_gui;
-  Materials materials;
-  Profiler  update_profiler;
-  Profiler  render_profiler;
+  DebugGui    debug_gui;
+  Materials   materials;
+  Profiler    update_profiler;
+  Profiler    render_profiler;
+  story::Data story_data;
 
   VkCommandBuffer                         primary_command_buffers[SWAPCHAIN_IMAGES_COUNT];
   uint32_t                                image_index;

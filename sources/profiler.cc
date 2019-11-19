@@ -1,3 +1,4 @@
+#include <SDL2/SDL_log.h>
 #include "profiler.hh"
 
 void Profiler::on_frame()
@@ -5,6 +6,15 @@ void Profiler::on_frame()
   const uint64_t before_clear = SDL_AtomicSet(&last_marker_idx, 0);
   if (not paused)
   {
+    if (skip_frames)
+    {
+      skip_counter = (skip_counter + 1) % skip_frames;
+      if (skip_counter)
+      {
+        return;
+      }
+    }
+
     last_frame_markers_count = before_clear;
     SDL_memcpy(last_frame_markers, markers, sizeof(Marker) * before_clear);
   }

@@ -40,6 +40,8 @@ set(SOURCES
         sources/engine/free_list_visualizer.cc
         sources/engine/gpu_memory_allocator.cc
         sources/engine/gpu_memory_visualizer.cc
+        sources/engine/cascade_shadow_mapping.cc
+        sources/engine/cascade_shadow_mapping.hh
         sources/engine/job_system.cc
         sources/engine/math.cc
         sources/game.cc
@@ -58,11 +60,13 @@ set(SOURCES
         sources/levels/example_level_render_jobs.cc
         sources/materials.cc
         sources/debug_gui.cc
+        sources/story_editor.cc
+        sources/story_editor.hh
         thirdparty/imgui.cpp
         thirdparty/imgui_draw.cpp
         thirdparty/imgui_widgets.cpp
         thirdparty/sha256.cpp
-        "sources/engine/cascade_shadow_mapping.cc" "sources/engine/cascade_shadow_mapping.hh")
+        )
 
 if(WIN32)
 add_executable(${PROJECT_NAME} ${SOURCES} assets/applicationIcon.rc)

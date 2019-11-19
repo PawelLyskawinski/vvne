@@ -14,10 +14,13 @@ void Game::startup(Engine& engine)
   player.setup(engine.extent2D.width, engine.extent2D.height);
   level.setup(engine.generic_allocator, materials);
 
-  SDL_SetRelativeMouseMode(SDL_TRUE);
+  SDL_SetRelativeMouseMode(SDL_FALSE);
 
-  update_profiler.paused = true;
-  render_profiler.paused = true;
+  update_profiler.paused = false;
+  render_profiler.paused = false;
+
+  update_profiler.skip_frames = 5;
+  render_profiler.skip_frames = 5;
 
   DEBUG_VEC2.x = 0.1f;
   DEBUG_VEC2.y = -1.0f;
