@@ -22,6 +22,8 @@ void Game::startup(Engine& engine)
   update_profiler.skip_frames = 5;
   render_profiler.skip_frames = 5;
 
+  story_data.init();
+
   DEBUG_VEC2.x = 0.1f;
   DEBUG_VEC2.y = -1.0f;
 
@@ -67,7 +69,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     SDL_Event event          = {};
     while (SDL_PollEvent(&event))
     {
-      debug_gui.process_event(event);
+      debug_gui.process_event(*this, event);
       if(!debug_gui.engine_console_open)
       {
         player.process_event(event);

@@ -30,18 +30,21 @@ struct Connection
 
 struct EditorData
 {
-  Vec2 position = {};
+  float scale                     = 0.0f;
+  Vec2  positions[NODES_CAPACITY] = {};
 };
 
 struct Data
 {
   Node       nodes[NODES_CAPACITY]             = {};
   Connection connections[CONNECTIONS_CAPACITY] = {};
-  EditorData editor_data[NODES_CAPACITY]       = {};
-  uint32_t   nodes_count                       = 0;
-  uint32_t   connections_count                 = 0;
-  uint32_t   editor_data_count                 = 0;
+  EditorData editor_data                       = {};
 
+  uint32_t nodes_count       = 0;
+  uint32_t connections_count = 0;
+  uint32_t editor_data_count = 0;
+
+  void init();
   void editor_render();
   void editor_update(const SDL_Event& event);
 };

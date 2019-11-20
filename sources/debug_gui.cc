@@ -89,7 +89,7 @@ void DebugGui::teardown()
   }
 }
 
-void DebugGui::process_event(SDL_Event& event)
+void DebugGui::process_event(Game& game, SDL_Event& event)
 {
   ImGuiIO& io = ImGui::GetIO();
 
@@ -157,6 +157,11 @@ void DebugGui::process_event(SDL_Event& event)
 
   default:
     break;
+  }
+
+  if (story_editor_tab_selected)
+  {
+    game.story_data.editor_update(event);
   }
 }
 
@@ -353,7 +358,8 @@ void DebugGui::update(Engine& engine, Game& game)
   {
     if (ImGui::BeginTabBar("main selector"))
     {
-      if (ImGui::BeginTabItem("Story Editor"))
+      story_editor_tab_selected = ImGui::BeginTabItem("Story Editor");
+      if (story_editor_tab_selected)
       {
         game.story_data.editor_render();
         ImGui::EndTabItem();

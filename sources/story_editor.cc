@@ -67,9 +67,24 @@ const char* to_name(const Node::Type& type)
 
 } // namespace
 
+void Data::init()
+{
+  // DEVELOPMENT DEBUGS - REMOVE WHEN NOT NEEDED
+
+  nodes_count = 2;
+
+  nodes[0].type            = Node::Type::Dummy;
+  editor_data.positions[0] = Vec2(100.0f, 40.0f);
+
+  nodes[1].type            = Node::Type::All;
+  editor_data.positions[1] = Vec2(300.0f, 40.0f);
+
+  editor_data.scale = 1.0f;
+}
+
 void Data::editor_render()
 {
-  const float   grid            = 32.0f;
+  const float   grid            = 32.0f * editor_data.scale;
   const ImColor grid_line_color = ImColor(0.5f, 0.5f, 0.5f, 0.2f);
   const float   offset_from_top = 25.0f;
 
@@ -96,24 +111,14 @@ void Data::editor_render()
     }
   }
 
-  // DEVELOPMENT DEBUGS - REMOVE WHEN NOT NEEDED
-
-  nodes_count = 2;
-
-  nodes[0].type           = Node::Type::Dummy;
-  editor_data[0].position = Vec2(100.0f, 40.0f);
-
-  nodes[1].type           = Node::Type::All;
-  editor_data[1].position = Vec2(300.0f, 40.0f);
-
   for (uint32_t i = 0; i < nodes_count; ++i)
   {
-    const Node&       node = nodes[i];
-    const EditorData& data = editor_data[i];
-    const Vec2        size = to_size(node.type);
+    const Node& node     = nodes[i];
+    const Vec2& position = editor_data.positions[i];
+    const Vec2  size     = to_size(node.type);
 
-    const ImVec2 ul = ImVec2(data.position.x, offset_from_top + data.position.y);
-    const ImVec2 br = ImVec2(ul.x + size.x, ul.y + size.y);
+    const ImVec2 ul = ImVec2(position.x * editor_data.scale, offset_from_top + position.y * editor_data.scale);
+    const ImVec2 br = ImVec2(ul.x + size.x * editor_data.scale, ul.y + size.y * editor_data.scale);
 
     draw_list->AddRectFilled(ul, br, to_color(node.type), 5.0f);
     draw_list->AddText(ImGui::GetFont(), 20.0f, ul, to_font_color(node.type), to_name(node.type));
@@ -122,7 +127,16 @@ void Data::editor_render()
 
 void Data::editor_update(const SDL_Event& event)
 {
-  // ImGuiIO& io = ImGui::GetIO();
+  switch (event.type)
+  {
+  case SDL_MOUSEWHEEL:
+    if (0.0f != event.wheel.y)
+    {
+      editor_data.scale += (0 > event.wheel.y) ? -0.05f : 0.05f;
+      editor_data.scale = clamp(editor_data.scale, 0.1f, 10.0f);
+    }
+    break;
+  }
   // const ImVec2 mouse = ImGui::GetMousePos();
 }
 
