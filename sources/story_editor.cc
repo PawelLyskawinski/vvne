@@ -29,7 +29,7 @@ ImColor to_font_color(const Node::Type& type)
   case Type::Dummy:
     return ImColor(255, 255, 255);
   case Type::All:
-    return ImColor(0, 0, 0);
+    return ImColor(255, 255, 255);
   case Type::Any:
     return ImColor(255, 255, 255);
   }
@@ -79,12 +79,12 @@ void Data::init()
   nodes[1].type            = Node::Type::All;
   editor_data.positions[1] = Vec2(300.0f, 40.0f);
 
-  editor_data.scale = 1.0f;
+  editor_data.zoom = 1.0f;
 }
 
 void Data::editor_render()
 {
-  const float   grid            = 32.0f * editor_data.scale;
+  const float   grid            = 32.0f * editor_data.zoom;
   const ImColor grid_line_color = ImColor(0.5f, 0.5f, 0.5f, 0.2f);
   const float   offset_from_top = 25.0f;
 
@@ -117,11 +117,16 @@ void Data::editor_render()
     const Vec2& position = editor_data.positions[i];
     const Vec2  size     = to_size(node.type);
 
-    const ImVec2 ul = ImVec2(position.x * editor_data.scale, offset_from_top + position.y * editor_data.scale);
-    const ImVec2 br = ImVec2(ul.x + size.x * editor_data.scale, ul.y + size.y * editor_data.scale);
+    const ImVec2 ul      = ImVec2(position.x * editor_data.zoom, offset_from_top + position.y * editor_data.zoom);
+    const ImVec2 br      = ImVec2(ul.x + size.x * editor_data.zoom, ul.y + size.y * editor_data.zoom);
+    const ImVec2 ul_text = ImVec2(ul.x + 5.0f, ul.y + 5.0f);
 
     draw_list->AddRectFilled(ul, br, to_color(node.type), 5.0f);
-    draw_list->AddText(ImGui::GetFont(), 20.0f, ul, to_font_color(node.type), to_name(node.type));
+    draw_list->AddRect(ul, br, ImColor(0, 0, 0, 210), 5.0f, ImDrawCornerFlags_All, 2.0f);
+    if (editor_data.zoom > 0.3f)
+    {
+      draw_list->AddText(ul_text, to_font_color(node.type), to_name(node.type));
+    }
   }
 }
 
@@ -132,8 +137,8 @@ void Data::editor_update(const SDL_Event& event)
   case SDL_MOUSEWHEEL:
     if (0.0f != event.wheel.y)
     {
-      editor_data.scale += (0 > event.wheel.y) ? -0.05f : 0.05f;
-      editor_data.scale = clamp(editor_data.scale, 0.1f, 10.0f);
+      editor_data.zoom += (0 > event.wheel.y) ? -0.05f : 0.05f;
+      editor_data.zoom = clamp(editor_data.zoom, 0.1f, 10.0f);
     }
     break;
   }

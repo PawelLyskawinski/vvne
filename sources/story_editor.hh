@@ -30,7 +30,7 @@ struct Connection
 
 struct EditorData
 {
-  float scale                     = 0.0f;
+  float zoom                      = 0.0f;
   Vec2  positions[NODES_CAPACITY] = {};
 };
 
