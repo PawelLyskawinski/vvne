@@ -30,8 +30,18 @@ struct Connection
 
 struct EditorData
 {
-  float zoom                      = 0.0f;
-  Vec2  positions[NODES_CAPACITY] = {};
+  bool lmb_clicked          = false;
+  Vec2 lmb_clicked_position = {};
+  Vec2 lmb_clicked_offset   = {};
+
+  bool     element_clicked                   = false;
+  uint32_t element_clicked_idx               = 0u;
+  Vec2     element_clicked_original_position = {};
+
+  float zoom = 0.0f;
+
+  Vec2 blackboard_origin_offset  = {};
+  Vec2 positions[NODES_CAPACITY] = {};
 };
 
 struct Data

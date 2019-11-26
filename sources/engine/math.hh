@@ -19,7 +19,12 @@ template <typename T> constexpr T clamp(T val, T min, T max) { return (val < min
 struct Vec2
 {
   Vec2() = default;
-  Vec2(float x, float y);
+  constexpr Vec2(float x, float y)
+      : x(x)
+      , y(y)
+  {
+  }
+
   [[nodiscard]] Vec2  operator-(const Vec2& rhs) const;
   [[nodiscard]] Vec2  operator+(const Vec2& rhs) const;
   [[nodiscard]] Vec2  scale(float s) const;
@@ -137,7 +142,6 @@ struct Mat4x4
   [[nodiscard]] static Mat4x4 LookAt(const Vec3& eye, const Vec3& center, const Vec3& up);
   [[nodiscard]] static Mat4x4 Translation(const Vec3& t);
   [[nodiscard]] static Mat4x4 Scale(const Vec3& s);
-
 
   //
   // SPIR-V specification 2.18.1. Memory Layout
