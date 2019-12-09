@@ -1,48 +1,92 @@
 #include "job_system.hh"
 #include "allocators.hh"
+#include <algorithm>
+
+namespace {
+
+class VulkanInitialization
+{
+public:
+  VulkanInitialization(VkDevice device, uint32_t graphics_queue_family_index)
+      : device(device)
+      , pool_create_info(create_pool_info(graphics_queue_family_index))
+      , cb_allocate_info(create_cb_info())
+  {
+  }
+
+  [[nodiscard]] VkCommandPool create_pool() const
+  {
+    VkCommandPool pool = VK_NULL_HANDLE;
+    vkCreateCommandPool(device, &pool_create_info, nullptr, &pool);
+    return pool;
+  }
+
+  void allocate_command_buffers(VkCommandPool pool, VkCommandBuffer dst[]) const
+  {
+    VkCommandBufferAllocateInfo info = cb_allocate_info;
+    info.commandPool                 = pool;
+    vkAllocateCommandBuffers(device, &info, dst);
+  }
+
+private:
+  static VkCommandPoolCreateInfo create_pool_info(uint32_t graphics_queue_family_index)
+  {
+    VkCommandPoolCreateInfo i = {};
+    i.sType                   = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    i.flags                   = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    i.queueFamilyIndex        = graphics_queue_family_index;
+    return i;
+  }
+
+  static VkCommandBufferAllocateInfo create_cb_info()
+  {
+    VkCommandBufferAllocateInfo i = {};
+    i.sType                       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    i.commandPool                 = VK_NULL_HANDLE;
+    i.level                       = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
+    i.commandBufferCount          = sizeof(WorkerCommands::commands) / sizeof(VkCommandBuffer);
+    return i;
+  }
+
+private:
+  VkDevice                    device;
+  VkCommandPoolCreateInfo     pool_create_info;
+  VkCommandBufferAllocateInfo cb_allocate_info;
+};
+
+SDL_Thread* spawn_worker_thread(JobSystem* system)
+{
+  return SDL_CreateThread(
+      [](void* arg) {
+        reinterpret_cast<JobSystem*>(arg)->worker_loop();
+        return 0;
+      },
+      "worker", system);
+}
+
+} // namespace
 
 void JobSystem::setup(VkDevice device, uint32_t graphics_queue_family_index)
 {
+  VulkanInitialization vk(device, graphics_queue_family_index);
+
+  for (WorkerThread& worker : workers)
+    worker.pool = vk.create_pool();
+
+  for (WorkerThread& worker : workers)
+    for (WorkerCommands& commands : worker.commands)
+      vk.allocate_command_buffers(worker.pool, commands.commands);
+
   all_threads_idle_signal  = SDL_CreateSemaphore(0);
   new_jobs_available_cond  = SDL_CreateCond();
   new_jobs_available_mutex = SDL_CreateMutex();
   thread_end_requested     = false;
 
-  for (WorkerThread& worker : workers)
-  {
-    {
-      VkCommandPoolCreateInfo info = {
-          .sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-          .flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-          .queueFamilyIndex = graphics_queue_family_index,
-      };
-
-      vkCreateCommandPool(device, &info, nullptr, &worker.pool);
-    }
-
-    for (WorkerCommands& cmds : worker.commands)
-    {
-      VkCommandBufferAllocateInfo info = {
-          .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-          .commandPool        = worker.pool,
-          .level              = VK_COMMAND_BUFFER_LEVEL_SECONDARY,
-          .commandBufferCount = SDL_arraysize(cmds.commands),
-      };
-
-      vkAllocateCommandBuffers(device, &info, cmds.commands);
-    }
-  }
-
   SDL_AtomicSet(&threads_finished_work, 1);
-  for (auto& worker : workers)
-  {
-    worker.thread_handle = SDL_CreateThread(
-        [](void* arg) {
-          reinterpret_cast<JobSystem*>(arg)->worker_loop();
-          return 0;
-        },
-        "worker", this);
-  }
+
+  for (WorkerThread& worker : workers)
+    worker.thread_handle = spawn_worker_thread(this);
+
   SDL_SemWait(all_threads_idle_signal);
   SDL_AtomicSet(&threads_finished_work, 1);
 }
@@ -72,10 +116,10 @@ void JobSystem::reset_command_buffers(uint32_t image_index)
 {
   for (WorkerThread& worker : workers)
   {
-    WorkerCommands& cmds = worker.commands[image_index];
-    for (int i = 0; i < cmds.submitted_count; ++i)
-      vkResetCommandBuffer(cmds.commands[i], 0);
-    cmds.submitted_count = 0;
+    WorkerCommands& worker_commands = worker.commands[image_index];
+    std::for_each(worker_commands.commands, &worker_commands.commands[worker_commands.submitted_count],
+                  [](VkCommandBuffer& cmd) { vkResetCommandBuffer(cmd, 0); });
+    worker_commands.submitted_count = 0;
   }
 }
 
@@ -89,12 +133,14 @@ VkCommandBuffer JobSystem::acquire(uint32_t worker_index, uint32_t image_index)
 
 void JobSystem::worker_loop()
 {
-  int threadId = SDL_AtomicIncRef(&threads_finished_work);
-  if (SDL_arraysize(workers) == threadId)
-    SDL_SemPost(all_threads_idle_signal);
+  const int threadId = SDL_AtomicIncRef(&threads_finished_work);
 
-  Stack allocator{};
-  allocator.setup(1024);
+  if (SDL_arraysize(workers) == threadId)
+  {
+    SDL_SemPost(all_threads_idle_signal);
+  }
+
+  Stack allocator(1024);
 
   SDL_LockMutex(new_jobs_available_mutex);
   while (not thread_end_requested)
@@ -122,7 +168,6 @@ void JobSystem::worker_loop()
       SDL_SemPost(all_threads_idle_signal);
   }
   SDL_UnlockMutex(new_jobs_available_mutex);
-  allocator.teardown();
 }
 
 void JobSystem::start()

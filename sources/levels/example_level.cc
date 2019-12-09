@@ -86,7 +86,7 @@ void WeaponSelection::calculate(float transparencies[3])
   }
 }
 
-void ExampleLevel::setup(FreeListAllocator& allocator, const Materials& materials)
+void ExampleLevel::setup(HierarchicalAllocator& allocator, const Materials& materials)
 {
   helmet_entity.init(allocator, materials.helmet);
   robot_entity.init(allocator, materials.robot);

@@ -1,4 +1,5 @@
 #include "debug_gui.hh"
+#include "engine/block_allocator_visualizer.hh"
 #include "engine/engine.hh"
 #include "engine/free_list_visualizer.hh"
 #include "engine/gpu_memory_visualizer.hh"
@@ -167,7 +168,14 @@ void DebugGui::process_event(Game& game, SDL_Event& event)
 
 namespace {
 
-uint32_t bytes_as_mb(uint32_t in) { return in / (1024u * 1024u); }
+uint32_t bytes_as_mb(uint32_t in)
+{
+  return in / (1024u * 1024u);
+}
+uint32_t bytes_as_kb(uint32_t in)
+{
+  return in / 1024u;
+}
 
 void draw_performence_tab(Engine& engine, Game& game)
 {
@@ -206,8 +214,16 @@ void draw_performence_tab(Engine& engine, Game& game)
   gpu_mem_printer("UBO", engine.memory_blocks.host_coherent_ubo.allocator);
 
   ImGui::Text("[HOST] general purpose allocator (%uMB pool)",
-              bytes_as_mb(engine.generic_allocator.FREELIST_ALLOCATOR_CAPACITY_BYTES));
-  free_list_visualize(engine.generic_allocator);
+              bytes_as_mb(engine.generic_allocator.free_list_5MB.capacity));
+  free_list_visualize(engine.generic_allocator.free_list_5MB);
+
+  ImGui::Text("[HOST] small (1KB) block allocator (%uKB pool)",
+              bytes_as_kb(engine.generic_allocator.block_allocator_1kb.get_max_size()));
+  block_allocator_visualize(engine.generic_allocator.block_allocator_1kb);
+
+  ImGui::Text("[HOST] normal (10KB) block allocator (%uMB pool)",
+              bytes_as_mb(engine.generic_allocator.block_allocator_10kb.get_max_size()));
+  block_allocator_visualize(engine.generic_allocator.block_allocator_10kb);
 }
 
 void draw_debug_tab(Engine& engine, Game& game)
@@ -389,8 +405,14 @@ public:
   {
   }
 
-  [[nodiscard]] ImDrawList** begin() const { return draw_data->CmdLists; }
-  [[nodiscard]] ImDrawList** end() const { return &draw_data->CmdLists[draw_data->CmdListsCount]; }
+  [[nodiscard]] ImDrawList** begin() const
+  {
+    return draw_data->CmdLists;
+  }
+  [[nodiscard]] ImDrawList** end() const
+  {
+    return &draw_data->CmdLists[draw_data->CmdListsCount];
+  }
 
 private:
   ImDrawData* draw_data;

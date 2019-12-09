@@ -1,5 +1,6 @@
 #include "cascade_shadow_mapping.hh"
 #include "engine_constants.hh"
+#include <algorithm>
 
 // CASCADE SHADOW MAPPING --------------------------------------------------------------------------------------------
 // Based on:
@@ -83,7 +84,7 @@ void recalculate_cascade_view_proj_matrices(Mat4x4* cascade_view_proj_mat, float
     for (const Vec3& frustum_corner : frustum_corners)
     {
       const float distance = (frustum_corner - frustum_center).len();
-      radius               = SDL_max(radius, distance);
+      radius               = std::max(radius, distance);
     }
 
     Vec3 max_extents = Vec3(SDL_ceilf(radius * 16.0f) / 16.0f);

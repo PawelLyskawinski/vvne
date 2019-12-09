@@ -18,8 +18,6 @@ Current preview (still a veeeery long road ahead)
 ### TODO - engine
 short distance goals:
 - Shader preloading and reuse
-- Small object suballocators (x < 1kB < y < 256kB)
-- Texture LoDs generation
 - Particle system (engine boost effect)
 
 long distance goals:

@@ -7,7 +7,6 @@ BraceWrapping :
     AfterClass : true
     AfterControlStatement : true
     AfterEnum : true
-    AfterFunction : true
     AfterNamespace : false
     AfterStruct : true
     AfterUnion : true
@@ -17,6 +16,6 @@ BraceWrapping :
 ColumnLimit: 120
 IndentWidth : 2
 AccessModifierOffset : -2
-AllowShortFunctionsOnASingleLine : true
+AllowShortFunctionsOnASingleLine : false
 BreakConstructorInitializersBeforeComma : true
 PointerAlignment: Left

@@ -272,18 +272,23 @@ template <typename T> class StackAdapter
 public:
   explicit StackAdapter(Stack& main_allocator)
       : main_allocator(main_allocator)
-      , stack(reinterpret_cast<T*>(&main_allocator.data[main_allocator.sp]))
+      , stack(nullptr)
       , size(0)
   {
   }
 
   void push(const T items[], const uint32_t n)
   {
-    SDL_memcpy(main_allocator.alloc<T>(n), items, n * sizeof(T));
+    T* allocation = main_allocator.alloc<T>(n);
+    if(nullptr == stack)
+    {
+        stack = allocation;
+    }
+    SDL_memcpy(allocation, items, n * sizeof(T));
     size += n;
   }
 
-  ArrayView<T> to_arrayview() const { return {stack, size}; }
+  [[nodiscard]] ArrayView<T> to_arrayview() const { return {stack, size}; }
 
 private:
   Stack& main_allocator;

@@ -3,17 +3,22 @@
 
 using Node = FreeListAllocator::Node;
 
-void FreeListAllocator::init()
+void FreeListAllocator::init(uint64_t new_capacity)
 {
+  capacity    = new_capacity;
+  pool        = reinterpret_cast<uint8_t*>(SDL_malloc(capacity));
   Node* first = reinterpret_cast<Node*>(pool);
-  *first      = Node{nullptr, FREELIST_ALLOCATOR_CAPACITY_BYTES};
-  head        = Node{first, FREELIST_ALLOCATOR_CAPACITY_BYTES};
+  *first      = Node{nullptr, static_cast<uint32_t>(capacity)};
+  head        = Node{first, static_cast<uint32_t>(capacity)};
+}
+
+void FreeListAllocator::teardown()
+{
+  SDL_free(pool);
 }
 
 uint8_t* FreeListAllocator::allocate_bytes(unsigned size)
 {
-  size = (size < sizeof(Node)) ? sizeof(Node) : align(size, 16u);
-
   Node* A = &head;
   Node* B = A->next;
 
@@ -51,11 +56,9 @@ bool are_mergable(const Node* left, const Node* right)
 
 void FreeListAllocator::free_bytes(uint8_t* free_me, unsigned size)
 {
-  size = (size < sizeof(Node)) ? sizeof(Node) : align(size, 16u);
-
   SDL_assert(free_me);
   SDL_assert(reinterpret_cast<uint8_t*>(pool) <= free_me);
-  SDL_assert(&free_me[size] <= &pool[FREELIST_ALLOCATOR_CAPACITY_BYTES]);
+  SDL_assert(&free_me[size] <= &pool[capacity]);
 
   Node* A = &head;
   Node* B = A->next;

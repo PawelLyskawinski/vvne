@@ -66,7 +66,7 @@ bool is_sampler_active(const AnimationSampler& sampler, const float& animation_t
 
 } // namespace
 
-void SimpleEntity::init(FreeListAllocator& allocator, const SceneGraph& model)
+void SimpleEntity::init(HierarchicalAllocator& allocator, const SceneGraph& model)
 {
   const uint32_t nodes_count = static_cast<const uint32_t>(model.nodes.count);
   SDL_assert(nodes_count < 64);
@@ -148,12 +148,12 @@ void SimpleEntity::recalculate_node_transforms(const SceneGraph& model, const Ma
       {
         translation_matrix.translate(node_translations[i]);
       }
-      else if (nodes[i].flags & Node::Property::Translation)
+      else if (nodes[i].flags.translation)
       {
         translation_matrix.translate(nodes[i].translation);
       }
     }
-    else if (nodes[i].flags & Node::Property::Translation)
+    else if (nodes[i].flags.translation)
     {
       translation_matrix.translate(nodes[i].translation);
     }
@@ -175,12 +175,12 @@ void SimpleEntity::recalculate_node_transforms(const SceneGraph& model, const Ma
       {
         rotation_matrix = Mat4x4(node_rotations[i]);
       }
-      else if (nodes[i].flags & Node::Property::Rotation)
+      else if (nodes[i].flags.rotation)
       {
         rotation_matrix = Mat4x4(nodes[i].rotation);
       }
     }
-    else if (nodes[i].flags & Node::Property::Rotation)
+    else if (nodes[i].flags.rotation)
     {
       rotation_matrix = Mat4x4(nodes[i].rotation);
     }
@@ -193,7 +193,7 @@ void SimpleEntity::recalculate_node_transforms(const SceneGraph& model, const Ma
   //////////////////////////////////////////////////////////////////////////////
   for (int i = 0; i < nodes.count; ++i)
   {
-    if (nodes[i].flags & Node::Property::Scale)
+    if (nodes[i].flags.scale)
     {
       Mat4x4 scale_matrix;
       scale_matrix.identity();
@@ -285,7 +285,7 @@ void SimpleEntity::animate(const SceneGraph& scene_graph, float current_time_sec
         flags.anim_rotation_applicability = true;
       }
 
-      node_anim_rotation_applicability |= (uint64_t(1) << channel.target_node_idx);
+      node_anim_rotation_applicability |= (uint64_t(1) << static_cast<uint64_t>(channel.target_node_idx));
 
       if (AnimationSampler::Interpolation::Linear == sampler.interpolation)
       {
@@ -318,7 +318,7 @@ void SimpleEntity::animate(const SceneGraph& scene_graph, float current_time_sec
         flags.anim_translation_applicability = true;
       }
 
-      node_anim_translation_applicability |= (uint64_t(1) << channel.target_node_idx);
+      node_anim_translation_applicability |= (uint64_t(1) << static_cast<uint64_t>(channel.target_node_idx));
 
       if (AnimationSampler::Interpolation::Linear == sampler.interpolation)
       {

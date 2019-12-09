@@ -13,6 +13,7 @@ VkCommandBuffer acquire_command_buffer(ThreadJobData& tjd)
   return ctx->engine->job_system.acquire(tjd.thread_id, ctx->game->image_index);
 }
 
+[[maybe_unused]]
 void render_skybox(VkCommandBuffer command, VkBuffer buffer, const Player& player, const Pipelines::Pair& pipe,
                    const Materials& materials)
 {
@@ -233,6 +234,7 @@ void matrioshka_box(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
+[[maybe_unused]]
 void vr_scene(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
@@ -432,8 +434,8 @@ void radar(ThreadJobData tjd)
                      Mat4x4::Scale({rectangle_dimension_pixels, rectangle_dimension_pixels, 1.0f});
 
   AlignedPushConsts(command, ctx->engine->pipelines.green_gui.layout)
-      .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(Mat4x4), mvp.data())
-      .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(float), &ctx->game->current_time_sec);
+      .push(VK_SHADER_STAGE_VERTEX_BIT, mvp)
+      .push(VK_SHADER_STAGE_FRAGMENT_BIT, ctx->game->current_time_sec);
 
   vkCmdDraw(command, 4, 1, 0, 0);
   vkEndCommandBuffer(command);
@@ -562,7 +564,7 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
   struct FragmentPushConstant
   {
     Vec3  color;
-    float time;
+    float time = 0.0f;
   } fpc;
 
   fpc.time = ctx->game->current_time_sec;
@@ -776,7 +778,7 @@ void tilt_ruler_text(ThreadJobData tjd)
   struct FragmentPushConstant
   {
     Vec3  color;
-    float time;
+    float time = 0.0f;
   } fpc;
 
   fpc.time = ctx->game->current_time_sec;
@@ -867,7 +869,7 @@ void compass_text(ThreadJobData tjd)
   struct FragmentPushConstant
   {
     Vec3  color;
-    float time;
+    float time = 0.0f;
   } fpc;
 
   fpc.time = ctx->game->current_time_sec;
@@ -938,8 +940,8 @@ void compass_text(ThreadJobData tjd)
     fpc.color = Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f);
 
     AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
-        .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(vpc), &vpc)
-        .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(fpc), &fpc);
+        .push(VK_SHADER_STAGE_VERTEX_BIT, vpc)
+        .push(VK_SHADER_STAGE_FRAGMENT_BIT, fpc);
 
     vkCmdDraw(command, 4, 1, 0, 0);
   }
@@ -1616,6 +1618,7 @@ void water(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
+[[maybe_unused]]
 void debug_shadowmap(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
@@ -1671,6 +1674,7 @@ void debug_shadowmap(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
+[[maybe_unused]]
 void orientation_axis(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);

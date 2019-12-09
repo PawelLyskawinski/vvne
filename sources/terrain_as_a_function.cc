@@ -20,7 +20,7 @@ namespace {
 
 struct VertexBuilder
 {
-  TerrainVertex build(const Vec2 cursor) const
+  [[nodiscard]] TerrainVertex build(const Vec2 cursor) const
   {
     TerrainVertex v = {
         .position = Vec3(cursor.x, 0.0f, cursor.y),

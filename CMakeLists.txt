@@ -36,6 +36,9 @@ set(SOURCES
         sources/engine/engine_descriptor_set_layouts.cc
         sources/engine/engine_pipeline_layouts.cc
         sources/engine/engine_pipelines.cc
+        sources/engine/block_allocator.cc
+        sources/engine/block_allocator_visualizer.cc
+        sources/engine/hierarchical_allocator.cc
         sources/engine/free_list_allocator.cc
         sources/engine/free_list_visualizer.cc
         sources/engine/gpu_memory_allocator.cc

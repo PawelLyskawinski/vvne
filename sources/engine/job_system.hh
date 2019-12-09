@@ -17,7 +17,7 @@ struct ThreadJobData
 
 struct WorkerCommands
 {
-  VkCommandBuffer commands[64];
+  VkCommandBuffer commands[WORKER_MAX_COMMANDS_PER_FRAME];
   int             submitted_count;
 };
 
@@ -35,7 +35,7 @@ struct JobSystem
 {
   bool thread_end_requested;
 
-  Job          jobs[128];
+  Job          jobs[MAX_JOBS_PER_FRAME];
   uint32_t     jobs_count;
   SDL_atomic_t jobs_taken;
 

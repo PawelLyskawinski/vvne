@@ -49,7 +49,7 @@ void free_list_visualize(const FreeListAllocator& allocator)
   //                3.1.2.1.1 Draw the remainder space
 
   const float    max_width = ImGui::GetWindowWidth() * 0.98f;
-  const uint32_t max_size  = allocator.FREELIST_ALLOCATOR_CAPACITY_BYTES;
+  const uint32_t max_size  = allocator.capacity;
   uint32_t       counter   = 0;
   char           name_buffer[128];
 

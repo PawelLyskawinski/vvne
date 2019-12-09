@@ -656,7 +656,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     if (node_json.has("children"))
     {
-      node.flags |= Node::Property::Children;
+      node.flags.children = true;
       node.children.count = node_json.node("children").elements_count();
       node.children.data  = engine.generic_allocator.allocate<int>(static_cast<uint32_t>(node.children.count));
       node.children.fill_with_zeros();
@@ -673,7 +673,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     if (node_json.has("matrix"))
     {
-      node.flags |= Node::Property::Matrix;
+      node.flags.matrix = true;
       Seeker matrix = node_json.node("matrix");
 
       for (int row = 0; row < 4; ++row)
@@ -683,7 +683,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     if (node_json.has("rotation"))
     {
-      node.flags |= Node::Property::Rotation;
+      node.flags.rotation = true;
       Seeker rotation = node_json.node("rotation");
       for (int i = 0; i < 4; ++i)
       {
@@ -693,7 +693,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     if (node_json.has("translation"))
     {
-      node.flags |= Node::Property::Translation;
+      node.flags.translation = true;
       Seeker translation = node_json.node("translation");
 
       node.translation.x = translation.idx_float(0);
@@ -703,7 +703,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     if (node_json.has("scale"))
     {
-      node.flags |= Node::Property::Scale;
+      node.flags.scale = true;
       Seeker scale = node_json.node("scale");
 
       node.scale.x = scale.idx_float(0);
@@ -713,13 +713,13 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     if (node_json.has("mesh"))
     {
-      node.flags |= Node::Property::Mesh;
+      node.flags.mesh = true;
       node.mesh = node_json.integer("mesh");
     }
 
     if (node_json.has("skin"))
     {
-      node.flags |= Node::Property::Skin;
+      node.flags.skin = true;
       node.skin = node_json.integer("skin");
     }
   }

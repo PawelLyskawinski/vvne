@@ -2,16 +2,14 @@
 
 #include "allocators.hh"
 #include "engine_constants.hh"
-#include "free_list_allocator.hh"
 #include "gpu_memory_allocator.hh"
+#include "hierarchical_allocator.hh"
 #include "job_system.hh"
+#include "literals.hh"
 #include <SDL2/SDL_video.h>
 #include <vulkan/vulkan.h>
 
 struct Vec4;
-
-constexpr uint32_t operator"" _KB(unsigned long long in) { return 1024u * static_cast<uint32_t>(in); }
-constexpr uint32_t operator"" _MB(unsigned long long in) { return 1024u * 1024u * static_cast<uint32_t>(in); }
 
 struct Pipelines
 {
@@ -159,8 +157,8 @@ struct Engine
   RenderPasses         render_passes;
   Pipelines            pipelines;
 
-  FreeListAllocator generic_allocator;
-  JobSystem         job_system;
+  HierarchicalAllocator generic_allocator;
+  JobSystem             job_system;
 
   void           startup(bool vulkan_validation_enabled);
   void           teardown();

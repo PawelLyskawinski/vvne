@@ -67,8 +67,15 @@ void Player::process_event(const SDL_Event& event)
   }
 }
 
-static Vec2 rotation_2D(float angle) { return Vec2(SDL_sinf(angle), SDL_cosf(angle)); }
-static Vec3 to_vec3_xz(const Vec2& in) { return Vec3(in.x, 0.0f, in.y); }
+static Vec2 rotation_2D(float angle)
+{
+  return Vec2(SDL_sinf(angle), SDL_cosf(angle));
+}
+
+static Vec3 to_vec3_xz(const Vec2& in)
+{
+  return Vec3(in.x, 0.0f, in.y);
+}
 
 void Player::update(const float current_time_sec, const float delta_ms, const ExampleLevel& level)
 {

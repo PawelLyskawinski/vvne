@@ -36,18 +36,18 @@ public:
   int mesh = 0;
   int skin = 0;
 
-  enum Property : uint64_t
+  struct Flags
   {
-    Children    = uint64_t(1) << 0u,
-    Rotation    = uint64_t(1) << 1u,
-    Translation = uint64_t(1) << 2u,
-    Scale       = uint64_t(1) << 3u,
-    Matrix      = uint64_t(1) << 4u,
-    Mesh        = uint64_t(1) << 5u,
-    Skin        = uint64_t(1) << 6u
+    bool children : 1;
+    bool rotation : 1;
+    bool translation : 1;
+    bool scale : 1;
+    bool matrix : 1;
+    bool mesh : 1;
+    bool skin : 1;
   };
 
-  uint64_t flags = 0;
+  Flags flags = {};
 };
 
 struct Scene

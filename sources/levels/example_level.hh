@@ -23,7 +23,7 @@ private:
 class ExampleLevel
 {
 public:
-  void setup(FreeListAllocator& allocator, const Materials& materials);
+  void setup(HierarchicalAllocator& allocator, const Materials& materials);
   void teardown();
   void process_event(const SDL_Event& event);
   void update(float time_delta_since_last_frame_ms);

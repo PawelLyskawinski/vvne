@@ -5,7 +5,7 @@
 
 struct SimpleEntity
 {
-  void init(FreeListAllocator& allocator, const SceneGraph& model);
+  void init(HierarchicalAllocator& allocator, const SceneGraph& model);
   void recalculate_node_transforms(const SceneGraph& model, const Mat4x4& world_transform);
   void animate(const SceneGraph& scene_graph, float current_time_sec);
 

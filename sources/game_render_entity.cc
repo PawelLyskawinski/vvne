@@ -9,7 +9,7 @@ uint64_t filter_nodes_with_mesh(const ArrayView<Node>& nodes)
 {
   uint64_t result = 0;
   for (uint32_t i = 0; i < static_cast<uint32_t>(nodes.count); ++i)
-    if (nodes[i].flags & Node::Property::Mesh)
+    if (nodes[i].flags.mesh)
       result |= (uint64_t(1) << i);
   return result;
 }

@@ -61,7 +61,7 @@ const char* to_cstr(VkPresentModeKHR mode)
   return modes[clamp(mode, VK_PRESENT_MODE_IMMEDIATE_KHR, VK_PRESENT_MODE_RANGE_SIZE_KHR)];
 }
 
-void renderpass_allocate_memory(FreeListAllocator& a, RenderPass& rp, uint32_t n)
+void renderpass_allocate_memory(HierarchicalAllocator& a, RenderPass& rp, uint32_t n)
 {
   rp.framebuffers_count = n;
   rp.framebuffers       = a.allocate<VkFramebuffer>(n);
@@ -841,7 +841,7 @@ void Engine::startup(bool vulkan_validation_enabled)
   {
     uint64_t a = SDL_GetTicks();
     setup_pipelines();
-    SDL_Log("setup_pipelines took %lums", SDL_GetTicks() - a);
+    SDL_Log("setup_pipelines took %ums", static_cast<uint32_t>(SDL_GetTicks() - a));
   }
 
   for (VkFence& submition_fence : submition_fences)
@@ -863,8 +863,14 @@ public:
   {
   }
 
-  [[nodiscard]] const TElement* begin() const { return m_begin; }
-  [[nodiscard]] const TElement* end() const { return m_end; }
+  [[nodiscard]] const TElement* begin() const
+  {
+    return m_begin;
+  }
+  [[nodiscard]] const TElement* end() const
+  {
+    return m_end;
+  }
 
 private:
   const TElement* m_begin;
@@ -961,6 +967,8 @@ void Engine::teardown()
   }
 
   vkDestroyInstance(instance, nullptr);
+
+  generic_allocator.teardown();
 }
 
 Texture Engine::load_texture(const char* filepath, bool register_for_destruction)
@@ -994,7 +1002,10 @@ VkFormat bitsPerPixelToFormat(uint8_t bpp)
   }
 }
 
-VkFormat bitsPerPixelToFormat(SDL_Surface* surface) { return bitsPerPixelToFormat(surface->format->BitsPerPixel); }
+VkFormat bitsPerPixelToFormat(SDL_Surface* surface)
+{
+  return bitsPerPixelToFormat(surface->format->BitsPerPixel);
+}
 
 } // namespace
 

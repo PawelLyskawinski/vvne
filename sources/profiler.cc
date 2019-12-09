@@ -1,26 +1,30 @@
-#include <SDL2/SDL_log.h>
 #include "profiler.hh"
+#include <SDL2/SDL_log.h>
+#include <algorithm>
 
 void Profiler::on_frame()
 {
   const uint64_t before_clear = SDL_AtomicSet(&last_marker_idx, 0);
-  if (not paused)
-  {
-    if (skip_frames)
-    {
-      skip_counter = (skip_counter + 1) % skip_frames;
-      if (skip_counter)
-      {
-        return;
-      }
-    }
+  if (paused)
+    return;
 
-    last_frame_markers_count = before_clear;
-    SDL_memcpy(last_frame_markers, markers, sizeof(Marker) * before_clear);
+  if (skip_frames)
+  {
+    skip_counter = (skip_counter + 1) % skip_frames;
+    if (skip_counter)
+    {
+      return;
+    }
   }
+
+  last_frame_markers_count = before_clear;
+  std::copy(markers, &markers[last_frame_markers_count], last_frame_markers);
 }
 
-Marker* Profiler::request_marker() { return &markers[SDL_AtomicIncRef(&last_marker_idx)]; }
+Marker* Profiler::request_marker()
+{
+  return &markers[SDL_AtomicIncRef(&last_marker_idx)];
+}
 
 ScopedPerfEvent::ScopedPerfEvent(Profiler& profiler, const char* name, uint32_t thread_id)
     : ctx(profiler.workers[thread_id])

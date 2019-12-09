@@ -3,16 +3,24 @@
 #include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_stdinc.h>
 
-template <typename T> constexpr T align(T unaligned, T alignment) { return (unaligned + (alignment - 1)) & (~(alignment - 1)); }
-
-struct Stack
+template <typename T> constexpr T align(T unaligned, T alignment)
 {
-  void setup(uint64_t new_capacity)
+  return (unaligned + (alignment - 1)) & (~(alignment - 1));
+}
+
+class Stack
+{
+public:
+  explicit Stack(uint64_t new_capacity)
+      : data(reinterpret_cast<uint8_t*>(SDL_malloc(new_capacity)))
+      , sp(0)
+      , capacity(new_capacity)
   {
-    data     = reinterpret_cast<uint8_t*>(SDL_malloc(new_capacity));
-    sp       = 0;
-    capacity = new_capacity;
   }
+
+  ~Stack() { SDL_free(data); }
+
+  void reset() { sp = 0; }
 
   template <typename T> T* alloc(int count = 1)
   {
@@ -22,9 +30,7 @@ struct Stack
     return r;
   }
 
-  void reset() { sp = 0; }
-  void teardown() { SDL_free(data); }
-
+private:
   uint8_t* data;
   uint64_t sp;
   uint64_t capacity;
