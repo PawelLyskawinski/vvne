@@ -107,12 +107,16 @@ void Data::init()
 {
   constexpr NodeDescription initial_nodes[] = {
       {
+          Node::Type::Start,
+          Vec2(50.0f, 10.0f),
+      },
+      {
           Node::Type::Dummy,
-          Vec2(100.0f, 40.0f),
+          Vec2(200.0f, 40.0f),
       },
       {
           Node::Type::All,
-          Vec2(300.0f, 40.0f),
+          Vec2(400.0f, 40.0f),
       },
   };
 
@@ -125,6 +129,7 @@ void Data::init()
                  [](const NodeDescription& d) { return d.position; });
 
   editor_data.zoom = 1.0f;
+  nodes[0].state   = Node::State::Active;
 }
 
 void Data::editor_render()

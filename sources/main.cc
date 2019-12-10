@@ -32,33 +32,36 @@ int main(int argc, const char* argv[])
   engine->startup(is_in_arguments_list(argv, argc, "--validate"));
   game->startup(*engine);
 
-  uint64_t        performance_frequency     = SDL_GetPerformanceFrequency();
-  uint64_t        start_of_game_ticks       = SDL_GetPerformanceCounter();
-  constexpr float desired_frame_duration_ms = (1000.0f / static_cast<float>(desired_frames_per_sec));
-  float           elapsed_ms                = desired_frame_duration_ms;
-
-  SDL_ShowWindow(engine->window);
-  while (!SDL_QuitRequested())
+  if (not is_in_arguments_list(argv, argc, "--dry_run"))
   {
-    uint64_t start_of_frame_ticks  = SDL_GetPerformanceCounter();
-    uint64_t ticks_from_game_start = start_of_frame_ticks - start_of_game_ticks;
-    float    current_time_sec = static_cast<float>(ticks_from_game_start) / static_cast<float>(performance_frequency);
+    uint64_t        performance_frequency     = SDL_GetPerformanceFrequency();
+    uint64_t        start_of_game_ticks       = SDL_GetPerformanceCounter();
+    constexpr float desired_frame_duration_ms = (1000.0f / static_cast<float>(desired_frames_per_sec));
+    float           elapsed_ms                = desired_frame_duration_ms;
 
-    game->current_time_sec = current_time_sec;
-    game->update(*engine, SDL_max(elapsed_ms, desired_frame_duration_ms));
-    game->render(*engine);
-
-    uint64_t frame_time_counter = SDL_GetPerformanceCounter() - start_of_frame_ticks;
-    elapsed_ms = 1000.0f * (static_cast<float>(frame_time_counter) / static_cast<float>(performance_frequency));
-
-    if (elapsed_ms < desired_frame_duration_ms)
+    SDL_ShowWindow(engine->window);
+    while (!SDL_QuitRequested())
     {
-      const uint32_t wait_time = static_cast<uint32_t>(SDL_ceilf(desired_frame_duration_ms - elapsed_ms));
-      if (0 < wait_time)
-        SDL_Delay(wait_time);
+      uint64_t start_of_frame_ticks  = SDL_GetPerformanceCounter();
+      uint64_t ticks_from_game_start = start_of_frame_ticks - start_of_game_ticks;
+      float    current_time_sec = static_cast<float>(ticks_from_game_start) / static_cast<float>(performance_frequency);
+
+      game->current_time_sec = current_time_sec;
+      game->update(*engine, SDL_max(elapsed_ms, desired_frame_duration_ms));
+      game->render(*engine);
+
+      uint64_t frame_time_counter = SDL_GetPerformanceCounter() - start_of_frame_ticks;
+      elapsed_ms = 1000.0f * (static_cast<float>(frame_time_counter) / static_cast<float>(performance_frequency));
+
+      if (elapsed_ms < desired_frame_duration_ms)
+      {
+        const uint32_t wait_time = static_cast<uint32_t>(SDL_ceilf(desired_frame_duration_ms - elapsed_ms));
+        if (0 < wait_time)
+          SDL_Delay(wait_time);
+      }
     }
+    SDL_HideWindow(engine->window);
   }
-  SDL_HideWindow(engine->window);
 
   game->teardown(*engine);
   engine->teardown();

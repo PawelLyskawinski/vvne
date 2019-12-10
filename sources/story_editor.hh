@@ -14,10 +14,19 @@ struct Node
   {
     Dummy,
     All,
-    Any
+    Any,
+    Start,
+  };
+
+  enum class State
+  {
+    Upcoming,
+    Active,
+    Finished
   };
 
   Type type = Type::Dummy;
+  State state = State::Upcoming;
 };
 
 struct Connection
