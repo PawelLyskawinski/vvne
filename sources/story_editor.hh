@@ -1,41 +1,11 @@
 #pragma once
 
+#include "engine/hierarchical_allocator.hh"
 #include "engine/math.hh"
+#include "story_components.hh"
 #include <SDL2/SDL_events.h>
 
 namespace story {
-
-constexpr uint32_t NODES_CAPACITY       = 256;
-constexpr uint32_t CONNECTIONS_CAPACITY = 5 * NODES_CAPACITY;
-
-struct Node
-{
-  enum class Type
-  {
-    Dummy,
-    All,
-    Any,
-    Start,
-  };
-
-  enum class State
-  {
-    Upcoming,
-    Active,
-    Finished
-  };
-
-  Type type = Type::Dummy;
-  State state = State::Upcoming;
-};
-
-struct Connection
-{
-  uint32_t src_node_idx   = 0;
-  uint32_t src_output_idx = 0;
-  uint32_t dst_input_idx  = 0;
-  uint32_t dst_node_idx   = 0;
-};
 
 struct EditorData
 {
@@ -47,7 +17,7 @@ struct EditorData
   Vec2     element_clicked_original_position = {};
   float    zoom                              = 0.0f;
   Vec2     blackboard_origin_offset          = {};
-  Vec2     positions[NODES_CAPACITY]         = {};
+  Vec2*    positions                         = nullptr;
 
   void handle_mouse_wheel(float val);
   void handle_mouse_motion(const Vec2& motion);
@@ -55,16 +25,46 @@ struct EditorData
   void handle_mouse_lmb_up();
 };
 
+//
+// Binary script file format
+//
+// [uint32_t] entities count
+// ... nodes[]
+// ... node_states[]
+// ... editor_data.positions[]
+// [uint32_t] target positions count
+// ... target_positions[]
+// [uint32_t] connections count
+// ... connections[]
+//
+
 struct Data
 {
-  Node       nodes[NODES_CAPACITY]             = {};
-  Connection connections[CONNECTIONS_CAPACITY] = {};
-  EditorData editor_data                       = {};
-  uint32_t   nodes_count                       = 0;
-  uint32_t   connections_count                 = 0;
+  //
+  // ENTITIES
+  // index in tables below indicates the entity number
+  //
+  Node*    nodes         = nullptr;
+  State*   node_states   = nullptr;
+  uint32_t entity_count = 0;
 
-  void init();
-  void editor_render();
+  //
+  // COMPONENTS
+  // Component data structures store entity numbers associated with them
+  //
+  TargetPosition* target_positions       = nullptr;
+  uint32_t        target_positions_count = 0;
+
+  Connection* connections       = nullptr;
+  uint32_t    connections_count = 0;
+
+  //
+  // Additional editor related features
+  //
+  EditorData editor_data = {};
+
+  void init(HierarchicalAllocator& allocator);
+  void imgui_update();
   void editor_update(const SDL_Event& event);
 };
 

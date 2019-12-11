@@ -1,12 +1,16 @@
 #include "story_editor.hh"
 #include "imgui.h"
+#include <SDL2/SDL_log.h>
 #include <algorithm>
 
 namespace story {
 
 namespace {
 
-constexpr float offset_from_top = 25.0f;
+constexpr uint32_t entities_capacity    = 256;
+constexpr uint32_t connections_capacity = 10'240;
+constexpr uint32_t components_capacity  = 64;
+constexpr float    offset_from_top      = 25.0f;
 
 struct Color
 {
@@ -29,8 +33,15 @@ struct NodeBox
   Color       font;
 };
 
-constexpr NodeBox DummyBox = {
+constexpr NodeBox StartBox = {
     .name = "Dummy",
+    .size = Vec2(120.0f, 80.0f),
+    .bg   = {80, 106, 137, 220},
+    .font = {255, 255, 255, 255},
+};
+
+constexpr NodeBox GoToBox = {
+    .name = "GoTo",
     .size = Vec2(120.0f, 80.0f),
     .bg   = {80, 106, 137, 220},
     .font = {255, 255, 255, 255},
@@ -50,24 +61,26 @@ constexpr NodeBox AnyBox = {
     .font = {255, 255, 255, 255},
 };
 
-constexpr const NodeBox& select(Node::Type type)
+constexpr const NodeBox& select(Node type)
 {
   switch (type)
   {
   default:
-  case Node::Type::Dummy:
-    return DummyBox;
-  case Node::Type::All:
-    return AllBox;
-  case Node::Type::Any:
+  case Node::Start:
+    return StartBox;
+  case Node::Any:
     return AnyBox;
+  case Node::All:
+    return AllBox;
+  case Node::GoTo:
+    return GoToBox;
   }
 }
 
 struct NodeDescription
 {
-  Node::Type type     = Node::Type::Dummy;
-  Vec2       position = Vec2();
+  Node type     = Node::Start;
+  Vec2 position = Vec2();
 };
 
 void add_vertical_line(ImDrawList* draw_list, float x, float y_bottom, float length, ImU32 color)
@@ -103,45 +116,65 @@ void draw_background_grid(ImDrawList* draw_list, ImVec2 size, ImVec2 position, f
 
 } // namespace
 
-void Data::init()
+void Data::init(HierarchicalAllocator& allocator)
 {
-  constexpr NodeDescription initial_nodes[] = {
-      {
-          Node::Type::Start,
-          Vec2(50.0f, 10.0f),
-      },
-      {
-          Node::Type::Dummy,
-          Vec2(200.0f, 40.0f),
-      },
-      {
-          Node::Type::All,
-          Vec2(400.0f, 40.0f),
-      },
-  };
+  nodes                 = allocator.allocate<Node>(entities_capacity);
+  node_states           = allocator.allocate<State>(entities_capacity);
+  target_positions      = allocator.allocate<TargetPosition>(components_capacity);
+  connections           = allocator.allocate<Connection>(connections_capacity);
+  editor_data.positions = allocator.allocate<Vec2>(entities_capacity);
 
-  nodes_count = SDL_arraysize(initial_nodes);
+  const char* default_script_file_name = "default_story_script.bin";
+  SDL_RWops*  rw                       = SDL_RWFromFile(default_script_file_name, "rb");
+  if (rw)
+  {
+    const uint32_t size = static_cast<uint32_t>(SDL_RWsize(rw));
+    SDL_Log("\"%s\" found (%u bytes)! Loading game from external source", default_script_file_name, size);
 
-  std::transform(initial_nodes, initial_nodes + nodes_count, nodes,
-                 [](const NodeDescription& d) { return Node{d.type}; });
+    SDL_RWclose(rw);
+  }
+  else
+  {
+    SDL_Log("\"%s\" not found. Using built-in", default_script_file_name);
 
-  std::transform(initial_nodes, initial_nodes + nodes_count, editor_data.positions,
-                 [](const NodeDescription& d) { return d.position; });
+    constexpr NodeDescription initial_nodes[] = {
+        {
+            Node::Start,
+            Vec2(50.0f, 10.0f),
+        },
+        {
+            Node::Any,
+            Vec2(200.0f, 40.0f),
+        },
+        {
+            Node::All,
+            Vec2(400.0f, 40.0f),
+        },
+    };
+
+    entity_count = SDL_arraysize(initial_nodes);
+
+    std::transform(initial_nodes, initial_nodes + entity_count, nodes,
+                   [](const NodeDescription& d) { return d.type; });
+
+    std::transform(initial_nodes, initial_nodes + entity_count, editor_data.positions,
+                   [](const NodeDescription& d) { return d.position; });
+  }
 
   editor_data.zoom = 1.0f;
-  nodes[0].state   = Node::State::Active;
+  node_states[0] = State::Active;
 }
 
-void Data::editor_render()
+void Data::imgui_update()
 {
   ImDrawList* draw_list = ImGui::GetWindowDrawList();
   draw_background_grid(draw_list, ImGui::GetWindowSize(), ImGui::GetWindowPos(), 32.0f * editor_data.zoom);
 
-  for (uint32_t i = 0; i < nodes_count; ++i)
+  for (uint32_t i = 0; i < entity_count; ++i)
   {
     const Node&    node          = nodes[i];
     const Vec2&    position      = editor_data.positions[i];
-    const NodeBox& render_params = select(node.type);
+    const NodeBox& render_params = select(node);
     const float    up            = offset_from_top + (position.y * editor_data.zoom);
     const float    bottom        = up + (render_params.size.y * editor_data.zoom);
     const float    left          = position.x * editor_data.zoom;
@@ -159,6 +192,14 @@ void Data::editor_render()
       const ImVec2 ul_text = ImVec2(ul.x + 5.0f, ul.y + 5.0f);
       draw_list->AddText(ul_text, render_params.font.to_imgui(), render_params.name);
     }
+  }
+
+  if (ImGui::Button("Load"))
+  {
+  }
+
+  if (ImGui::Button("Save"))
+  {
   }
 }
 
@@ -209,7 +250,7 @@ void EditorData::handle_mouse_lmb_down(const Vec2& position, uint32_t nodes_coun
 
   for (uint32_t i = 0; i < nodes_count; ++i)
   {
-    const NodeBox& render_params = select(nodes[i].type);
+    const NodeBox& render_params = select(nodes[i]);
     const Vec2     ul            = positions[i] + Vec2(0.0f, offset_from_top);
     const Vec2     br            = ul + render_params.size.scale(zoom);
 
@@ -248,7 +289,7 @@ void Data::editor_update(const SDL_Event& event)
   break;
   case SDL_MOUSEBUTTONDOWN:
   {
-    editor_data.handle_mouse_lmb_down(get_mouse_state(), nodes_count, nodes);
+    editor_data.handle_mouse_lmb_down(get_mouse_state(), entity_count, nodes);
   }
   break;
   case SDL_MOUSEBUTTONUP:
