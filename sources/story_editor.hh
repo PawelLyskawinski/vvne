@@ -66,6 +66,7 @@ struct Data
   void init(HierarchicalAllocator& allocator);
   void imgui_update();
   void editor_update(const SDL_Event& event);
+  void load_from_handle(SDL_RWops* handle);
 };
 
 } // namespace story

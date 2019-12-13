@@ -7,10 +7,11 @@ namespace story {
 
 namespace {
 
-constexpr uint32_t entities_capacity    = 256;
-constexpr uint32_t connections_capacity = 10'240;
-constexpr uint32_t components_capacity  = 64;
-constexpr float    offset_from_top      = 25.0f;
+constexpr uint32_t entities_capacity        = 256;
+constexpr uint32_t connections_capacity     = 10'240;
+constexpr uint32_t components_capacity      = 64;
+constexpr float    offset_from_top          = 25.0f;
+const char*        default_script_file_name = "default_story_script.bin";
 
 struct Color
 {
@@ -124,13 +125,12 @@ void Data::init(HierarchicalAllocator& allocator)
   connections           = allocator.allocate<Connection>(connections_capacity);
   editor_data.positions = allocator.allocate<Vec2>(entities_capacity);
 
-  const char* default_script_file_name = "default_story_script.bin";
-  SDL_RWops*  rw                       = SDL_RWFromFile(default_script_file_name, "rb");
+  SDL_RWops* rw = SDL_RWFromFile(default_script_file_name, "rb");
   if (rw)
   {
     const uint32_t size = static_cast<uint32_t>(SDL_RWsize(rw));
     SDL_Log("\"%s\" found (%u bytes)! Loading game from external source", default_script_file_name, size);
-
+    load_from_handle(rw);
     SDL_RWclose(rw);
   }
   else
@@ -154,15 +154,26 @@ void Data::init(HierarchicalAllocator& allocator)
 
     entity_count = SDL_arraysize(initial_nodes);
 
-    std::transform(initial_nodes, initial_nodes + entity_count, nodes,
-                   [](const NodeDescription& d) { return d.type; });
+    std::transform(initial_nodes, initial_nodes + entity_count, nodes, [](const NodeDescription& d) { return d.type; });
 
     std::transform(initial_nodes, initial_nodes + entity_count, editor_data.positions,
                    [](const NodeDescription& d) { return d.position; });
   }
 
   editor_data.zoom = 1.0f;
-  node_states[0] = State::Active;
+  node_states[0]   = State::Active;
+}
+
+void Data::load_from_handle(SDL_RWops* handle)
+{
+  SDL_RWread(handle, &entity_count, sizeof(entity_count), 1);
+  SDL_RWread(handle, nodes, sizeof(Node), entity_count);
+  SDL_RWread(handle, node_states, sizeof(State), entity_count);
+  SDL_RWread(handle, editor_data.positions, sizeof(Vec2), entity_count);
+  SDL_RWread(handle, &target_positions_count, sizeof(target_positions_count), 1);
+  SDL_RWread(handle, target_positions, sizeof(TargetPosition), target_positions_count);
+  SDL_RWread(handle, &connections_count, sizeof(connections_count), 1);
+  SDL_RWread(handle, connections, sizeof(Connection), connections_count);
 }
 
 void Data::imgui_update()
@@ -196,10 +207,27 @@ void Data::imgui_update()
 
   if (ImGui::Button("Load"))
   {
+    SDL_RWops* handle = SDL_RWFromFile(default_script_file_name, "rb");
+    load_from_handle(handle);
+    SDL_RWclose(handle);
+    SDL_Log("Loaded file %s", default_script_file_name);
   }
 
   if (ImGui::Button("Save"))
   {
+    SDL_RWops* handle = SDL_RWFromFile(default_script_file_name, "wb");
+
+    SDL_RWwrite(handle, &entity_count, sizeof(entity_count), 1);
+    SDL_RWwrite(handle, nodes, sizeof(Node), entity_count);
+    SDL_RWwrite(handle, node_states, sizeof(State), entity_count);
+    SDL_RWwrite(handle, editor_data.positions, sizeof(Vec2), entity_count);
+    SDL_RWwrite(handle, &target_positions_count, sizeof(target_positions_count), 1);
+    SDL_RWwrite(handle, target_positions, sizeof(TargetPosition), target_positions_count);
+    SDL_RWwrite(handle, &connections_count, sizeof(connections_count), 1);
+    SDL_RWwrite(handle, connections, sizeof(Connection), connections_count);
+
+    SDL_RWclose(handle);
+    SDL_Log("Saved file %s", default_script_file_name);
   }
 }
 
