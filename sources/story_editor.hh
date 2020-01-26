@@ -56,6 +56,8 @@ struct EditorData
   void select_element_at_position(const Vec2& position, Data& data);
   void recalculate_selection_box();
 
+  [[nodiscard]] bool is_any_selected(uint32_t count) const;
+
   [[nodiscard]] bool is_selection_box_active() const
   {
     return selection_box_active and (not element_clicked);
@@ -65,6 +67,8 @@ struct EditorData
   {
     return blackboard_origin_offset + mmb.offset;
   };
+
+  void remove_selected_nodes(Data& data);
 };
 
 //
@@ -111,6 +115,7 @@ struct Data
   void load_from_handle(SDL_RWops* handle);
   void save_to_handle(SDL_RWops* handle);
   void push_connection(const Connection& conn);
+  void dump_connections() const;
 };
 
 } // namespace story

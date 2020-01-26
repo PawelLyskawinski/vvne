@@ -266,6 +266,7 @@ void Data::load_from_handle(SDL_RWops* handle)
   s.deserialize(connections, connections_count);
 
   SDL_memcpy(editor_data.positions_before_grab_movement, editor_data.positions, sizeof(Vec2) * entity_count);
+  SDL_memset(editor_data.is_selected, SDL_FALSE, sizeof(uint8_t) * entity_count);
 }
 
 void Data::save_to_handle(SDL_RWops* handle)
@@ -755,6 +756,71 @@ void ClickedPositionTracker::update(const Vec2& position)
   offset = position - origin;
 }
 
+bool EditorData::is_any_selected(uint32_t count) const
+{
+  uint8_t* end = &is_selected[count];
+  return end != std::find(is_selected, end, SDL_TRUE);
+}
+
+void Data::dump_connections() const
+{
+  for (uint32_t i = 0; i < connections_count; ++i)
+  {
+    const Connection& c = connections[i];
+    SDL_Log("src_node_idx: %u, src_output_idx: %u, dst_input_idx: %u, dst_node_idx: %u", //
+            c.src_node_idx, c.src_output_idx, c.dst_input_idx, c.dst_node_idx);
+  }
+}
+
+void EditorData::remove_selected_nodes(Data& data)
+{
+  {
+    uint32_t removed_entities = 0;
+    for (uint8_t* it                               = std::find(is_selected, &is_selected[data.entity_count], SDL_TRUE);
+         it != &is_selected[data.entity_count]; it = std::find(it + 1, &is_selected[data.entity_count], SDL_TRUE))
+    {
+      const uint32_t entity_idx = std::distance(is_selected, it) - removed_entities;
+
+      Connection* new_connections_end = std::remove_if(
+          data.connections, &data.connections[data.connections_count], [entity_idx](const Connection& c) {
+            return (entity_idx == c.src_node_idx) or (entity_idx == c.dst_node_idx);
+          });
+
+      std::for_each(data.connections, new_connections_end, [entity_idx](Connection& c) {
+        if (c.src_node_idx > entity_idx)
+        {
+          c.src_node_idx -= 1;
+        }
+        if (c.dst_node_idx > entity_idx)
+        {
+          c.dst_node_idx -= 1;
+        }
+      });
+
+      data.connections_count = std::distance(data.connections, new_connections_end);
+      removed_entities += 1;
+    }
+  }
+
+  for (uint8_t* it                               = std::find(is_selected, &is_selected[data.entity_count], SDL_TRUE);
+       it != &is_selected[data.entity_count]; it = std::find(it, &is_selected[data.entity_count], SDL_TRUE))
+  {
+    const uint32_t entity_idx = std::distance(is_selected, it);
+
+    auto remove_element = [entity_idx](auto* array, uint32_t end_offset) {
+      std::rotate(array + entity_idx, array + entity_idx + 1, &array[end_offset]);
+    };
+
+    remove_element(positions, data.entity_count);
+    remove_element(positions_before_grab_movement, data.entity_count);
+    remove_element(is_selected, data.entity_count);
+    remove_element(data.nodes, data.entity_count);
+    remove_element(data.node_states, data.entity_count);
+
+    data.entity_count -= 1;
+  }
+}
+
 void Data::editor_update(const SDL_Event& event)
 {
   switch (event.type)
@@ -827,6 +893,13 @@ void Data::editor_update(const SDL_Event& event)
     if (SDL_SCANCODE_LSHIFT == event.key.keysym.scancode)
     {
       editor_data.is_shift_pressed = true;
+    }
+    else if (SDL_SCANCODE_X == event.key.keysym.scancode)
+    {
+      if ((not editor_data.is_selection_box_active()) and editor_data.is_any_selected(entity_count))
+      {
+        editor_data.remove_selected_nodes(*this);
+      }
     }
     break;
   case SDL_KEYUP:
