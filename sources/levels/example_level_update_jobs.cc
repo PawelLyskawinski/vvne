@@ -136,31 +136,31 @@ struct UpdateJob
 
 void helmet_job(ThreadJobData tjd)
 {
-  UpdateJob ctx(tjd, __PRETTY_FUNCTION__);
+  UpdateJob ctx(tjd, __FUNCTION__);
   update_helmet(ctx.level.helmet_entity, ctx.game.materials.helmet);
 }
 
 void robot_job(ThreadJobData tjd)
 {
-  UpdateJob ctx(tjd, __PRETTY_FUNCTION__);
+  UpdateJob ctx(tjd, __FUNCTION__);
   update_robot(ctx.level.robot_entity, ctx.game.materials.robot, ctx.game.player);
 }
 
 void monster_job(ThreadJobData tjd)
 {
-  UpdateJob ctx(tjd, __PRETTY_FUNCTION__);
+  UpdateJob ctx(tjd, __FUNCTION__);
   update_monster(ctx.level.monster_entity, ctx.game.materials.monster, ctx.game.current_time_sec);
 }
 
 void rigged_simple_job(ThreadJobData tjd)
 {
-  UpdateJob ctx(tjd, __PRETTY_FUNCTION__);
+  UpdateJob ctx(tjd, __FUNCTION__);
   update_rigged_simple(ctx.level.rigged_simple_entity, ctx.game.materials.riggedSimple, ctx.game.current_time_sec);
 }
 
 void moving_lights_job(ThreadJobData tjd)
 {
-  UpdateJob ctx(tjd, __PRETTY_FUNCTION__);
+  UpdateJob ctx(tjd, __FUNCTION__);
 
   const float acceleration_length = 5.0f * 1000.0f * ctx.game.player.acceleration.len();
 
@@ -225,13 +225,13 @@ void moving_lights_job(ThreadJobData tjd)
 
 void matrioshka_job(ThreadJobData tjd)
 {
-  UpdateJob ctx(tjd, __PRETTY_FUNCTION__);
+  UpdateJob ctx(tjd, __FUNCTION__);
   update_matrioshka(ctx.level.matrioshka_entity, ctx.game.materials.animatedBox, ctx.game.current_time_sec);
 }
 
 void orientation_axis_job(ThreadJobData tjd)
 {
-  UpdateJob ctx(tjd, __PRETTY_FUNCTION__);
+  UpdateJob ctx(tjd, __FUNCTION__);
   update_orientation_axis_up(ctx.level.axis_arrow_entities[0], ctx.game.materials.lil_arrow, ctx.game.player);
   update_orientation_axis_left(ctx.level.axis_arrow_entities[1], ctx.game.materials.lil_arrow, ctx.game.player);
   update_orientation_axis_right(ctx.level.axis_arrow_entities[2], ctx.game.materials.lil_arrow, ctx.game.player);
@@ -239,7 +239,7 @@ void orientation_axis_job(ThreadJobData tjd)
 
 void gui_lines_generation_job(ThreadJobData tjd)
 {
-  UpdateJob ctx(tjd, __PRETTY_FUNCTION__);
+  UpdateJob ctx(tjd, __FUNCTION__);
 
   //
   // in vulkan coordinate system Y axis is pointing down, so we'll have to invert the value to get
@@ -258,7 +258,7 @@ void gui_lines_generation_job(ThreadJobData tjd)
 
 void recalculate_csm_matrices(ThreadJobData tjd)
 {
-  UpdateJob ctx(tjd, __PRETTY_FUNCTION__);
+  UpdateJob ctx(tjd, __FUNCTION__);
   recalculate_cascade_view_proj_matrices(ctx.game.materials.cascade_view_proj_mat,
                                          ctx.game.materials.cascade_split_depths, ctx.game.player.camera_projection,
                                          ctx.game.player.camera_view, ctx.game.materials.light_source_position);

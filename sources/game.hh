@@ -61,4 +61,5 @@ struct Game
   void teardown(Engine& engine);
   void update(Engine& engine, float time_delta_since_last_frame_ms);
   void render(Engine& engine);
+  void record_primary_command_buffer(Engine& engine);
 };

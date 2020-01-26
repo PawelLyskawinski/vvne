@@ -36,7 +36,7 @@ void render_skybox(VkCommandBuffer command, VkBuffer buffer, const Player& playe
 void skybox_job(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command   = acquire_command_buffer(tjd);
   ctx->game->skybox_command = command;
@@ -69,7 +69,7 @@ void skybox_job(ThreadJobData tjd)
 void robot_depth_job(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   for (int cascade_idx = 0; cascade_idx < SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
   {
@@ -89,7 +89,7 @@ void robot_depth_job(ThreadJobData tjd)
 void robot_job(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->scene_rendering_commands.push(command);
@@ -137,7 +137,7 @@ void robot_job(ThreadJobData tjd)
 void helmet_depth_job(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   for (int cascade_idx = 0; cascade_idx < SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
   {
@@ -157,7 +157,7 @@ void helmet_depth_job(ThreadJobData tjd)
 void helmet_job(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->scene_rendering_commands.push(command);
@@ -193,7 +193,7 @@ void helmet_job(ThreadJobData tjd)
 void point_light_boxes(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->scene_rendering_commands.push(command);
@@ -217,7 +217,7 @@ void point_light_boxes(ThreadJobData tjd)
 void matrioshka_box(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->scene_rendering_commands.push(command);
@@ -238,7 +238,7 @@ void matrioshka_box(ThreadJobData tjd)
 void vr_scene(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->scene_rendering_commands.push(command);
@@ -359,7 +359,7 @@ void vr_scene(ThreadJobData tjd)
 void simple_rigged(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->scene_rendering_commands.push(command);
@@ -386,7 +386,7 @@ void simple_rigged(ThreadJobData tjd)
 void monster_rigged(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->scene_rendering_commands.push(command);
@@ -413,7 +413,7 @@ void monster_rigged(ThreadJobData tjd)
 void radar(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
@@ -444,7 +444,7 @@ void radar(ThreadJobData tjd)
 void robot_gui_lines(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
@@ -542,7 +542,7 @@ void robot_gui_lines(ThreadJobData tjd)
 void robot_gui_speed_meter_text(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
@@ -635,7 +635,7 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
 void robot_gui_speed_meter_triangle(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
@@ -658,7 +658,7 @@ void robot_gui_speed_meter_triangle(ThreadJobData tjd)
 void height_ruler_text(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
@@ -757,7 +757,7 @@ void height_ruler_text(ThreadJobData tjd)
 void tilt_ruler_text(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
@@ -848,7 +848,7 @@ void tilt_ruler_text(ThreadJobData tjd)
 void compass_text(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
@@ -1046,7 +1046,7 @@ void compass_text(ThreadJobData tjd)
 void radar_dots(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
@@ -1092,7 +1092,7 @@ void radar_dots(ThreadJobData tjd)
 void weapon_selectors_left(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
@@ -1229,7 +1229,7 @@ void weapon_selectors_left(ThreadJobData tjd)
 void weapon_selectors_right(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
@@ -1476,7 +1476,7 @@ void weapon_selectors_right(ThreadJobData tjd)
 void imgui(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   const ImDrawData* draw_data   = ImGui::GetDrawData();
   const size_t      vertex_size = draw_data->TotalVtxCount * sizeof(ImDrawVert);
@@ -1566,7 +1566,7 @@ void imgui(ThreadJobData tjd)
 void water(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->scene_rendering_commands.push(command);
@@ -1622,7 +1622,7 @@ void water(ThreadJobData tjd)
 void debug_shadowmap(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
@@ -1678,7 +1678,7 @@ void debug_shadowmap(ThreadJobData tjd)
 void orientation_axis(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->scene_rendering_commands.push(command);
@@ -1707,7 +1707,7 @@ void orientation_axis(ThreadJobData tjd)
 void tesselated_ground(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->scene_rendering_commands.push(command);
@@ -1751,7 +1751,7 @@ void tesselated_ground(ThreadJobData tjd)
 void update_memory_host_coherent_ubo(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   Engine& e = *ctx->engine;
   Game&   g = *ctx->game;
@@ -1820,7 +1820,7 @@ void update_memory_host_coherent_ubo(ThreadJobData tjd)
 void update_memory_host_coherent(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __PRETTY_FUNCTION__, tjd.thread_id);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   {
     MemoryMap map(ctx->engine->device, ctx->engine->memory_blocks.host_coherent.memory,

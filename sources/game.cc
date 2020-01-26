@@ -22,7 +22,7 @@ void Game::startup(Engine& engine)
   update_profiler.skip_frames = 5;
   render_profiler.skip_frames = 5;
 
-  story_data.init();
+  story_data.init(engine.generic_allocator);
 
   DEBUG_VEC2.x = 0.1f;
   DEBUG_VEC2.y = -1.0f;
@@ -160,159 +160,7 @@ void Game::render(Engine& engine)
     // @todo: do something useful here as well?
     engine.job_system.wait_for_finish();
 
-    {
-      VkCommandBuffer cmd = primary_command_buffers[image_index];
-
-      {
-        VkCommandBufferBeginInfo begin = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-        vkBeginCommandBuffer(cmd, &begin);
-      }
-
-      // -----------------------------------------------------------------------------------------------
-      // SHADOW MAPPING PASS
-      // -----------------------------------------------------------------------------------------------
-      for (int cascade_idx = 0; cascade_idx < SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
-      {
-        VkClearValue clear_value = {.depthStencil = {1.0, 0}};
-
-        VkRenderPassBeginInfo begin = {
-            .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-            .renderPass      = engine.render_passes.shadowmap.render_pass,
-            .framebuffer     = engine.render_passes.shadowmap.framebuffers[cascade_idx],
-            .renderArea      = {.extent = {.width = SHADOWMAP_IMAGE_DIM, .height = SHADOWMAP_IMAGE_DIM}},
-            .clearValueCount = 1,
-            .pClearValues    = &clear_value,
-        };
-        vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-
-        for (const ShadowmapCommandBuffer& iter : shadow_mapping_pass_commands)
-          if (cascade_idx == iter.cascade_idx)
-            vkCmdExecuteCommands(cmd, 1, &iter.cmd);
-
-        vkCmdEndRenderPass(cmd);
-      }
-
-      // -----------------------------------------------------------------------------------------------
-      // SKYBOX PASS
-      // -----------------------------------------------------------------------------------------------
-      {
-        const uint32_t clear_values_count = (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT) ? 1u : 2u;
-        VkClearValue   clear_values[2]    = {};
-
-        if (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT)
-        {
-          clear_values[0].color = DEFAULT_COLOR_CLEAR;
-        }
-        else
-        {
-          clear_values[0].color = DEFAULT_COLOR_CLEAR;
-          clear_values[1].color = DEFAULT_COLOR_CLEAR;
-        }
-
-        VkRenderPassBeginInfo begin = {
-            .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-            .renderPass      = engine.render_passes.skybox.render_pass,
-            .framebuffer     = engine.render_passes.skybox.framebuffers[image_index],
-            .renderArea      = {.extent = engine.extent2D},
-            .clearValueCount = clear_values_count,
-            .pClearValues    = clear_values,
-        };
-
-        vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-        vkCmdExecuteCommands(cmd, 1, &skybox_command);
-        vkCmdEndRenderPass(cmd);
-      }
-
-      // -----------------------------------------------------------------------------------------------
-      // SCENE PASS
-      // -----------------------------------------------------------------------------------------------
-      {
-        const uint32_t clear_values_count = (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT) ? 2u : 3u;
-        VkClearValue   clear_values[3]    = {};
-
-        if (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT)
-        {
-          clear_values[0].color        = DEFAULT_COLOR_CLEAR;
-          clear_values[1].depthStencil = {1.0, 0};
-        }
-        else
-        {
-          clear_values[0].color        = DEFAULT_COLOR_CLEAR;
-          clear_values[1].depthStencil = {1.0, 0};
-          clear_values[2].color        = DEFAULT_COLOR_CLEAR;
-        }
-
-        VkRenderPassBeginInfo begin = {
-            .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-            .renderPass      = engine.render_passes.color_and_depth.render_pass,
-            .framebuffer     = engine.render_passes.color_and_depth.framebuffers[image_index],
-            .renderArea      = {.extent = engine.extent2D},
-            .clearValueCount = clear_values_count,
-            .pClearValues    = clear_values,
-        };
-
-        vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-        vkCmdExecuteCommands(cmd, scene_rendering_commands.size(), scene_rendering_commands.begin());
-        vkCmdEndRenderPass(cmd);
-      }
-
-      // -----------------------------------------------------------------------------------------------
-      // GUI PASS
-      // -----------------------------------------------------------------------------------------------
-      {
-        const uint32_t clear_values_count = (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT) ? 1u : 2u;
-        VkClearValue   clear_values[2]    = {};
-
-        if (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT)
-        {
-          clear_values[0].color = DEFAULT_COLOR_CLEAR;
-        }
-        else
-        {
-          clear_values[0].color = DEFAULT_COLOR_CLEAR;
-          clear_values[1].color = DEFAULT_COLOR_CLEAR;
-        }
-
-        VkRenderPassBeginInfo begin = {
-            .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-            .renderPass      = engine.render_passes.gui.render_pass,
-            .framebuffer     = engine.render_passes.gui.framebuffers[image_index],
-            .renderArea      = {.extent = engine.extent2D},
-            .clearValueCount = clear_values_count,
-            .pClearValues    = clear_values,
-        };
-
-        vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-        vkCmdExecuteCommands(cmd, gui_commands.size(), gui_commands.begin());
-        vkCmdEndRenderPass(cmd);
-      }
-
-      {
-        VkImageMemoryBarrier barrier = {
-            .sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-            .srcAccessMask       = 0,
-            .dstAccessMask       = 0,
-            .oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            .newLayout           = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image               = engine.shadowmap_image.image,
-            .subresourceRange =
-                {
-                    .aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT,
-                    .baseMipLevel   = 0,
-                    .levelCount     = 1,
-                    .baseArrayLayer = 0,
-                    .layerCount     = SHADOWMAP_CASCADE_COUNT,
-                },
-        };
-
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr,
-                             0, nullptr, 1, &barrier);
-      }
-
-      vkEndCommandBuffer(cmd);
-    }
+    record_primary_command_buffer(engine);
 
     shadow_mapping_pass_commands.reset();
     scene_rendering_commands.reset();
@@ -346,4 +194,159 @@ void Game::render(Engine& engine)
   };
 
   vkQueuePresentKHR(engine.graphics_queue, &present);
+}
+
+void Game::record_primary_command_buffer(Engine& engine)
+{
+  VkCommandBuffer cmd = primary_command_buffers[image_index];
+
+  {
+    VkCommandBufferBeginInfo begin = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    vkBeginCommandBuffer(cmd, &begin);
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  // SHADOW MAPPING PASS
+  // -----------------------------------------------------------------------------------------------
+  for (int cascade_idx = 0; cascade_idx < SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
+  {
+    VkClearValue clear_value = {.depthStencil = {1.0, 0}};
+
+    VkRenderPassBeginInfo begin = {
+        .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+        .renderPass      = engine.render_passes.shadowmap.render_pass,
+        .framebuffer     = engine.render_passes.shadowmap.framebuffers[cascade_idx],
+        .renderArea      = {.extent = {.width = SHADOWMAP_IMAGE_DIM, .height = SHADOWMAP_IMAGE_DIM}},
+        .clearValueCount = 1,
+        .pClearValues    = &clear_value,
+    };
+    vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+
+    for (const ShadowmapCommandBuffer& iter : shadow_mapping_pass_commands)
+      if (cascade_idx == iter.cascade_idx)
+        vkCmdExecuteCommands(cmd, 1, &iter.cmd);
+
+    vkCmdEndRenderPass(cmd);
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  // SKYBOX PASS
+  // -----------------------------------------------------------------------------------------------
+  {
+    const uint32_t clear_values_count = (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT) ? 1u : 2u;
+    VkClearValue   clear_values[2]    = {};
+
+    if (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT)
+    {
+      clear_values[0].color = DEFAULT_COLOR_CLEAR;
+    }
+    else
+    {
+      clear_values[0].color = DEFAULT_COLOR_CLEAR;
+      clear_values[1].color = DEFAULT_COLOR_CLEAR;
+    }
+
+    VkRenderPassBeginInfo begin = {
+        .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+        .renderPass      = engine.render_passes.skybox.render_pass,
+        .framebuffer     = engine.render_passes.skybox.framebuffers[image_index],
+        .renderArea      = {.extent = engine.extent2D},
+        .clearValueCount = clear_values_count,
+        .pClearValues    = clear_values,
+    };
+
+    vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+    vkCmdExecuteCommands(cmd, 1, &skybox_command);
+    vkCmdEndRenderPass(cmd);
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  // SCENE PASS
+  // -----------------------------------------------------------------------------------------------
+  {
+    const uint32_t clear_values_count = (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT) ? 2u : 3u;
+    VkClearValue   clear_values[3]    = {};
+
+    if (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT)
+    {
+      clear_values[0].color        = DEFAULT_COLOR_CLEAR;
+      clear_values[1].depthStencil = {1.0, 0};
+    }
+    else
+    {
+      clear_values[0].color        = DEFAULT_COLOR_CLEAR;
+      clear_values[1].depthStencil = {1.0, 0};
+      clear_values[2].color        = DEFAULT_COLOR_CLEAR;
+    }
+
+    VkRenderPassBeginInfo begin = {
+        .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+        .renderPass      = engine.render_passes.color_and_depth.render_pass,
+        .framebuffer     = engine.render_passes.color_and_depth.framebuffers[image_index],
+        .renderArea      = {.extent = engine.extent2D},
+        .clearValueCount = clear_values_count,
+        .pClearValues    = clear_values,
+    };
+
+    vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+    vkCmdExecuteCommands(cmd, scene_rendering_commands.size(), scene_rendering_commands.begin());
+    vkCmdEndRenderPass(cmd);
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  // GUI PASS
+  // -----------------------------------------------------------------------------------------------
+  {
+    const uint32_t clear_values_count = (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT) ? 1u : 2u;
+    VkClearValue   clear_values[2]    = {};
+
+    if (VK_SAMPLE_COUNT_1_BIT == engine.MSAA_SAMPLE_COUNT)
+    {
+      clear_values[0].color = DEFAULT_COLOR_CLEAR;
+    }
+    else
+    {
+      clear_values[0].color = DEFAULT_COLOR_CLEAR;
+      clear_values[1].color = DEFAULT_COLOR_CLEAR;
+    }
+
+    VkRenderPassBeginInfo begin = {
+        .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+        .renderPass      = engine.render_passes.gui.render_pass,
+        .framebuffer     = engine.render_passes.gui.framebuffers[image_index],
+        .renderArea      = {.extent = engine.extent2D},
+        .clearValueCount = clear_values_count,
+        .pClearValues    = clear_values,
+    };
+
+    vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+    vkCmdExecuteCommands(cmd, gui_commands.size(), gui_commands.begin());
+    vkCmdEndRenderPass(cmd);
+  }
+
+  {
+    VkImageMemoryBarrier barrier = {
+        .sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .srcAccessMask       = 0,
+        .dstAccessMask       = 0,
+        .oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .newLayout           = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image               = engine.shadowmap_image.image,
+        .subresourceRange =
+            {
+                .aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT,
+                .baseMipLevel   = 0,
+                .levelCount     = 1,
+                .baseArrayLayer = 0,
+                .layerCount     = SHADOWMAP_CASCADE_COUNT,
+            },
+    };
+
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0,
+                         nullptr, 1, &barrier);
+  }
+
+  vkEndCommandBuffer(cmd);
 }

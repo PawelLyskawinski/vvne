@@ -94,6 +94,14 @@ VkDeviceSize GpuMemoryBlock::allocate_aligned(VkDeviceSize size)
   return allocator.allocate_bytes(align(size, alignment));
 }
 
+void GpuMemoryBlock::allocate_aligned_ranged(VkDeviceSize dst[], const uint32_t count, const VkDeviceSize size)
+{
+  for (uint32_t i = 0; i < count; ++i)
+  {
+    dst[i] = allocate_aligned(size);
+  }
+}
+
 void Engine::startup(bool vulkan_validation_enabled)
 {
   generic_allocator.init();

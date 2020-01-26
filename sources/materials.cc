@@ -19,7 +19,10 @@ struct ImguiFontSurface
                                                  SDL_PIXELFORMAT_RGBA8888);
   }
 
-  ~ImguiFontSurface() { SDL_FreeSurface(surface); }
+  ~ImguiFontSurface()
+  {
+    SDL_FreeSurface(surface);
+  }
 
   SDL_Surface* surface;
 };
@@ -39,8 +42,14 @@ struct Cursor
     return *this;
   }
 
-  template <typename T>[[nodiscard]] T read_uint() const { return static_cast<T>(SDL_strtoul(ptr, nullptr, 10)); }
-  template <typename T>[[nodiscard]] T read_int() const { return static_cast<T>(SDL_strtol(ptr, nullptr, 10)); }
+  template <typename T>[[nodiscard]] T read_uint() const
+  {
+    return static_cast<T>(SDL_strtoul(ptr, nullptr, 10));
+  }
+  template <typename T>[[nodiscard]] T read_int() const
+  {
+    return static_cast<T>(SDL_strtol(ptr, nullptr, 10));
+  }
 
   const char* ptr;
 };
@@ -107,41 +116,28 @@ void Materials::setup(Engine& engine)
   {
     GpuMemoryBlock& block = engine.memory_blocks.host_coherent_ubo;
 
-    for (VkDeviceSize& offset : pbr_dynamic_lights_ubo_offsets)
-    {
-      offset = block.allocate_aligned(light_sources_ubo_size);
-    }
+    block.allocate_aligned_ranged(pbr_dynamic_lights_ubo_offsets, SDL_arraysize(pbr_dynamic_lights_ubo_offsets),
+                                  light_sources_ubo_size);
 
-    for (VkDeviceSize& offset : rig_skinning_matrices_ubo_offsets)
-    {
-      offset = block.allocate_aligned(skinning_matrices_ubo_size);
-    }
+    block.allocate_aligned_ranged(rig_skinning_matrices_ubo_offsets, SDL_arraysize(rig_skinning_matrices_ubo_offsets),
+                                  skinning_matrices_ubo_size);
 
-    for (VkDeviceSize& offset : fig_skinning_matrices_ubo_offsets)
-    {
-      offset = block.allocate_aligned(skinning_matrices_ubo_size);
-    }
+    block.allocate_aligned_ranged(fig_skinning_matrices_ubo_offsets, SDL_arraysize(fig_skinning_matrices_ubo_offsets),
+                                  skinning_matrices_ubo_size);
 
-    for (VkDeviceSize& offset : monster_skinning_matrices_ubo_offsets)
-    {
-      offset = block.allocate_aligned(skinning_matrices_ubo_size);
-    }
+    block.allocate_aligned_ranged(monster_skinning_matrices_ubo_offsets,
+                                  SDL_arraysize(monster_skinning_matrices_ubo_offsets), skinning_matrices_ubo_size);
 
-    for (VkDeviceSize& offset : cascade_view_proj_mat_ubo_offsets)
-    {
-      offset = block.allocate_aligned(SHADOWMAP_CASCADE_COUNT * sizeof(Mat4x4) + sizeof(Vec4));
-    }
+    block.allocate_aligned_ranged(cascade_view_proj_mat_ubo_offsets, SDL_arraysize(cascade_view_proj_mat_ubo_offsets),
+                                  SHADOWMAP_CASCADE_COUNT * sizeof(Mat4x4) + sizeof(Vec4));
 
-    for (VkDeviceSize& offset : frustum_planes_ubo_offsets)
-    {
-      offset = block.allocate_aligned(6 * sizeof(Vec4));
-    }
+    block.allocate_aligned_ranged(frustum_planes_ubo_offsets, SDL_arraysize(frustum_planes_ubo_offsets),
+                                  6 * sizeof(Vec4));
   }
 
-  for (VkDeviceSize& offset : green_gui_rulers_buffer_offsets)
-  {
-    offset = engine.memory_blocks.host_coherent.allocate_aligned(MAX_ROBOT_GUI_LINES * sizeof(Vec2));
-  }
+  engine.memory_blocks.host_coherent.allocate_aligned_ranged(green_gui_rulers_buffer_offsets,
+                                                             SDL_arraysize(green_gui_rulers_buffer_offsets),
+                                                             MAX_ROBOT_GUI_LINES * sizeof(Vec2));
 
   // ----------------------------------------------------------------------------------------------
   // PBR Metallic workflow material descriptor sets
@@ -703,4 +699,6 @@ void Materials::setup(Engine& engine)
   }
 }
 
-void Materials::teardown(Engine& engine) {}
+void Materials::teardown(Engine& engine)
+{
+}

@@ -377,7 +377,7 @@ void DebugGui::update(Engine& engine, Game& game)
       story_editor_tab_selected = ImGui::BeginTabItem("Story Editor");
       if (story_editor_tab_selected)
       {
-        game.story_data.editor_render();
+          game.story_data.imgui_update();
         ImGui::EndTabItem();
       }
       if (ImGui::BeginTabItem("Profiler"))

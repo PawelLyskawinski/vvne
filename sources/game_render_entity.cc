@@ -1,7 +1,7 @@
 #include "game_render_entity.hh"
+#include "engine/aligned_push_consts.hh"
 #include "game.hh"
 #include "player.hh"
-#include "simple_entity.hh"
 
 namespace {
 
@@ -55,7 +55,7 @@ void render_pbr_entity_shadow(const SimpleEntity& entity, const SceneGraph& scen
 
       vkCmdBindIndexBuffer(cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
-      vkCmdPushConstants(cmd, engine.pipelines.shadowmap.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), &push);
+      AlignedPushConsts(cmd, engine.pipelines.shadowmap.layout).push(VK_SHADER_STAGE_VERTEX_BIT, push);
       vkCmdDrawIndexed(cmd, mesh.indices_count, 1, 0, 0, 0);
     }
   }
@@ -83,8 +83,7 @@ void render_pbr_entity(const SimpleEntity& entity, const SceneGraph& scene_graph
 
       vkCmdBindIndexBuffer(p.cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(p.cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
-      vkCmdPushConstants(p.cmd, p.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
-                         sizeof(ubo), &ubo);
+      AlignedPushConsts(p.cmd, p.pipeline_layout).push(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, ubo);
       vkCmdDrawIndexed(p.cmd, mesh.indices_count, 1, 0, 0, 0);
     }
   }
@@ -106,9 +105,9 @@ void render_wireframe_entity(const SimpleEntity& entity, const SceneGraph& scene
 
       vkCmdBindIndexBuffer(p.cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(p.cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
-      vkCmdPushConstants(p.cmd, p.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mvp), mvp.data());
-      vkCmdPushConstants(p.cmd, p.pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(mvp), sizeof(Vec3),
-                         p.color.data());
+      AlignedPushConsts(p.cmd, p.pipeline_layout)
+          .push(VK_SHADER_STAGE_VERTEX_BIT, mvp)
+          .push(VK_SHADER_STAGE_FRAGMENT_BIT, p.color);
       vkCmdDrawIndexed(p.cmd, mesh.indices_count, 1, 0, 0, 0);
     }
   }
@@ -129,12 +128,10 @@ void render_entity(const SimpleEntity& entity, const SceneGraph& scene_graph, co
 
       vkCmdBindIndexBuffer(p.cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(p.cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
-
       const Mat4x4 calculated_mvp = projection_view * entity.node_transforms[node_idx];
-      vkCmdPushConstants(p.cmd, p.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Mat4x4),
-                         calculated_mvp.data());
-      vkCmdPushConstants(p.cmd, p.pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(Mat4x4), sizeof(Vec3),
-                         p.color.data());
+      AlignedPushConsts(p.cmd, p.pipeline_layout)
+          .push(VK_SHADER_STAGE_VERTEX_BIT, calculated_mvp)
+          .push(VK_SHADER_STAGE_FRAGMENT_BIT, p.color);
       vkCmdDrawIndexed(p.cmd, mesh.indices_count, 1, 0, 0, 0);
     }
   }
@@ -155,11 +152,9 @@ void render_entity_skinned(const SimpleEntity& entity, const SceneGraph& scene_g
 
       vkCmdBindIndexBuffer(p.cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(p.cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
-
-      vkCmdPushConstants(p.cmd, p.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Mat4x4),
-                         projection_view.data());
-      vkCmdPushConstants(p.cmd, p.pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(Mat4x4), sizeof(Vec3),
-                         p.color.data());
+      AlignedPushConsts(p.cmd, p.pipeline_layout)
+          .push(VK_SHADER_STAGE_VERTEX_BIT, projection_view)
+          .push(VK_SHADER_STAGE_FRAGMENT_BIT, p.color);
       vkCmdDrawIndexed(p.cmd, mesh.indices_count, 1, 0, 0, 0);
     }
   }

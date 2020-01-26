@@ -75,6 +75,7 @@ struct GpuMemoryBlock
   GpuMemoryAllocator allocator;
 
   VkDeviceSize allocate_aligned(VkDeviceSize size);
+  void allocate_aligned_ranged(VkDeviceSize dst[], uint32_t count, VkDeviceSize size);
 };
 
 struct MemoryBlocks

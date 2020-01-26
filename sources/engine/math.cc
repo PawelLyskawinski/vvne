@@ -1,18 +1,52 @@
 #include "math.hh"
 #include <algorithm>
 
-Vec2 Vec2::operator-(const Vec2& rhs) const { return Vec2(x - rhs.x, y - rhs.y); }
-Vec2 Vec2::operator+(const Vec2& rhs) const { return Vec2(x + rhs.x, y + rhs.y); };
+Vec2 Vec2::operator-(const Vec2& rhs) const
+{
+  return Vec2(x - rhs.x, y - rhs.y);
+}
 
-float Vec2::len() const { return SDL_sqrtf(x * x + y * y); }
+Vec2 Vec2::operator+(const Vec2& rhs) const
+{
+  return Vec2(x + rhs.x, y + rhs.y);
+}
 
-Vec2 Vec2::scale(float s) const { return Vec2(x * s, y * s); }
+void Vec2::operator+=(const Vec2& rhs)
+{
+  x += rhs.x;
+  y += rhs.y;
+}
 
-Vec2 Vec2::scale(const Vec2& s) const { return Vec2(x * s.x, y * s.y); }
+void Vec2::operator-=(const Vec2& rhs)
+{
+  x -= rhs.x;
+  y -= rhs.y;
+}
 
-Vec2 Vec2::normalize() const { return scale(1.0f / len()); };
+float Vec2::len() const
+{
+  return SDL_sqrtf(x * x + y * y);
+}
 
-Vec2 Vec2::invert() const { return Vec2(1.0f / x, 1.0f / y); }
+Vec2 Vec2::scale(float s) const
+{
+  return Vec2(x * s, y * s);
+}
+
+Vec2 Vec2::scale(const Vec2& s) const
+{
+  return Vec2(x * s.x, y * s.y);
+}
+
+Vec2 Vec2::normalize() const
+{
+  return scale(1.0f / len());
+}
+
+Vec2 Vec2::invert() const
+{
+  return Vec2(1.0f / x, 1.0f / y);
+}
 
 Vec3::Vec3(float val)
     : x(val)
@@ -35,11 +69,20 @@ Vec3::Vec3(float x, float y, float z)
 {
 }
 
-Vec3 Vec3::operator-(const Vec3& rhs) const { return Vec3(x - rhs.x, y - rhs.y, z - rhs.z); }
+Vec3 Vec3::operator-(const Vec3& rhs) const
+{
+  return Vec3(x - rhs.x, y - rhs.y, z - rhs.z);
+}
 
-Vec3 Vec3::operator+(const Vec3& rhs) const { return Vec3(x + rhs.x, y + rhs.y, z + rhs.z); }
+Vec3 Vec3::operator+(const Vec3& rhs) const
+{
+  return Vec3(x + rhs.x, y + rhs.y, z + rhs.z);
+}
 
-Vec3 Vec3::scale(float s) const { return Vec3(x * s, y * s, z * s); }
+Vec3 Vec3::scale(float s) const
+{
+  return Vec3(x * s, y * s, z * s);
+}
 
 void Vec3::operator+=(const Vec3& rhs)
 {
@@ -48,9 +91,15 @@ void Vec3::operator+=(const Vec3& rhs)
   z += rhs.z;
 }
 
-float Vec3::len() const { return SDL_sqrtf(x * x + y * y + z * z); }
+float Vec3::len() const
+{
+  return SDL_sqrtf(x * x + y * y + z * z);
+}
 
-Vec3 Vec3::invert_signs() const { return Vec3(-x, -y, -z); }
+Vec3 Vec3::invert_signs() const
+{
+  return Vec3(-x, -y, -z);
+}
 
 void Vec3::clamp(float min, float max)
 {
@@ -59,16 +108,25 @@ void Vec3::clamp(float min, float max)
   z = ::clamp(z, min, max);
 }
 
-Vec3 Vec3::normalize() const { return scale(1.0f / len()); }
+Vec3 Vec3::normalize() const
+{
+  return scale(1.0f / len());
+}
 
-Vec2 Vec3::xz() const { return Vec2(x, z); }
+Vec2 Vec3::xz() const
+{
+  return Vec2(x, z);
+}
 
 Vec3 Vec3::mul_cross(const Vec3& rhs) const
 {
   return Vec3(y * rhs.z - z * rhs.y, z * rhs.x - x * rhs.z, x * rhs.y - y * rhs.x);
 }
 
-float Vec3::mul_inner(const Vec3& rhs) const { return (x * rhs.x) + (y * rhs.y) + (z * rhs.z); }
+float Vec3::mul_inner(const Vec3& rhs) const
+{
+  return (x * rhs.x) + (y * rhs.y) + (z * rhs.z);
+}
 
 Vec3 Vec3::lerp(const Vec3& dst, float t) const
 {
@@ -97,7 +155,10 @@ Vec4::Vec4(const Vec3& v, float w)
 {
 }
 
-float Vec4::mul_inner(const Vec4& rhs) const { return (x * rhs.x) + (y * rhs.y) + (z * rhs.z) + (w * rhs.w); }
+float Vec4::mul_inner(const Vec4& rhs) const
+{
+  return (x * rhs.x) + (y * rhs.y) + (z * rhs.z) + (w * rhs.w);
+}
 
 Vec4 Vec4::lerp(const Vec4& dst, float t) const
 {
@@ -111,11 +172,20 @@ Vec4 Vec4::lerp(const Vec4& dst, float t) const
   return r;
 }
 
-float Vec4::len() const { return SDL_sqrtf(x * x + y * y + z * z + w * w); }
+float Vec4::len() const
+{
+  return SDL_sqrtf(x * x + y * y + z * z + w * w);
+}
 
-Vec4 Vec4::normalize() const { return scale(1.0f / len()); }
+Vec4 Vec4::normalize() const
+{
+  return scale(1.0f / len());
+}
 
-Quaternion::Quaternion(const float angle, const Vec3& axis) { rotate(angle, axis); }
+Quaternion::Quaternion(const float angle, const Vec3& axis)
+{
+  rotate(angle, axis);
+}
 
 void Quaternion::rotate(const float angle, const Vec3& axis)
 {
@@ -142,7 +212,6 @@ Quaternion Quaternion::operator*(const Quaternion& rhs) const
 
 Mat4x4::Mat4x4(const float* data)
 {
-  //
   SDL_memcpy(reinterpret_cast<float*>(&columns[0].x), data, 16 * sizeof(float));
 }
 
@@ -186,7 +255,10 @@ void Mat4x4::identity()
     columns[i][i] = 1.0f;
 }
 
-void Mat4x4::scale(const Vec3 s) { set_diagonal(s); }
+void Mat4x4::scale(const Vec3 s)
+{
+  set_diagonal(s);
+}
 
 void Mat4x4::transpose()
 {
@@ -296,7 +368,10 @@ Mat4x4 Mat4x4::LookAt(const Vec3& eye, const Vec3& center, const Vec3& up)
   return r;
 }
 
-Vec4 Mat4x4::row(uint32_t i) const { return {columns[0][i], columns[1][i], columns[2][i], columns[3][i]}; }
+Vec4 Mat4x4::row(uint32_t i) const
+{
+  return {columns[0][i], columns[1][i], columns[2][i], columns[3][i]};
+}
 
 void Mat4x4::translate_in_place(const Vec3& v)
 {

@@ -1,7 +1,5 @@
 #include "example_level.hh"
-#include "game.hh"
 #include "materials.hh"
-#include "player.hh"
 #include <SDL2/SDL_events.h>
 #include <SDL2/SDL_stdinc.h>
 

@@ -8,13 +8,23 @@
 #endif
 
 #ifndef M_PI_2
-#define M_PI_2 (0.5f * M_PI)
+#define M_PI_2 1.57079632679489661923f
 #endif
 
-constexpr float to_rad(float deg) noexcept { return (float(M_PI) * deg) / 180.0f; }
-constexpr float to_deg(float rad) noexcept { return (180.0f * rad) / float(M_PI); }
+constexpr float to_rad(float deg) noexcept
+{
+  return (float(M_PI) * deg) / 180.0f;
+}
 
-template <typename T> constexpr T clamp(T val, T min, T max) { return (val < min) ? min : (val > max) ? max : val; }
+constexpr float to_deg(float rad) noexcept
+{
+  return (180.0f * rad) / float(M_PI);
+}
+
+template <typename T> constexpr T clamp(T val, T min, T max)
+{
+  return (val < min) ? min : (val > max) ? max : val;
+}
 
 struct Vec2
 {
@@ -25,8 +35,11 @@ struct Vec2
   {
   }
 
-  [[nodiscard]] Vec2  operator-(const Vec2& rhs) const;
-  [[nodiscard]] Vec2  operator+(const Vec2& rhs) const;
+  [[nodiscard]] Vec2 operator-(const Vec2& rhs) const;
+  [[nodiscard]] Vec2 operator+(const Vec2& rhs) const;
+  void               operator+=(const Vec2& rhs);
+  void               operator-=(const Vec2& rhs);
+
   [[nodiscard]] Vec2  scale(float s) const;
   [[nodiscard]] Vec2  scale(const Vec2& s) const;
   [[nodiscard]] float len() const;
@@ -54,7 +67,10 @@ struct Vec3
   [[nodiscard]] Vec3         lerp(const Vec3& dst, float t) const;
   [[nodiscard]] Vec3         mul_cross(const Vec3& rhs) const;
   [[nodiscard]] float        mul_inner(const Vec3& rhs) const;
-  [[nodiscard]] const float* data() const { return &x; }
+  [[nodiscard]] const float* data() const
+  {
+    return &x;
+  }
 
   void operator+=(const Vec3& rhs);
   void clamp(float min, float max);
@@ -70,16 +86,34 @@ struct Vec4
   Vec4(float x, float y, float z, float w);
   explicit Vec4(const Vec3& v, float w = 0.0f);
 
-  [[nodiscard]] inline Vec4         scale(float s) const { return Vec4(x * s, y * s, z * s, w * s); }
-  [[nodiscard]] inline Vec3&        as_vec3() { return *reinterpret_cast<Vec3*>(this); }
-  [[nodiscard]] inline const Vec3&  as_vec3() const { return *reinterpret_cast<const Vec3*>(this); }
-  [[nodiscard]] inline float&       operator[](uint32_t i) { return *(&x + i); }
-  [[nodiscard]] inline const float& operator[](uint32_t i) const { return *(&x + i); }
+  [[nodiscard]] inline Vec4 scale(float s) const
+  {
+    return Vec4(x * s, y * s, z * s, w * s);
+  }
+  [[nodiscard]] inline Vec3& as_vec3()
+  {
+    return *reinterpret_cast<Vec3*>(this);
+  }
+  [[nodiscard]] inline const Vec3& as_vec3() const
+  {
+    return *reinterpret_cast<const Vec3*>(this);
+  }
+  [[nodiscard]] inline float& operator[](uint32_t i)
+  {
+    return *(&x + i);
+  }
+  [[nodiscard]] inline const float& operator[](uint32_t i) const
+  {
+    return *(&x + i);
+  }
   [[nodiscard]] float               mul_inner(const Vec4& rhs) const;
   [[nodiscard]] Vec4                lerp(const Vec4& dst, float t) const;
   [[nodiscard]] float               len() const;
   [[nodiscard]] Vec4                normalize() const;
-  [[nodiscard]] inline const float* data() const { return reinterpret_cast<const float*>(&x); }
+  [[nodiscard]] inline const float* data() const
+  {
+    return reinterpret_cast<const float*>(&x);
+  }
 
   inline Vec4& operator+=(const Vec4& rhs)
   {
@@ -115,11 +149,20 @@ struct Mat4x4
 
   [[nodiscard]] Mat4x4              operator*(const Mat4x4& rhs) const;
   [[nodiscard]] Vec4                operator*(const Vec4& rhs) const;
-  [[nodiscard]] inline const float& at(uint32_t r, uint32_t c) const { return columns[c][r]; }
+  [[nodiscard]] inline const float& at(uint32_t r, uint32_t c) const
+  {
+    return columns[c][r];
+  }
   [[nodiscard]] Mat4x4              invert() const;
   [[nodiscard]] Vec4                row(uint32_t i) const;
-  [[nodiscard]] inline const float* data() const { return reinterpret_cast<const float*>(&columns[0].x); };
-  [[nodiscard]] Vec3                get_position() const { return columns[3].as_vec3(); }
+  [[nodiscard]] inline const float* data() const
+  {
+    return reinterpret_cast<const float*>(&columns[0].x);
+  };
+  [[nodiscard]] Vec3 get_position() const
+  {
+    return columns[3].as_vec3();
+  }
 
   void perspective(uint32_t width, uint32_t height, float fov_rads, float near_clipping_plane,
                    float far_clipping_plane);

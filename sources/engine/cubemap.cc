@@ -1,10 +1,16 @@
 #include "cubemap.hh"
 #include "../materials.hh"
+#include "aligned_push_consts.hh"
 #include <algorithm>
 
 static constexpr float calculate_mip_divisor(int mip_level)
 {
-  return mip_level ? SDL_powf(2, static_cast<float>(mip_level)) : 1.0f;
+  float result = 1.0f;
+  for (int i = 0; i < mip_level; ++i)
+  {
+    result *= 2.0f;
+  }
+  return result;
 }
 
 static void generate_cubemap_views(Mat4x4 views[6])
@@ -506,7 +512,7 @@ Texture generate_cubemap(Engine* engine, Materials* materials, const char* equir
       const Mat4x4 projectionview = projection * views[i];
 
       vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[i]);
-      vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Mat4x4), projectionview.data());
+      AlignedPushConsts(cmd, pipeline_layout).push(VK_SHADER_STAGE_VERTEX_BIT, projectionview);
 
       const Node& node = materials->box.nodes.data[1];
       Mesh&       mesh = materials->box.meshes.data[node.mesh];
@@ -522,24 +528,14 @@ Texture generate_cubemap(Engine* engine, Materials* materials, const char* equir
     vkCmdEndRenderPass(cmd);
     vkEndCommandBuffer(cmd);
 
-    VkFence image_generation_fence = VK_NULL_HANDLE;
-    {
-      VkFenceCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-      vkCreateFence(engine->device, &ci, nullptr, &image_generation_fence);
-    }
+    VkSubmitInfo submit = {
+        .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers    = &cmd,
+    };
 
-    {
-      VkSubmitInfo submit = {
-          .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-          .commandBufferCount = 1,
-          .pCommandBuffers    = &cmd,
-      };
-
-      vkQueueSubmit(engine->graphics_queue, 1, &submit, image_generation_fence);
-    }
-
-    vkWaitForFences(engine->device, 1, &image_generation_fence, VK_TRUE, UINT64_MAX);
-    vkDestroyFence(engine->device, image_generation_fence, nullptr);
+    vkQueueSubmit(engine->graphics_queue, 1, &submit, VK_NULL_HANDLE);
+    vkQueueWaitIdle(engine->graphics_queue);
   }
 
   // @todo: this is a leaked resource. We should destroy this at this point, but the pool must be correctly configured
@@ -995,7 +991,7 @@ Texture generate_irradiance_cubemap(Engine* engine, Materials* materials, Textur
 
       vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[i]);
       vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set, 0, nullptr);
-      vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Mat4x4), projectionview.data());
+      AlignedPushConsts(cmd, pipeline_layout).push(VK_SHADER_STAGE_VERTEX_BIT, projectionview);
 
       const Node& node = materials->box.nodes.data[1];
       Mesh&       mesh = materials->box.meshes.data[node.mesh];
@@ -1011,24 +1007,14 @@ Texture generate_irradiance_cubemap(Engine* engine, Materials* materials, Textur
     vkCmdEndRenderPass(cmd);
     vkEndCommandBuffer(cmd);
 
-    VkFence image_generation_fence = VK_NULL_HANDLE;
-    {
-      VkFenceCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-      vkCreateFence(engine->device, &ci, nullptr, &image_generation_fence);
-    }
+    VkSubmitInfo submit = {
+        .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers    = &cmd,
+    };
 
-    {
-      VkSubmitInfo submit = {
-          .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-          .commandBufferCount = 1,
-          .pCommandBuffers    = &cmd,
-      };
-
-      vkQueueSubmit(engine->graphics_queue, 1, &submit, image_generation_fence);
-    }
-
-    vkWaitForFences(engine->device, 1, &image_generation_fence, VK_TRUE, UINT64_MAX);
-    vkDestroyFence(engine->device, image_generation_fence, nullptr);
+    vkQueueSubmit(engine->graphics_queue, 1, &submit, VK_NULL_HANDLE);
+    vkQueueWaitIdle(engine->graphics_queue);
   }
 
   // todo: this is a leaked resource. We should destroy this at this point, but the pool must be correctly configured
@@ -1503,9 +1489,10 @@ Texture generate_prefiltered_cubemap(Engine* engine, Materials* materials, Textu
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[CUBE_SIDES * mip_level + cube_side]);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set, 0,
                                 nullptr);
-        vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Mat4x4), projectionview.data());
-        vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(Mat4x4), sizeof(float),
-                           &roughness);
+
+        AlignedPushConsts(cmd, pipeline_layout)
+            .push(VK_SHADER_STAGE_VERTEX_BIT, projectionview)
+            .push(VK_SHADER_STAGE_FRAGMENT_BIT, roughness);
 
         const Node& node = materials->box.nodes.data[1];
         Mesh&       mesh = materials->box.meshes.data[node.mesh];
@@ -1522,24 +1509,14 @@ Texture generate_prefiltered_cubemap(Engine* engine, Materials* materials, Textu
     }
     vkEndCommandBuffer(cmd);
 
-    VkFence image_generation_fence = VK_NULL_HANDLE;
-    {
-      VkFenceCreateInfo ci{.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-      vkCreateFence(engine->device, &ci, nullptr, &image_generation_fence);
-    }
+    VkSubmitInfo submit = {
+        .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers    = &cmd,
+    };
 
-    {
-      VkSubmitInfo submit = {
-          .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-          .commandBufferCount = 1,
-          .pCommandBuffers    = &cmd,
-      };
-
-      vkQueueSubmit(engine->graphics_queue, 1, &submit, image_generation_fence);
-    }
-
-    vkWaitForFences(engine->device, 1, &image_generation_fence, VK_TRUE, UINT64_MAX);
-    vkDestroyFence(engine->device, image_generation_fence, nullptr);
+    vkQueueSubmit(engine->graphics_queue, 1, &submit, VK_NULL_HANDLE);
+    vkQueueWaitIdle(engine->graphics_queue);
   }
 
   // todo: this is a leaked resource. We should destroy this at this point, but the pool must be correctly configured
@@ -1854,24 +1831,14 @@ Texture generate_brdf_lookup(Engine* engine, int size)
     vkCmdEndRenderPass(cmd);
     vkEndCommandBuffer(cmd);
 
-    VkFence image_generation_fence = VK_NULL_HANDLE;
-    {
-      VkFenceCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-      vkCreateFence(engine->device, &ci, nullptr, &image_generation_fence);
-    }
+    VkSubmitInfo submit = {
+        .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers    = &cmd,
+    };
 
-    {
-      VkSubmitInfo submit = {
-          .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-          .commandBufferCount = 1,
-          .pCommandBuffers    = &cmd,
-      };
-
-      vkQueueSubmit(engine->graphics_queue, 1, &submit, image_generation_fence);
-    }
-
-    vkWaitForFences(engine->device, 1, &image_generation_fence, VK_TRUE, UINT64_MAX);
-    vkDestroyFence(engine->device, image_generation_fence, nullptr);
+    vkQueueSubmit(engine->graphics_queue, 1, &submit, VK_NULL_HANDLE);
+    vkQueueWaitIdle(engine->graphics_queue);
   }
 
   vkDestroyPipeline(engine->device, pipeline, nullptr);
