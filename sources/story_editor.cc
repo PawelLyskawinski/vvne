@@ -533,6 +533,11 @@ void Data::imgui_update()
     SDL_Log("Saved file %s", default_script_file_name);
   }
 
+  if (ImGui::Button("1:1"))
+  {
+    editor_data.zoom = 1.0f;
+  }
+
   if (ImGui::BeginPopupContextWindow())
   {
     if (ImGui::BeginMenu("New node"))
