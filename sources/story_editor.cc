@@ -457,7 +457,31 @@ void Data::imgui_update()
 
     // @TODO draw only if on screen
 
-    draw_list->AddRectFilled(ul, br, render_params.bg.to_imgui(), 5.0f);
+    if (editor_data.is_showing_state)
+    {
+      const ImColor color_upcoming = ImColor(100, 100, 100);
+      const ImColor color_active   = ImColor(222, 215, 45);
+      const ImColor color_finished = ImColor(10, 220, 35);
+
+      const ImColor* selected_color = &color_upcoming;
+      switch (node_states[i])
+      {
+      case State::Upcoming:
+        selected_color = &color_upcoming;
+        break;
+      case State::Active:
+        selected_color = &color_active;
+        break;
+      case State::Finished:
+        selected_color = &color_finished;
+        break;
+      }
+      draw_list->AddRectFilled(ul, br, *selected_color, 5.0f);
+    }
+    else
+    {
+      draw_list->AddRectFilled(ul, br, render_params.bg.to_imgui(), 5.0f);
+    }
 
     if (editor_data.is_selected[i])
     {
@@ -517,27 +541,6 @@ void Data::imgui_update()
     draw_connection_bezier(draw_list, src_point, ImVec2(mouse.x, mouse.y), rainbow_color());
   }
 
-  if (ImGui::Button("Load"))
-  {
-    SDL_RWops* handle = SDL_RWFromFile(default_script_file_name, "rb");
-    load_from_handle(handle);
-    SDL_RWclose(handle);
-    SDL_Log("Loaded file %s", default_script_file_name);
-  }
-
-  if (ImGui::Button("Save"))
-  {
-    SDL_RWops* handle = SDL_RWFromFile(default_script_file_name, "wb");
-    save_to_handle(handle);
-    SDL_RWclose(handle);
-    SDL_Log("Saved file %s", default_script_file_name);
-  }
-
-  if (ImGui::Button("1:1"))
-  {
-    editor_data.zoom = 1.0f;
-  }
-
   if (ImGui::BeginPopupContextWindow())
   {
     if (ImGui::BeginMenu("New node"))
@@ -570,9 +573,42 @@ void Data::imgui_update()
       }
       ImGui::EndMenu();
     }
-    if (ImGui::MenuItem("Show Help"))
+
     {
+      auto to_state_string = [](bool state) { return state ? "Disable debugger" : "Enable debugger"; };
+      if (ImGui::MenuItem(to_state_string(editor_data.is_showing_state)))
+      {
+        editor_data.is_showing_state = !editor_data.is_showing_state;
+      }
     }
+
+    if (ImGui::MenuItem("Reset view"))
+    {
+      editor_data.zoom                     = 1.0f;
+      editor_data.blackboard_origin_offset = Vec2(0.0f, 0.0f);
+    }
+
+    if (ImGui::BeginMenu("Etc"))
+    {
+      if (ImGui::MenuItem("Load default"))
+      {
+        SDL_RWops* handle = SDL_RWFromFile(default_script_file_name, "rb");
+        load_from_handle(handle);
+        SDL_RWclose(handle);
+        SDL_Log("Loaded file %s", default_script_file_name);
+      }
+
+      if (ImGui::MenuItem("Save default"))
+      {
+        SDL_RWops* handle = SDL_RWFromFile(default_script_file_name, "wb");
+        save_to_handle(handle);
+        SDL_RWclose(handle);
+        SDL_Log("Saved file %s", default_script_file_name);
+      }
+
+      ImGui::EndMenu();
+    }
+
     ImGui::EndPopup();
   }
 

@@ -9,7 +9,8 @@
 
 namespace story {
 
-struct ClickedPositionTracker{
+struct ClickedPositionTracker
+{
   bool state         = false;
   Vec2 origin        = {};
   Vec2 offset        = {};
@@ -27,6 +28,9 @@ struct ClickedPositionTracker{
 
 struct Data;
 
+//
+// Development only data
+//
 struct EditorData
 {
   ClickedPositionTracker lmb = {};
@@ -50,6 +54,8 @@ struct EditorData
   Vec2*    positions_before_grab_movement = nullptr;
   uint8_t* is_selected                    = nullptr;
   bool     is_shift_pressed               = false;
+
+  bool is_showing_state = false;
 
   void handle_mouse_wheel(float val);
   void handle_mouse_motion(const Data& data, const Vec2& motion);
