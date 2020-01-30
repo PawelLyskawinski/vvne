@@ -69,7 +69,7 @@ set(SOURCES
         thirdparty/imgui_draw.cpp
         thirdparty/imgui_widgets.cpp
         thirdparty/sha256.cpp
-        )
+        sources/story.cc)
 
 if(WIN32)
 add_executable(${PROJECT_NAME} ${SOURCES} assets/applicationIcon.rc)
