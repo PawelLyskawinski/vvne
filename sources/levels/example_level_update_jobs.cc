@@ -1,5 +1,6 @@
 #include "engine/cascade_shadow_mapping.hh"
 #include "game.hh"
+#include "story_editor.hh"
 
 namespace {
 
@@ -264,6 +265,12 @@ void recalculate_csm_matrices(ThreadJobData tjd)
                                          ctx.game.player.camera_view, ctx.game.materials.light_source_position);
 }
 
+void story_job(ThreadJobData tjd)
+{
+    UpdateJob ctx(tjd, __FUNCTION__);
+    story::tick(tjd.allocator, ctx.game.story_data);
+}
+
 } // namespace
 
 Job* ExampleLevel::copy_update_jobs(Job* dst)
@@ -277,7 +284,8 @@ Job* ExampleLevel::copy_update_jobs(Job* dst)
       matrioshka_job,           //
       orientation_axis_job,     //
       gui_lines_generation_job, //
-      recalculate_csm_matrices  //
+      recalculate_csm_matrices, //
+      story_job
   };
   return std::copy(jobs, &jobs[SDL_arraysize(jobs)], dst);
 }

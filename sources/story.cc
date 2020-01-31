@@ -1,5 +1,4 @@
 #include "engine/allocators.hh"
-#include "engine/hierarchical_allocator.hh"
 #include "story_editor.hh"
 #include <algorithm>
 
@@ -38,6 +37,7 @@ bool update(Data& data, uint32_t entity_idx)
   switch (data.nodes[entity_idx])
   {
   case Node::Start:
+  case Node::Any:
     data.node_states[entity_idx] = State::Finished;
     return false;
   default:
@@ -47,10 +47,10 @@ bool update(Data& data, uint32_t entity_idx)
 
 } // namespace
 
-void tick(HierarchicalAllocator& allocator, Data& data)
+void tick(Stack& allocator, Data& data)
 {
   uint32_t  active_entites_capacity = 256;
-  uint32_t* active_entities         = allocator.allocate_threadsafe<uint32_t>(active_entites_capacity);
+  uint32_t* active_entities         = allocator.alloc<uint32_t>(active_entites_capacity);
   uint32_t  active_entities_count   = gather_active_entities(data.node_states, data.entity_count, active_entities);
 
   //
@@ -74,20 +74,29 @@ void tick(HierarchicalAllocator& allocator, Data& data)
 
     uint32_t* new_active              = active_entities + active_entities_count;
     uint32_t* new_active_accummulator = new_active;
+
     for (uint32_t connection_idx = 0; connection_idx < data.connections_count; ++connection_idx)
     {
       const Connection& c         = data.connections[connection_idx];
       auto              is_source = [c](uint32_t entity_idx) { return c.src_node_idx == entity_idx; };
       if (std::any_of(partition_point, partition_point + finished_count, is_source))
       {
-        *new_active_accummulator++ = c.dst_node_idx;
+        *new_active_accummulator++       = c.dst_node_idx;
+        data.node_states[c.dst_node_idx] = State::Active;
       }
     }
 
     if (new_active != new_active_accummulator)
     {
+      //
+      // [ A A F F F A_new A_new A_new ] --> [ A_new A_new A_new ]
+      //
       active_entities_count = std::distance(new_active, new_active_accummulator);
       std::copy(new_active, new_active_accummulator, active_entities);
+
+      //
+      // [ A_new A_new A_new ] --> [ A_new A_new A_new F_new F_new F_new ]
+      //
       partition_point = std::partition(active_entities, active_entities + active_entities_count, call_update);
       finished_count  = std::distance(partition_point, active_entities + active_entities_count);
     }
@@ -96,8 +105,6 @@ void tick(HierarchicalAllocator& allocator, Data& data)
       finished_count = 0;
     }
   }
-
-  allocator.free_threadsafe(active_entities, active_entites_capacity);
 }
 
 } // namespace story

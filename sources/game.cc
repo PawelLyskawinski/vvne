@@ -62,7 +62,6 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 {
   update_profiler.on_frame();
   render_profiler.on_frame();
-  ScopedPerfEvent perf_event(update_profiler, __PRETTY_FUNCTION__, 0);
 
   {
     bool      quit_requested = false;
@@ -134,6 +133,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     }
   }
 
+  ScopedPerfEvent perf_event(update_profiler, __PRETTY_FUNCTION__, 0);
   debug_gui.update(engine, *this);
   player.update(current_time_sec, time_delta_since_last_frame_ms, level);
   level.update(time_delta_since_last_frame_ms);

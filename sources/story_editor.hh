@@ -7,6 +7,8 @@
 #include <SDL2/SDL_events.h>
 #include <SDL2/SDL_stdinc.h>
 
+struct Stack;
+
 namespace story {
 
 struct ClickedPositionTracker
@@ -123,5 +125,7 @@ struct Data
   void push_connection(const Connection& conn);
   void dump_connections() const;
 };
+
+void tick(Stack& allocator, Data& data);
 
 } // namespace story
