@@ -84,12 +84,15 @@ struct EditorData
 //
 // [uint32_t] entities count
 // ... nodes[]
-// ... node_states[]
 // ... editor_data.positions[]
 // [uint32_t] target positions count
 // ... target_positions[]
 // [uint32_t] connections count
 // ... connections[]
+//
+// Q: Why aren't node_states serialized as well?
+// A: We want to game start from clean state to avoid any logic / world errors
+//    This means that only the first "Start" node will be set to "Active" at the start of the game.
 //
 
 struct Data

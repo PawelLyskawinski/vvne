@@ -258,7 +258,6 @@ void Data::load_from_handle(SDL_RWops* handle)
 
   s.deserialize(entity_count);
   s.deserialize(nodes, entity_count);
-  s.deserialize(node_states, entity_count);
   s.deserialize(editor_data.positions, entity_count);
   s.deserialize(target_positions_count);
   s.deserialize(target_positions, target_positions_count);
@@ -267,6 +266,11 @@ void Data::load_from_handle(SDL_RWops* handle)
 
   SDL_memcpy(editor_data.positions_before_grab_movement, editor_data.positions, sizeof(Vec2) * entity_count);
   SDL_memset(editor_data.is_selected, SDL_FALSE, sizeof(uint8_t) * entity_count);
+
+  std::fill(node_states, node_states + entity_count, State::Upcoming);
+  auto it = std::find(nodes, nodes + entity_count, Node::Start);
+  SDL_assert((nodes + entity_count) != it);
+  node_states[std::distance(nodes, it)] = State::Active;
 }
 
 void Data::save_to_handle(SDL_RWops* handle)
@@ -275,7 +279,6 @@ void Data::save_to_handle(SDL_RWops* handle)
 
   s.serialize(entity_count);
   s.serialize(nodes, entity_count);
-  s.serialize(node_states, entity_count);
   s.serialize(editor_data.positions, entity_count);
   s.serialize(target_positions_count);
   s.serialize(target_positions, target_positions_count);

@@ -9,16 +9,16 @@ namespace {
 template <typename T1, typename T2, typename TPredicate>
 uint32_t accumulate_indices(const T1* begin, const T1* end, T2* dst, TPredicate pred)
 {
-  const T2* dst_begin = dst;
+  T2* dst_begin = dst;
   for (const T1* it = begin; it != end; ++it)
   {
-    if (pred(*begin))
+    if (pred(*it))
     {
       *dst = static_cast<T2>(it - begin);
       dst += 1;
     }
   }
-  return static_cast<uint32_t>(dst - dst_begin);
+  return static_cast<uint32_t>(std::distance(dst_begin, dst));
 }
 
 uint32_t gather_active_entities(const State states[], uint32_t count, uint32_t* dst_indicies)
@@ -37,6 +37,8 @@ bool update(Data& data, uint32_t entity_idx)
   switch (data.nodes[entity_idx])
   {
   case Node::Start:
+    data.node_states[entity_idx] = State::Finished;
+    return false;
   case Node::Any:
     data.node_states[entity_idx] = State::Finished;
     return false;
@@ -77,9 +79,8 @@ void tick(Stack& allocator, Data& data)
 
     for (uint32_t connection_idx = 0; connection_idx < data.connections_count; ++connection_idx)
     {
-      const Connection& c         = data.connections[connection_idx];
-      auto              is_source = [c](uint32_t entity_idx) { return c.src_node_idx == entity_idx; };
-      if (std::any_of(partition_point, partition_point + finished_count, is_source))
+      const Connection& c = data.connections[connection_idx];
+      if (std::any_of(partition_point, partition_point + finished_count, [c](uint32_t entity_idx) { return c.src_node_idx == entity_idx; }))
       {
         *new_active_accummulator++       = c.dst_node_idx;
         data.node_states[c.dst_node_idx] = State::Active;
