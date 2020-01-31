@@ -127,6 +127,7 @@ struct Data
   void save_to_handle(SDL_RWops* handle);
   void push_connection(const Connection& conn);
   void dump_connections() const;
+  void reset_graph_state();
 };
 
 void tick(Stack& allocator, Data& data);

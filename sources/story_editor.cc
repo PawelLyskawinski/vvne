@@ -267,10 +267,7 @@ void Data::load_from_handle(SDL_RWops* handle)
   SDL_memcpy(editor_data.positions_before_grab_movement, editor_data.positions, sizeof(Vec2) * entity_count);
   SDL_memset(editor_data.is_selected, SDL_FALSE, sizeof(uint8_t) * entity_count);
 
-  std::fill(node_states, node_states + entity_count, State::Upcoming);
-  auto it = std::find(nodes, nodes + entity_count, Node::Start);
-  SDL_assert((nodes + entity_count) != it);
-  node_states[std::distance(nodes, it)] = State::Active;
+  reset_graph_state();
 }
 
 void Data::save_to_handle(SDL_RWops* handle)
@@ -408,6 +405,14 @@ void EditorData::recalculate_selection_box()
 static bool is_intersecting(const Vec2& a_ul, const Vec2& a_br, const Vec2& b_ul, const Vec2& b_br)
 {
   return (a_ul.x < b_br.x) and (a_br.x > b_ul.x) and (a_ul.y < b_br.y) and (a_br.y > b_ul.y);
+}
+
+void Data::reset_graph_state()
+{
+  std::fill(node_states, node_states + entity_count, State::Upcoming);
+  auto it = std::find(nodes, nodes + entity_count, Node::Start);
+  SDL_assert((nodes + entity_count) != it);
+  node_states[std::distance(nodes, it)] = State::Active;
 }
 
 void Data::imgui_update()
@@ -589,6 +594,11 @@ void Data::imgui_update()
     {
       editor_data.zoom                     = 1.0f;
       editor_data.blackboard_origin_offset = Vec2(0.0f, 0.0f);
+    }
+
+    if (ImGui::MenuItem("Reset graph state"))
+    {
+      reset_graph_state();
     }
 
     if (ImGui::BeginMenu("Etc"))
