@@ -84,13 +84,16 @@ void tick(HierarchicalAllocator& allocator, Data& data)
       }
     }
 
-    if(new_active != new_active_accummulator)
+    if (new_active != new_active_accummulator)
     {
-        // @todo
+      active_entities_count = std::distance(new_active, new_active_accummulator);
+      std::copy(new_active, new_active_accummulator, active_entities);
+      partition_point = std::partition(active_entities, active_entities + active_entities_count, call_update);
+      finished_count  = std::distance(partition_point, active_entities + active_entities_count);
     }
     else
     {
-        finished_count = 0;
+      finished_count = 0;
     }
   }
 
