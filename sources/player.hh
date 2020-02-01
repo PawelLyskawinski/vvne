@@ -21,6 +21,9 @@ struct Player
   float    camera_updown_angle;
   uint64_t internal_key_flags;
 
+  bool freecam_mode;
+  Vec3 freecam_position;
+
   void setup(uint32_t width, uint32_t height);
   void process_event(const SDL_Event& event);
   void update(float current_time_sec, float delta_ms, const ExampleLevel& level);

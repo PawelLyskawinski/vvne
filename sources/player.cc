@@ -34,14 +34,14 @@ void Player::setup(uint32_t width, uint32_t height)
   camera_angle        = static_cast<float>(M_PI / 2);
   camera_updown_angle = -1.2f;
   position            = Vec3(0.0f, 0.0f, -10.0f);
+  freecam_mode        = false;
 }
 
 void Player::process_event(const SDL_Event& event)
 {
   switch (event.type)
   {
-  case SDL_MOUSEMOTION:
-  {
+  case SDL_MOUSEMOTION: {
     if (SDL_GetRelativeMouseMode())
     {
       camera_angle = SDL_fmodf(camera_angle + (0.01f * event.motion.xrel), 2.0f * float(M_PI));
@@ -50,14 +50,16 @@ void Player::process_event(const SDL_Event& event)
   }
   break;
 
-  case SDL_KEYDOWN:
-  {
+  case SDL_KEYDOWN: {
     internal_key_flags |= scancode_to_mask(event.key.keysym.scancode);
+    if (SDL_SCANCODE_Y == event.key.keysym.scancode)
+    {
+      freecam_mode = !freecam_mode;
+    }
   }
   break;
 
-  case SDL_KEYUP:
-  {
+  case SDL_KEYUP: {
     internal_key_flags &= ~scancode_to_mask(event.key.keysym.scancode);
   }
   break;

@@ -13,9 +13,8 @@ VkCommandBuffer acquire_command_buffer(ThreadJobData& tjd)
   return ctx->engine->job_system.acquire(tjd.thread_id, ctx->game->image_index);
 }
 
-[[maybe_unused]]
-void render_skybox(VkCommandBuffer command, VkBuffer buffer, const Player& player, const Pipelines::Pair& pipe,
-                   const Materials& materials)
+[[maybe_unused]] void render_skybox(VkCommandBuffer command, VkBuffer buffer, const Player& player,
+                                    const Pipelines::Pair& pipe, const Materials& materials)
 {
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe.pipeline);
   vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe.layout, 0, 1, &materials.skybox_cubemap_dset,
@@ -234,8 +233,7 @@ void matrioshka_box(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-[[maybe_unused]]
-void vr_scene(ThreadJobData tjd)
+[[maybe_unused]] void vr_scene(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
@@ -415,6 +413,9 @@ void radar(ThreadJobData tjd)
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
+  if (ctx->game->player.freecam_mode)
+    return;
+
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
@@ -445,6 +446,9 @@ void robot_gui_lines(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+
+  if (ctx->game->player.freecam_mode)
+    return;
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
@@ -544,6 +548,9 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
+  if (ctx->game->player.freecam_mode)
+    return;
+
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
@@ -637,6 +644,9 @@ void robot_gui_speed_meter_triangle(ThreadJobData tjd)
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
+  if (ctx->game->player.freecam_mode)
+    return;
+
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
@@ -659,6 +669,9 @@ void height_ruler_text(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+
+  if (ctx->game->player.freecam_mode)
+    return;
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
@@ -759,6 +772,9 @@ void tilt_ruler_text(ThreadJobData tjd)
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
+  if (ctx->game->player.freecam_mode)
+    return;
+
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
@@ -849,6 +865,9 @@ void compass_text(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+
+  if (ctx->game->player.freecam_mode)
+    return;
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
@@ -1048,6 +1067,9 @@ void radar_dots(ThreadJobData tjd)
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
+  if (ctx->game->player.freecam_mode)
+    return;
+
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
@@ -1093,6 +1115,9 @@ void weapon_selectors_left(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+
+  if (ctx->game->player.freecam_mode)
+    return;
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
@@ -1230,6 +1255,9 @@ void weapon_selectors_right(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+
+  if (ctx->game->player.freecam_mode)
+    return;
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(command);
@@ -1618,8 +1646,7 @@ void water(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-[[maybe_unused]]
-void debug_shadowmap(ThreadJobData tjd)
+[[maybe_unused]] void debug_shadowmap(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
@@ -1674,8 +1701,7 @@ void debug_shadowmap(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-[[maybe_unused]]
-void orientation_axis(ThreadJobData tjd)
+[[maybe_unused]] void orientation_axis(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
