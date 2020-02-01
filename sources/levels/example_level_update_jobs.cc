@@ -13,17 +13,17 @@ void update_helmet(SimpleEntity& entity, const SceneGraph& scene_graph)
 
 Quaternion calculate_player_orientation(const Player& player)
 {
-  const float x_delta                 = player.position.x - player.camera_position.x;
-  const float z_delta                 = player.position.z - player.camera_position.z;
+  const float x_delta                 = player.position.x - player.camera.position.x;
+  const float z_delta                 = player.position.z - player.camera.position.z;
   const Vec2  velocity_vector         = player.velocity.xz();
   const float velocity_angle          = SDL_atan2f(velocity_vector.x, velocity_vector.y);
-  const float relative_velocity_angle = player.camera_angle - velocity_angle;
+  const float relative_velocity_angle = player.camera.angle - velocity_angle;
 
   const Vec2 corrected_velocity_vector =
       Vec2(SDL_cosf(relative_velocity_angle), SDL_sinf(relative_velocity_angle)).scale(velocity_vector.len());
 
   return Quaternion(to_rad(180.0), Vec3(1.0f, 0.0f, 0.0f)) *
-         Quaternion(player.position.x < player.camera_position.x ? to_rad(180.0f) : to_rad(0.0f),
+         Quaternion(player.position.x < player.camera.position.x ? to_rad(180.0f) : to_rad(0.0f),
                     Vec3(0.0f, 1.0f, 0.0f)) *
          Quaternion(static_cast<float>(SDL_atan(z_delta / x_delta)), Vec3(0.0f, 1.0f, 0.0f)) *
          Quaternion(8.0f * corrected_velocity_vector.x, Vec3(1.0f, 0.0f, 0.0f)) *
@@ -249,7 +249,7 @@ void gui_lines_generation_job(ThreadJobData tjd)
   GenerateGuiLinesCommand cmd = {
       .player_y_location_meters = -ctx.game.player.position.y,
       .camera_x_pitch_radians   = 0.0f, // to_rad(10) * SDL_sinf(current_time_sec), // simulating future strafe tilts,
-      .camera_y_pitch_radians   = ctx.game.player.camera_updown_angle,
+      .camera_y_pitch_radians   = ctx.game.player.get_camera().updown_angle,
   };
 
   generate_gui_lines(cmd, ctx.game.materials.gui_lines_memory_cache, MAX_ROBOT_GUI_LINES,

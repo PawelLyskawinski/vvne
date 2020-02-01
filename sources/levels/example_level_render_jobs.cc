@@ -286,7 +286,7 @@ void matrioshka_box(ThreadJobData tjd)
   ubo.projection      = ctx->game->player.camera_projection;
   ubo.view            = ctx->game->player.camera_view;
   ubo.model           = translation_matrix * rotation_matrix * scale_matrix;
-  ubo.camera_position = ctx->game->player.camera_position;
+  ubo.camera_position = ctx->game->player.get_camera().position;
 
   vkCmdPushConstants(command, ctx->engine->pipelines.scene3D.layout,
                      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ubo), &ubo);
@@ -707,8 +707,8 @@ void height_ruler_text(ThreadJobData tjd)
 
   GenerateGuiLinesCommand cmd = {
       .player_y_location_meters = -(2.0f - ctx->game->player.position.y),
-      .camera_x_pitch_radians   = ctx->game->player.camera_angle,
-      .camera_y_pitch_radians   = ctx->game->player.camera_updown_angle,
+      .camera_x_pitch_radians   = ctx->game->player.get_camera().angle,
+      .camera_y_pitch_radians   = ctx->game->player.get_camera().angle,
       .screen_extent2D          = ctx->engine->extent2D,
   };
 
@@ -805,8 +805,8 @@ void tilt_ruler_text(ThreadJobData tjd)
 
   GenerateGuiLinesCommand cmd = {
       .player_y_location_meters = -(2.0f - ctx->game->player.position.y),
-      .camera_x_pitch_radians   = ctx->game->player.camera_angle,
-      .camera_y_pitch_radians   = ctx->game->player.camera_updown_angle,
+      .camera_x_pitch_radians   = ctx->game->player.get_camera().angle,
+      .camera_y_pitch_radians   = ctx->game->player.get_camera().angle,
       .screen_extent2D          = ctx->engine->extent2D,
   };
 
@@ -898,7 +898,7 @@ void compass_text(ThreadJobData tjd)
 
   const float direction_increment = to_rad(22.5f);
 
-  float angle_mod = ctx->game->player.camera_angle + (0.5f * direction_increment);
+  float angle_mod = ctx->game->player.get_camera().angle + (0.5f * direction_increment);
   if (angle_mod > (2 * M_PI))
     angle_mod -= (2 * M_PI);
 
@@ -1093,7 +1093,7 @@ void radar_dots(ThreadJobData tjd)
   Vec2 normalized = distance.normalize();
 
   float      robot_angle     = SDL_atan2f(normalized.x, normalized.y);
-  float      angle           = ctx->game->player.camera_angle - robot_angle - ((float)M_PI / 2.0f);
+  float      angle           = ctx->game->player.get_camera().angle - robot_angle - ((float)M_PI / 2.0f);
   float      final_distance  = 0.005f * distance.len();
   float      aspect_ratio    = vertical_length / horizontal_length;
   const Vec2 helmet_position = {aspect_ratio * final_distance * SDL_sinf(angle), final_distance * SDL_cosf(angle)};
@@ -1625,7 +1625,7 @@ void water(ThreadJobData tjd)
                                           40.0f * static_cast<float>(i / 3) - 40.0f)) *
                  rotation_matrix * scale_matrix;
 
-    push.camPos = ctx->game->player.camera_position;
+    push.camPos = ctx->game->player.get_camera().position;
     push.time   = ctx->game->current_time_sec;
 
     vkCmdPushConstants(command, ctx->engine->pipelines.pbr_water.layout,
@@ -1748,7 +1748,7 @@ void tesselated_ground(ThreadJobData tjd)
   AlignedPushConsts(command, ctx->engine->pipelines.tesselated_ground.layout)
       .push(stages, ctx->game->player.camera_projection)
       .push(stages, ctx->game->player.camera_view)
-      .push(stages, ctx->game->player.camera_position)
+      .push(stages, ctx->game->player.get_camera().position)
       .push(stages, ctx->game->DEBUG_VEC2.x)
       .push(stages, ctx->game->current_time_sec);
 

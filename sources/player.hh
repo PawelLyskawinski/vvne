@@ -9,20 +9,27 @@
 
 struct ExampleLevel;
 
+struct Camera
+{
+  Vec3  position;
+  float angle;
+  float updown_angle;
+};
+
 struct Player
 {
   Vec3     position;
   Vec3     velocity;
   Vec3     acceleration;
-  Vec3     camera_position;
+  Camera   camera;
   Mat4x4   camera_projection;
   Mat4x4   camera_view;
-  float    camera_angle;
-  float    camera_updown_angle;
   uint64_t internal_key_flags;
 
-  bool freecam_mode;
-  Vec3 freecam_position;
+  Camera freecam_camera;
+  bool   freecam_mode;
+
+  [[nodiscard]] const Camera& get_camera() const;
 
   void setup(uint32_t width, uint32_t height);
   void process_event(const SDL_Event& event);
