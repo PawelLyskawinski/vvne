@@ -1,4 +1,5 @@
 #include "story_editor.hh"
+#include "color_palette.hh"
 #include "imgui.h"
 #include <SDL2/SDL_log.h>
 #include <algorithm>
@@ -14,25 +15,10 @@ constexpr float    offset_from_top          = 25.0f;
 constexpr float    dot_size                 = 5.0f;
 const char*        default_script_file_name = "default_story_script.bin";
 
-struct Color
-{
-  int r = 0;
-  int g = 0;
-  int b = 0;
-  int a = 0;
-
-  [[nodiscard]] ImColor to_imgui() const
-  {
-    return ImColor(r, g, b, a);
-  }
-};
-
 struct NodeBox
 {
   const char* name = "";
   Vec2        size;
-  Color       bg;
-  Color       font;
   uint32_t    inputs_count;
   uint32_t    outputs_count;
 };
@@ -40,8 +26,6 @@ struct NodeBox
 constexpr NodeBox StartBox = {
     .name          = "Start",
     .size          = Vec2(120.0f, 80.0f),
-    .bg            = {80, 106, 137, 220},
-    .font          = {255, 255, 255, 255},
     .inputs_count  = 0,
     .outputs_count = 1,
 };
@@ -49,8 +33,6 @@ constexpr NodeBox StartBox = {
 constexpr NodeBox GoToBox = {
     .name          = "GoTo",
     .size          = Vec2(120.0f, 80.0f),
-    .bg            = {80, 106, 137, 220},
-    .font          = {255, 255, 255, 255},
     .inputs_count  = 1,
     .outputs_count = 1,
 };
@@ -58,8 +40,6 @@ constexpr NodeBox GoToBox = {
 constexpr NodeBox AllBox = {
     .name          = "All",
     .size          = Vec2(120.0f, 80.0f),
-    .bg            = {255, 10, 10, 220},
-    .font          = {255, 255, 255, 255},
     .inputs_count  = 1,
     .outputs_count = 1,
 };
@@ -67,8 +47,6 @@ constexpr NodeBox AllBox = {
 constexpr NodeBox AnyBox = {
     .name          = "Any",
     .size          = Vec2(120.0f, 80.0f),
-    .bg            = {80, 106, 137, 220},
-    .font          = {255, 255, 255, 255},
     .inputs_count  = 1,
     .outputs_count = 1,
 };
@@ -105,49 +83,17 @@ void add_horizontal_line(ImDrawList* draw_list, float x_left, float y, float len
   draw_list->AddLine(ImVec2(x_left, y), ImVec2(x_left + length, y), color);
 }
 
-void draw_background_grid(ImDrawList* draw_list, ImVec2 size, ImVec2 position, ImVec2 offset, float grid)
-{
-  const ImColor  grid_line_color        = ImColor(0.5f, 0.5f, 0.5f, 0.2f);
-  const uint32_t vertical_lines_count   = size.x / grid;
-  const uint32_t horizontal_lines_count = size.y / grid;
-
-  position.y += offset_from_top;
-
-  for (uint32_t i = 0; i < vertical_lines_count; ++i)
-  {
-    float x = SDL_fmodf(offset.x + grid * i, grid * vertical_lines_count);
-    while (x < 0.0f)
-    {
-      x += grid * vertical_lines_count;
-    }
-    add_vertical_line(draw_list, x + position.x, position.y, size.y, grid_line_color);
-  }
-
-  for (uint32_t i = 0; i < horizontal_lines_count; ++i)
-  {
-    float y = SDL_fmodf(offset.y + grid * i, grid * horizontal_lines_count);
-    while (y < 0.0f)
-    {
-      y += grid * horizontal_lines_count;
-    }
-    add_horizontal_line(draw_list, position.x, y + position.y, size.x, grid_line_color);
-  }
-
-  const ImVec2 center_pos = {position.x + offset.x, position.y + offset.y};
-  draw_list->AddCircleFilled(center_pos, 5.0, ImColor(0.1f, 0.2f, 0.6f, 1.0f));
-}
-
-[[nodiscard]] bool is_point_enclosed(const Vec2& ul, const Vec2& br, const Vec2& pt)
+bool is_point_enclosed(const Vec2& ul, const Vec2& br, const Vec2& pt)
 {
   return (ul.x <= pt.x) && (br.x >= pt.x) && (ul.y <= pt.y) && (br.y >= pt.y);
 }
 
-[[nodiscard]] Vec2 to_vec2(const SDL_MouseMotionEvent& event)
+Vec2 to_vec2(const SDL_MouseMotionEvent& event)
 {
   return Vec2(static_cast<float>(event.x), static_cast<float>(event.y));
 }
 
-[[nodiscard]] Vec2 get_mouse_state()
+Vec2 get_mouse_state()
 {
   int x = 0;
   int y = 0;
@@ -220,6 +166,9 @@ void Data::init(HierarchicalAllocator& allocator)
 
   editor_data.zoom = 1.0f;
   node_states[0]   = State::Active;
+
+  editor_data.palette_default  = Palette::generate_happyhue_13();
+  editor_data.palette_debugger = Palette::generate_happyhue_3();
 }
 
 struct FileOps
@@ -407,6 +356,24 @@ static bool is_intersecting(const Vec2& a_ul, const Vec2& a_br, const Vec2& b_ul
   return (a_ul.x < b_br.x) and (a_br.x > b_ul.x) and (a_ul.y < b_br.y) and (a_br.y > b_ul.y);
 }
 
+const char* state_to_string(State state)
+{
+  switch (state)
+  {
+  case State::Upcoming:
+    return "Upcoming";
+  case State::Active:
+    return "Active";
+  case State::Finished:
+    return "Finished";
+  }
+}
+
+static ImColor to_imgui(const Palette::RGB& rgb, int alpha)
+{
+  return {rgb.r, rgb.g, rgb.b, alpha};
+}
+
 void Data::reset_graph_state()
 {
   std::fill(node_states, node_states + entity_count, State::Upcoming);
@@ -418,17 +385,54 @@ void Data::reset_graph_state()
 void Data::imgui_update()
 {
   ImDrawList* draw_list = ImGui::GetWindowDrawList();
-  draw_background_grid(draw_list, ImGui::GetWindowSize(), ImGui::GetWindowPos(),
-                       to_imvec2(editor_data.calc_blackboard_offset().scale(editor_data.zoom)),
-                       32.0f * editor_data.zoom);
 
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  // Background grid rendering
+  //
+  //////////////////////////////////////////////////////////////////////////////
+  {
+    ImVec2         size                   = ImGui::GetWindowSize();
+    ImVec2         position               = ImGui::GetWindowPos();
+    ImVec2         offset                 = to_imvec2(editor_data.calc_blackboard_offset().scale(editor_data.zoom));
+    float          grid                   = 32.0f * editor_data.zoom;
+    ImColor        grid_line_color        = to_imgui(editor_data.get_palette().background, 120);
+    const uint32_t vertical_lines_count   = size.x / grid;
+    const uint32_t horizontal_lines_count = size.y / grid;
+
+    position.y += offset_from_top;
+
+    for (uint32_t i = 0; i < vertical_lines_count; ++i)
+    {
+      float x = SDL_fmodf(offset.x + grid * i, grid * vertical_lines_count);
+      while (x < 0.0f)
+      {
+        x += grid * vertical_lines_count;
+      }
+      add_vertical_line(draw_list, x + position.x, position.y, size.y, grid_line_color);
+    }
+
+    for (uint32_t i = 0; i < horizontal_lines_count; ++i)
+    {
+      float y = SDL_fmodf(offset.y + grid * i, grid * horizontal_lines_count);
+      while (y < 0.0f)
+      {
+        y += grid * horizontal_lines_count;
+      }
+      add_horizontal_line(draw_list, position.x, y + position.y, size.x, grid_line_color);
+    }
+
+    const ImVec2 center_pos = {position.x + offset.x, position.y + offset.y};
+    draw_list->AddCircleFilled(center_pos, 5.0, ImColor(0.1f, 0.2f, 0.6f, 1.0f));
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  // Calculating which elements are selected by selection box
+  //
+  //////////////////////////////////////////////////////////////////////////////
   if (editor_data.is_selection_box_active())
   {
-    //
-    // Correct selection box corner coordinates
-    // need to be calculated at the start of the function because we want to check if the story node is currently in it.
-    //
-
     editor_data.recalculate_selection_box();
     SDL_memset(editor_data.is_selected, SDL_FALSE, entity_count);
 
@@ -448,6 +452,23 @@ void Data::imgui_update()
     }
   }
 
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  // Precaching color values
+  //
+  //////////////////////////////////////////////////////////////////////////////
+
+  const ImColor color_upcoming = to_imgui(editor_data.palette_debugger.paragraph, 255);
+  const ImColor color_active   = to_imgui(editor_data.palette_debugger.tertiary, 255);
+  const ImColor color_finished = to_imgui(editor_data.palette_debugger.button, 255);
+  const ImColor color_regular  = to_imgui(editor_data.palette_default.secondary, 255);
+  const ImColor color_special  = to_imgui(editor_data.palette_default.tertiary, 255);
+
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  // Story node rendering
+  //
+  //////////////////////////////////////////////////////////////////////////////
   for (uint32_t i = 0; i < entity_count; ++i)
   {
     const NodeBox&  render_params = select(nodes[i]);
@@ -460,17 +481,14 @@ void Data::imgui_update()
     if (editor_data.is_selected[i])
     {
       const Vec2& position = editor_data.positions[i];
-      ImGui::Text("selected: %s entity index: %u position: [%.2f %.2f]", render_params.name, i, position.x, position.y);
+      ImGui::Text("selected: %s entity index: %u position: [%.2f %.2f] state: %s", render_params.name, i, position.x,
+                  position.y, state_to_string(node_states[i]));
     }
 
     // @TODO draw only if on screen
 
     if (editor_data.is_showing_state)
     {
-      const ImColor color_upcoming = ImColor(100, 100, 100);
-      const ImColor color_active   = ImColor(222, 215, 45);
-      const ImColor color_finished = ImColor(10, 220, 35);
-
       const ImColor* selected_color = &color_upcoming;
       switch (node_states[i])
       {
@@ -488,7 +506,17 @@ void Data::imgui_update()
     }
     else
     {
-      draw_list->AddRectFilled(ul, br, render_params.bg.to_imgui(), 5.0f);
+      const ImColor* selected_color = &color_upcoming;
+      switch (nodes[i])
+      {
+      case Node::GoTo:
+        selected_color = &color_special;
+        break;
+      default:
+        selected_color = &color_regular;
+        break;
+      }
+      draw_list->AddRectFilled(ul, br, *selected_color, 5.0f);
     }
 
     if (editor_data.is_selected[i])
@@ -503,17 +531,19 @@ void Data::imgui_update()
     if (0.3f < editor_data.zoom)
     {
       const ImVec2 ul_text = ImVec2(ul.x + 5.0f, ul.y + 5.0f);
-      draw_list->AddText(ul_text, render_params.font.to_imgui(), render_params.name);
+      draw_list->AddText(ul_text, to_imgui(editor_data.get_palette().button_text, 255), render_params.name);
     }
 
     for (uint32_t i = 0; i < render_params.inputs_count; ++i)
     {
-      draw_connection_dot(draw_list, box.calculate_input_dot_position(render_params, i), dot_size * editor_data.zoom);
+      draw_list->AddCircleFilled(box.calculate_input_dot_position(render_params, i), dot_size * editor_data.zoom,
+                                 to_imgui(editor_data.get_palette().paragraph, 200));
     }
 
     for (uint32_t i = 0; i < render_params.outputs_count; ++i)
     {
-      draw_connection_dot(draw_list, box.calculate_output_dot_position(render_params, i), dot_size * editor_data.zoom);
+      draw_list->AddCircleFilled(box.calculate_output_dot_position(render_params, i), dot_size * editor_data.zoom,
+                                 to_imgui(editor_data.get_palette().paragraph, 200));
     }
   }
 
@@ -531,7 +561,8 @@ void Data::imgui_update()
 
     draw_connection_bezier(draw_list,
                            src_box.calculate_output_dot_position(src_render_params, connection.src_output_idx),
-                           dst_box.calculate_input_dot_position(dst_render_params, connection.dst_input_idx));
+                           dst_box.calculate_input_dot_position(dst_render_params, connection.dst_input_idx),
+                           to_imgui(editor_data.get_palette().paragraph, 200));
   }
 
   if (editor_data.connection_building_active)

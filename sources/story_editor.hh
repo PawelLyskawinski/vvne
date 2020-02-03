@@ -1,5 +1,6 @@
 #pragma once
 
+#include "color_palette.hh"
 #include "engine/hierarchical_allocator.hh"
 #include "engine/math.hh"
 #include "story_components.hh"
@@ -56,8 +57,15 @@ struct EditorData
   Vec2*    positions_before_grab_movement = nullptr;
   uint8_t* is_selected                    = nullptr;
   bool     is_shift_pressed               = false;
+  bool     is_showing_state               = false;
 
-  bool is_showing_state = false;
+  Palette palette_default = {};
+  Palette palette_debugger = {};
+
+  const Palette& get_palette()
+  {
+    return is_showing_state ? palette_debugger : palette_default;
+  }
 
   void handle_mouse_wheel(float val);
   void handle_mouse_motion(const Data& data, const Vec2& motion);

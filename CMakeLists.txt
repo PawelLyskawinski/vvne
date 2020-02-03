@@ -65,11 +65,14 @@ set(SOURCES
         sources/debug_gui.cc
         sources/story_editor.cc
         sources/story_editor.hh
+        sources/story.cc
+        sources/color_palette.hh
+        sources/color_palette.cc
         thirdparty/imgui.cpp
         thirdparty/imgui_draw.cpp
         thirdparty/imgui_widgets.cpp
         thirdparty/sha256.cpp
-        sources/story.cc)
+        )
 
 if(WIN32)
 add_executable(${PROJECT_NAME} ${SOURCES} assets/applicationIcon.rc)
