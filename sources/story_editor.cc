@@ -366,6 +366,8 @@ const char* state_to_string(State state)
     return "Active";
   case State::Finished:
     return "Finished";
+  default:
+    return "N/A";
   }
 }
 
@@ -910,18 +912,21 @@ void Data::editor_update(const SDL_Event& event)
 {
   switch (event.type)
   {
-  case SDL_MOUSEWHEEL: {
+  case SDL_MOUSEWHEEL:
+  {
     if ((not editor_data.mmb.state) and (0.0f != event.wheel.y))
     {
       editor_data.handle_mouse_wheel((0 > event.wheel.y) ? -0.05f : 0.05f);
     }
   }
   break;
-  case SDL_MOUSEMOTION: {
+  case SDL_MOUSEMOTION:
+  {
     editor_data.handle_mouse_motion(*this, to_vec2(event.motion));
   }
   break;
-  case SDL_MOUSEBUTTONDOWN: {
+  case SDL_MOUSEBUTTONDOWN:
+  {
     switch (event.button.button)
     {
     case SDL_BUTTON_LEFT:
@@ -942,7 +947,8 @@ void Data::editor_update(const SDL_Event& event)
     }
   }
   break;
-  case SDL_MOUSEBUTTONUP: {
+  case SDL_MOUSEBUTTONUP:
+  {
     switch (event.button.button)
     {
     case SDL_BUTTON_LEFT:

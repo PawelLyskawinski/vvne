@@ -6,8 +6,7 @@
 
 namespace {
 
-//constexpr
-int to_number(const char *v)
+constexpr int to_number(const char *v)
 {
   auto char_to_number = [](char c) {
     if (('0' <= c) && ('9' >= c))
@@ -22,8 +21,7 @@ int to_number(const char *v)
   return (char_to_number(v[0])) * 16 + char_to_number(v[1]);
 }
 
-//constexpr
-Palette::RGB to_RGB(const char* str)
+constexpr Palette::RGB to_RGB(const char* str)
 {
   return {to_number(&str[1]), to_number(&str[3]), to_number(&str[5])};
 }
