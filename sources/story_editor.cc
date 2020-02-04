@@ -398,7 +398,7 @@ void Data::imgui_update()
     ImVec2         position               = ImGui::GetWindowPos();
     ImVec2         offset                 = to_imvec2(editor_data.calc_blackboard_offset().scale(editor_data.zoom));
     float          grid                   = 32.0f * editor_data.zoom;
-    ImColor        grid_line_color        = to_imgui(editor_data.get_palette().background, 120);
+    ImColor        grid_line_color        = to_imgui(editor_data.palette_default.background, 80);
     const uint32_t vertical_lines_count   = size.x / grid;
     const uint32_t horizontal_lines_count = size.y / grid;
 
@@ -460,11 +460,11 @@ void Data::imgui_update()
   //
   //////////////////////////////////////////////////////////////////////////////
 
-  const ImColor color_upcoming = to_imgui(editor_data.palette_debugger.paragraph, 255);
-  const ImColor color_active   = to_imgui(editor_data.palette_debugger.tertiary, 255);
-  const ImColor color_finished = to_imgui(editor_data.palette_debugger.button, 255);
-  const ImColor color_regular  = to_imgui(editor_data.palette_default.secondary, 255);
-  const ImColor color_special  = to_imgui(editor_data.palette_default.tertiary, 255);
+  const ImColor color_upcoming = to_imgui(editor_data.palette_debugger.paragraph, 170);
+  const ImColor color_active   = to_imgui(editor_data.palette_debugger.tertiary, 170);
+  const ImColor color_finished = to_imgui(editor_data.palette_debugger.button, 170);
+  const ImColor color_regular  = to_imgui(editor_data.palette_default.secondary, 170);
+  const ImColor color_special  = to_imgui(editor_data.palette_default.tertiary, 170);
 
   //////////////////////////////////////////////////////////////////////////////
   //
@@ -564,7 +564,7 @@ void Data::imgui_update()
     draw_connection_bezier(draw_list,
                            src_box.calculate_output_dot_position(src_render_params, connection.src_output_idx),
                            dst_box.calculate_input_dot_position(dst_render_params, connection.dst_input_idx),
-                           to_imgui(editor_data.get_palette().paragraph, 200));
+                           to_imgui(editor_data.get_palette().paragraph, 180));
   }
 
   if (editor_data.connection_building_active)
