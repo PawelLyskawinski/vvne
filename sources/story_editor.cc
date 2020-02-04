@@ -690,11 +690,6 @@ void EditorData::handle_mouse_motion(const Data& data, const Vec2& motion)
   }
 }
 
-bool operator==(const Connection& lhs, const Connection& rhs)
-{
-  return (lhs.src_node_idx == rhs.src_node_idx) and (lhs.src_output_idx == rhs.src_output_idx) and
-         (lhs.dst_input_idx == rhs.dst_input_idx) and (lhs.dst_node_idx == rhs.dst_node_idx);
-}
 
 void Data::push_connection(const Connection& new_connection)
 {

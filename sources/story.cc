@@ -1,5 +1,8 @@
+#include "story.hh"
 #include "engine/allocators.hh"
+#include "engine/fileops.hh"
 #include "story_editor.hh"
+#include <SDL2/SDL_log.h>
 #include <algorithm>
 
 namespace story {
@@ -42,6 +45,8 @@ bool update(Data& data, uint32_t entity_idx)
   case Node::Any:
     data.node_states[entity_idx] = State::Finished;
     return false;
+  // case Node::GoTo:
+  // return false;
   default:
     return true;
   }
@@ -80,7 +85,8 @@ void tick(Stack& allocator, Data& data)
     for (uint32_t connection_idx = 0; connection_idx < data.connections_count; ++connection_idx)
     {
       const Connection& c = data.connections[connection_idx];
-      if (std::any_of(partition_point, partition_point + finished_count, [c](uint32_t entity_idx) { return c.src_node_idx == entity_idx; }))
+      if (std::any_of(partition_point, partition_point + finished_count,
+                      [c](uint32_t entity_idx) { return c.src_node_idx == entity_idx; }))
       {
         *new_active_accummulator++       = c.dst_node_idx;
         data.node_states[c.dst_node_idx] = State::Active;
@@ -106,6 +112,90 @@ void tick(Stack& allocator, Data& data)
       finished_count = 0;
     }
   }
+}
+
+// ---------------------------------------------
+// REFACTORING
+// ---------------------------------------------
+
+void Story::setup(HierarchicalAllocator& allocator)
+{
+  nodes            = allocator.allocate<Node>(entities_capacity);
+  node_states      = allocator.allocate<State>(entities_capacity);
+  target_positions = allocator.allocate<TargetPosition>(components_capacity);
+  connections      = allocator.allocate<Connection>(connections_capacity);
+}
+
+void Story::teardown(HierarchicalAllocator& allocator)
+{
+  allocator.free(nodes, entities_capacity);
+  allocator.free(node_states, entities_capacity);
+  allocator.free(target_positions, components_capacity);
+  allocator.free(connections, connections_capacity);
+}
+
+void Story::load(SDL_RWops* handle)
+{
+  FileOps s(handle);
+
+  s.deserialize(entity_count);
+  s.deserialize(nodes, entity_count);
+  s.deserialize(target_positions_count);
+  s.deserialize(target_positions, target_positions_count);
+  s.deserialize(connections_count);
+  s.deserialize(connections, connections_count);
+
+  reset_graph_state();
+}
+
+void Story::save(SDL_RWops* handle)
+{
+  FileOps s(handle);
+
+  s.serialize(entity_count);
+  s.serialize(nodes, entity_count);
+  s.serialize(target_positions_count);
+  s.serialize(target_positions, target_positions_count);
+  s.serialize(connections_count);
+  s.serialize(connections, connections_count);
+}
+
+void Story::push_connection(const Connection& new_connection)
+{
+  Connection* connections_end = &connections[connections_count];
+  auto        it              = std::find(connections, connections_end, new_connection);
+
+  if (connections_end != it)
+  {
+    std::rotate(it, it + 1, connections_end);
+    --connections_count;
+  }
+  else
+  {
+    *connections_end = new_connection;
+    connections_count += 1;
+  }
+}
+
+void Story::dump_connections() const
+{
+  std::for_each(connections, connections + connections_count, [](const Connection& c) {
+    SDL_Log("src_node_idx: %u, src_output_idx: %u, dst_input_idx: %u, dst_node_idx: %u", c.src_node_idx,
+            c.src_output_idx, c.dst_input_idx, c.dst_node_idx);
+  });
+}
+
+void Story::reset_graph_state()
+{
+  std::fill(node_states, node_states + entity_count, State::Upcoming);
+  auto it = std::find(nodes, nodes + entity_count, Node::Start);
+  SDL_assert((nodes + entity_count) != it);
+  node_states[std::distance(nodes, it)] = State::Active;
+}
+
+void Story::tick(Stack& allocator)
+{
+  (void)allocator;
 }
 
 } // namespace story
