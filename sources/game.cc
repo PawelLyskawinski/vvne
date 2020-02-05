@@ -22,7 +22,7 @@ void Game::startup(Engine& engine)
   update_profiler.skip_frames = 5;
   render_profiler.skip_frames = 5;
 
-  story_data.init(engine.generic_allocator);
+  story.setup(engine.generic_allocator);
 
   DEBUG_VEC2.x = 0.1f;
   DEBUG_VEC2.y = -1.0f;

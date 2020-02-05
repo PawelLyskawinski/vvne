@@ -29,6 +29,14 @@ struct Story
   void dump_connections() const;
   void reset_graph_state();
   void tick(Stack& allocator);
+
+private:
+  //
+  // Returns:
+  // true  - node still active
+  // false - node finished executing
+  //
+  bool update(uint32_t entity_idx);
 };
 
 } // namespace story

@@ -44,15 +44,14 @@ set(SOURCES
         sources/engine/gpu_memory_allocator.cc
         sources/engine/gpu_memory_visualizer.cc
         sources/engine/cascade_shadow_mapping.cc
-        sources/engine/cascade_shadow_mapping.hh
         sources/engine/job_system.cc
+        sources/engine/gltf.cc
+        sources/engine/cubemap.cc
         sources/engine/math.cc
         sources/game.cc
         sources/game_generate_gui_lines.cc
         sources/game_generate_sdf_font.cc
         sources/game_render_entity.cc
-        sources/engine/gltf.cc
-        sources/engine/cubemap.cc
         sources/simple_entity.cc
         sources/player.cc
         sources/terrain_as_a_function.cc
@@ -64,15 +63,13 @@ set(SOURCES
         sources/materials.cc
         sources/debug_gui.cc
         sources/story_editor.cc
-        sources/story_editor.hh
         sources/story.cc
-        sources/color_palette.hh
         sources/color_palette.cc
         thirdparty/imgui.cpp
         thirdparty/imgui_draw.cpp
         thirdparty/imgui_widgets.cpp
         thirdparty/sha256.cpp
-        sources/story.hh sources/engine/fileops.hh)
+        )
 
 if(WIN32)
 add_executable(${PROJECT_NAME} ${SOURCES} assets/applicationIcon.rc)

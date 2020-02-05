@@ -268,7 +268,7 @@ void recalculate_csm_matrices(ThreadJobData tjd)
 void story_job(ThreadJobData tjd)
 {
     UpdateJob ctx(tjd, __FUNCTION__);
-    story::tick(tjd.allocator, ctx.game.story_data);
+    ctx.game.story.tick(tjd.allocator);
 }
 
 } // namespace

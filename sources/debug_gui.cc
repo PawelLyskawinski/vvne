@@ -162,7 +162,7 @@ void DebugGui::process_event(Game& game, SDL_Event& event)
 
   if (story_editor_tab_selected)
   {
-    game.story_data.editor_update(event);
+    game.story.editor_update(event);
   }
 }
 
@@ -377,7 +377,7 @@ void DebugGui::update(Engine& engine, Game& game)
       story_editor_tab_selected = ImGui::BeginTabItem("Story Editor");
       if (story_editor_tab_selected)
       {
-          game.story_data.imgui_update();
+        game.story.imgui_update();
         ImGui::EndTabItem();
       }
       if (ImGui::BeginTabItem("Profiler"))
