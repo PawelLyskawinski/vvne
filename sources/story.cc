@@ -1,7 +1,6 @@
 #include "story.hh"
 #include "engine/allocators.hh"
 #include "engine/fileops.hh"
-#include "story_editor.hh"
 #include <SDL2/SDL_log.h>
 #include <algorithm>
 
@@ -30,37 +29,7 @@ uint32_t gather_active_entities(const State states[], uint32_t count, uint32_t* 
   return accumulate_indices(states, states + count, dst_indicies, is_active);
 }
 
-//
-// Returns:
-// true  - node still active
-// false - node finished executing
-//
-bool update(Data& data, uint32_t entity_idx)
-{
-  switch (data.nodes[entity_idx])
-  {
-  case Node::Start:
-    data.node_states[entity_idx] = State::Finished;
-    return false;
-  case Node::Any:
-    data.node_states[entity_idx] = State::Finished;
-    return false;
-  // case Node::GoTo:
-  // return false;
-  default:
-    return true;
-  }
-}
-
 } // namespace
-
-void tick(Stack& allocator, Data& data)
-{
-}
-
-// ---------------------------------------------
-// REFACTORING
-// ---------------------------------------------
 
 void Story::setup(HierarchicalAllocator& allocator)
 {
