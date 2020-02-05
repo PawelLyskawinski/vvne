@@ -27,7 +27,7 @@ struct SkinningUbo
 RenderEntityParams::RenderEntityParams(const Player& p)
     : projection(p.camera_projection)
     , view(p.camera_view)
-    , camera_position(p.camera_position)
+    , camera_position(p.get_camera().position)
 {
 }
 

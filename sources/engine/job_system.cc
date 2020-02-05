@@ -1,5 +1,6 @@
 #include "job_system.hh"
 #include "allocators.hh"
+#include "literals.hh"
 #include <algorithm>
 
 namespace {
@@ -140,7 +141,7 @@ void JobSystem::worker_loop()
     SDL_SemPost(all_threads_idle_signal);
   }
 
-  Stack allocator(1024);
+  Stack allocator(256_KB);
 
   SDL_LockMutex(new_jobs_available_mutex);
   while (not thread_end_requested)

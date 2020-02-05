@@ -22,7 +22,7 @@ void Game::startup(Engine& engine)
   update_profiler.skip_frames = 5;
   render_profiler.skip_frames = 5;
 
-  story_data.init(engine.generic_allocator);
+  story.setup(engine.generic_allocator);
 
   DEBUG_VEC2.x = 0.1f;
   DEBUG_VEC2.y = -1.0f;
@@ -62,7 +62,6 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 {
   update_profiler.on_frame();
   render_profiler.on_frame();
-  ScopedPerfEvent perf_event(update_profiler, __PRETTY_FUNCTION__, 0);
 
   {
     bool      quit_requested = false;
@@ -134,6 +133,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     }
   }
 
+  ScopedPerfEvent perf_event(update_profiler, __PRETTY_FUNCTION__, 0);
   debug_gui.update(engine, *this);
   player.update(current_time_sec, time_delta_since_last_frame_ms, level);
   level.update(time_delta_since_last_frame_ms);

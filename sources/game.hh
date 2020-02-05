@@ -25,11 +25,11 @@ struct JobContext
 
 struct Game
 {
-  DebugGui    debug_gui;
-  Materials   materials;
-  Profiler    update_profiler;
-  Profiler    render_profiler;
-  story::Data story_data;
+  DebugGui           debug_gui;
+  Materials          materials;
+  Profiler           update_profiler;
+  Profiler           render_profiler;
+  story::StoryEditor story;
 
   VkCommandBuffer                         primary_command_buffers[SWAPCHAIN_IMAGES_COUNT];
   uint32_t                                image_index;

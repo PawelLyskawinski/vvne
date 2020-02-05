@@ -1,4 +1,6 @@
 #include "story_editor.hh"
+#include "color_palette.hh"
+#include "engine/fileops.hh"
 #include "imgui.h"
 #include <SDL2/SDL_log.h>
 #include <algorithm>
@@ -7,32 +9,14 @@ namespace story {
 
 namespace {
 
-constexpr uint32_t entities_capacity        = 256;
-constexpr uint32_t connections_capacity     = 10'240;
-constexpr uint32_t components_capacity      = 64;
-constexpr float    offset_from_top          = 25.0f;
-constexpr float    dot_size                 = 5.0f;
-const char*        default_script_file_name = "default_story_script.bin";
-
-struct Color
-{
-  int r = 0;
-  int g = 0;
-  int b = 0;
-  int a = 0;
-
-  [[nodiscard]] ImColor to_imgui() const
-  {
-    return ImColor(r, g, b, a);
-  }
-};
+constexpr float offset_from_top          = 25.0f;
+constexpr float dot_size                 = 5.0f;
+const char*     default_script_file_name = "default_story_script.bin";
 
 struct NodeBox
 {
   const char* name = "";
   Vec2        size;
-  Color       bg;
-  Color       font;
   uint32_t    inputs_count;
   uint32_t    outputs_count;
 };
@@ -40,8 +24,6 @@ struct NodeBox
 constexpr NodeBox StartBox = {
     .name          = "Start",
     .size          = Vec2(120.0f, 80.0f),
-    .bg            = {80, 106, 137, 220},
-    .font          = {255, 255, 255, 255},
     .inputs_count  = 0,
     .outputs_count = 1,
 };
@@ -49,8 +31,6 @@ constexpr NodeBox StartBox = {
 constexpr NodeBox GoToBox = {
     .name          = "GoTo",
     .size          = Vec2(120.0f, 80.0f),
-    .bg            = {80, 106, 137, 220},
-    .font          = {255, 255, 255, 255},
     .inputs_count  = 1,
     .outputs_count = 1,
 };
@@ -58,8 +38,6 @@ constexpr NodeBox GoToBox = {
 constexpr NodeBox AllBox = {
     .name          = "All",
     .size          = Vec2(120.0f, 80.0f),
-    .bg            = {255, 10, 10, 220},
-    .font          = {255, 255, 255, 255},
     .inputs_count  = 1,
     .outputs_count = 1,
 };
@@ -67,8 +45,6 @@ constexpr NodeBox AllBox = {
 constexpr NodeBox AnyBox = {
     .name          = "Any",
     .size          = Vec2(120.0f, 80.0f),
-    .bg            = {80, 106, 137, 220},
-    .font          = {255, 255, 255, 255},
     .inputs_count  = 1,
     .outputs_count = 1,
 };
@@ -105,49 +81,17 @@ void add_horizontal_line(ImDrawList* draw_list, float x_left, float y, float len
   draw_list->AddLine(ImVec2(x_left, y), ImVec2(x_left + length, y), color);
 }
 
-void draw_background_grid(ImDrawList* draw_list, ImVec2 size, ImVec2 position, ImVec2 offset, float grid)
-{
-  const ImColor  grid_line_color        = ImColor(0.5f, 0.5f, 0.5f, 0.2f);
-  const uint32_t vertical_lines_count   = size.x / grid;
-  const uint32_t horizontal_lines_count = size.y / grid;
-
-  position.y += offset_from_top;
-
-  for (uint32_t i = 0; i < vertical_lines_count; ++i)
-  {
-    float x = SDL_fmodf(offset.x + grid * i, grid * vertical_lines_count);
-    while (x < 0.0f)
-    {
-      x += grid * vertical_lines_count;
-    }
-    add_vertical_line(draw_list, x + position.x, position.y, size.y, grid_line_color);
-  }
-
-  for (uint32_t i = 0; i < horizontal_lines_count; ++i)
-  {
-    float y = SDL_fmodf(offset.y + grid * i, grid * horizontal_lines_count);
-    while (y < 0.0f)
-    {
-      y += grid * horizontal_lines_count;
-    }
-    add_horizontal_line(draw_list, position.x, y + position.y, size.x, grid_line_color);
-  }
-
-  const ImVec2 center_pos = {position.x + offset.x, position.y + offset.y};
-  draw_list->AddCircleFilled(center_pos, 5.0, ImColor(0.1f, 0.2f, 0.6f, 1.0f));
-}
-
-[[nodiscard]] bool is_point_enclosed(const Vec2& ul, const Vec2& br, const Vec2& pt)
+bool is_point_enclosed(const Vec2& ul, const Vec2& br, const Vec2& pt)
 {
   return (ul.x <= pt.x) && (br.x >= pt.x) && (ul.y <= pt.y) && (br.y >= pt.y);
 }
 
-[[nodiscard]] Vec2 to_vec2(const SDL_MouseMotionEvent& event)
+Vec2 to_vec2(const SDL_MouseMotionEvent& event)
 {
   return Vec2(static_cast<float>(event.x), static_cast<float>(event.y));
 }
 
-[[nodiscard]] Vec2 get_mouse_state()
+Vec2 get_mouse_state()
 {
   int x = 0;
   int y = 0;
@@ -156,132 +100,6 @@ void draw_background_grid(ImDrawList* draw_list, ImVec2 size, ImVec2 position, I
 }
 
 } // namespace
-
-void Data::init(HierarchicalAllocator& allocator)
-{
-  nodes                                      = allocator.allocate<Node>(entities_capacity);
-  node_states                                = allocator.allocate<State>(entities_capacity);
-  target_positions                           = allocator.allocate<TargetPosition>(components_capacity);
-  connections                                = allocator.allocate<Connection>(connections_capacity);
-  editor_data.positions                      = allocator.allocate<Vec2>(entities_capacity);
-  editor_data.positions_before_grab_movement = allocator.allocate<Vec2>(entities_capacity);
-
-  editor_data.is_selected = allocator.allocate<uint8_t>(entities_capacity);
-
-  SDL_memset(editor_data.is_selected, SDL_FALSE, entities_capacity);
-
-  SDL_RWops* rw = SDL_RWFromFile(default_script_file_name, "rb");
-  // SDL_RWops* rw = nullptr;
-  if (rw)
-  {
-    const uint32_t size = static_cast<uint32_t>(SDL_RWsize(rw));
-    SDL_Log("\"%s\" found (%u bytes) Loading game from external source", default_script_file_name, size);
-    load_from_handle(rw);
-    SDL_RWclose(rw);
-  }
-  else
-  {
-    SDL_Log("\"%s\" not found. Using built-in", default_script_file_name);
-
-    constexpr NodeDescription initial_nodes[] = {
-        {
-            Node::Start,
-            Vec2(50.0f, 10.0f),
-        },
-        {
-            Node::Any,
-            Vec2(200.0f, 40.0f),
-        },
-        {
-            Node::All,
-            Vec2(400.0f, 40.0f),
-        },
-    };
-
-    entity_count = SDL_arraysize(initial_nodes);
-
-    std::transform(initial_nodes, initial_nodes + entity_count, nodes, [](const NodeDescription& d) { return d.type; });
-
-    std::transform(initial_nodes, initial_nodes + entity_count, editor_data.positions,
-                   [](const NodeDescription& d) { return d.position; });
-
-    constexpr Connection test_connections[] = {
-        {
-            .src_node_idx   = 0,
-            .src_output_idx = 0,
-            .dst_input_idx  = 0,
-            .dst_node_idx   = 1,
-        },
-    };
-
-    connections_count = SDL_arraysize(test_connections);
-    std::copy(test_connections, test_connections + connections_count, connections);
-  }
-
-  editor_data.zoom = 1.0f;
-  node_states[0]   = State::Active;
-}
-
-struct FileOps
-{
-  explicit FileOps(SDL_RWops* handle)
-      : handle(handle)
-  {
-  }
-
-  template <typename T> void serialize(const T& data)
-  {
-    SDL_RWwrite(handle, &data, sizeof(T), 1);
-  }
-
-  template <typename T> void serialize(const T* data, uint32_t count)
-  {
-    SDL_RWwrite(handle, data, sizeof(T), count);
-  }
-
-  template <typename T> void deserialize(T& data)
-  {
-    SDL_RWread(handle, &data, sizeof(T), 1);
-  }
-
-  template <typename T> void deserialize(T* data, uint32_t count)
-  {
-    SDL_RWread(handle, data, sizeof(T), count);
-  }
-
-  SDL_RWops* handle;
-};
-
-void Data::load_from_handle(SDL_RWops* handle)
-{
-  FileOps s(handle);
-
-  s.deserialize(entity_count);
-  s.deserialize(nodes, entity_count);
-  s.deserialize(node_states, entity_count);
-  s.deserialize(editor_data.positions, entity_count);
-  s.deserialize(target_positions_count);
-  s.deserialize(target_positions, target_positions_count);
-  s.deserialize(connections_count);
-  s.deserialize(connections, connections_count);
-
-  SDL_memcpy(editor_data.positions_before_grab_movement, editor_data.positions, sizeof(Vec2) * entity_count);
-  SDL_memset(editor_data.is_selected, SDL_FALSE, sizeof(uint8_t) * entity_count);
-}
-
-void Data::save_to_handle(SDL_RWops* handle)
-{
-  FileOps s(handle);
-
-  s.serialize(entity_count);
-  s.serialize(nodes, entity_count);
-  s.serialize(node_states, entity_count);
-  s.serialize(editor_data.positions, entity_count);
-  s.serialize(target_positions_count);
-  s.serialize(target_positions, target_positions_count);
-  s.serialize(connections_count);
-  s.serialize(connections, connections_count);
-}
 
 struct ScaledBox
 {
@@ -319,11 +137,6 @@ struct ScaledBox
   float zoom;
 };
 
-void draw_connection_dot(ImDrawList* draw_list, const ImVec2& position, const float size)
-{
-  draw_list->AddCircleFilled(position, size, ImColor(30, 30, 30, 200));
-}
-
 void draw_connection_bezier(ImDrawList* draw_list, const ImVec2& from, const ImVec2& to,
                             ImColor color = ImColor(255, 255, 255, 120))
 {
@@ -357,7 +170,654 @@ void draw_selection_box(ImDrawList* draw_list, const Vec2& ul, const Vec2& br)
   draw_list->AddRect(im_ul, im_br, rainbow_color(), 3.0f, ImDrawCornerFlags_All, 0.5f);
 }
 
-void EditorData::recalculate_selection_box()
+static bool is_intersecting(const Vec2& a_ul, const Vec2& a_br, const Vec2& b_ul, const Vec2& b_br)
+{
+  return (a_ul.x < b_br.x) and (a_br.x > b_ul.x) and (a_ul.y < b_br.y) and (a_br.y > b_ul.y);
+}
+
+const char* state_to_string(State state)
+{
+  switch (state)
+  {
+  case State::Upcoming:
+    return "Upcoming";
+  case State::Active:
+    return "Active";
+  case State::Finished:
+    return "Finished";
+  default:
+    return "N/A";
+  }
+}
+
+static ImColor to_imgui(const Palette::RGB& rgb, int alpha)
+{
+  return {rgb.r, rgb.g, rgb.b, alpha};
+}
+
+void ClickedPositionTracker::activate(const Vec2& position)
+{
+  state  = true;
+  origin = position;
+}
+
+void ClickedPositionTracker::deactivate()
+{
+  state         = false;
+  last_position = origin + offset;
+  offset        = Vec2();
+  origin        = Vec2();
+}
+
+void ClickedPositionTracker::update(const Vec2& position)
+{
+  offset = position - origin;
+}
+
+//////////////////////////////////////////////////////////
+//                 NEW IMPLEMENTATION
+//////////////////////////////////////////////////////////
+
+void StoryEditor::setup(HierarchicalAllocator& allocator)
+{
+  Story::setup(allocator);
+
+  positions                      = allocator.allocate<Vec2>(entities_capacity);
+  positions_before_grab_movement = allocator.allocate<Vec2>(entities_capacity);
+  is_selected                    = allocator.allocate<uint8_t>(entities_capacity);
+
+  std::fill(is_selected, is_selected + entities_capacity, SDL_FALSE);
+
+  SDL_RWops* rw = SDL_RWFromFile(default_script_file_name, "rb");
+  // SDL_RWops* rw = nullptr;
+  if (rw)
+  {
+    const uint32_t size = static_cast<uint32_t>(SDL_RWsize(rw));
+    SDL_Log("\"%s\" found (%u bytes) Loading game from external source", default_script_file_name, size);
+    load(rw);
+    SDL_RWclose(rw);
+  }
+  else
+  {
+    SDL_Log("\"%s\" not found. Using built-in", default_script_file_name);
+
+    constexpr NodeDescription initial_nodes[] = {
+        {
+            Node::Start,
+            Vec2(50.0f, 10.0f),
+        },
+        {
+            Node::Any,
+            Vec2(200.0f, 40.0f),
+        },
+        {
+            Node::All,
+            Vec2(400.0f, 40.0f),
+        },
+    };
+
+    entity_count      = SDL_arraysize(initial_nodes);
+    auto get_type     = [](const NodeDescription& d) { return d.type; };
+    auto get_position = [](const NodeDescription& d) { return d.position; };
+    std::transform(initial_nodes, initial_nodes + entity_count, nodes, get_type);
+    std::transform(initial_nodes, initial_nodes + entity_count, positions, get_position);
+
+    constexpr Connection test_connections[] = {
+        {
+            .src_node_idx   = 0,
+            .src_output_idx = 0,
+            .dst_input_idx  = 0,
+            .dst_node_idx   = 1,
+        },
+    };
+
+    connections_count = SDL_arraysize(test_connections);
+    std::copy(test_connections, test_connections + connections_count, connections);
+  }
+
+  zoom             = 1.0f;
+  node_states[0]   = State::Active;
+  palette_default  = Palette::generate_happyhue_13();
+  palette_debugger = Palette::generate_happyhue_3();
+}
+
+void StoryEditor::teardown(HierarchicalAllocator& allocator)
+{
+  allocator.free(positions, entities_capacity);
+  allocator.free(positions_before_grab_movement, entities_capacity);
+  allocator.free(is_selected, entities_capacity);
+}
+
+void StoryEditor::load(SDL_RWops* handle)
+{
+  Story::load(handle);
+
+  FileOps s(handle);
+  s.deserialize(positions, entity_count);
+  std::copy(positions, positions + entity_count, positions_before_grab_movement);
+  std::fill(is_selected, is_selected + entity_count, SDL_FALSE);
+  reset_graph_state();
+}
+
+void StoryEditor::save(SDL_RWops* handle)
+{
+  Story::save(handle);
+
+  FileOps s(handle);
+  s.serialize(positions, entity_count);
+}
+
+void StoryEditor::tick(Stack& allocator)
+{
+  Story::tick(allocator);
+}
+
+void StoryEditor::imgui_update()
+{
+  ImDrawList* draw_list = ImGui::GetWindowDrawList();
+
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  // Background grid rendering
+  //
+  //////////////////////////////////////////////////////////////////////////////
+  {
+    ImVec2         size                   = ImGui::GetWindowSize();
+    ImVec2         position               = ImGui::GetWindowPos();
+    ImVec2         offset                 = to_imvec2(calc_blackboard_offset().scale(zoom));
+    float          grid                   = 32.0f * zoom;
+    ImColor        grid_line_color        = to_imgui(palette_default.background, 80);
+    const uint32_t vertical_lines_count   = size.x / grid;
+    const uint32_t horizontal_lines_count = size.y / grid;
+
+    position.y += offset_from_top;
+
+    for (uint32_t i = 0; i < vertical_lines_count; ++i)
+    {
+      float x = SDL_fmodf(offset.x + grid * i, grid * vertical_lines_count);
+      while (x < 0.0f)
+      {
+        x += grid * vertical_lines_count;
+      }
+      add_vertical_line(draw_list, x + position.x, position.y, size.y, grid_line_color);
+    }
+
+    for (uint32_t i = 0; i < horizontal_lines_count; ++i)
+    {
+      float y = SDL_fmodf(offset.y + grid * i, grid * horizontal_lines_count);
+      while (y < 0.0f)
+      {
+        y += grid * horizontal_lines_count;
+      }
+      add_horizontal_line(draw_list, position.x, y + position.y, size.x, grid_line_color);
+    }
+
+    const ImVec2 center_pos = {position.x + offset.x, position.y + offset.y};
+    draw_list->AddCircleFilled(center_pos, 5.0, ImColor(0.1f, 0.2f, 0.6f, 1.0f));
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  // Calculating which elements are selected by selection box
+  //
+  //////////////////////////////////////////////////////////////////////////////
+  if (is_selection_box_active())
+  {
+    recalculate_selection_box();
+    std::fill(is_selected, is_selected + entity_count, SDL_FALSE);
+
+    for (uint32_t i = 0; i < entity_count; ++i)
+    {
+      const NodeBox&  render_params = select(nodes[i]);
+      const ScaledBox box           = ScaledBox(positions[i], render_params.size, zoom, calc_blackboard_offset());
+
+      const Vec2 ul = Vec2(box.left, box.up);
+      const Vec2 br = Vec2(box.right, box.bottom);
+
+      if (is_intersecting(selection_box_ul, selection_box_br, ul, br))
+      {
+        is_selected[i] = SDL_TRUE;
+      }
+    }
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  // Precaching color values
+  //
+  //////////////////////////////////////////////////////////////////////////////
+
+  const ImColor color_upcoming = to_imgui(palette_debugger.paragraph, 170);
+  const ImColor color_active   = to_imgui(palette_debugger.tertiary, 170);
+  const ImColor color_finished = to_imgui(palette_debugger.button, 170);
+  const ImColor color_regular  = to_imgui(palette_default.secondary, 170);
+  const ImColor color_special  = to_imgui(palette_default.tertiary, 170);
+
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  // Story node rendering
+  //
+  //////////////////////////////////////////////////////////////////////////////
+  for (uint32_t i = 0; i < entity_count; ++i)
+  {
+    const NodeBox&  render_params = select(nodes[i]);
+    const ScaledBox box           = ScaledBox(positions[i], render_params.size, zoom, calc_blackboard_offset());
+    const ImVec2    ul            = ImVec2(box.left, box.up);
+    const ImVec2    br            = ImVec2(box.right, box.bottom);
+
+    // debug node parameters
+    if (is_selected[i])
+    {
+      const Vec2& position = positions[i];
+      ImGui::Text("selected: %s entity index: %u position: [%.2f %.2f] state: %s", render_params.name, i, position.x,
+                  position.y, state_to_string(node_states[i]));
+    }
+
+    // @TODO draw only if on screen
+
+    if (is_showing_state)
+    {
+      const ImColor* selected_color = &color_upcoming;
+      switch (node_states[i])
+      {
+      case State::Upcoming:
+        selected_color = &color_upcoming;
+        break;
+      case State::Active:
+        selected_color = &color_active;
+        break;
+      case State::Finished:
+        selected_color = &color_finished;
+        break;
+      }
+      draw_list->AddRectFilled(ul, br, *selected_color, 5.0f);
+    }
+    else
+    {
+      const ImColor* selected_color = &color_upcoming;
+      switch (nodes[i])
+      {
+      case Node::GoTo:
+        selected_color = &color_special;
+        break;
+      default:
+        selected_color = &color_regular;
+        break;
+      }
+      draw_list->AddRectFilled(ul, br, *selected_color, 5.0f);
+    }
+
+    if (is_selected[i])
+    {
+      draw_list->AddRect(ul, br, rainbow_color(), 5.0f, ImDrawCornerFlags_All, 4.0f);
+    }
+    else
+    {
+      draw_list->AddRect(ul, br, ImColor(0, 0, 0, 210), 5.0f, ImDrawCornerFlags_All, 2.0f);
+    }
+
+    if (0.3f < zoom)
+    {
+      const ImVec2 ul_text = ImVec2(ul.x + 5.0f, ul.y + 5.0f);
+      draw_list->AddText(ul_text, to_imgui(get_palette().button_text, 255), render_params.name);
+    }
+
+    for (uint32_t i = 0; i < render_params.inputs_count; ++i)
+    {
+      draw_list->AddCircleFilled(box.calculate_input_dot_position(render_params, i), dot_size * zoom,
+                                 to_imgui(get_palette().paragraph, 200));
+    }
+
+    for (uint32_t i = 0; i < render_params.outputs_count; ++i)
+    {
+      draw_list->AddCircleFilled(box.calculate_output_dot_position(render_params, i), dot_size * zoom,
+                                 to_imgui(get_palette().paragraph, 200));
+    }
+  }
+
+  for (uint32_t i = 0; i < connections_count; ++i)
+  {
+    const Connection& connection = connections[i];
+
+    const NodeBox& src_render_params = select(nodes[connection.src_node_idx]);
+    const NodeBox& dst_render_params = select(nodes[connection.dst_node_idx]);
+
+    const ScaledBox src_box(positions[connection.src_node_idx], src_render_params.size, zoom, calc_blackboard_offset());
+    const ScaledBox dst_box(positions[connection.dst_node_idx], dst_render_params.size, zoom, calc_blackboard_offset());
+
+    draw_connection_bezier(draw_list,
+                           src_box.calculate_output_dot_position(src_render_params, connection.src_output_idx),
+                           dst_box.calculate_input_dot_position(dst_render_params, connection.dst_input_idx),
+                           to_imgui(get_palette().paragraph, 180));
+  }
+
+  if (connection_building_active)
+  {
+    const Vec2      mouse         = get_mouse_state();
+    const NodeBox&  render_params = select(nodes[element_clicked]);
+    const ScaledBox src_box =
+        ScaledBox(positions[connection_building_idx_clicked_first], render_params.size, zoom, calc_blackboard_offset());
+
+    const ImVec2 src_point = connection_building_input_clicked
+                                 ? src_box.calculate_input_dot_position(render_params, connection_building_dot_idx)
+                                 : src_box.calculate_output_dot_position(render_params, connection_building_dot_idx);
+
+    draw_connection_bezier(draw_list, src_point, ImVec2(mouse.x, mouse.y), rainbow_color());
+  }
+
+  if (ImGui::BeginPopupContextWindow())
+  {
+    if (ImGui::BeginMenu("New node"))
+    {
+      struct Combination
+      {
+        story::Node type;
+        const char* name;
+      };
+
+      const Combination combinations[] = {
+          {Node::Any, "Any"},
+          {Node::All, "All"},
+          {Node::GoTo, "GoTo"},
+      };
+
+      for (const Combination& combination : combinations)
+      {
+        if (ImGui::MenuItem(combination.name))
+        {
+          const uint32_t node_idx = entity_count++;
+          nodes[node_idx]         = combination.type;
+
+          const Vec2 position = rmb.last_position.scale(1.0f / zoom) - calc_blackboard_offset();
+
+          positions[node_idx]                      = position;
+          positions_before_grab_movement[node_idx] = position;
+        }
+      }
+      ImGui::EndMenu();
+    }
+
+    {
+      auto to_state_string = [](bool state) { return state ? "Disable debugger" : "Enable debugger"; };
+      if (ImGui::MenuItem(to_state_string(is_showing_state)))
+      {
+        is_showing_state = !is_showing_state;
+      }
+    }
+
+    if (ImGui::MenuItem("Reset view"))
+    {
+      zoom                     = 1.0f;
+      blackboard_origin_offset = Vec2(0.0f, 0.0f);
+    }
+
+    if (ImGui::MenuItem("Reset graph state"))
+    {
+      reset_graph_state();
+    }
+
+    if (ImGui::BeginMenu("Etc"))
+    {
+      if (ImGui::MenuItem("Load default"))
+      {
+        SDL_RWops* handle = SDL_RWFromFile(default_script_file_name, "rb");
+        load(handle);
+        SDL_RWclose(handle);
+        SDL_Log("Loaded file %s", default_script_file_name);
+      }
+
+      if (ImGui::MenuItem("Save default"))
+      {
+        SDL_RWops* handle = SDL_RWFromFile(default_script_file_name, "wb");
+        save(handle);
+        SDL_RWclose(handle);
+        SDL_Log("Saved file %s", default_script_file_name);
+      }
+
+      ImGui::EndMenu();
+    }
+
+    ImGui::EndPopup();
+  }
+
+  if (is_selection_box_active())
+  {
+    draw_selection_box(draw_list, selection_box_ul, selection_box_br);
+  }
+}
+
+void StoryEditor::editor_update(const SDL_Event& event)
+{
+  switch (event.type)
+  {
+  case SDL_MOUSEWHEEL: {
+    if ((not mmb.state) and (0.0f != event.wheel.y))
+    {
+      handle_mouse_wheel((0 > event.wheel.y) ? -0.05f : 0.05f);
+    }
+  }
+  break;
+  case SDL_MOUSEMOTION: {
+    handle_mouse_motion(to_vec2(event.motion));
+  }
+  break;
+  case SDL_MOUSEBUTTONDOWN: {
+    switch (event.button.button)
+    {
+    case SDL_BUTTON_LEFT:
+      lmb.activate(get_mouse_state());
+      select_element_at_position(lmb.origin);
+      break;
+
+    case SDL_BUTTON_RIGHT:
+      rmb.activate(get_mouse_state());
+      break;
+
+    case SDL_BUTTON_MIDDLE:
+      mmb.activate(get_mouse_state().scale(1.0f / zoom));
+      break;
+
+    default:
+      break;
+    }
+  }
+  break;
+  case SDL_MOUSEBUTTONUP: {
+    switch (event.button.button)
+    {
+    case SDL_BUTTON_LEFT:
+      lmb.deactivate();
+      if (selection_box_active)
+      {
+        for (uint32_t i = 0; i < entity_count; ++i)
+        {
+          if (is_selected[i])
+          {
+            positions_before_grab_movement[i] = positions[i];
+          }
+        }
+      }
+      selection_box_active = false;
+      break;
+
+    case SDL_BUTTON_RIGHT:
+      rmb.deactivate();
+      break;
+
+    case SDL_BUTTON_MIDDLE:
+      blackboard_origin_offset += mmb.offset;
+      mmb.deactivate();
+      break;
+
+    default:
+      break;
+    }
+  }
+  break;
+  case SDL_KEYDOWN:
+    if (SDL_SCANCODE_LSHIFT == event.key.keysym.scancode)
+    {
+      is_shift_pressed = true;
+    }
+    else if (SDL_SCANCODE_X == event.key.keysym.scancode)
+    {
+      if ((not is_selection_box_active()) and is_any_selected(entity_count))
+      {
+        remove_selected_nodes();
+      }
+    }
+    break;
+  case SDL_KEYUP:
+    if (SDL_SCANCODE_LSHIFT == event.key.keysym.scancode)
+    {
+      is_shift_pressed = false;
+    }
+    break;
+  }
+}
+
+const Palette& StoryEditor::get_palette() const
+{
+  return is_showing_state ? palette_debugger : palette_default;
+}
+
+void StoryEditor::handle_mouse_wheel(float val)
+{
+  zoom = clamp(zoom + val, 0.1f, 10.0f);
+}
+
+void StoryEditor::handle_mouse_motion(const Vec2& motion)
+{
+  if (lmb)
+  {
+    lmb.update(motion);
+
+    for (uint32_t i = 0; i < entity_count; ++i)
+    {
+      if (is_selected[i] and (not is_selection_box_active()))
+      {
+        positions[i] = positions_before_grab_movement[i] + lmb.offset.scale(1.0f / zoom);
+      }
+    }
+  }
+  else if (mmb)
+  {
+    mmb.update(motion.scale(1.0f / zoom));
+  }
+}
+
+void StoryEditor::select_element_at_position(const Vec2& position)
+{
+  element_clicked = false;
+  for (uint32_t node_idx = 0; node_idx < entity_count; ++node_idx)
+  {
+    const uint32_t  reverse_node_idx = entity_count - node_idx - 1;
+    const NodeBox&  render_params    = select(nodes[reverse_node_idx]);
+    const ScaledBox box = ScaledBox(positions[reverse_node_idx], render_params.size, zoom, calc_blackboard_offset());
+    const Vec2      ul  = Vec2(box.left, box.up);
+    const Vec2      br  = Vec2(box.right, box.bottom);
+
+    if (is_point_enclosed(ul, br, lmb.origin))
+    {
+      element_clicked = true;
+
+      if (SDL_FALSE == is_selected[reverse_node_idx])
+      {
+        std::fill(is_selected, is_selected + entity_count, SDL_FALSE);
+        is_selected[reverse_node_idx] = SDL_TRUE;
+      }
+
+      for (uint32_t i = 0; i < render_params.inputs_count; ++i)
+      {
+        const ImVec2 dot_position = box.calculate_input_dot_position(render_params, i);
+        const Vec2   distance     = position - Vec2(dot_position.x, dot_position.y);
+        if (distance.len() < (dot_size * zoom))
+        {
+          if (connection_building_active and (connection_building_idx_clicked_first != reverse_node_idx))
+          {
+            SDL_Log("[connection building - END] %d input clicked! (%s)", i, render_params.name);
+            if (connection_building_input_clicked)
+            {
+              SDL_Log("[ERR] Can't connect input with input!");
+            }
+            else
+            {
+              const Connection new_connection = {
+                  .src_node_idx   = connection_building_idx_clicked_first,
+                  .src_output_idx = connection_building_dot_idx,
+                  .dst_input_idx  = i,
+                  .dst_node_idx   = reverse_node_idx,
+              };
+
+              push_connection(new_connection);
+            }
+            connection_building_active = false;
+          }
+          else
+          {
+            SDL_Log("[connection building - START] %d input clicked! (%s)", i, render_params.name);
+            connection_building_active            = true;
+            connection_building_input_clicked     = true;
+            connection_building_idx_clicked_first = reverse_node_idx;
+            connection_building_dot_idx           = i;
+          }
+          return;
+        }
+      }
+
+      for (uint32_t i = 0; i < render_params.outputs_count; ++i)
+      {
+        const ImVec2 dot_position = box.calculate_output_dot_position(render_params, i);
+        const Vec2   distance     = position - Vec2(dot_position.x, dot_position.y);
+        if (distance.len() < (dot_size * zoom))
+        {
+          if (connection_building_active and (connection_building_idx_clicked_first != reverse_node_idx))
+          {
+            SDL_Log("[connection building - END] %d output clicked! (%s)", i, render_params.name);
+            if (!connection_building_input_clicked)
+            {
+              SDL_Log("[ERR] Can't connect output with output!");
+            }
+            else
+            {
+              const Connection new_connection = {
+                  .src_node_idx   = reverse_node_idx,
+                  .src_output_idx = i,
+                  .dst_input_idx  = connection_building_dot_idx,
+                  .dst_node_idx   = connection_building_idx_clicked_first,
+              };
+
+              push_connection(new_connection);
+            }
+            connection_building_active = false;
+          }
+          else
+          {
+            SDL_Log("[connection building - START] %d output clicked! (%s)", i, render_params.name);
+            connection_building_active            = true;
+            connection_building_input_clicked     = false;
+            connection_building_idx_clicked_first = reverse_node_idx;
+            connection_building_dot_idx           = i;
+          }
+
+          return;
+        }
+      }
+
+      break;
+    }
+  }
+
+  if (not element_clicked)
+  {
+    std::fill(is_selected, is_selected + entity_count, SDL_FALSE);
+    connection_building_active = false;
+  }
+
+  selection_box_active = true;
+}
+
+void StoryEditor::recalculate_selection_box()
 {
   const Vec2 start = lmb.origin;
   const Vec2 end   = start + lmb.offset;
@@ -402,432 +862,37 @@ void EditorData::recalculate_selection_box()
   }
 }
 
-static bool is_intersecting(const Vec2& a_ul, const Vec2& a_br, const Vec2& b_ul, const Vec2& b_br)
-{
-  return (a_ul.x < b_br.x) and (a_br.x > b_ul.x) and (a_ul.y < b_br.y) and (a_br.y > b_ul.y);
-}
-
-void Data::imgui_update()
-{
-  ImDrawList* draw_list = ImGui::GetWindowDrawList();
-  draw_background_grid(draw_list, ImGui::GetWindowSize(), ImGui::GetWindowPos(),
-                       to_imvec2(editor_data.calc_blackboard_offset().scale(editor_data.zoom)),
-                       32.0f * editor_data.zoom);
-
-  if (editor_data.is_selection_box_active())
-  {
-    //
-    // Correct selection box corner coordinates
-    // need to be calculated at the start of the function because we want to check if the story node is currently in it.
-    //
-
-    editor_data.recalculate_selection_box();
-    SDL_memset(editor_data.is_selected, SDL_FALSE, entity_count);
-
-    for (uint32_t i = 0; i < entity_count; ++i)
-    {
-      const NodeBox&  render_params = select(nodes[i]);
-      const ScaledBox box           = ScaledBox(editor_data.positions[i], render_params.size, editor_data.zoom,
-                                      editor_data.calc_blackboard_offset());
-
-      const Vec2 ul = Vec2(box.left, box.up);
-      const Vec2 br = Vec2(box.right, box.bottom);
-
-      if (is_intersecting(editor_data.selection_box_ul, editor_data.selection_box_br, ul, br))
-      {
-        editor_data.is_selected[i] = SDL_TRUE;
-      }
-    }
-  }
-
-  for (uint32_t i = 0; i < entity_count; ++i)
-  {
-    const NodeBox&  render_params = select(nodes[i]);
-    const ScaledBox box =
-        ScaledBox(editor_data.positions[i], render_params.size, editor_data.zoom, editor_data.calc_blackboard_offset());
-    const ImVec2 ul = ImVec2(box.left, box.up);
-    const ImVec2 br = ImVec2(box.right, box.bottom);
-
-    // debug node parameters
-    if (editor_data.is_selected[i])
-    {
-      const Vec2& position = editor_data.positions[i];
-      ImGui::Text("selected: %s entity index: %u position: [%.2f %.2f]", render_params.name, i, position.x, position.y);
-    }
-
-    // @TODO draw only if on screen
-
-    if (editor_data.is_showing_state)
-    {
-      const ImColor color_upcoming = ImColor(100, 100, 100);
-      const ImColor color_active   = ImColor(222, 215, 45);
-      const ImColor color_finished = ImColor(10, 220, 35);
-
-      const ImColor* selected_color = &color_upcoming;
-      switch (node_states[i])
-      {
-      case State::Upcoming:
-        selected_color = &color_upcoming;
-        break;
-      case State::Active:
-        selected_color = &color_active;
-        break;
-      case State::Finished:
-        selected_color = &color_finished;
-        break;
-      }
-      draw_list->AddRectFilled(ul, br, *selected_color, 5.0f);
-    }
-    else
-    {
-      draw_list->AddRectFilled(ul, br, render_params.bg.to_imgui(), 5.0f);
-    }
-
-    if (editor_data.is_selected[i])
-    {
-      draw_list->AddRect(ul, br, rainbow_color(), 5.0f, ImDrawCornerFlags_All, 4.0f);
-    }
-    else
-    {
-      draw_list->AddRect(ul, br, ImColor(0, 0, 0, 210), 5.0f, ImDrawCornerFlags_All, 2.0f);
-    }
-
-    if (0.3f < editor_data.zoom)
-    {
-      const ImVec2 ul_text = ImVec2(ul.x + 5.0f, ul.y + 5.0f);
-      draw_list->AddText(ul_text, render_params.font.to_imgui(), render_params.name);
-    }
-
-    for (uint32_t i = 0; i < render_params.inputs_count; ++i)
-    {
-      draw_connection_dot(draw_list, box.calculate_input_dot_position(render_params, i), dot_size * editor_data.zoom);
-    }
-
-    for (uint32_t i = 0; i < render_params.outputs_count; ++i)
-    {
-      draw_connection_dot(draw_list, box.calculate_output_dot_position(render_params, i), dot_size * editor_data.zoom);
-    }
-  }
-
-  for (uint32_t i = 0; i < connections_count; ++i)
-  {
-    const Connection& connection = connections[i];
-
-    const NodeBox& src_render_params = select(nodes[connection.src_node_idx]);
-    const NodeBox& dst_render_params = select(nodes[connection.dst_node_idx]);
-
-    const ScaledBox src_box(editor_data.positions[connection.src_node_idx], src_render_params.size, editor_data.zoom,
-                            editor_data.calc_blackboard_offset());
-    const ScaledBox dst_box(editor_data.positions[connection.dst_node_idx], dst_render_params.size, editor_data.zoom,
-                            editor_data.calc_blackboard_offset());
-
-    draw_connection_bezier(draw_list,
-                           src_box.calculate_output_dot_position(src_render_params, connection.src_output_idx),
-                           dst_box.calculate_input_dot_position(dst_render_params, connection.dst_input_idx));
-  }
-
-  if (editor_data.connection_building_active)
-  {
-    const Vec2      mouse         = get_mouse_state();
-    const NodeBox&  render_params = select(nodes[editor_data.element_clicked]);
-    const ScaledBox src_box       = ScaledBox(editor_data.positions[editor_data.connection_building_idx_clicked_first],
-                                        render_params.size, editor_data.zoom, editor_data.calc_blackboard_offset());
-
-    const ImVec2 src_point =
-        editor_data.connection_building_input_clicked
-            ? src_box.calculate_input_dot_position(render_params, editor_data.connection_building_dot_idx)
-            : src_box.calculate_output_dot_position(render_params, editor_data.connection_building_dot_idx);
-
-    draw_connection_bezier(draw_list, src_point, ImVec2(mouse.x, mouse.y), rainbow_color());
-  }
-
-  if (ImGui::BeginPopupContextWindow())
-  {
-    if (ImGui::BeginMenu("New node"))
-    {
-      struct Combination
-      {
-        story::Node type;
-        const char* name;
-      };
-
-      const Combination combinations[] = {
-          {Node::Any, "Any"},
-          {Node::All, "All"},
-          {Node::GoTo, "GoTo"},
-      };
-
-      for (const Combination& combination : combinations)
-      {
-        if (ImGui::MenuItem(combination.name))
-        {
-          const uint32_t node_idx = entity_count++;
-          nodes[node_idx]         = combination.type;
-
-          const Vec2 position =
-              editor_data.rmb.last_position.scale(1.0f / editor_data.zoom) - editor_data.calc_blackboard_offset();
-
-          editor_data.positions[node_idx]                      = position;
-          editor_data.positions_before_grab_movement[node_idx] = position;
-        }
-      }
-      ImGui::EndMenu();
-    }
-
-    {
-      auto to_state_string = [](bool state) { return state ? "Disable debugger" : "Enable debugger"; };
-      if (ImGui::MenuItem(to_state_string(editor_data.is_showing_state)))
-      {
-        editor_data.is_showing_state = !editor_data.is_showing_state;
-      }
-    }
-
-    if (ImGui::MenuItem("Reset view"))
-    {
-      editor_data.zoom                     = 1.0f;
-      editor_data.blackboard_origin_offset = Vec2(0.0f, 0.0f);
-    }
-
-    if (ImGui::BeginMenu("Etc"))
-    {
-      if (ImGui::MenuItem("Load default"))
-      {
-        SDL_RWops* handle = SDL_RWFromFile(default_script_file_name, "rb");
-        load_from_handle(handle);
-        SDL_RWclose(handle);
-        SDL_Log("Loaded file %s", default_script_file_name);
-      }
-
-      if (ImGui::MenuItem("Save default"))
-      {
-        SDL_RWops* handle = SDL_RWFromFile(default_script_file_name, "wb");
-        save_to_handle(handle);
-        SDL_RWclose(handle);
-        SDL_Log("Saved file %s", default_script_file_name);
-      }
-
-      ImGui::EndMenu();
-    }
-
-    ImGui::EndPopup();
-  }
-
-  if (editor_data.is_selection_box_active())
-  {
-    draw_selection_box(draw_list, editor_data.selection_box_ul, editor_data.selection_box_br);
-  }
-}
-
-void EditorData::handle_mouse_wheel(float val)
-{
-  zoom = clamp(zoom + val, 0.1f, 10.0f);
-}
-
-void EditorData::handle_mouse_motion(const Data& data, const Vec2& motion)
-{
-  if (lmb)
-  {
-    lmb.update(motion);
-
-    for (uint32_t i = 0; i < data.entity_count; ++i)
-    {
-      if (is_selected[i] and (not is_selection_box_active()))
-      {
-        positions[i] = positions_before_grab_movement[i] +
-                       lmb.offset.scale(1.0f / zoom); // - blackboard_origin_offset.scale(1.0f / zoom);
-      }
-    }
-  }
-  else if (mmb)
-  {
-    mmb.update(motion.scale(1.0f / zoom));
-  }
-}
-
-bool operator==(const Connection& lhs, const Connection& rhs)
-{
-  return (lhs.src_node_idx == rhs.src_node_idx) and (lhs.src_output_idx == rhs.src_output_idx) and
-         (lhs.dst_input_idx == rhs.dst_input_idx) and (lhs.dst_node_idx == rhs.dst_node_idx);
-}
-
-void Data::push_connection(const Connection& new_connection)
-{
-  Connection* connections_end = &connections[connections_count];
-  auto        it              = std::find(connections, connections_end, new_connection);
-
-  if (connections_end != it)
-  {
-    std::rotate(it, it + 1, connections_end);
-    --connections_count;
-  }
-  else
-  {
-    *connections_end = new_connection;
-    connections_count += 1;
-  }
-}
-
-void EditorData::select_element_at_position(const Vec2& position, Data& data)
-{
-  element_clicked = false;
-  for (uint32_t node_idx = 0; node_idx < data.entity_count; ++node_idx)
-  {
-    const uint32_t  reverse_node_idx = data.entity_count - node_idx - 1;
-    const NodeBox&  render_params    = select(data.nodes[reverse_node_idx]);
-    const ScaledBox box = ScaledBox(positions[reverse_node_idx], render_params.size, zoom, calc_blackboard_offset());
-    const Vec2      ul  = Vec2(box.left, box.up);
-    const Vec2      br  = Vec2(box.right, box.bottom);
-
-    if (is_point_enclosed(ul, br, lmb.origin))
-    {
-      element_clicked = true;
-
-      if (SDL_FALSE == is_selected[reverse_node_idx])
-      {
-        SDL_memset(is_selected, SDL_FALSE, data.entity_count);
-        is_selected[reverse_node_idx] = SDL_TRUE;
-      }
-
-      for (uint32_t i = 0; i < render_params.inputs_count; ++i)
-      {
-        const ImVec2 dot_position = box.calculate_input_dot_position(render_params, i);
-        const Vec2   distance     = position - Vec2(dot_position.x, dot_position.y);
-        if (distance.len() < (dot_size * zoom))
-        {
-          if (connection_building_active and (connection_building_idx_clicked_first != reverse_node_idx))
-          {
-            SDL_Log("[connection building - END] %d input clicked! (%s)", i, render_params.name);
-            if (connection_building_input_clicked)
-            {
-              SDL_Log("[ERR] Can't connect input with input!");
-            }
-            else
-            {
-              const Connection new_connection = {
-                  .src_node_idx   = connection_building_idx_clicked_first,
-                  .src_output_idx = connection_building_dot_idx,
-                  .dst_input_idx  = i,
-                  .dst_node_idx   = reverse_node_idx,
-              };
-
-              data.push_connection(new_connection);
-            }
-            connection_building_active = false;
-          }
-          else
-          {
-            SDL_Log("[connection building - START] %d input clicked! (%s)", i, render_params.name);
-            connection_building_active            = true;
-            connection_building_input_clicked     = true;
-            connection_building_idx_clicked_first = reverse_node_idx;
-            connection_building_dot_idx           = i;
-          }
-          return;
-        }
-      }
-
-      for (uint32_t i = 0; i < render_params.outputs_count; ++i)
-      {
-        const ImVec2 dot_position = box.calculate_output_dot_position(render_params, i);
-        const Vec2   distance     = position - Vec2(dot_position.x, dot_position.y);
-        if (distance.len() < (dot_size * zoom))
-        {
-          if (connection_building_active and (connection_building_idx_clicked_first != reverse_node_idx))
-          {
-            SDL_Log("[connection building - END] %d output clicked! (%s)", i, render_params.name);
-            if (!connection_building_input_clicked)
-            {
-              SDL_Log("[ERR] Can't connect output with output!");
-            }
-            else
-            {
-              const Connection new_connection = {
-                  .src_node_idx   = reverse_node_idx,
-                  .src_output_idx = i,
-                  .dst_input_idx  = connection_building_dot_idx,
-                  .dst_node_idx   = connection_building_idx_clicked_first,
-              };
-
-              data.push_connection(new_connection);
-            }
-            connection_building_active = false;
-          }
-          else
-          {
-            SDL_Log("[connection building - START] %d output clicked! (%s)", i, render_params.name);
-            connection_building_active            = true;
-            connection_building_input_clicked     = false;
-            connection_building_idx_clicked_first = reverse_node_idx;
-            connection_building_dot_idx           = i;
-          }
-
-          return;
-        }
-      }
-
-      break;
-    }
-  }
-
-  if (not element_clicked)
-  {
-    SDL_memset(is_selected, SDL_FALSE, data.entity_count);
-    connection_building_active = false;
-  }
-
-  selection_box_active = true;
-}
-
-void ClickedPositionTracker::activate(const Vec2& position)
-{
-  state  = true;
-  origin = position;
-}
-
-void ClickedPositionTracker::deactivate()
-{
-  state         = false;
-  last_position = origin + offset;
-  offset        = Vec2();
-  origin        = Vec2();
-}
-
-void ClickedPositionTracker::update(const Vec2& position)
-{
-  offset = position - origin;
-}
-
-bool EditorData::is_any_selected(uint32_t count) const
+bool StoryEditor::is_any_selected(uint32_t count) const
 {
   uint8_t* end = &is_selected[count];
   return end != std::find(is_selected, end, SDL_TRUE);
 }
 
-void Data::dump_connections() const
+bool StoryEditor::is_selection_box_active() const
 {
-  for (uint32_t i = 0; i < connections_count; ++i)
-  {
-    const Connection& c = connections[i];
-    SDL_Log("src_node_idx: %u, src_output_idx: %u, dst_input_idx: %u, dst_node_idx: %u", //
-            c.src_node_idx, c.src_output_idx, c.dst_input_idx, c.dst_node_idx);
-  }
+  return selection_box_active and (not element_clicked);
 }
 
-void EditorData::remove_selected_nodes(Data& data)
+Vec2 StoryEditor::calc_blackboard_offset() const
+{
+  return blackboard_origin_offset + mmb.offset;
+}
+
+void StoryEditor::remove_selected_nodes()
 {
   {
     uint32_t removed_entities = 0;
-    for (uint8_t* it                               = std::find(is_selected, &is_selected[data.entity_count], SDL_TRUE);
-         it != &is_selected[data.entity_count]; it = std::find(it + 1, &is_selected[data.entity_count], SDL_TRUE))
+    for (uint8_t* it = std::find(is_selected, &is_selected[entity_count], SDL_TRUE); it != &is_selected[entity_count];
+         it          = std::find(it + 1, &is_selected[entity_count], SDL_TRUE))
     {
       const uint32_t entity_idx = std::distance(is_selected, it) - removed_entities;
 
-      Connection* new_connections_end = std::remove_if(
-          data.connections, &data.connections[data.connections_count], [entity_idx](const Connection& c) {
+      Connection* new_connections_end =
+          std::remove_if(connections, &connections[connections_count], [entity_idx](const Connection& c) {
             return (entity_idx == c.src_node_idx) or (entity_idx == c.dst_node_idx);
           });
 
-      std::for_each(data.connections, new_connections_end, [entity_idx](Connection& c) {
+      std::for_each(connections, new_connections_end, [entity_idx](Connection& c) {
         if (c.src_node_idx > entity_idx)
         {
           c.src_node_idx -= 1;
@@ -838,13 +903,13 @@ void EditorData::remove_selected_nodes(Data& data)
         }
       });
 
-      data.connections_count = std::distance(data.connections, new_connections_end);
+      connections_count = std::distance(connections, new_connections_end);
       removed_entities += 1;
     }
   }
 
-  for (uint8_t* it                               = std::find(is_selected, &is_selected[data.entity_count], SDL_TRUE);
-       it != &is_selected[data.entity_count]; it = std::find(it, &is_selected[data.entity_count], SDL_TRUE))
+  for (uint8_t* it = std::find(is_selected, &is_selected[entity_count], SDL_TRUE); it != &is_selected[entity_count];
+       it          = std::find(it, &is_selected[entity_count], SDL_TRUE))
   {
     const uint32_t entity_idx = std::distance(is_selected, it);
 
@@ -852,103 +917,13 @@ void EditorData::remove_selected_nodes(Data& data)
       std::rotate(array + entity_idx, array + entity_idx + 1, &array[end_offset]);
     };
 
-    remove_element(positions, data.entity_count);
-    remove_element(positions_before_grab_movement, data.entity_count);
-    remove_element(is_selected, data.entity_count);
-    remove_element(data.nodes, data.entity_count);
-    remove_element(data.node_states, data.entity_count);
+    remove_element(positions, entity_count);
+    remove_element(positions_before_grab_movement, entity_count);
+    remove_element(is_selected, entity_count);
+    remove_element(nodes, entity_count);
+    remove_element(node_states, entity_count);
 
-    data.entity_count -= 1;
-  }
-}
-
-void Data::editor_update(const SDL_Event& event)
-{
-  switch (event.type)
-  {
-  case SDL_MOUSEWHEEL: {
-    if ((not editor_data.mmb.state) and (0.0f != event.wheel.y))
-    {
-      editor_data.handle_mouse_wheel((0 > event.wheel.y) ? -0.05f : 0.05f);
-    }
-  }
-  break;
-  case SDL_MOUSEMOTION: {
-    editor_data.handle_mouse_motion(*this, to_vec2(event.motion));
-  }
-  break;
-  case SDL_MOUSEBUTTONDOWN: {
-    switch (event.button.button)
-    {
-    case SDL_BUTTON_LEFT:
-      editor_data.lmb.activate(get_mouse_state());
-      editor_data.select_element_at_position(editor_data.lmb.origin, *this);
-      break;
-
-    case SDL_BUTTON_RIGHT:
-      editor_data.rmb.activate(get_mouse_state());
-      break;
-
-    case SDL_BUTTON_MIDDLE:
-      editor_data.mmb.activate(get_mouse_state().scale(1.0f / editor_data.zoom));
-      break;
-
-    default:
-      break;
-    }
-  }
-  break;
-  case SDL_MOUSEBUTTONUP: {
-    switch (event.button.button)
-    {
-    case SDL_BUTTON_LEFT:
-      editor_data.lmb.deactivate();
-      if (editor_data.selection_box_active)
-      {
-        for (uint32_t i = 0; i < entity_count; ++i)
-        {
-          if (editor_data.is_selected[i])
-          {
-            editor_data.positions_before_grab_movement[i] = editor_data.positions[i];
-          }
-        }
-      }
-      editor_data.selection_box_active = false;
-      break;
-
-    case SDL_BUTTON_RIGHT:
-      editor_data.rmb.deactivate();
-      break;
-
-    case SDL_BUTTON_MIDDLE:
-      editor_data.blackboard_origin_offset += editor_data.mmb.offset;
-      editor_data.mmb.deactivate();
-      break;
-
-    default:
-      break;
-    }
-  }
-  break;
-  case SDL_KEYDOWN:
-    if (SDL_SCANCODE_LSHIFT == event.key.keysym.scancode)
-    {
-      editor_data.is_shift_pressed = true;
-    }
-    else if (SDL_SCANCODE_X == event.key.keysym.scancode)
-    {
-      if ((not editor_data.is_selection_box_active()) and editor_data.is_any_selected(entity_count))
-      {
-        editor_data.remove_selected_nodes(*this);
-      }
-    }
-    break;
-  case SDL_KEYUP:
-    if (SDL_SCANCODE_LSHIFT == event.key.keysym.scancode)
-    {
-      editor_data.is_shift_pressed = false;
-    }
-    break;
+    entity_count -= 1;
   }
 }
 
