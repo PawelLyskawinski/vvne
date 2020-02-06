@@ -39,7 +39,7 @@ void update_robot(SimpleEntity& entity, const SceneGraph& scene_graph, const Pla
 
 void update_monster(SimpleEntity& entity, const SceneGraph& scene_graph, float current_time_sec)
 {
-  const Mat4x4 world_transform = Mat4x4::Translation(Vec3(-2.0f, 6.5f, 0.5f)) *
+  const Mat4x4 world_transform = Mat4x4::Translation(Vec3(-2.0f, 6.5f, -2.5f)) *
                                  Mat4x4(Quaternion(to_rad(90.0), Vec3(1.0f, 0.0f, 0.0f))) * Mat4x4::Scale(Vec3(0.001f));
 
   entity.animate(scene_graph, current_time_sec);
