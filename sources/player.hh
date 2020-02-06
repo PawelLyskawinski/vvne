@@ -28,6 +28,9 @@ struct Player
 
   Camera freecam_camera;
   bool   freecam_mode;
+  Vec3   freecam_position;
+  Vec3   freecam_velocity;
+  Vec3   freecam_acceleration;
 
   [[nodiscard]] const Camera& get_camera() const;
 

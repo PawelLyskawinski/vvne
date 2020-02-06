@@ -73,6 +73,7 @@ struct Vec3
   }
 
   void operator+=(const Vec3& rhs);
+  void operator-=(const Vec3& rhs);
   void clamp(float min, float max);
 
   float x = 0.0f;

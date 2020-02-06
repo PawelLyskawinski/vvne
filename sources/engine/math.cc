@@ -91,6 +91,13 @@ void Vec3::operator+=(const Vec3& rhs)
   z += rhs.z;
 }
 
+void Vec3::operator-=(const Vec3& rhs)
+{
+  x -= rhs.x;
+  y -= rhs.y;
+  z -= rhs.z;
+}
+
 float Vec3::len() const
 {
   return SDL_sqrtf(x * x + y * y + z * z);

@@ -1,5 +1,4 @@
 #include "player.hh"
-#include "engine/engine.hh"
 #include "levels/example_level.hh"
 
 namespace {
@@ -60,8 +59,11 @@ void Player::process_event(const SDL_Event& event)
     internal_key_flags |= scancode_to_mask(event.key.keysym.scancode);
     if (SDL_SCANCODE_Y == event.key.keysym.scancode)
     {
-      freecam_mode   = !freecam_mode;
-      freecam_camera = camera;
+      freecam_mode         = !freecam_mode;
+      freecam_camera       = camera;
+      freecam_position     = position;
+      freecam_velocity     = Vec3(0.0);
+      freecam_acceleration = Vec3(0.0);
     }
   }
   break;
@@ -90,25 +92,64 @@ void Player::update(const float current_time_sec, const float delta_ms, const Ex
 {
   (void)current_time_sec;
 
-  const float camera_distance = 3.0f;
+  const float camera_distance    = 3.0f;
+  const float friction           = 0.2f;
+  const float max_speed          = 3.0f;
+  const float acceleration_const = 0.0002f;
+  const float boosters_power     = 3.0f;
 
   if (freecam_mode)
   {
+    freecam_position += freecam_velocity.scale(delta_ms);
+    freecam_velocity += freecam_acceleration.scale(delta_ms) - freecam_velocity.scale(friction);
+    freecam_velocity.clamp(-max_speed, max_speed);
+    freecam_acceleration = Vec3(0.0f);
+
+    if (scancode_to_mask(SDL_SCANCODE_W) & internal_key_flags)
+    {
+      freecam_acceleration -= Vec3(SDL_cosf(freecam_camera.angle),
+                                   SDL_sinf(clamp(freecam_camera.updown_angle, -to_rad(180.0f), to_rad(180.0f))),
+                                   -SDL_sinf(freecam_camera.angle))
+                                  .scale(acceleration_const);
+    }
+    else if (scancode_to_mask(SDL_SCANCODE_S) & internal_key_flags)
+    {
+      freecam_acceleration += Vec3(SDL_cosf(freecam_camera.angle),
+                                   SDL_sinf(clamp(freecam_camera.updown_angle, -to_rad(180.0f), to_rad(180.0f))),
+                                   -SDL_sinf(freecam_camera.angle))
+                                  .scale(acceleration_const);
+    }
+
+    if (scancode_to_mask(SDL_SCANCODE_A) & internal_key_flags)
+    {
+      freecam_acceleration +=
+          Vec3(SDL_cosf(freecam_camera.angle + to_rad(90.0f)), 0.0f, -SDL_sinf(freecam_camera.angle + to_rad(90.0f)))
+              .scale(acceleration_const);
+    }
+    else if (scancode_to_mask(SDL_SCANCODE_D) & internal_key_flags)
+    {
+      freecam_acceleration +=
+          Vec3(SDL_cosf(freecam_camera.angle - to_rad(90.0f)), 0.0f, -SDL_sinf(freecam_camera.angle - to_rad(90.0f)))
+              .scale(acceleration_const);
+    }
+
+    if (scancode_to_mask(SDL_SCANCODE_LSHIFT) & internal_key_flags)
+    {
+      freecam_acceleration = freecam_acceleration.scale(boosters_power);
+    }
+
     freecam_camera.position =
-        position +
+        freecam_position +
         Vec3(SDL_cosf(freecam_camera.angle), SDL_sinf(clamp(freecam_camera.updown_angle, -1.5f, 1.5f)),
              -SDL_sinf(freecam_camera.angle))
             .scale(camera_distance) -
         Vec3(0.0f, 1.5f, 0.0f);
 
-    camera_view = Mat4x4::LookAt(freecam_camera.position, position - Vec3(0.0f, 1.5f, 0.0f), Vec3(0.0f, -1.0f, 0.0f));
+    camera_view =
+        Mat4x4::LookAt(freecam_camera.position, freecam_position - Vec3(0.0f, 1.5f, 0.0f), Vec3(0.0f, -1.0f, 0.0f));
   }
   else
   {
-    const float friction           = 0.2f;
-    const float max_speed          = 3.0f;
-    const float acceleration_const = 0.0002f;
-    const float boosters_power     = 3.0f;
 
     position += velocity.scale(delta_ms);
     velocity += acceleration.scale(delta_ms) - velocity.scale(friction);
