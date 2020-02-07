@@ -109,7 +109,7 @@ void robot_job(ThreadJobData tjd)
         static_cast<uint32_t>(ctx->game->materials.pbr_dynamic_lights_ubo_offsets[ctx->game->image_index])};
 
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.scene3D.layout, 0,
-                            SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
+                            array_size(dsets), dsets, array_size(dynamic_offsets), dynamic_offsets);
   }
 
   RenderEntityParams params(ctx->game->player);
@@ -176,7 +176,7 @@ void helmet_job(ThreadJobData tjd)
         static_cast<uint32_t>(ctx->game->materials.pbr_dynamic_lights_ubo_offsets[ctx->game->image_index])};
 
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.scene3D.layout, 0,
-                            SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
+                            array_size(dsets), dsets, array_size(dynamic_offsets), dynamic_offsets);
   }
 
   RenderEntityParams params(ctx->game->player);
@@ -256,7 +256,7 @@ void matrioshka_box(ThreadJobData tjd)
         static_cast<uint32_t>(ctx->game->materials.pbr_dynamic_lights_ubo_offsets[ctx->game->image_index])};
 
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.scene3D.layout, 0,
-                            SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
+                            array_size(dsets), dsets, array_size(dynamic_offsets), dynamic_offsets);
   }
 
   vkCmdBindIndexBuffer(command, ctx->engine->gpu_device_local_memory_buffer,
@@ -902,15 +902,15 @@ void compass_text(ThreadJobData tjd)
   if (angle_mod > (2 * M_PI))
     angle_mod -= (2 * M_PI);
 
-  int direction_iter = 0;
+  unsigned direction_iter = 0;
   while (angle_mod > direction_increment)
   {
     direction_iter += 1;
     angle_mod -= direction_increment;
   }
 
-  const int left_direction_iter  = (0 == direction_iter) ? (SDL_arraysize(directions) - 1) : (direction_iter - 1);
-  const int right_direction_iter = ((SDL_arraysize(directions) - 1) == direction_iter) ? 0 : direction_iter + 1;
+  const unsigned left_direction_iter  = (0 == direction_iter) ? (SDL_arraysize(directions) - 1u) : (direction_iter - 1u);
+  const unsigned right_direction_iter = ((SDL_arraysize(directions) - 1) == direction_iter) ? 0u : direction_iter + 1u;
 
   const char* center_text = directions[direction_iter];
   const char* left_text   = directions[left_direction_iter];
@@ -1154,13 +1154,15 @@ void weapon_selectors_left(ThreadJobData tjd)
     // Bordered box for the text inside
     ////////////////////////////////////////////////////////////////////////////
 
-    const Vec2 translation = Vec2(box_size.x + offset_from_bottom_left.x + (14.0f * i),
-                                  screen_extent.y - (box_size.y * 2.00f * (i + 1)) - offset_from_bottom_left.y);
+    const Vec2 translation =
+        Vec2(box_size.x + offset_from_bottom_left.x + (14.0f * static_cast<float>(i)),
+             screen_extent.y - (box_size.y * 2.00f * static_cast<float>(i + 1)) - offset_from_bottom_left.y);
 
     const Mat4x4 mvp =
         gui_projection *
-        Mat4x4::Translation(Vec3(box_size.x + offset_from_bottom_left.x + (14.0f * i),
-                                 screen_extent.y - (box_size.y * 2.00f * (i + 1)) - offset_from_bottom_left.y, -1.0f)) *
+        Mat4x4::Translation(Vec3(
+            box_size.x + offset_from_bottom_left.x + (14.0f * static_cast<float>(i)),
+            screen_extent.y - (box_size.y * 2.00f * static_cast<float>(i + 1)) - offset_from_bottom_left.y, -1.0f)) *
         Mat4x4::Scale(Vec3(box_size.x, box_size.y, 1.0f));
 
     vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -1197,7 +1199,7 @@ void weapon_selectors_left(ThreadJobData tjd)
     struct FragmentPushConstant
     {
       Vec3  color;
-      float time;
+      float time = 0.0f;
     } fpc;
 
     fpc.time = ctx->game->current_time_sec;
@@ -1279,8 +1281,8 @@ void weapon_selectors_right(ThreadJobData tjd)
     ////////////////////////////////////////////////////////////////////////////
     // Bordered box for the text inside
     ////////////////////////////////////////////////////////////////////////////
-    const Vec2 t = {screen_extent.x - box_size.x - offset_from_bottom_right.x - (14.0f * i),
-                    screen_extent.y - (box_size.y * 2.00f * (i + 1)) - offset_from_bottom_right.y};
+    const Vec2 t = {screen_extent.x - box_size.x - offset_from_bottom_right.x - (14.0f * static_cast<float>(i)),
+                    screen_extent.y - (box_size.y * 2.00f * static_cast<float>(i + 1)) - offset_from_bottom_right.y};
 
     const Mat4x4 mvp =
         gui_projection * Mat4x4::Translation(Vec3(t.x, t.y, -1.0f)) * Mat4x4::Scale(Vec3(box_size.x, box_size.y, 1.0f));
@@ -1319,7 +1321,7 @@ void weapon_selectors_right(ThreadJobData tjd)
     struct FragmentPushConstant
     {
       Vec3  color;
-      float time;
+      float time = 0.0f;
     } fpc;
 
     fpc.time = ctx->game->current_time_sec;
@@ -1551,8 +1553,8 @@ void imgui(ThreadJobData tjd)
         .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(translate), translate);
 
     {
-      int vtx_offset = 0;
-      int idx_offset = 0;
+      int32_t  vtx_offset = 0;
+      uint32_t idx_offset = 0;
 
       for (int n = 0; n < draw_data->CmdListsCount; n++)
       {
@@ -1579,7 +1581,7 @@ void imgui(ThreadJobData tjd)
                     },
             };
             vkCmdSetScissor(command, 0, 1, &scissor);
-            vkCmdDrawIndexed(command, pcmd->ElemCount, 1, static_cast<uint32_t>(idx_offset), vtx_offset, 0);
+            vkCmdDrawIndexed(command, pcmd->ElemCount, 1, idx_offset, vtx_offset, 0);
           }
           idx_offset += pcmd->ElemCount;
         }
@@ -1614,7 +1616,7 @@ void water(ThreadJobData tjd)
       Mat4x4 view;
       Mat4x4 model;
       Vec3   camPos;
-      float  time;
+      float  time = 0.0f;
     } push;
 
     push.projection = ctx->game->player.camera_projection;
@@ -1639,7 +1641,7 @@ void water(ThreadJobData tjd)
         static_cast<uint32_t>(ctx->game->materials.pbr_dynamic_lights_ubo_offsets[ctx->game->image_index])};
 
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.pbr_water.layout, 0,
-                            SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
+                            array_size(dsets), dsets, array_size(dynamic_offsets), dynamic_offsets);
 
     vkCmdDraw(command, 4, 1, 0, 0);
   }
@@ -1766,7 +1768,7 @@ void tesselated_ground(ThreadJobData tjd)
       static_cast<uint32_t>(ctx->game->materials.pbr_dynamic_lights_ubo_offsets[ctx->game->image_index])};
 
   vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.tesselated_ground.layout, 0,
-                          SDL_arraysize(dsets), dsets, SDL_arraysize(dynamic_offsets), dynamic_offsets);
+                          array_size(dsets), dsets, array_size(dynamic_offsets), dynamic_offsets);
 
   vkCmdSetLineWidth(command, 2.0f);
   vkCmdDraw(command, ctx->game->materials.tesselation_instances, 1, 0, 0);

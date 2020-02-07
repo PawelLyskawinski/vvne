@@ -9,6 +9,11 @@
 #include <SDL2/SDL_video.h>
 #include <vulkan/vulkan.h>
 
+template <class T, size_t N> constexpr size_t array_size(T (&)[N])
+{
+  return N;
+}
+
 struct Vec4;
 
 struct Pipelines
@@ -75,7 +80,7 @@ struct GpuMemoryBlock
   GpuMemoryAllocator allocator;
 
   VkDeviceSize allocate_aligned(VkDeviceSize size);
-  void allocate_aligned_ranged(VkDeviceSize dst[], uint32_t count, VkDeviceSize size);
+  void         allocate_aligned_ranged(VkDeviceSize dst[], uint32_t count, VkDeviceSize size);
 };
 
 struct MemoryBlocks
