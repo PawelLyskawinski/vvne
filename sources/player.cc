@@ -45,7 +45,8 @@ void Player::process_event(const SDL_Event& event)
 {
   switch (event.type)
   {
-  case SDL_MOUSEMOTION: {
+  case SDL_MOUSEMOTION:
+  {
     if (SDL_GetRelativeMouseMode())
     {
       Camera& bound_camera = freecam_mode ? freecam_camera : camera;
@@ -55,7 +56,8 @@ void Player::process_event(const SDL_Event& event)
   }
   break;
 
-  case SDL_KEYDOWN: {
+  case SDL_KEYDOWN:
+  {
     internal_key_flags |= scancode_to_mask(event.key.keysym.scancode);
     if (SDL_SCANCODE_Y == event.key.keysym.scancode)
     {
@@ -68,7 +70,8 @@ void Player::process_event(const SDL_Event& event)
   }
   break;
 
-  case SDL_KEYUP: {
+  case SDL_KEYUP:
+  {
     internal_key_flags &= ~scancode_to_mask(event.key.keysym.scancode);
   }
   break;
@@ -88,6 +91,16 @@ static Vec3 to_vec3_xz(const Vec2& in)
   return Vec3(in.x, 0.0f, in.y);
 }
 
+static Vec3 calculate_direction_vector(float angle, float updown_angle)
+{
+  return Vec3(SDL_cosf(angle), SDL_tanf(updown_angle), -SDL_sinf(angle)).normalize();
+}
+
+static Vec3 calculate_direction_vector(float angle)
+{
+  return Vec3(SDL_cosf(angle), 0.0f, -SDL_sinf(angle)).normalize();
+}
+
 void Player::update(const float current_time_sec, const float delta_ms, const ExampleLevel& level)
 {
   (void)current_time_sec;
@@ -105,32 +118,26 @@ void Player::update(const float current_time_sec, const float delta_ms, const Ex
     freecam_velocity.clamp(-max_speed, max_speed);
     freecam_acceleration = Vec3(0.0f);
 
+    const Vec3 main_direction_vector  = calculate_direction_vector(freecam_camera.angle, freecam_camera.updown_angle);
+
     if (scancode_to_mask(SDL_SCANCODE_W) & internal_key_flags)
     {
-      freecam_acceleration -= Vec3(SDL_cosf(freecam_camera.angle),
-                                   SDL_sinf(clamp(freecam_camera.updown_angle, -to_rad(180.0f), to_rad(180.0f))),
-                                   -SDL_sinf(freecam_camera.angle))
-                                  .scale(acceleration_const);
+      freecam_acceleration -= main_direction_vector.scale(acceleration_const);
     }
     else if (scancode_to_mask(SDL_SCANCODE_S) & internal_key_flags)
     {
-      freecam_acceleration += Vec3(SDL_cosf(freecam_camera.angle),
-                                   SDL_sinf(clamp(freecam_camera.updown_angle, -to_rad(180.0f), to_rad(180.0f))),
-                                   -SDL_sinf(freecam_camera.angle))
-                                  .scale(acceleration_const);
+      freecam_acceleration += main_direction_vector.scale(acceleration_const);
     }
 
     if (scancode_to_mask(SDL_SCANCODE_A) & internal_key_flags)
     {
       freecam_acceleration +=
-          Vec3(SDL_cosf(freecam_camera.angle + to_rad(90.0f)), 0.0f, -SDL_sinf(freecam_camera.angle + to_rad(90.0f)))
-              .scale(acceleration_const);
+          calculate_direction_vector(freecam_camera.angle + to_rad(90.0f)).scale(acceleration_const);
     }
     else if (scancode_to_mask(SDL_SCANCODE_D) & internal_key_flags)
     {
       freecam_acceleration +=
-          Vec3(SDL_cosf(freecam_camera.angle - to_rad(90.0f)), 0.0f, -SDL_sinf(freecam_camera.angle - to_rad(90.0f)))
-              .scale(acceleration_const);
+          calculate_direction_vector(freecam_camera.angle - to_rad(90.0f)).scale(acceleration_const);
     }
 
     if (scancode_to_mask(SDL_SCANCODE_LSHIFT) & internal_key_flags)
@@ -138,13 +145,7 @@ void Player::update(const float current_time_sec, const float delta_ms, const Ex
       freecam_acceleration = freecam_acceleration.scale(boosters_power);
     }
 
-    freecam_camera.position =
-        freecam_position +
-        Vec3(SDL_cosf(freecam_camera.angle), SDL_sinf(clamp(freecam_camera.updown_angle, -1.5f, 1.5f)),
-             -SDL_sinf(freecam_camera.angle))
-            .scale(camera_distance) -
-        Vec3(0.0f, 1.5f, 0.0f);
-
+    freecam_camera.position = freecam_position + main_direction_vector.scale(camera_distance) - Vec3(0.0f, 1.5f, 0.0f);
     camera_view =
         Mat4x4::LookAt(freecam_camera.position, freecam_position - Vec3(0.0f, 1.5f, 0.0f), Vec3(0.0f, -1.0f, 0.0f));
   }
