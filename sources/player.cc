@@ -31,7 +31,7 @@ void Player::setup(uint32_t width, uint32_t height)
   const VkExtent2D extent = {width, height};
   camera_projection.perspective(extent, to_rad(90.0f), 0.1f, 500.0f);
   camera.angle        = M_PI_2;
-  camera.updown_angle = -1.2f;
+  camera.updown_angle = -to_rad(20.00f);
   position            = Vec3(0.0f, 0.0f, -10.0f);
   freecam_mode        = false;
 }
@@ -45,19 +45,26 @@ void Player::process_event(const SDL_Event& event)
 {
   switch (event.type)
   {
-  case SDL_MOUSEMOTION:
-  {
+  case SDL_MOUSEMOTION: {
     if (SDL_GetRelativeMouseMode())
     {
-      Camera& bound_camera = freecam_mode ? freecam_camera : camera;
-      bound_camera.angle   = SDL_fmodf(bound_camera.angle + (0.01f * event.motion.xrel), 2.0f * M_PI);
-      bound_camera.updown_angle -= (0.005f * event.motion.yrel);
+      if (freecam_mode)
+      {
+        freecam_camera.angle = SDL_fmodf(freecam_camera.angle + (0.01f * event.motion.xrel), 2.0f * M_PI);
+        freecam_camera.updown_angle =
+            clamp(freecam_camera.updown_angle - (0.005f * event.motion.yrel), -to_rad(89.99f), to_rad(89.99f));
+      }
+      else
+      {
+        camera.angle = SDL_fmodf(camera.angle + (0.01f * event.motion.xrel), 2.0f * M_PI);
+        camera.updown_angle =
+            clamp(camera.updown_angle - (0.005f * event.motion.yrel), -to_rad(70.00f), to_rad(70.00f));
+      }
     }
   }
   break;
 
-  case SDL_KEYDOWN:
-  {
+  case SDL_KEYDOWN: {
     internal_key_flags |= scancode_to_mask(event.key.keysym.scancode);
     if (SDL_SCANCODE_Y == event.key.keysym.scancode)
     {
@@ -70,8 +77,7 @@ void Player::process_event(const SDL_Event& event)
   }
   break;
 
-  case SDL_KEYUP:
-  {
+  case SDL_KEYUP: {
     internal_key_flags &= ~scancode_to_mask(event.key.keysym.scancode);
   }
   break;
@@ -118,7 +124,7 @@ void Player::update(const float current_time_sec, const float delta_ms, const Ex
     freecam_velocity.clamp(-max_speed, max_speed);
     freecam_acceleration = Vec3(0.0f);
 
-    const Vec3 main_direction_vector  = calculate_direction_vector(freecam_camera.angle, freecam_camera.updown_angle);
+    const Vec3 main_direction_vector = calculate_direction_vector(freecam_camera.angle, freecam_camera.updown_angle);
 
     if (scancode_to_mask(SDL_SCANCODE_W) & internal_key_flags)
     {
@@ -151,7 +157,6 @@ void Player::update(const float current_time_sec, const float delta_ms, const Ex
   }
   else
   {
-
     position += velocity.scale(delta_ms);
     velocity += acceleration.scale(delta_ms) - velocity.scale(friction);
     velocity.clamp(-max_speed, max_speed);
@@ -186,8 +191,7 @@ void Player::update(const float current_time_sec, const float delta_ms, const Ex
 
     camera.position =
         position +
-        Vec3(SDL_cosf(camera.angle), SDL_sinf(clamp(camera.updown_angle, -1.5f, 1.5f)), -SDL_sinf(camera.angle))
-            .scale(camera_distance) -
+        Vec3(SDL_cosf(camera.angle), SDL_tanf(camera.updown_angle), -SDL_sinf(camera.angle)).normalize().scale(camera_distance) -
         Vec3(0.0f, 1.5f, 0.0f);
 
     camera_view = Mat4x4::LookAt(camera.position, position - Vec3(0.0f, 1.5f, 0.0f), Vec3(0.0f, -1.0f, 0.0f));
