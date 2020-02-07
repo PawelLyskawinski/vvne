@@ -104,7 +104,7 @@ struct Seeker
     return (0 != find_substring_idx(data, sublen, name));
   }
 
-  Seeker idx(const int desired_array_element) const
+  [[nodiscard]] Seeker idx(const int desired_array_element) const
   {
     Seeker result{};
 
@@ -144,14 +144,14 @@ struct Seeker
     return result;
   }
 
-  int idx_integer(const int desired_array_element) const
+  [[nodiscard]] int idx_integer(const int desired_array_element) const
   {
     Seeker element = idx(desired_array_element);
     long   result  = SDL_strtol(element.data, nullptr, 10);
     return static_cast<int>(result);
   }
 
-  float idx_float(const int desired_array_element) const
+  [[nodiscard]] float idx_float(const int desired_array_element) const
   {
     Seeker element = idx(desired_array_element);
 
@@ -167,7 +167,7 @@ struct Seeker
     return static_cast<float>(result);
   }
 
-  int elements_count() const
+  [[nodiscard]] int elements_count() const
   {
     const char* iter = data;
     while ('[' != *iter)
@@ -372,7 +372,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
       Vec3     position;
       Vec3     normal;
       Vec2     texcoord;
-      uint16_t joint[4];
+      uint16_t joint[4] = {};
       Vec4     weight;
     };
 
@@ -427,7 +427,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
           static_cast<int>(is_skinning_used ? offsetof(SkinnedVertex, position) : offsetof(Vertex, position));
 
       int src_stride = buffer_view.integer("stride");
-      src_stride     = src_stride ? src_stride : sizeof(Vec3);
+      src_stride     = src_stride ? src_stride : static_cast<int>(sizeof(Vec3));
 
       for (int i = 0; i < position_count; ++i)
       {
@@ -450,7 +450,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
           static_cast<int>(is_skinning_used ? offsetof(SkinnedVertex, normal) : offsetof(Vertex, normal));
 
       int src_stride = buffer_view.integer("stride");
-      src_stride     = src_stride ? src_stride : sizeof(Vec3);
+      src_stride     = src_stride ? src_stride : static_cast<int>(sizeof(Vec3));
 
       for (int i = 0; i < position_count; ++i)
       {
@@ -474,7 +474,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
           static_cast<int>(is_skinning_used ? offsetof(SkinnedVertex, texcoord) : offsetof(Vertex, texcoord));
 
       int src_stride = buffer_view.integer("stride");
-      src_stride     = src_stride ? src_stride : sizeof(Vec2);
+      src_stride     = src_stride ? src_stride : static_cast<int>(sizeof(Vec2));
 
       for (int i = 0; i < position_count; ++i)
       {
@@ -497,7 +497,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
         SkinnedVertex* dst_vertices        = reinterpret_cast<SkinnedVertex*>(&upload_buffer[required_index_space]);
 
         int src_stride = buffer_view.integer("stride");
-        src_stride     = src_stride ? src_stride : (4 * sizeof(uint16_t));
+        src_stride     = src_stride ? src_stride : (4 * static_cast<int>(sizeof(uint16_t)));
 
         for (int i = 0; i < position_count; ++i)
         {
@@ -516,7 +516,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
         SkinnedVertex* dst_vertices        = reinterpret_cast<SkinnedVertex*>(&upload_buffer[required_index_space]);
 
         int src_stride = buffer_view.integer("stride");
-        src_stride     = src_stride ? src_stride : sizeof(Vec4);
+        src_stride     = src_stride ? src_stride : static_cast<int>(sizeof(Vec4));
 
         for (int i = 0; i < position_count; ++i)
         {
@@ -880,7 +880,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
         const int input_start_offset        = input_view_glb_offset + input_accessor_glb_offset;
 
         int input_stride = input_buffer_view.integer("stride");
-        input_stride     = input_stride ? input_stride : sizeof(float);
+        input_stride     = input_stride ? input_stride : static_cast<int>(sizeof(float));
 
         for (int i = 0; i < input_elements; ++i)
         {
