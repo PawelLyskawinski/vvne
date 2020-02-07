@@ -622,7 +622,7 @@ void Materials::setup(Engine& engine)
           .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
           .buffer              = engine.gpu_device_local_memory_buffer,
           .offset              = green_gui_billboard_vertex_buffer_offset,
-          .size                = static_cast<VkDeviceSize>(sizeof(vertices)),
+          .size                = sizeof(vertices),
       };
 
       vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, 0, 0, nullptr, 1,

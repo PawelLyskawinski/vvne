@@ -17,8 +17,8 @@ struct NodeBox
 {
   const char* name = "";
   Vec2        size;
-  uint32_t    inputs_count;
-  uint32_t    outputs_count;
+  uint32_t    inputs_count = 0;
+  uint32_t    outputs_count = 0;
 };
 
 constexpr NodeBox StartBox = {
@@ -591,7 +591,7 @@ void StoryEditor::editor_update(const SDL_Event& event)
   switch (event.type)
   {
   case SDL_MOUSEWHEEL: {
-    if ((not mmb.state) and (0.0f != event.wheel.y))
+    if ((not mmb.state) and (0 != event.wheel.y))
     {
       handle_mouse_wheel((0 > event.wheel.y) ? -0.05f : 0.05f);
     }

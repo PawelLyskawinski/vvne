@@ -97,7 +97,7 @@ void DebugGui::process_event(Game& game, SDL_Event& event)
   switch (event.type)
   {
   case SDL_MOUSEWHEEL:
-    if (0.0f != event.wheel.y)
+    if (0 != event.wheel.y)
     {
       io.MouseWheel = (0 > event.wheel.y) ? -1.0f : 1.0f;
     }

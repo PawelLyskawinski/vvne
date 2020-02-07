@@ -1093,7 +1093,7 @@ void radar_dots(ThreadJobData tjd)
   Vec2 normalized = distance.normalize();
 
   float      robot_angle     = SDL_atan2f(normalized.x, normalized.y);
-  float      angle           = ctx->game->player.get_camera().angle - robot_angle - ((float)M_PI / 2.0f);
+  float      angle           = ctx->game->player.get_camera().angle - robot_angle - (M_PI_2);
   float      final_distance  = 0.005f * distance.len();
   float      aspect_ratio    = vertical_length / horizontal_length;
   const Vec2 helmet_position = {aspect_ratio * final_distance * SDL_sinf(angle), final_distance * SDL_cosf(angle)};
@@ -1811,7 +1811,7 @@ void update_memory_host_coherent_ubo(ThreadJobData tjd)
   {
     const uint32_t count = g.materials.riggedSimple.skins[0].joints.count;
     const uint32_t size  = count * sizeof(Mat4x4);
-    const Mat4x4*  begin = reinterpret_cast<Mat4x4*>(g.level.rigged_simple_entity.joint_matrices);
+    const Mat4x4*  begin = g.level.rigged_simple_entity.joint_matrices;
     const Mat4x4*  end   = &begin[count];
 
     MemoryMap joint_matrices(e.device, e.memory_blocks.host_coherent_ubo.memory,
@@ -1825,7 +1825,7 @@ void update_memory_host_coherent_ubo(ThreadJobData tjd)
   {
     const uint32_t count = g.materials.monster.skins[0].joints.count;
     const uint32_t size  = count * sizeof(Mat4x4);
-    const Mat4x4*  begin = reinterpret_cast<Mat4x4*>(g.level.monster_entity.joint_matrices);
+    const Mat4x4*  begin = g.level.monster_entity.joint_matrices;
     const Mat4x4*  end   = &begin[count];
 
     MemoryMap joint_matrices(e.device, e.memory_blocks.host_coherent_ubo.memory,

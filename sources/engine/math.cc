@@ -219,7 +219,7 @@ Quaternion Quaternion::operator*(const Quaternion& rhs) const
 
 Mat4x4::Mat4x4(const float* data)
 {
-  SDL_memcpy(reinterpret_cast<float*>(&columns[0].x), data, 16 * sizeof(float));
+  SDL_memcpy(&columns[0].x, data, 16 * sizeof(float));
 }
 
 Mat4x4::Mat4x4(const Quaternion& q)

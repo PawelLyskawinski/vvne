@@ -13,12 +13,12 @@
 
 constexpr float to_rad(float deg) noexcept
 {
-  return (float(M_PI) * deg) / 180.0f;
+  return (M_PI * deg) / 180.0f;
 }
 
 constexpr float to_deg(float rad) noexcept
 {
-  return (180.0f * rad) / float(M_PI);
+  return (180.0f * rad) / M_PI;
 }
 
 template <typename T> constexpr T clamp(T val, T min, T max)
@@ -113,7 +113,7 @@ struct Vec4
   [[nodiscard]] Vec4                normalize() const;
   [[nodiscard]] inline const float* data() const
   {
-    return reinterpret_cast<const float*>(&x);
+    return &x;
   }
 
   inline Vec4& operator+=(const Vec4& rhs)
@@ -158,7 +158,7 @@ struct Mat4x4
   [[nodiscard]] Vec4                row(uint32_t i) const;
   [[nodiscard]] inline const float* data() const
   {
-    return reinterpret_cast<const float*>(&columns[0].x);
+    return &columns[0].x;
   };
   [[nodiscard]] Vec3 get_position() const
   {

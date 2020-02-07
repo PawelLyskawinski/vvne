@@ -57,7 +57,7 @@ bool are_mergable(const Node* left, const Node* right)
 void FreeListAllocator::free_bytes(uint8_t* free_me, unsigned size)
 {
   SDL_assert(free_me);
-  SDL_assert(reinterpret_cast<uint8_t*>(pool) <= free_me);
+  SDL_assert(pool <= free_me);
   SDL_assert(&free_me[size] <= &pool[capacity]);
 
   Node* A = &head;

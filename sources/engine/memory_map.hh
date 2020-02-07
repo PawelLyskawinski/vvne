@@ -10,7 +10,7 @@ public:
             , memory(memory)
             , ptr(nullptr)
     {
-        vkMapMemory(device, memory, offset, size, 0, reinterpret_cast<void**>(&ptr));
+        vkMapMemory(device, memory, offset, size, 0, &ptr);
     }
 
     inline ~MemoryMap() { vkUnmapMemory(device, memory); }

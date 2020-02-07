@@ -274,7 +274,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
   uint64_t   glb_file_size    = static_cast<uint64_t>(SDL_RWsize(ctx));
   uint8_t*   glb_file_content = engine.generic_allocator.allocate<uint8_t>(static_cast<uint32_t>(glb_file_size));
 
-  SDL_RWread(ctx, glb_file_content, sizeof(char), static_cast<size_t>(glb_file_size));
+  SDL_RWread(ctx, glb_file_content, sizeof(char), glb_file_size);
   SDL_RWclose(ctx);
 
   const uint8_t* binary_data = find_glb_binary_data(glb_file_content);

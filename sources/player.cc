@@ -30,7 +30,7 @@ void Player::setup(uint32_t width, uint32_t height)
 {
   const VkExtent2D extent = {width, height};
   camera_projection.perspective(extent, to_rad(90.0f), 0.1f, 500.0f);
-  camera.angle        = static_cast<float>(M_PI / 2);
+  camera.angle        = M_PI_2;
   camera.updown_angle = -1.2f;
   position            = Vec3(0.0f, 0.0f, -10.0f);
   freecam_mode        = false;
@@ -50,7 +50,7 @@ void Player::process_event(const SDL_Event& event)
     if (SDL_GetRelativeMouseMode())
     {
       Camera& bound_camera = freecam_mode ? freecam_camera : camera;
-      bound_camera.angle   = SDL_fmodf(bound_camera.angle + (0.01f * event.motion.xrel), 2.0f * float(M_PI));
+      bound_camera.angle   = SDL_fmodf(bound_camera.angle + (0.01f * event.motion.xrel), 2.0f * M_PI);
       bound_camera.updown_angle -= (0.005f * event.motion.yrel);
     }
   }
@@ -159,16 +159,16 @@ void Player::update(const float current_time_sec, const float delta_ms, const Ex
 
     if (scancode_to_mask(SDL_SCANCODE_W) & internal_key_flags)
     {
-      acceleration += to_vec3_xz(rotation_2D(camera.angle - float(M_PI_2)).scale(acceleration_const));
+      acceleration += to_vec3_xz(rotation_2D(camera.angle - M_PI_2).scale(acceleration_const));
     }
     else if (scancode_to_mask(SDL_SCANCODE_S) & internal_key_flags)
     {
-      acceleration += to_vec3_xz(rotation_2D(camera.angle + float(M_PI_2)).scale(acceleration_const));
+      acceleration += to_vec3_xz(rotation_2D(camera.angle + M_PI_2).scale(acceleration_const));
     }
 
     if (scancode_to_mask(SDL_SCANCODE_A) & internal_key_flags)
     {
-      acceleration += to_vec3_xz(rotation_2D(camera.angle + float(M_PI)).scale(acceleration_const));
+      acceleration += to_vec3_xz(rotation_2D(camera.angle + M_PI).scale(acceleration_const));
     }
     else if (scancode_to_mask(SDL_SCANCODE_D) & internal_key_flags)
     {

@@ -121,7 +121,7 @@ Texture generate_cubemap(Engine* engine, Materials* materials, const char* equir
         .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
         .baseMipLevel   = 0,
         .levelCount     = 1,
-        .baseArrayLayer = static_cast<uint32_t>(i),
+        .baseArrayLayer = i,
         .layerCount     = 1,
     };
 
@@ -176,7 +176,7 @@ Texture generate_cubemap(Engine* engine, Materials* materials, const char* equir
     VkAttachmentReference color_references[6] = {};
     for (unsigned i = 0; i < SDL_arraysize(color_references); ++i)
     {
-      color_references[i].attachment = static_cast<uint32_t>(i);
+      color_references[i].attachment = i;
       color_references[i].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
 
@@ -421,7 +421,7 @@ Texture generate_cubemap(Engine* engine, Materials* materials, const char* equir
           .pColorBlendState    = &color_blend_state,
           .layout              = pipeline_layout,
           .renderPass          = render_pass,
-          .subpass             = static_cast<uint32_t>(i),
+          .subpass             = i,
           .basePipelineHandle  = VK_NULL_HANDLE,
           .basePipelineIndex   = -1,
       };
@@ -623,7 +623,7 @@ Texture generate_irradiance_cubemap(Engine* engine, Materials* materials, Textur
         .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
         .baseMipLevel   = 0,
         .levelCount     = 1,
-        .baseArrayLayer = static_cast<uint32_t>(i),
+        .baseArrayLayer = i,
         .layerCount     = 1,
     };
 
@@ -660,7 +660,7 @@ Texture generate_irradiance_cubemap(Engine* engine, Materials* materials, Textur
     VkAttachmentReference color_references[6] = {};
     for (unsigned i = 0; i < SDL_arraysize(color_references); ++i)
     {
-      color_references[i].attachment = static_cast<uint32_t>(i);
+      color_references[i].attachment = i;
       color_references[i].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
 
@@ -902,7 +902,7 @@ Texture generate_irradiance_cubemap(Engine* engine, Materials* materials, Textur
           .pColorBlendState    = &color_blend_state,
           .layout              = pipeline_layout,
           .renderPass          = render_pass,
-          .subpass             = static_cast<uint32_t>(i),
+          .subpass             = i,
           .basePipelineHandle  = VK_NULL_HANDLE,
           .basePipelineIndex   = -1,
       };
@@ -1140,7 +1140,7 @@ Texture generate_prefiltered_cubemap(Engine* engine, Materials* materials, Textu
     VkAttachmentReference color_references[CUBE_SIDES] = {};
     for (unsigned i = 0; i < SDL_arraysize(color_references); ++i)
     {
-      color_references[i].attachment = static_cast<uint32_t>(i);
+      color_references[i].attachment = i;
       color_references[i].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
 

@@ -25,9 +25,9 @@ struct VertexBuilder
     TerrainVertex v = {
         .position = Vec3(cursor.x, 0.0f, cursor.y),
         .normal   = Vec3(0.0f, -1.0f, 0.0f),
-        .uv =
-            Vec2(SDL_fabsf(static_cast<float>(top_left_point.x - cursor.x)) / static_cast<float>(vertices_on_edge),
-                 SDL_fabsf(static_cast<float>(top_left_point.y - cursor.y)) / static_cast<float>(vertices_on_edge))};
+        .uv       = Vec2(SDL_fabsf(top_left_point.x - cursor.x) / static_cast<float>(vertices_on_edge),
+                   SDL_fabsf(top_left_point.y - cursor.y) / static_cast<float>(vertices_on_edge)),
+    };
 
     return v;
   }
@@ -39,7 +39,7 @@ struct VertexBuilder
 struct Cursor
 {
   explicit Cursor(const Vec2& in)
-      :cursor(in)
+      : cursor(in)
   {
   }
 
@@ -49,10 +49,22 @@ struct Cursor
     cursor.y = initial_y;
   }
 
-  Cursor operator+(const Cursor& rhs) const { return Cursor(cursor + rhs.cursor); }
-  const Vec2& as_table() { return cursor; }
-  float&      x() { return cursor.x; }
-  float&      y() { return cursor.y; }
+  Cursor operator+(const Cursor& rhs) const
+  {
+    return Cursor(cursor + rhs.cursor);
+  }
+  const Vec2& as_table()
+  {
+    return cursor;
+  }
+  float& x()
+  {
+    return cursor.x;
+  }
+  float& y()
+  {
+    return cursor.y;
+  }
 
   Vec2 cursor = {};
 };
@@ -67,7 +79,7 @@ void tesellated_patches_nonindexed_generate(const uint32_t layers, const float p
   VertexBuilder builder;
   builder.top_left_point.x = -patch_dimention * layers;
   builder.top_left_point.y = patch_dimention * layers;
-  builder.vertices_on_edge  = (2 * layers) + 1;
+  builder.vertices_on_edge = (2 * layers) + 1;
 
   uint32_t added_verts_counter = 0;
 
