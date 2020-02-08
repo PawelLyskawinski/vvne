@@ -21,14 +21,11 @@ enum class State
 
 struct TargetPosition
 {
-  bool operator<(const TargetPosition& rhs) const
-  {
-    return entity < rhs.entity;
-  }
-
   uint32_t entity;
   Vec3     position;
   float    radius;
+
+  [[nodiscard]] bool operator==(uint32_t rhs) const { return entity == rhs; }
 };
 
 struct Connection

@@ -12,6 +12,7 @@ struct DebugGui
   SDL_Cursor* mousecursors[ImGuiMouseCursor_Count_];
   bool        engine_console_open;
   bool        story_editor_tab_selected;
+  SDL_bool    relative_mouse_mode_on_console_open;
 
   void setup();
   void teardown();

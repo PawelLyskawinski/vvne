@@ -17,7 +17,7 @@ struct NodeBox
 {
   const char* name = "";
   Vec2        size;
-  uint32_t    inputs_count = 0;
+  uint32_t    inputs_count  = 0;
   uint32_t    outputs_count = 0;
 };
 
@@ -924,6 +924,30 @@ void StoryEditor::remove_selected_nodes()
     remove_element(node_states, entity_count);
 
     entity_count -= 1;
+  }
+}
+
+void StoryEditor::render_node_edit_window()
+{
+  //
+  // Helper editor window will only show for singular selections
+  //
+  uint32_t n = std::count(is_selected, is_selected + entity_count, SDL_TRUE);
+  if (1 == n)
+  {
+    const uint32_t entity = std::distance(is_selected, std::find(is_selected, is_selected + entity_count, SDL_TRUE));
+    if (Node::GoTo == nodes[entity])
+    {
+      if (ImGui::Begin("GoTo Inspector"))
+      {
+        ImGui::Text("Entity %u", entity);
+
+        TargetPosition* co = std::find(target_positions, target_positions + target_positions_count, entity);
+        ImGui::DragFloat3("Target Position", &co->position.x);
+        ImGui::InputFloat("Radius", &co->radius);
+        ImGui::End();
+      }
+    }
   }
 }
 

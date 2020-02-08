@@ -58,6 +58,7 @@ void Story::load(SDL_RWops* handle)
   s.deserialize(connections_count);
   s.deserialize(connections, connections_count);
 
+  validate_and_fix();
   reset_graph_state();
 }
 
@@ -96,6 +97,49 @@ void Story::dump_connections() const
     SDL_Log("src_node_idx: %u, src_output_idx: %u, dst_input_idx: %u, dst_node_idx: %u", c.src_node_idx,
             c.src_output_idx, c.dst_input_idx, c.dst_node_idx);
   });
+}
+
+void Story::validate_and_fix()
+{
+  //
+  // 1. Each GoTo node should have only one corresponding "TargetPosition" component
+  //
+
+  for (uint32_t entity = 0; entity < entity_count; ++entity)
+  {
+    if (Node::GoTo == nodes[entity])
+    {
+      TargetPosition* begin = target_positions;
+      TargetPosition* end   = target_positions + target_positions_count;
+
+      uint32_t n = std::count(begin, end, entity);
+
+      if (1 < n)
+      {
+        SDL_Log("Found %u TargetPosition components for a single GoTo block (%u). Attempting to fix by removing all "
+                "other ones except for the first",
+                n, entity);
+
+        end                    = std::remove(std::find(begin, end, entity) + 1, end, entity);
+        target_positions_count = std::distance(begin, end);
+      }
+      else if (0 == n)
+      {
+        SDL_Log("GoTo block (%u) does not have any corresponding TargetPosition component! Attempting to fix by adding "
+                "stub",
+                entity);
+
+        const TargetPosition stub = {
+            .entity   = entity,
+            .position = Vec3(0.0f, 0.0f, 0.0f),
+            .radius   = 1.0f,
+        };
+
+        *end = stub;
+        target_positions_count += 1;
+      }
+    }
+  }
 }
 
 void Story::reset_graph_state()

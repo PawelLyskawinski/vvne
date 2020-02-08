@@ -73,6 +73,17 @@ void Player::process_event(const SDL_Event& event)
       freecam_position     = position;
       freecam_velocity     = Vec3(0.0);
       freecam_acceleration = Vec3(0.0);
+      if (not freecam_mode)
+      {
+        SDL_SetRelativeMouseMode(SDL_TRUE);
+      }
+    }
+    else if (SDL_SCANCODE_TAB == event.key.keysym.scancode)
+    {
+      if (freecam_mode)
+      {
+        SDL_SetRelativeMouseMode(SDL_GetRelativeMouseMode() ? SDL_FALSE : SDL_TRUE);
+      }
     }
   }
   break;
@@ -189,10 +200,11 @@ void Player::update(const float current_time_sec, const float delta_ms, const Ex
     // @todo: re-enable jumping
     position.y = level.get_height(position.x, position.z) - 1.5f;
 
-    camera.position =
-        position +
-        Vec3(SDL_cosf(camera.angle), SDL_tanf(camera.updown_angle), -SDL_sinf(camera.angle)).normalize().scale(camera_distance) -
-        Vec3(0.0f, 1.5f, 0.0f);
+    camera.position = position +
+                      Vec3(SDL_cosf(camera.angle), SDL_tanf(camera.updown_angle), -SDL_sinf(camera.angle))
+                          .normalize()
+                          .scale(camera_distance) -
+                      Vec3(0.0f, 1.5f, 0.0f);
 
     camera_view = Mat4x4::LookAt(camera.position, position - Vec3(0.0f, 1.5f, 0.0f), Vec3(0.0f, -1.0f, 0.0f));
   }

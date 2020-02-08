@@ -142,11 +142,12 @@ void DebugGui::process_event(Game& game, SDL_Event& event)
         engine_console_open = !engine_console_open;
         if (engine_console_open)
         {
+          relative_mouse_mode_on_console_open = SDL_GetRelativeMouseMode();
           SDL_SetRelativeMouseMode(SDL_FALSE);
         }
         else
         {
-          SDL_SetRelativeMouseMode(SDL_TRUE);
+          SDL_SetRelativeMouseMode(relative_mouse_mode_on_console_open);
         }
       }
       break;
@@ -160,7 +161,7 @@ void DebugGui::process_event(Game& game, SDL_Event& event)
     break;
   }
 
-  if (story_editor_tab_selected)
+  if (story_editor_tab_selected && engine_console_open)
   {
     game.story.editor_update(event);
   }
@@ -361,6 +362,8 @@ void DebugGui::update(Engine& engine, Game& game)
 
   ImGui::NewFrame();
 
+  game.story.render_node_edit_window();
+
   if (!engine_console_open)
   {
     return;
@@ -420,7 +423,7 @@ private:
 
 template <typename T> T* serialize(T* dst, const ImVector<T>& src)
 {
-  SDL_memcpy(dst, src.Data, src.Size * sizeof(T));
+  std::copy(src.Data, src.Data + src.Size, dst);
   return dst + src.Size;
 }
 

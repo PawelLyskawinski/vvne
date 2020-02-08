@@ -27,6 +27,7 @@ struct Story
   void save(SDL_RWops* handle);
   void push_connection(const Connection& conn);
   void dump_connections() const;
+  void validate_and_fix();
   void reset_graph_state();
   void tick(Stack& allocator);
 

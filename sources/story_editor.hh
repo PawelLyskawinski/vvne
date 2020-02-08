@@ -56,6 +56,7 @@ struct StoryEditor : protected Story
   void tick(Stack& allocator);
   void imgui_update();
   void editor_update(const SDL_Event& event);
+  void render_node_edit_window();
 
 private:
   [[nodiscard]] const Palette& get_palette() const;
