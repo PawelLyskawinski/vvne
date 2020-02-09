@@ -960,6 +960,22 @@ void StoryEditor::render_node_edit_window(const Player& player)
         ImGui::DragFloat3("Target Position", &co->position.x);
         ImGui::InputFloat("Radius", &co->radius);
         ImGui::Text("Distance from player: %.3f", (player.position - co->position).len());
+        ImGui::Text("State: ");
+        ImGui::SameLine();
+
+        const State state = node_states[entity];
+        ImVec4      color = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
+
+        if(State::Cancelled == state)
+        {
+            color = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
+        }
+        else if(State::Upcoming == state)
+        {
+            color = ImVec4(0.3f, 0.3f, 0.3f, 1.0f);
+        }
+
+        ImGui::TextColored(color, "%s", state_to_string(state));
 
         ImGui::End();
       }
