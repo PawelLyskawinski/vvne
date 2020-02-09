@@ -186,6 +186,8 @@ const char* state_to_string(State state)
     return "Active";
   case State::Finished:
     return "Finished";
+  case State::Cancelled:
+    return "Cancelled";
   default:
     return "N/A";
   }
@@ -946,7 +948,8 @@ void StoryEditor::render_node_edit_window(const Player& player)
     if (Node::GoTo == nodes[entity])
     {
       is_point_requested_to_render = true;
-      if (ImGui::Begin("GoTo Inspector"))
+      if (ImGui::Begin("GoTo Inspector", nullptr,
+                       ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBringToFrontOnFocus))
       {
         ImGui::Text("Entity %u", entity);
 
