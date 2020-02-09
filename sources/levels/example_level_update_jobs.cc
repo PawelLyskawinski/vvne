@@ -214,11 +214,13 @@ void moving_lights_job(ThreadJobData tjd)
     light.position.y   = ctx.game.level.get_height(light.position.x, light.position.z) - 1.0f;
   }
 
-  ctx.game.materials.pbr_light_sources_cache =
-      convert_light_sources(dynamic_lights, &dynamic_lights[SDL_arraysize(dynamic_lights)]);
+
+  SDL_LockMutex(ctx.game.materials.pbr_light_sources_cache_lock);
+  ctx.game.materials.pbr_light_sources_cache.push(dynamic_lights, dynamic_lights + array_size(dynamic_lights));
+  SDL_UnlockMutex(ctx.game.materials.pbr_light_sources_cache_lock);
 
   SimpleEntity* dst = ctx.level.box_entities;
-  for (uint32_t i = 0; i < static_cast<uint32_t>(SDL_arraysize(dynamic_lights)); ++i)
+  for (uint32_t i = 0; i < array_size(dynamic_lights); ++i)
   {
     update_moving_light(dst[i], ctx.game.materials.box, dynamic_lights[i], ctx.game.current_time_sec);
   }
@@ -268,7 +270,7 @@ void recalculate_csm_matrices(ThreadJobData tjd)
 void story_job(ThreadJobData tjd)
 {
     UpdateJob ctx(tjd, __FUNCTION__);
-    ctx.game.story.tick(tjd.allocator);
+    ctx.game.story.tick(ctx.game.player, tjd.allocator);
 }
 
 } // namespace

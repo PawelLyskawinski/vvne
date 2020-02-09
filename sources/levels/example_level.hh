@@ -42,4 +42,5 @@ public:
   SimpleEntity    monster_entity;
   SimpleEntity    rigged_simple_entity;
   SimpleEntity    axis_arrow_entities[3];
+  SimpleEntity    inspected_story_point;
 };

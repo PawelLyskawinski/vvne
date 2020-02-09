@@ -307,9 +307,9 @@ void StoryEditor::save(SDL_RWops* handle)
   s.serialize(positions, entity_count);
 }
 
-void StoryEditor::tick(Stack& allocator)
+void StoryEditor::tick(const Player& player, Stack& allocator)
 {
-  Story::tick(allocator);
+  Story::tick(player, allocator);
 }
 
 void StoryEditor::imgui_update()
@@ -929,6 +929,8 @@ void StoryEditor::remove_selected_nodes()
 
 void StoryEditor::render_node_edit_window()
 {
+  is_point_requested_to_render = false;
+
   //
   // Helper editor window will only show for singular selections
   //
@@ -938,11 +940,15 @@ void StoryEditor::render_node_edit_window()
     const uint32_t entity = std::distance(is_selected, std::find(is_selected, is_selected + entity_count, SDL_TRUE));
     if (Node::GoTo == nodes[entity])
     {
+      is_point_requested_to_render = true;
       if (ImGui::Begin("GoTo Inspector"))
       {
         ImGui::Text("Entity %u", entity);
 
         TargetPosition* co = std::find(target_positions, target_positions + target_positions_count, entity);
+
+        point_to_render = co->position;
+
         ImGui::DragFloat3("Target Position", &co->position.x);
         ImGui::InputFloat("Radius", &co->radius);
         ImGui::End();

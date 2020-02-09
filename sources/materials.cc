@@ -3,6 +3,7 @@
 #include "game_constants.hh"
 #include "imgui.h"
 #include "terrain_as_a_function.hh"
+#include <algorithm>
 
 namespace {
 
@@ -56,20 +57,11 @@ struct Cursor
 
 } // namespace
 
-LightSourcesSoA convert_light_sources(const LightSource* begin, const LightSource* end)
+void LightSourcesSoA::push(const LightSource* begin, const LightSource* end)
 {
-  LightSourcesSoA soa = {.count = static_cast<int>(end - begin)};
-
-  Vec4* dst_pos    = soa.positions;
-  Vec4* dst_colors = soa.colors;
-
-  for (; end != begin; ++begin)
-  {
-    *dst_pos++    = begin->position;
-    *dst_colors++ = begin->color;
-  }
-
-  return soa;
+  std::transform(begin, end, positions + count, [](const LightSource& it) { return it.position; });
+  std::transform(begin, end, colors + count, [](const LightSource& it) { return it.color; });
+  count += std::distance(begin, end);
 }
 
 void Materials::setup(Engine& engine)
@@ -697,8 +689,11 @@ void Materials::setup(Engine& engine)
 
     engine.generic_allocator.free(fnt_file_content, static_cast<uint32_t>(fnt_file_size));
   }
+
+  pbr_light_sources_cache_lock = SDL_CreateMutex();
 }
 
 void Materials::teardown(Engine& engine)
 {
+    SDL_DestroyMutex(pbr_light_sources_cache_lock);
 }

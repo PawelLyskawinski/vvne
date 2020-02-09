@@ -210,6 +210,14 @@ void point_light_boxes(ThreadJobData tjd)
     render_entity(ctx->game->level.box_entities[i], ctx->game->materials.box, *ctx->engine, params);
   }
 
+  if (ctx->game->story.is_point_requested_to_render)
+  {
+    params.color                 = Vec3(1.0, 0.1, 0.1);
+    const Mat4x4 world_transform = Mat4x4::Translation(ctx->game->story.point_to_render) * Mat4x4::Scale(Vec3(1.0f));
+    ctx->game->level.inspected_story_point.recalculate_node_transforms(ctx->game->materials.box, world_transform);
+    render_entity(ctx->game->level.inspected_story_point, ctx->game->materials.box, *ctx->engine, params);
+  }
+
   vkEndCommandBuffer(command);
 }
 
@@ -909,7 +917,7 @@ void compass_text(ThreadJobData tjd)
     angle_mod -= direction_increment;
   }
 
-  const unsigned left_direction_iter  = (0 == direction_iter) ? (SDL_arraysize(directions) - 1u) : (direction_iter - 1u);
+  const unsigned left_direction_iter = (0 == direction_iter) ? (SDL_arraysize(directions) - 1u) : (direction_iter - 1u);
   const unsigned right_direction_iter = ((SDL_arraysize(directions) - 1) == direction_iter) ? 0u : direction_iter + 1u;
 
   const char* center_text = directions[direction_iter];
@@ -1891,6 +1899,5 @@ Job* ExampleLevel::copy_render_jobs(Job* dst)
       helmet_depth_job,
       imgui,
   };
-
-  return std::copy(jobs, &jobs[SDL_arraysize(jobs)], dst);
+  return std::copy(jobs, jobs + array_size(jobs), dst);
 }

@@ -1,6 +1,7 @@
 #include "story.hh"
 #include "engine/allocators.hh"
 #include "engine/fileops.hh"
+#include "player.hh"
 #include <SDL2/SDL_log.h>
 #include <algorithm>
 
@@ -150,7 +151,7 @@ void Story::reset_graph_state()
   node_states[std::distance(nodes, it)] = State::Active;
 }
 
-bool Story::update(uint32_t entity_idx)
+bool Story::update(const Player& player, uint32_t entity_idx)
 {
   switch (nodes[entity_idx])
   {
@@ -160,12 +161,25 @@ bool Story::update(uint32_t entity_idx)
   case Node::Any:
     node_states[entity_idx] = State::Finished;
     return false;
+  case Node::GoTo: {
+    const TargetPosition* co = std::find(target_positions, target_positions + target_positions_count, entity_idx);
+    SDL_assert(co);
+    if((player.position - co->position).len() >= co->radius)
+    {
+        return true;
+    }
+    else
+    {
+        SDL_Log("GoTo reached!");
+        return false;
+    }
+  }
   default:
     return true;
   }
 }
 
-void Story::tick(Stack& allocator)
+void Story::tick(const Player& player, Stack& allocator)
 {
   uint32_t  active_entites_capacity = 256;
   uint32_t* active_entities         = allocator.alloc<uint32_t>(active_entites_capacity);
@@ -179,7 +193,7 @@ void Story::tick(Stack& allocator)
   //                         partition point
   //
 
-  auto      call_update     = [&](uint32_t entity_idx) { return update(entity_idx); };
+  auto      call_update     = [&](uint32_t entity_idx) { return update(player, entity_idx); };
   uint32_t* partition_point = std::partition(active_entities, active_entities + active_entities_count, call_update);
   uint32_t  finished_count  = std::distance(partition_point, active_entities + active_entities_count);
 
