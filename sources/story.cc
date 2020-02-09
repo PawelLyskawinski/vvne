@@ -151,6 +151,34 @@ void Story::reset_graph_state()
   node_states[std::distance(nodes, it)] = State::Active;
 }
 
+void Story::depth_first_cancel(const Connection& connection)
+{
+  const uint32_t investigated = connection.src_node_idx;
+  switch (node_states[investigated])
+  {
+  case State::Upcoming:
+  case State::Active: {
+    node_states[investigated] = State::Cancelled;
+    depth_first_cancel(investigated);
+    break;
+  }
+  case State::Cancelled:
+  case State::Finished:
+    break;
+  }
+}
+
+void Story::depth_first_cancel(uint32_t entity)
+{
+  auto              is_parent = [entity](const Connection& c) { return entity == c.dst_node_idx; };
+  const Connection* begin     = connections;
+  const Connection* end       = connections + connections_count;
+  for (const Connection* it = std::find_if(begin, end, is_parent); end != it; it = std::find_if(it + 1, end, is_parent))
+  {
+    depth_first_cancel(*it);
+  }
+}
+
 bool Story::update(const Player& player, uint32_t entity_idx)
 {
   switch (nodes[entity_idx])
@@ -164,15 +192,15 @@ bool Story::update(const Player& player, uint32_t entity_idx)
   case Node::GoTo: {
     const TargetPosition* co = std::find(target_positions, target_positions + target_positions_count, entity_idx);
     SDL_assert(co);
-    if((player.position - co->position).len() >= co->radius)
+    if ((player.position - co->position).len() >= co->radius)
     {
-        return true;
+      return true;
     }
     else
     {
-        SDL_Log("GoTo reached!");
-        node_states[entity_idx] = State::Finished;
-        return false;
+      SDL_Log("GoTo reached!");
+      node_states[entity_idx] = State::Finished;
+      return false;
     }
   }
   default:
@@ -200,6 +228,17 @@ void Story::tick(const Player& player, Stack& allocator)
 
   while (finished_count)
   {
+    //
+    // Is any of "finished" nodes "any"? If so, cancel all input connections in a dfs fashion
+    //
+    for (uint32_t* it = partition_point; (partition_point + finished_count) != it; ++it)
+    {
+      if (Node::Any == nodes[*it])
+      {
+        depth_first_cancel(*it);
+      }
+    }
+
     //
     // [ A A F F F ] --> [ A A F F F A_new A_new A_new ]
     //                               *

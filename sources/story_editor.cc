@@ -388,11 +388,12 @@ void StoryEditor::imgui_update()
   //
   //////////////////////////////////////////////////////////////////////////////
 
-  const ImColor color_upcoming = to_imgui(palette_debugger.paragraph, 170);
-  const ImColor color_active   = to_imgui(palette_debugger.tertiary, 170);
-  const ImColor color_finished = to_imgui(palette_debugger.button, 170);
-  const ImColor color_regular  = to_imgui(palette_default.secondary, 170);
-  const ImColor color_special  = to_imgui(palette_default.tertiary, 170);
+  const ImColor color_upcoming  = to_imgui(palette_debugger.paragraph, 170);
+  const ImColor color_active    = to_imgui(palette_debugger.tertiary, 170);
+  const ImColor color_finished  = to_imgui(palette_debugger.button, 170);
+  const ImColor color_cancelled = to_imgui(palette_default.background, 170);
+  const ImColor color_regular   = to_imgui(palette_default.secondary, 170);
+  const ImColor color_special   = to_imgui(palette_default.tertiary, 170);
 
   //////////////////////////////////////////////////////////////////////////////
   //
@@ -429,6 +430,9 @@ void StoryEditor::imgui_update()
         break;
       case State::Finished:
         selected_color = &color_finished;
+        break;
+      case State::Cancelled:
+        selected_color = &color_cancelled;
         break;
       }
       draw_list->AddRectFilled(ul, br, *selected_color, 5.0f);

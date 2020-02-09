@@ -32,6 +32,8 @@ struct Story
   void validate_and_fix();
   void reset_graph_state();
   void tick(const Player& player, Stack& allocator);
+  void depth_first_cancel(const Connection& connection);
+  void depth_first_cancel(uint32_t entity);
 
 private:
   //
