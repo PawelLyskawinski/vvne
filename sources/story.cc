@@ -189,6 +189,27 @@ bool Story::update(const Player& player, uint32_t entity_idx)
   case Node::Any:
     node_states[entity_idx] = State::Finished;
     return false;
+  case Node::All: {
+    auto is_connection_satisfying_all = [&](const Connection& connection) {
+      if (entity_idx == connection.dst_node_idx)
+      {
+        return State::Finished == node_states[connection.src_node_idx];
+      }
+      else
+      {
+        return true;
+      }
+    };
+    if (std::all_of(connections, connections + connections_count, is_connection_satisfying_all))
+    {
+      node_states[entity_idx] = State::Finished;
+      return false;
+    }
+    else
+    {
+      return true;
+    }
+  }
   case Node::GoTo: {
     const TargetPosition* co = std::find(target_positions, target_positions + target_positions_count, entity_idx);
     SDL_assert(co);
