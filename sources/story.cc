@@ -171,6 +171,7 @@ bool Story::update(const Player& player, uint32_t entity_idx)
     else
     {
         SDL_Log("GoTo reached!");
+        node_states[entity_idx] = State::Finished;
         return false;
     }
   }
