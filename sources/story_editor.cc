@@ -2,6 +2,7 @@
 #include "color_palette.hh"
 #include "engine/fileops.hh"
 #include "imgui.h"
+#include "player.hh"
 #include <SDL2/SDL_log.h>
 #include <algorithm>
 
@@ -927,7 +928,7 @@ void StoryEditor::remove_selected_nodes()
   }
 }
 
-void StoryEditor::render_node_edit_window()
+void StoryEditor::render_node_edit_window(const Player& player)
 {
   is_point_requested_to_render = false;
 
@@ -951,6 +952,8 @@ void StoryEditor::render_node_edit_window()
 
         ImGui::DragFloat3("Target Position", &co->position.x);
         ImGui::InputFloat("Radius", &co->radius);
+        ImGui::Text("Distance from player: %.3f", (player.position - co->position).len());
+
         ImGui::End();
       }
     }

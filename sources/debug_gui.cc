@@ -362,7 +362,7 @@ void DebugGui::update(Engine& engine, Game& game)
 
   ImGui::NewFrame();
 
-  game.story.render_node_edit_window();
+  game.story.render_node_edit_window(game.player);
 
   if (!engine_console_open)
   {

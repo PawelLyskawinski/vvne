@@ -16,7 +16,8 @@ enum class State
 {
   Upcoming,
   Active,
-  Finished
+  Finished,
+  Cancelled
 };
 
 struct TargetPosition
@@ -25,7 +26,10 @@ struct TargetPosition
   Vec3     position;
   float    radius;
 
-  [[nodiscard]] bool operator==(uint32_t rhs) const { return entity == rhs; }
+  [[nodiscard]] bool operator==(uint32_t rhs) const
+  {
+    return entity == rhs;
+  }
 };
 
 struct Connection
