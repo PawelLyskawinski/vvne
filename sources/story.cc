@@ -1,6 +1,7 @@
 #include "story.hh"
 #include "engine/allocators.hh"
 #include "engine/fileops.hh"
+#include "player.hh"
 #include <SDL2/SDL_log.h>
 #include <algorithm>
 
@@ -150,7 +151,35 @@ void Story::reset_graph_state()
   node_states[std::distance(nodes, it)] = State::Active;
 }
 
-bool Story::update(uint32_t entity_idx)
+void Story::depth_first_cancel(const Connection& connection)
+{
+  const uint32_t investigated = connection.src_node_idx;
+  switch (node_states[investigated])
+  {
+  case State::Upcoming:
+  case State::Active: {
+    node_states[investigated] = State::Cancelled;
+    depth_first_cancel(investigated);
+    break;
+  }
+  case State::Cancelled:
+  case State::Finished:
+    break;
+  }
+}
+
+void Story::depth_first_cancel(uint32_t entity)
+{
+  auto              is_parent = [entity](const Connection& c) { return entity == c.dst_node_idx; };
+  const Connection* begin     = connections;
+  const Connection* end       = connections + connections_count;
+  for (const Connection* it = std::find_if(begin, end, is_parent); end != it; it = std::find_if(it + 1, end, is_parent))
+  {
+    depth_first_cancel(*it);
+  }
+}
+
+bool Story::update(const Player& player, uint32_t entity_idx)
 {
   switch (nodes[entity_idx])
   {
@@ -160,12 +189,47 @@ bool Story::update(uint32_t entity_idx)
   case Node::Any:
     node_states[entity_idx] = State::Finished;
     return false;
+  case Node::All: {
+    auto is_connection_satisfying_all = [&](const Connection& connection) {
+      if (entity_idx == connection.dst_node_idx)
+      {
+        return State::Finished == node_states[connection.src_node_idx];
+      }
+      else
+      {
+        return true;
+      }
+    };
+    if (std::all_of(connections, connections + connections_count, is_connection_satisfying_all))
+    {
+      node_states[entity_idx] = State::Finished;
+      return false;
+    }
+    else
+    {
+      return true;
+    }
+  }
+  case Node::GoTo: {
+    const TargetPosition* co = std::find(target_positions, target_positions + target_positions_count, entity_idx);
+    SDL_assert(co);
+    if ((player.position - co->position).len() >= co->radius)
+    {
+      return true;
+    }
+    else
+    {
+      SDL_Log("GoTo reached!");
+      node_states[entity_idx] = State::Finished;
+      return false;
+    }
+  }
   default:
     return true;
   }
 }
 
-void Story::tick(Stack& allocator)
+void Story::tick(const Player& player, Stack& allocator)
 {
   uint32_t  active_entites_capacity = 256;
   uint32_t* active_entities         = allocator.alloc<uint32_t>(active_entites_capacity);
@@ -179,12 +243,23 @@ void Story::tick(Stack& allocator)
   //                         partition point
   //
 
-  auto      call_update     = [&](uint32_t entity_idx) { return update(entity_idx); };
+  auto      call_update     = [&](uint32_t entity_idx) { return update(player, entity_idx); };
   uint32_t* partition_point = std::partition(active_entities, active_entities + active_entities_count, call_update);
   uint32_t  finished_count  = std::distance(partition_point, active_entities + active_entities_count);
 
   while (finished_count)
   {
+    //
+    // Is any of "finished" nodes "any"? If so, cancel all input connections in a dfs fashion
+    //
+    for (uint32_t* it = partition_point; (partition_point + finished_count) != it; ++it)
+    {
+      if (Node::Any == nodes[*it])
+      {
+        depth_first_cancel(*it);
+      }
+    }
+
     //
     // [ A A F F F ] --> [ A A F F F A_new A_new A_new ]
     //                               *

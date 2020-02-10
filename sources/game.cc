@@ -138,6 +138,8 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   player.update(current_time_sec, time_delta_since_last_frame_ms, level);
   level.update(time_delta_since_last_frame_ms);
 
+  materials.pbr_light_sources_cache.count = 0;
+
   engine.job_system.fill_jobs(ExampleLevel::copy_update_jobs);
   engine.job_system.start();
   ImGui::Render();

@@ -94,6 +94,7 @@ void ExampleLevel::setup(HierarchicalAllocator& allocator, const Materials& mate
   {
     entity.init(allocator, materials.box);
   }
+  inspected_story_point.init(allocator, materials.box);
 
   matrioshka_entity.init(allocator, materials.animatedBox);
   rigged_simple_entity.init(allocator, materials.riggedSimple);

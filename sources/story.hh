@@ -5,6 +5,8 @@
 #include "story_components.hh"
 #include <SDL2/SDL_rwops.h>
 
+struct Player;
+
 namespace story {
 
 struct Story
@@ -29,7 +31,9 @@ struct Story
   void dump_connections() const;
   void validate_and_fix();
   void reset_graph_state();
-  void tick(Stack& allocator);
+  void tick(const Player& player, Stack& allocator);
+  void depth_first_cancel(const Connection& connection);
+  void depth_first_cancel(uint32_t entity);
 
 private:
   //
@@ -37,7 +41,7 @@ private:
   // true  - node still active
   // false - node finished executing
   //
-  bool update(uint32_t entity_idx);
+  bool update(const Player& player, uint32_t entity_idx);
 };
 
 } // namespace story

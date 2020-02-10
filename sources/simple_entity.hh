@@ -18,11 +18,12 @@ struct SimpleEntity
   Quaternion* node_rotations;
   Vec3*       node_translations;
 
-  // value state
+  // state
   uint64_t node_renderabilities;
   uint64_t node_anim_rotation_applicability;
   uint64_t node_anim_translation_applicability;
   float    animation_start_time;
+  Vec4     color;
 
   struct Flags
   {

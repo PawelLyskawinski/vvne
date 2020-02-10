@@ -66,6 +66,7 @@ void update_moving_light(SimpleEntity& entity, const SceneGraph& scene_graph, co
       Mat4x4::Translation(light_source.position.as_vec3()) * Mat4x4(orientation) * Mat4x4::Scale(Vec3(0.05f));
 
   entity.recalculate_node_transforms(scene_graph, world_transform);
+  entity.color = light_source.color;
 }
 
 void update_matrioshka(SimpleEntity& entity, const SceneGraph& scene_graph, float current_time_sec)
@@ -214,11 +215,12 @@ void moving_lights_job(ThreadJobData tjd)
     light.position.y   = ctx.game.level.get_height(light.position.x, light.position.z) - 1.0f;
   }
 
-  ctx.game.materials.pbr_light_sources_cache =
-      convert_light_sources(dynamic_lights, &dynamic_lights[SDL_arraysize(dynamic_lights)]);
+  SDL_LockMutex(ctx.game.materials.pbr_light_sources_cache_lock);
+  ctx.game.materials.pbr_light_sources_cache.push(dynamic_lights, dynamic_lights + array_size(dynamic_lights));
+  SDL_UnlockMutex(ctx.game.materials.pbr_light_sources_cache_lock);
 
   SimpleEntity* dst = ctx.level.box_entities;
-  for (uint32_t i = 0; i < static_cast<uint32_t>(SDL_arraysize(dynamic_lights)); ++i)
+  for (uint32_t i = 0; i < array_size(dynamic_lights); ++i)
   {
     update_moving_light(dst[i], ctx.game.materials.box, dynamic_lights[i], ctx.game.current_time_sec);
   }
@@ -267,25 +269,23 @@ void recalculate_csm_matrices(ThreadJobData tjd)
 
 void story_job(ThreadJobData tjd)
 {
-    UpdateJob ctx(tjd, __FUNCTION__);
-    ctx.game.story.tick(tjd.allocator);
+  UpdateJob ctx(tjd, __FUNCTION__);
+  ctx.game.story.tick(ctx.game.player, tjd.allocator);
 }
 
 } // namespace
 
 Job* ExampleLevel::copy_update_jobs(Job* dst)
 {
-  const Job jobs[] = {
-      helmet_job,               //
-      robot_job,                //
-      monster_job,              //
-      rigged_simple_job,        //
-      moving_lights_job,        //
-      matrioshka_job,           //
-      orientation_axis_job,     //
-      gui_lines_generation_job, //
-      recalculate_csm_matrices, //
-      story_job
-  };
+  const Job jobs[] = {monster_job,              //
+                      helmet_job,               //
+                      robot_job,                //
+                      rigged_simple_job,        //
+                      moving_lights_job,        //
+                      matrioshka_job,           //
+                      orientation_axis_job,     //
+                      gui_lines_generation_job, //
+                      recalculate_csm_matrices, //
+                      story_job};
   return std::copy(jobs, &jobs[SDL_arraysize(jobs)], dst);
 }

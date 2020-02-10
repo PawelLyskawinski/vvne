@@ -2,6 +2,7 @@
 #include "color_palette.hh"
 #include "engine/fileops.hh"
 #include "imgui.h"
+#include "player.hh"
 #include <SDL2/SDL_log.h>
 #include <algorithm>
 
@@ -185,6 +186,8 @@ const char* state_to_string(State state)
     return "Active";
   case State::Finished:
     return "Finished";
+  case State::Cancelled:
+    return "Cancelled";
   default:
     return "N/A";
   }
@@ -279,6 +282,8 @@ void StoryEditor::setup(HierarchicalAllocator& allocator)
   node_states[0]   = State::Active;
   palette_default  = Palette::generate_happyhue_13();
   palette_debugger = Palette::generate_happyhue_3();
+
+  is_showing_state = true;
 }
 
 void StoryEditor::teardown(HierarchicalAllocator& allocator)
@@ -307,9 +312,9 @@ void StoryEditor::save(SDL_RWops* handle)
   s.serialize(positions, entity_count);
 }
 
-void StoryEditor::tick(Stack& allocator)
+void StoryEditor::tick(const Player& player, Stack& allocator)
 {
-  Story::tick(allocator);
+  Story::tick(player, allocator);
 }
 
 void StoryEditor::imgui_update()
@@ -387,11 +392,12 @@ void StoryEditor::imgui_update()
   //
   //////////////////////////////////////////////////////////////////////////////
 
-  const ImColor color_upcoming = to_imgui(palette_debugger.paragraph, 170);
-  const ImColor color_active   = to_imgui(palette_debugger.tertiary, 170);
-  const ImColor color_finished = to_imgui(palette_debugger.button, 170);
-  const ImColor color_regular  = to_imgui(palette_default.secondary, 170);
-  const ImColor color_special  = to_imgui(palette_default.tertiary, 170);
+  const ImColor color_upcoming  = to_imgui(palette_debugger.paragraph, 170);
+  const ImColor color_active    = to_imgui(palette_debugger.tertiary, 170);
+  const ImColor color_finished  = to_imgui(palette_debugger.button, 170);
+  const ImColor color_cancelled = to_imgui(palette_default.background, 170);
+  const ImColor color_regular   = to_imgui(palette_default.secondary, 170);
+  const ImColor color_special   = to_imgui(palette_default.tertiary, 170);
 
   //////////////////////////////////////////////////////////////////////////////
   //
@@ -428,6 +434,9 @@ void StoryEditor::imgui_update()
         break;
       case State::Finished:
         selected_color = &color_finished;
+        break;
+      case State::Cancelled:
+        selected_color = &color_cancelled;
         break;
       }
       draw_list->AddRectFilled(ul, br, *selected_color, 5.0f);
@@ -927,8 +936,10 @@ void StoryEditor::remove_selected_nodes()
   }
 }
 
-void StoryEditor::render_node_edit_window()
+void StoryEditor::render_node_edit_window(const Player& player)
 {
+  is_point_requested_to_render = false;
+
   //
   // Helper editor window will only show for singular selections
   //
@@ -938,13 +949,36 @@ void StoryEditor::render_node_edit_window()
     const uint32_t entity = std::distance(is_selected, std::find(is_selected, is_selected + entity_count, SDL_TRUE));
     if (Node::GoTo == nodes[entity])
     {
-      if (ImGui::Begin("GoTo Inspector"))
+      is_point_requested_to_render = true;
+      if (ImGui::Begin("GoTo Inspector", nullptr,
+                       ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBringToFrontOnFocus))
       {
         ImGui::Text("Entity %u", entity);
 
         TargetPosition* co = std::find(target_positions, target_positions + target_positions_count, entity);
+
+        point_to_render = co->position;
+
         ImGui::DragFloat3("Target Position", &co->position.x);
         ImGui::InputFloat("Radius", &co->radius);
+        ImGui::Text("Distance from player: %.3f", (player.position - co->position).len());
+        ImGui::Text("State: ");
+        ImGui::SameLine();
+
+        const State state = node_states[entity];
+        ImVec4      color = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
+
+        if(State::Cancelled == state)
+        {
+            color = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
+        }
+        else if(State::Upcoming == state)
+        {
+            color = ImVec4(0.3f, 0.3f, 0.3f, 1.0f);
+        }
+
+        ImGui::TextColored(color, "%s", state_to_string(state));
+
         ImGui::End();
       }
     }

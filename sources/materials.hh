@@ -17,9 +17,9 @@ struct LightSourcesSoA
   Vec4 positions[64];
   Vec4 colors[64];
   int  count = 0;
-};
 
-[[nodiscard]] LightSourcesSoA convert_light_sources(const LightSource* begin, const LightSource* end);
+  void push(const LightSource* begin, const LightSource* end);
+};
 
 struct SdfChar
 {
@@ -84,6 +84,7 @@ struct Materials
   VkDeviceSize regular_billboard_vertex_buffer_offset;
 
   // frame cache
+  SDL_mutex*      pbr_light_sources_cache_lock;
   LightSourcesSoA pbr_light_sources_cache;
   Vec2            gui_lines_memory_cache[MAX_ROBOT_GUI_LINES];
 
