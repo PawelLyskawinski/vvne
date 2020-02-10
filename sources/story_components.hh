@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/literals.hh"
 #include "engine/math.hh"
 
 namespace story {
@@ -9,7 +10,8 @@ enum class Node
   Start,
   Any,
   All,
-  GoTo
+  GoTo,
+  Dialogue
 };
 
 enum class State
@@ -30,6 +32,36 @@ struct TargetPosition
   {
     return entity == rhs;
   }
+};
+
+struct Dialogue
+{
+  enum class Type
+  {
+    Short,
+    Long
+  };
+
+  static constexpr uint32_t type_to_size(const Type type)
+  {
+    switch (type)
+    {
+    default:
+    case Type::Short:
+      return 1_KB;
+    case Type::Long:
+      return 10_KB;
+    }
+  }
+
+  [[nodiscard]] bool operator==(uint32_t rhs) const
+  {
+    return entity == rhs;
+  }
+
+  uint32_t entity;
+  Type     type;
+  char*    text;
 };
 
 struct Connection

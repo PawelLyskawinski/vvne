@@ -52,7 +52,7 @@ struct StoryEditor : protected Story
   Vec3                   point_to_render                       = {};
 
   void setup(HierarchicalAllocator& allocator);
-  void teardown(HierarchicalAllocator& allocator);
+  void teardown();
   void load(SDL_RWops* handle);
   void save(SDL_RWops* handle);
   void tick(const Player& player, Stack& allocator);

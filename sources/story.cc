@@ -32,20 +32,23 @@ uint32_t gather_active_entities(const State states[], uint32_t count, uint32_t* 
 
 } // namespace
 
-void Story::setup(HierarchicalAllocator& allocator)
+void Story::setup(HierarchicalAllocator& hallocator)
 {
-  nodes            = allocator.allocate<Node>(entities_capacity);
-  node_states      = allocator.allocate<State>(entities_capacity);
-  target_positions = allocator.allocate<TargetPosition>(components_capacity);
-  connections      = allocator.allocate<Connection>(connections_capacity);
+  allocator        = &hallocator;
+  nodes            = hallocator.allocate<Node>(entities_capacity);
+  node_states      = hallocator.allocate<State>(entities_capacity);
+  target_positions = hallocator.allocate<TargetPosition>(components_capacity);
+  connections      = hallocator.allocate<Connection>(connections_capacity);
+  dialogues        = hallocator.allocate<Dialogue>(dialogues_capacity);
 }
 
-void Story::teardown(HierarchicalAllocator& allocator)
+void Story::teardown()
 {
-  allocator.free(nodes, entities_capacity);
-  allocator.free(node_states, entities_capacity);
-  allocator.free(target_positions, components_capacity);
-  allocator.free(connections, connections_capacity);
+  allocator->free(nodes, entities_capacity);
+  allocator->free(node_states, entities_capacity);
+  allocator->free(target_positions, components_capacity);
+  allocator->free(connections, connections_capacity);
+  allocator->free(dialogues, dialogues_capacity);
 }
 
 void Story::load(SDL_RWops* handle)
@@ -59,7 +62,16 @@ void Story::load(SDL_RWops* handle)
   s.deserialize(connections_count);
   s.deserialize(connections, connections_count);
 
-  validate_and_fix();
+  s.deserialize(dialogues_count);
+  for (uint32_t i = 0; i < dialogues_count; ++i)
+  {
+    Dialogue& dialogue = dialogues[i];
+    s.deserialize(dialogue.entity);
+    s.deserialize(dialogue.type);
+    dialogue.text = allocator->allocate<char>(Dialogue::type_to_size(dialogue.type));
+    s.deserialize(dialogue.text, Dialogue::type_to_size(dialogue.type));
+  }
+
   reset_graph_state();
 }
 
@@ -73,6 +85,15 @@ void Story::save(SDL_RWops* handle)
   s.serialize(target_positions, target_positions_count);
   s.serialize(connections_count);
   s.serialize(connections, connections_count);
+
+  s.serialize(dialogues_count);
+  for (uint32_t i = 0; i < dialogues_count; ++i)
+  {
+    const Dialogue& dialogue = dialogues[i];
+    s.serialize(dialogue.entity);
+    s.serialize(dialogue.type);
+    s.serialize(dialogue.text, Dialogue::type_to_size(dialogue.type));
+  }
 }
 
 void Story::push_connection(const Connection& new_connection)
@@ -102,14 +123,13 @@ void Story::dump_connections() const
 
 void Story::validate_and_fix()
 {
-  //
-  // 1. Each GoTo node should have only one corresponding "TargetPosition" component
-  //
-
   for (uint32_t entity = 0; entity < entity_count; ++entity)
   {
     if (Node::GoTo == nodes[entity])
     {
+      //
+      // Each GoTo node should have only one corresponding "TargetPosition" component
+      //
       TargetPosition* begin = target_positions;
       TargetPosition* end   = target_positions + target_positions_count;
 
@@ -140,8 +160,43 @@ void Story::validate_and_fix()
         target_positions_count += 1;
       }
     }
+    else if (Node::Dialogue == nodes[entity])
+    {
+      //
+      // Each Dialogue node should have only one corresponding "Dialogue" component
+      //
+      Dialogue* begin = dialogues;
+      Dialogue* end   = dialogues + dialogues_count;
+
+      uint32_t n = std::count(begin, end, entity);
+
+      if (1 < n)
+      {
+        SDL_Log("Found %u Dialogue components for a single Dialogue block (%u). Attempting to fix by removing all "
+                "other ones except for the first",
+                n, entity);
+
+        end             = std::remove(std::find(begin, end, entity) + 1, end, entity);
+        dialogues_count = std::distance(begin, end);
+      }
+      else if (0 == n)
+      {
+        SDL_Log("Dialogue block (%u) does not have any corresponding Dialogue component! Attempting to fix by adding "
+                "stub",
+                entity);
+
+        const Dialogue stub = {
+            .entity = entity,
+            .type   = Dialogue::Type::Short,
+            .text   = allocator->allocate<char>(Dialogue::type_to_size(Dialogue::Type::Short)),
+        };
+
+        *end = stub;
+        dialogues_count += 1;
+      }
+    }
   }
-}
+} // namespace story
 
 void Story::reset_graph_state()
 {
@@ -223,6 +278,12 @@ bool Story::update(const Player& player, uint32_t entity_idx)
       node_states[entity_idx] = State::Finished;
       return false;
     }
+  }
+  case Node::Dialogue: {
+    node_states[entity_idx] = State::Finished;
+    const Dialogue* co = std::find(dialogues, dialogues + dialogues_count, entity_idx);
+    SDL_Log("%s", co->text);
+    return false;
   }
   default:
     return true;

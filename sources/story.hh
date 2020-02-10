@@ -13,18 +13,22 @@ struct Story
 {
   static constexpr uint32_t entities_capacity    = 256;
   static constexpr uint32_t components_capacity  = 64;
+  static constexpr uint32_t dialogues_capacity   = 1024;
   static constexpr uint32_t connections_capacity = 10'240;
 
-  Node*           nodes                  = nullptr;
-  State*          node_states            = nullptr;
-  uint32_t        entity_count           = 0;
-  TargetPosition* target_positions       = nullptr;
-  uint32_t        target_positions_count = 0;
-  Connection*     connections            = nullptr;
-  uint32_t        connections_count      = 0;
+  HierarchicalAllocator* allocator              = nullptr;
+  Node*                  nodes                  = nullptr;
+  State*                 node_states            = nullptr;
+  uint32_t               entity_count           = 0;
+  TargetPosition*        target_positions       = nullptr;
+  uint32_t               target_positions_count = 0;
+  Connection*            connections            = nullptr;
+  uint32_t               connections_count      = 0;
+  Dialogue*              dialogues              = nullptr;
+  uint32_t               dialogues_count        = 0;
 
   void setup(HierarchicalAllocator& allocator);
-  void teardown(HierarchicalAllocator& allocator);
+  void teardown();
   void load(SDL_RWops* handle);
   void save(SDL_RWops* handle);
   void push_connection(const Connection& conn);

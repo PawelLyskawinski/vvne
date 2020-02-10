@@ -36,6 +36,13 @@ constexpr NodeBox GoToBox = {
     .outputs_count = 1,
 };
 
+constexpr NodeBox DialogueBox = {
+    .name          = "Dialogue",
+    .size          = Vec2(120.0f, 80.0f),
+    .inputs_count  = 1,
+    .outputs_count = 1,
+};
+
 constexpr NodeBox AllBox = {
     .name          = "All",
     .size          = Vec2(120.0f, 80.0f),
@@ -63,6 +70,8 @@ constexpr const NodeBox& select(Node type)
     return AllBox;
   case Node::GoTo:
     return GoToBox;
+  case Node::Dialogue:
+    return DialogueBox;
   }
 }
 
@@ -238,6 +247,7 @@ void StoryEditor::setup(HierarchicalAllocator& allocator)
     const uint32_t size = static_cast<uint32_t>(SDL_RWsize(rw));
     SDL_Log("\"%s\" found (%u bytes) Loading game from external source", default_script_file_name, size);
     load(rw);
+    validate_and_fix();
     SDL_RWclose(rw);
   }
   else
@@ -286,11 +296,12 @@ void StoryEditor::setup(HierarchicalAllocator& allocator)
   is_showing_state = true;
 }
 
-void StoryEditor::teardown(HierarchicalAllocator& allocator)
+void StoryEditor::teardown()
 {
-  allocator.free(positions, entities_capacity);
-  allocator.free(positions_before_grab_movement, entities_capacity);
-  allocator.free(is_selected, entities_capacity);
+  allocator->free(positions, entities_capacity);
+  allocator->free(positions_before_grab_movement, entities_capacity);
+  allocator->free(is_selected, entities_capacity);
+  Story::teardown();
 }
 
 void StoryEditor::load(SDL_RWops* handle)
@@ -528,6 +539,7 @@ void StoryEditor::imgui_update()
           {Node::Any, "Any"},
           {Node::All, "All"},
           {Node::GoTo, "GoTo"},
+          {Node::Dialogue, "Dialogue"},
       };
 
       for (const Combination& combination : combinations)
@@ -541,6 +553,25 @@ void StoryEditor::imgui_update()
 
           positions[node_idx]                      = position;
           positions_before_grab_movement[node_idx] = position;
+
+          if (Node::GoTo == combination.type)
+          {
+            TargetPosition co = {
+                .entity   = node_idx,
+                .position = Vec3(),
+                .radius   = 1.0f,
+            };
+            target_positions[target_positions_count++] = co;
+          }
+          else if (Node::Dialogue == combination.type)
+          {
+            Dialogue co = {
+                .entity = node_idx,
+                .type   = Dialogue::Type::Short,
+                .text   = allocator->allocate<char>(Dialogue::type_to_size(Dialogue::Type::Short)),
+            };
+            dialogues[dialogues_count++] = co;
+          }
         }
       }
       ImGui::EndMenu();
@@ -932,8 +963,28 @@ void StoryEditor::remove_selected_nodes()
     remove_element(nodes, entity_count);
     remove_element(node_states, entity_count);
 
+    for (uint32_t i = 0; i < target_positions_count; ++i)
+    {
+      TargetPosition& co = target_positions[i];
+      if (entity_idx <= co.entity)
+      {
+        co.entity -= 1;
+      }
+    }
+
+    for (uint32_t i = 0; i < dialogues_count; ++i)
+    {
+      Dialogue& co = dialogues[i];
+      if (entity_idx <= co.entity)
+      {
+        co.entity -= 1;
+      }
+    }
+
     entity_count -= 1;
   }
+
+  std::fill(is_selected, is_selected + entity_count, SDL_FALSE);
 }
 
 void StoryEditor::render_node_edit_window(const Player& player)
@@ -956,6 +1007,7 @@ void StoryEditor::render_node_edit_window(const Player& player)
         ImGui::Text("Entity %u", entity);
 
         TargetPosition* co = std::find(target_positions, target_positions + target_positions_count, entity);
+        SDL_assert((target_positions + target_positions_count) != co);
 
         point_to_render = co->position;
 
@@ -968,13 +1020,43 @@ void StoryEditor::render_node_edit_window(const Player& player)
         const State state = node_states[entity];
         ImVec4      color = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
 
-        if(State::Cancelled == state)
+        if (State::Cancelled == state)
         {
-            color = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
+          color = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
         }
-        else if(State::Upcoming == state)
+        else if (State::Upcoming == state)
         {
-            color = ImVec4(0.3f, 0.3f, 0.3f, 1.0f);
+          color = ImVec4(0.3f, 0.3f, 0.3f, 1.0f);
+        }
+
+        ImGui::TextColored(color, "%s", state_to_string(state));
+
+        ImGui::End();
+      }
+    }
+    else if (Node::Dialogue == nodes[entity])
+    {
+      if (ImGui::Begin("Dialogue Inspector"))
+      {
+        ImGui::Text("Entity %u", entity);
+
+        Dialogue* co = std::find(dialogues, dialogues + dialogues_count, entity);
+        SDL_assert((dialogues + dialogues_count) != co);
+
+        ImGui::InputTextMultiline("text", co->text, Dialogue::type_to_size(co->type));
+        ImGui::Text("State: ");
+        ImGui::SameLine();
+
+        const State state = node_states[entity];
+        ImVec4      color = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
+
+        if (State::Cancelled == state)
+        {
+          color = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
+        }
+        else if (State::Upcoming == state)
+        {
+          color = ImVec4(0.3f, 0.3f, 0.3f, 1.0f);
         }
 
         ImGui::TextColored(color, "%s", state_to_string(state));
