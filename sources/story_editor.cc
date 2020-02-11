@@ -1036,7 +1036,8 @@ void StoryEditor::render_node_edit_window(const Player& player)
     }
     else if (Node::Dialogue == nodes[entity])
     {
-      if (ImGui::Begin("Dialogue Inspector"))
+      if (ImGui::Begin("Dialogue Inspector", nullptr,
+                       ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBringToFrontOnFocus))
       {
         ImGui::Text("Entity %u", entity);
 
