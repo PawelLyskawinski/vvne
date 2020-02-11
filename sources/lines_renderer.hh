@@ -7,7 +7,7 @@
 struct Line
 {
   Vec2  origin;
-  Vec2  size;
+  Vec2  direction;
   Vec4  color;
   float width; // 7.0f is usually safe supported max across different gpu vendors
 
@@ -22,7 +22,13 @@ struct LinesRenderer
   void setup(HierarchicalAllocator& allocator);
   void teardown(HierarchicalAllocator& allocator);
   void cache_lines();
-  void render(VkCommandBuffer cmd, VkPipelineLayout layout);
+  void reset();
+  void render(VkCommandBuffer cmd, VkPipelineLayout layout) const;
+
+  void push(const Line& line)
+  {
+    lines[lines_size++] = line;
+  }
 
   Line*    lines;
   Vec2*    position_cache;

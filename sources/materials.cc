@@ -691,9 +691,11 @@ void Materials::setup(Engine& engine)
   }
 
   pbr_light_sources_cache_lock = SDL_CreateMutex();
+  lines_renderer.setup(engine.generic_allocator);
 }
 
 void Materials::teardown(Engine& engine)
 {
-    SDL_DestroyMutex(pbr_light_sources_cache_lock);
+  lines_renderer.teardown(engine.generic_allocator);
+  SDL_DestroyMutex(pbr_light_sources_cache_lock);
 }

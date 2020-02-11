@@ -1703,7 +1703,7 @@ void green_gui_lines(Engine& engine)
       .pAttachments    = color_blend_attachments,
   };
 
-  VkDynamicState dynamic_states[] = {VK_DYNAMIC_STATE_LINE_WIDTH, VK_DYNAMIC_STATE_SCISSOR};
+  VkDynamicState dynamic_states[] = {VK_DYNAMIC_STATE_LINE_WIDTH};
 
   VkPipelineDynamicStateCreateInfo dynamic_state_info = {
       .sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,

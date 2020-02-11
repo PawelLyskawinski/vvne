@@ -5,6 +5,7 @@
 #include "engine/math.hh"
 #include "game_constants.hh"
 #include "game_generate_gui_lines.hh"
+#include "lines_renderer.hh"
 
 struct LightSource
 {
@@ -123,6 +124,7 @@ struct Materials
   GuiLineSizeCount gui_green_lines_count;
   GuiLineSizeCount gui_red_lines_count;
   GuiLineSizeCount gui_yellow_lines_count;
+  LinesRenderer    lines_renderer;
 
   void setup(Engine& engine);
   void teardown(Engine& engine);

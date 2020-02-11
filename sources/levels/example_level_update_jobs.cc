@@ -1,5 +1,6 @@
 #include "engine/cascade_shadow_mapping.hh"
 #include "game.hh"
+#include "gui_lines_renderer.hh"
 #include "story_editor.hh"
 
 namespace {
@@ -244,19 +245,13 @@ void gui_lines_generation_job(ThreadJobData tjd)
 {
   UpdateJob ctx(tjd, __FUNCTION__);
 
-  //
-  // in vulkan coordinate system Y axis is pointing down, so we'll have to invert the value to get
-  // something more reasonable
-  //
-  GenerateGuiLinesCommand cmd = {
-      .player_y_location_meters = -ctx.game.player.position.y,
-      .camera_x_pitch_radians   = 0.0f, // to_rad(10) * SDL_sinf(current_time_sec), // simulating future strafe tilts,
-      .camera_y_pitch_radians   = ctx.game.player.get_camera().updown_angle,
-  };
+  GuiLinesUpdate update;
+  update.player_y_location_meters = -ctx.game.player.position.y;
+  update.camera_x_pitch_radians   = 0.0f;
+  update.camera_y_pitch_radians   = ctx.game.player.get_camera().updown_angle;
+  update(ctx.game.materials.lines_renderer);
 
-  generate_gui_lines(cmd, ctx.game.materials.gui_lines_memory_cache, MAX_ROBOT_GUI_LINES,
-                     ctx.game.materials.gui_green_lines_count, ctx.game.materials.gui_red_lines_count,
-                     ctx.game.materials.gui_yellow_lines_count);
+  ctx.game.materials.lines_renderer.cache_lines();
 }
 
 void recalculate_csm_matrices(ThreadJobData tjd)

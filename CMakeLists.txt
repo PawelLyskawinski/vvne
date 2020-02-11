@@ -70,7 +70,7 @@ set(SOURCES
         thirdparty/imgui_draw.cpp
         thirdparty/imgui_widgets.cpp
         thirdparty/sha256.cpp
-        )
+        sources/gui_lines_renderer.cc sources/gui_lines_renderer.hh)
 
 if(WIN32)
 add_executable(${PROJECT_NAME} ${SOURCES} assets/applicationIcon.rc)

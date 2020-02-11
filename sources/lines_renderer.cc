@@ -17,6 +17,11 @@ bool compare_colors(const Vec4& lhs, const Vec4& rhs)
 
 template <typename T, typename TFcn> T find_range_end(T begin, T end, TFcn pred)
 {
+  if (begin == end)
+  {
+    return begin;
+  }
+
   T mid = (begin + 1);
   for (; end != mid; ++mid)
   {
@@ -55,7 +60,7 @@ void LinesRenderer::cache_lines()
 
   auto acc_fcn = [](Vec2* a, const Line& line) {
     *a++ = line.origin;
-    *a++ = line.size;
+    *a++ = line.origin + line.direction;
     return a;
   };
 
@@ -63,11 +68,12 @@ void LinesRenderer::cache_lines()
       std::distance(position_cache, std::accumulate(lines, lines + lines_size, position_cache, acc_fcn));
 }
 
-void LinesRenderer::render(VkCommandBuffer cmd, VkPipelineLayout layout)
+void LinesRenderer::render(VkCommandBuffer cmd, VkPipelineLayout layout) const
 {
   auto color_equal = [](const Line* a, const Line* b) { return are_colors_equal(a->color, b->color); };
   auto width_equal = [](const Line* a, const Line* b) { return a->width == b->width; };
 
+  const Line* begin       = lines;
   const Line* end         = lines + lines_size;
   const Line* color_begin = lines;
   const Line* color_end   = find_range_end(color_begin, end, color_equal);
@@ -75,45 +81,28 @@ void LinesRenderer::render(VkCommandBuffer cmd, VkPipelineLayout layout)
   while (end != color_begin)
   {
     vkCmdPushConstants(cmd, layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(Vec4), color_begin->color.data());
-    const Line* width_end = find_range_end(color_begin, end, width_equal);
-    while(color_end != width_end)
-  }
 
-  // for each same line width range
-  vkCmdSetLineWidth(cmd, line.width);
+    const Line* width_begin = color_begin;
+    const Line* width_end   = find_range_end(width_begin, end, width_equal);
 
-  // for each element
-  vkCmdDraw(cmd, 2 * line_width_range.size(), 1, 2 * line_width_range.offset(), 0);
+    while (color_end != width_begin)
+    {
+      vkCmdSetLineWidth(cmd, width_begin->width);
+      const uint32_t count  = 2 * std::distance(width_begin, width_end);
+      const uint32_t offset = 2 * std::distance(begin, width_begin);
+      vkCmdDraw(cmd, count, 1, offset, 0);
 
-#if 0
-  while (lines_begin != lines_end)
-  {
-    ColorRange color_range(lines_begin, lines_end);
-  }
+      width_begin = width_end;
+      width_end   = find_range_end(width_begin, end, width_equal);
+    }
 
-  const Line* color_begin = lines_begin;
-  while (lines_end != color_begin)
-  {
-    auto find_color_end = [color_begin](const Line& line) { return are_colors_equal(line.color, color_begin->color); };
-    const Line* color_end = std::find_if(lines_begin, lines_end, find_color_end);
-
-    vkCmdPushConstants(cmd, layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(Vec4), color_begin->color.data());
-
-    std::for_each(color_begin, color_end, [&](const Line& line) {
-      vkCmdSetLineWidth(cmd, line.width);
-      vkCmdDraw(cmd, 2 * static_cast<uint32_t>(line_counts[i]), 1, 2 * offset, 0);
-    });
-  }
-
-  for (int i = 0; i < 4; ++i)
-  {
-    if (0 == line_counts[i])
-      continue;
-
-    vkCmdSetLineWidth(command, line_widths[i]);
-    vkCmdDraw(command, 2 * static_cast<uint32_t>(line_counts[i]), 1, 2 * offset, 0);
-    offset += line_counts[i];
+    color_begin = color_end;
+    color_end   = find_range_end(color_begin, end, color_equal);
   }
 }
-#endif
+
+void LinesRenderer::reset()
+{
+  lines_size          = 0;
+  position_cache_size = 0;
 }

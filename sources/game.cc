@@ -69,7 +69,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     while (SDL_PollEvent(&event))
     {
       debug_gui.process_event(*this, event);
-      if(!debug_gui.engine_console_open)
+      if (!debug_gui.engine_console_open)
       {
         player.process_event(event);
         level.process_event(event);
@@ -77,8 +77,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
       switch (event.type)
       {
-      case SDL_MOUSEBUTTONDOWN:
-      {
+      case SDL_MOUSEBUTTONDOWN: {
         if (SDL_BUTTON_LEFT == event.button.button)
         {
           lmb_clicked = true;
@@ -89,8 +88,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
       }
       break;
 
-      case SDL_MOUSEMOTION:
-      {
+      case SDL_MOUSEMOTION: {
         if (lmb_clicked)
         {
           SDL_GetMouseState(&lmb_current_cursor_position[0], &lmb_current_cursor_position[1]);
@@ -98,8 +96,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
       }
       break;
 
-      case SDL_MOUSEBUTTONUP:
-      {
+      case SDL_MOUSEBUTTONUP: {
         if (SDL_BUTTON_LEFT == event.button.button)
         {
           lmb_clicked = false;
@@ -108,8 +105,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
       break;
 
       case SDL_KEYDOWN:
-      case SDL_KEYUP:
-      {
+      case SDL_KEYUP: {
         switch (event.key.keysym.scancode)
         {
         case SDL_SCANCODE_ESCAPE:
@@ -139,6 +135,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   level.update(time_delta_since_last_frame_ms);
 
   materials.pbr_light_sources_cache.count = 0;
+  materials.lines_renderer.reset();
 
   engine.job_system.fill_jobs(ExampleLevel::copy_update_jobs);
   engine.job_system.start();
@@ -322,7 +319,10 @@ void Game::record_primary_command_buffer(Engine& engine)
     };
 
     vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-    vkCmdExecuteCommands(cmd, gui_commands.size(), gui_commands.begin());
+    if (0 < gui_commands.size())
+    {
+      vkCmdExecuteCommands(cmd, gui_commands.size(), gui_commands.begin());
+    }
     vkCmdEndRenderPass(cmd);
   }
 

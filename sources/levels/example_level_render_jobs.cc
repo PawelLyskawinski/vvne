@@ -455,7 +455,7 @@ void robot_gui_lines(ThreadJobData tjd)
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
-  if (ctx->game->player.freecam_mode)
+  if (ctx->game->player.freecam_mode or ctx->game->debug_gui.engine_console_open)
     return;
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
@@ -465,6 +465,9 @@ void robot_gui_lines(ThreadJobData tjd)
   vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_host_coherent_memory_buffer,
                          &ctx->game->materials.green_gui_rulers_buffer_offsets[ctx->game->image_index]);
 
+  ctx->game->materials.lines_renderer.render(command, ctx->engine->pipelines.green_gui_lines.layout);
+
+#if 0
   uint32_t offset = 0;
 
   // ------ GREEN ------
@@ -547,6 +550,7 @@ void robot_gui_lines(ThreadJobData tjd)
       offset += line_counts[i];
     }
   }
+#endif
 
   vkEndCommandBuffer(command);
 }
@@ -1862,8 +1866,14 @@ void update_memory_host_coherent(ThreadJobData tjd)
     MemoryMap map(ctx->engine->device, ctx->engine->memory_blocks.host_coherent.memory,
                   ctx->game->materials.green_gui_rulers_buffer_offsets[ctx->game->image_index],
                   MAX_ROBOT_GUI_LINES * sizeof(Vec2));
+
+#if 0
     std::copy(ctx->game->materials.gui_lines_memory_cache,
               ctx->game->materials.gui_lines_memory_cache + MAX_ROBOT_GUI_LINES, reinterpret_cast<Vec2*>(*map));
+#else
+    const LinesRenderer& r = ctx->game->materials.lines_renderer;
+    std::copy(r.position_cache, r.position_cache +r.position_cache_size, reinterpret_cast<Vec2*>(*map));
+#endif
   }
 
   DebugGui::render(*ctx->engine, *ctx->game);
