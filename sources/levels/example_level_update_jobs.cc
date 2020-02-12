@@ -249,6 +249,8 @@ void gui_lines_generation_job(ThreadJobData tjd)
   update.player_y_location_meters = -ctx.game.player.position.y;
   update.camera_x_pitch_radians   = 0.0f;
   update.camera_y_pitch_radians   = ctx.game.player.get_camera().updown_angle;
+  update.player_speed             = ctx.game.player.velocity.len();
+  update.debug                    = ctx.game.DEBUG_VEC2;
   update(ctx.game.materials.lines_renderer);
 
   ctx.game.materials.lines_renderer.cache_lines();

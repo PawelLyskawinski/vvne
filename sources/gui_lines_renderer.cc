@@ -47,6 +47,30 @@ void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
   l.direction = Vec2(ruler_lid_length, 0.0f);
   renderer.push(l);
 
+  //
+  // Speed measuring ruler
+  //
+
+  l.width = SMALL;
+  for (int i = 0; i < 25; ++i)
+  {
+    const float distance_between_rulers = 0.04f;
+    const bool  is_longer_line          = (0 == (i % 5));
+    const float upper_y_limit           = -0.7f;
+
+    l.origin    = Vec2(-0.328f, -0.18f + (4.0f * player_speed) - (distance_between_rulers * i));
+    l.direction = Vec2(is_longer_line ? -0.04f : -0.02f, 0.0f);
+
+    if (l.origin.y < upper_y_limit)
+    {
+      break;
+    }
+    else
+    {
+      renderer.push(l);
+    }
+  }
+
   //   1 <-- 0
   //   |
   //   |
@@ -68,5 +92,14 @@ void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
   l.width     = HUGE;
   l.origin    = Vec2(max_right_x, bottom_y + 0.005f);
   l.direction = Vec2(-ruler_lid_length, 0.0f);
+  renderer.push(l);
+
+  //
+  // Small accent
+  //
+
+  l.width     = TINY;
+  l.origin    = Vec2(max_right_x - ruler_lid_length + tiny_line_offset, top_y);
+  l.direction = Vec2(0.0f, 1.0);
   renderer.push(l);
 }

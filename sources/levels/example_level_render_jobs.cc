@@ -455,7 +455,7 @@ void robot_gui_lines(ThreadJobData tjd)
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
-  if (ctx->game->player.freecam_mode or ctx->game->debug_gui.engine_console_open)
+  if (ctx->game->player.freecam_mode)
     return;
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
