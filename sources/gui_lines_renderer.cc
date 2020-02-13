@@ -12,10 +12,14 @@ constexpr float max_right_x         = -max_left_x;
 constexpr float top_y               = -0.5f * height - offset_up;
 constexpr float bottom_y            = 0.5f * height - offset_up;
 
-constexpr float HUGE   = 7.0f;
-constexpr float NORMAL = 5.0f;
-constexpr float SMALL  = 3.0f;
-constexpr float TINY   = 1.0f;
+namespace size {
+
+constexpr float Huge   = 7.0f;
+constexpr float Normal = 5.0f;
+constexpr float Small  = 3.0f;
+constexpr float Tiny   = 1.0f;
+
+} // namespace
 
 void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
 {
@@ -32,17 +36,17 @@ void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
   //   3 <-- 2
   //
 
-  l.width     = HUGE;
+  l.width     = size::Huge;
   l.origin    = Vec2(max_left_x, top_y - vertical_correction);
   l.direction = Vec2(ruler_lid_length, 0.0f);
   renderer.push(l);
 
-  l.width     = SMALL;
+  l.width     = size::Small;
   l.origin    = Vec2(max_left_x + ruler_lid_length - 0.002f, top_y - vertical_correction);
   l.direction = Vec2(0.0f, bottom_y + vertical_correction - top_y);
   renderer.push(l);
 
-  l.width     = HUGE;
+  l.width     = size::Huge;
   l.origin    = Vec2(max_left_x, bottom_y + 0.005f);
   l.direction = Vec2(ruler_lid_length, 0.0f);
   renderer.push(l);
@@ -51,7 +55,7 @@ void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
   // Speed measuring ruler
   //
 
-  l.width = SMALL;
+  l.width = size::Small;
   for (int i = 0; i < 25; ++i)
   {
     const float distance_between_rulers = 0.04f;
@@ -79,17 +83,17 @@ void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
   //   2 --> 3
   //
 
-  l.width     = HUGE;
+  l.width     = size::Huge;
   l.origin    = Vec2(max_right_x, top_y - 0.005f);
   l.direction = Vec2(-ruler_lid_length, 0.0f);
   renderer.push(l);
 
-  l.width     = SMALL;
+  l.width     = size::Small;
   l.origin    = Vec2(max_right_x - ruler_lid_length + 0.002f, top_y - vertical_correction);
   l.direction = Vec2(0.0f, bottom_y + vertical_correction - top_y);
   renderer.push(l);
 
-  l.width     = HUGE;
+  l.width     = size::Huge;
   l.origin    = Vec2(max_right_x, bottom_y + 0.005f);
   l.direction = Vec2(-ruler_lid_length, 0.0f);
   renderer.push(l);
@@ -98,7 +102,7 @@ void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
   // Small accent
   //
 
-  l.width     = TINY;
+  l.width     = size::Tiny;
   l.origin    = Vec2(max_right_x - ruler_lid_length + tiny_line_offset, top_y);
   l.direction = Vec2(0.0f, 1.0);
   renderer.push(l);

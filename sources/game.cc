@@ -78,7 +78,8 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
       switch (event.type)
       {
-      case SDL_MOUSEBUTTONDOWN: {
+      case SDL_MOUSEBUTTONDOWN:
+      {
         if (SDL_BUTTON_LEFT == event.button.button)
         {
           lmb_clicked = true;
@@ -89,7 +90,8 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
       }
       break;
 
-      case SDL_MOUSEMOTION: {
+      case SDL_MOUSEMOTION:
+      {
         if (lmb_clicked)
         {
           SDL_GetMouseState(&lmb_current_cursor_position[0], &lmb_current_cursor_position[1]);
@@ -97,7 +99,8 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
       }
       break;
 
-      case SDL_MOUSEBUTTONUP: {
+      case SDL_MOUSEBUTTONUP:
+      {
         if (SDL_BUTTON_LEFT == event.button.button)
         {
           lmb_clicked = false;
@@ -106,7 +109,8 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
       break;
 
       case SDL_KEYDOWN:
-      case SDL_KEYUP: {
+      case SDL_KEYUP:
+      {
         switch (event.key.keysym.scancode)
         {
         case SDL_SCANCODE_ESCAPE:
@@ -198,10 +202,20 @@ void Game::render(Engine& engine)
 
 namespace {
 
-void execute_commands(VkCommandBuffer cmd, PrioritizedCommandBufferList& list)
+void execute_commands(Engine& engine, VkCommandBuffer cmd, PrioritizedCommandBufferList& list)
 {
   std::sort(list.begin(), list.end());
-  vkCmdExecuteCommands(cmd, list.size(), list.begin());
+
+  auto             extract_command_buffer = [](const PrioritizedCommandBuffer& it) { return it.data; };
+  VkCommandBuffer* command_buffers        = engine.generic_allocator.allocate<VkCommandBuffer>(list.size());
+  VkCommandBuffer* end = std::transform(list.begin(), list.end(), command_buffers, extract_command_buffer);
+
+  if (end != command_buffers)
+  {
+    vkCmdExecuteCommands(cmd, std::distance(command_buffers, end), command_buffers);
+  }
+
+  engine.generic_allocator.free(command_buffers, list.size());
 }
 
 } // namespace
@@ -299,7 +313,7 @@ void Game::record_primary_command_buffer(Engine& engine)
     };
 
     vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-    vkCmdExecuteCommands(cmd, scene_rendering_commands.size(), scene_rendering_commands.begin());
+    execute_commands(engine, cmd, scene_rendering_commands);
     vkCmdEndRenderPass(cmd);
   }
 
@@ -330,10 +344,7 @@ void Game::record_primary_command_buffer(Engine& engine)
     };
 
     vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-    if (0 < gui_commands.size())
-    {
-      vkCmdExecuteCommands(cmd, gui_commands.size(), gui_commands.begin());
-    }
+    execute_commands(engine, cmd, gui_commands);
     vkCmdEndRenderPass(cmd);
   }
 

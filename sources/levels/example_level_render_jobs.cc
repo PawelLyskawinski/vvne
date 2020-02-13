@@ -1750,7 +1750,7 @@ void tesselated_ground(ThreadJobData tjd)
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->scene_rendering_commands.push(command);
+  ctx->game->scene_rendering_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.tesselated_ground.pipeline);
   vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_host_coherent_memory_buffer,
