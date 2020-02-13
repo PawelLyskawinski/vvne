@@ -31,6 +31,12 @@ template <typename T> struct PriorityPair
   {
   }
 
+  explicit PriorityPair(const T& init, int prio)
+      : priority(prio)
+      , data(init)
+  {
+  }
+
   bool operator<(const PriorityPair<T>& rhs) const
   {
     return priority < rhs.priority;
