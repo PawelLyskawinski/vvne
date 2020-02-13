@@ -91,7 +91,7 @@ void robot_job(ThreadJobData tjd)
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->scene_rendering_commands.push(command);
+  ctx->game->scene_rendering_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.scene3D.pipeline);
 
@@ -159,7 +159,7 @@ void helmet_job(ThreadJobData tjd)
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->scene_rendering_commands.push(command);
+  ctx->game->scene_rendering_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.scene3D.pipeline);
 
@@ -195,7 +195,7 @@ void point_light_boxes(ThreadJobData tjd)
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->scene_rendering_commands.push(command);
+  ctx->game->scene_rendering_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry.pipeline);
 
@@ -227,7 +227,7 @@ void matrioshka_box(ThreadJobData tjd)
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->scene_rendering_commands.push(command);
+  ctx->game->scene_rendering_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry.pipeline);
 
@@ -247,7 +247,7 @@ void matrioshka_box(ThreadJobData tjd)
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->scene_rendering_commands.push(command);
+  ctx->game->scene_rendering_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.scene3D.pipeline);
 
@@ -368,7 +368,7 @@ void simple_rigged(ThreadJobData tjd)
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->scene_rendering_commands.push(command);
+  ctx->game->scene_rendering_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry_skinned.pipeline);
 
@@ -395,7 +395,7 @@ void monster_rigged(ThreadJobData tjd)
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->scene_rendering_commands.push(command);
+  ctx->game->scene_rendering_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry_skinned.pipeline);
 
@@ -425,7 +425,7 @@ void radar(ThreadJobData tjd)
     return;
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->gui_commands.push(command);
+  ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui.pipeline);
   vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer,
@@ -459,7 +459,7 @@ void robot_gui_lines(ThreadJobData tjd)
     return;
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->gui_commands.push(command);
+  ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_lines.pipeline);
   vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_host_coherent_memory_buffer,
@@ -564,7 +564,7 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
     return;
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->gui_commands.push(command);
+  ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_sdf_font.pipeline);
   vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_sdf_font.layout, 0,
@@ -660,7 +660,7 @@ void robot_gui_speed_meter_triangle(ThreadJobData tjd)
     return;
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->gui_commands.push(command);
+  ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_triangle.pipeline);
 
@@ -686,7 +686,7 @@ void height_ruler_text(ThreadJobData tjd)
     return;
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->gui_commands.push(command);
+  ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_sdf_font.pipeline);
   vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_sdf_font.layout, 0,
@@ -788,7 +788,7 @@ void tilt_ruler_text(ThreadJobData tjd)
     return;
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->gui_commands.push(command);
+  ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_sdf_font.pipeline);
   vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_sdf_font.layout, 0,
@@ -882,7 +882,7 @@ void compass_text(ThreadJobData tjd)
     return;
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->gui_commands.push(command);
+  ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_sdf_font.pipeline);
   vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_sdf_font.layout, 0,
@@ -1083,7 +1083,7 @@ void radar_dots(ThreadJobData tjd)
     return;
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->gui_commands.push(command);
+  ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_radar_dots.pipeline);
 
@@ -1132,7 +1132,7 @@ void weapon_selectors_left(ThreadJobData tjd)
     return;
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->gui_commands.push(command);
+  ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
 
   {
     VkCommandBufferInheritanceInfo inheritance = {
@@ -1274,7 +1274,7 @@ void weapon_selectors_right(ThreadJobData tjd)
     return;
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->gui_commands.push(command);
+  ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
 
   Mat4x4 gui_projection;
@@ -1528,7 +1528,7 @@ void imgui(ThreadJobData tjd)
     return;
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->gui_commands.push(command);
+  ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   ctx->engine->insert_debug_marker(command, "imgui", {1.0f, 0.0f, 0.0f, 1.0f});
 
@@ -1611,7 +1611,7 @@ void water(ThreadJobData tjd)
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->scene_rendering_commands.push(command);
+  ctx->game->scene_rendering_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.pbr_water.pipeline);
   vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer,
@@ -1666,7 +1666,7 @@ void water(ThreadJobData tjd)
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->gui_commands.push(command);
+  ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.debug_billboard.pipeline);
 
@@ -1721,7 +1721,7 @@ void water(ThreadJobData tjd)
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->scene_rendering_commands.push(command);
+  ctx->game->scene_rendering_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry.pipeline);
 

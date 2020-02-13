@@ -5,6 +5,7 @@
 #include <SDL2/SDL_events.h>
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_stdinc.h>
+#include <algorithm>
 
 void Game::startup(Engine& engine)
 {
@@ -194,6 +195,16 @@ void Game::render(Engine& engine)
 
   vkQueuePresentKHR(engine.graphics_queue, &present);
 }
+
+namespace {
+
+void execute_commands(VkCommandBuffer cmd, PrioritizedCommandBufferList& list)
+{
+  std::sort(list.begin(), list.end());
+  vkCmdExecuteCommands(cmd, list.size(), list.begin());
+}
+
+} // namespace
 
 void Game::record_primary_command_buffer(Engine& engine)
 {

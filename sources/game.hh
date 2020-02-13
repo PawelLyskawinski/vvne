@@ -2,6 +2,7 @@
 
 #include "debug_gui.hh"
 #include "engine/atomic_stack.hh"
+#include "engine/priority_pair.hh"
 #include "levels/example_level.hh"
 #include "materials.hh"
 #include "player.hh"
@@ -14,6 +15,9 @@ struct ShadowmapCommandBuffer
   VkCommandBuffer cmd;
   int             cascade_idx;
 };
+
+using PrioritizedCommandBuffer     = PriorityPair<VkCommandBuffer>;
+using PrioritizedCommandBufferList = AtomicStack<PrioritizedCommandBuffer, 64>;
 
 struct Game;
 
@@ -35,8 +39,8 @@ struct Game
   uint32_t                                image_index;
   AtomicStack<ShadowmapCommandBuffer, 64> shadow_mapping_pass_commands;
   VkCommandBuffer                         skybox_command;
-  AtomicStack<VkCommandBuffer, 64>        scene_rendering_commands;
-  AtomicStack<VkCommandBuffer, 64>        gui_commands;
+  PrioritizedCommandBufferList            scene_rendering_commands;
+  PrioritizedCommandBufferList            gui_commands;
   float                                   current_time_sec;
   JobContext                              job_context;
 
