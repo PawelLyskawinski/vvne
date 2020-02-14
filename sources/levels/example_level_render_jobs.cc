@@ -618,7 +618,7 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
           .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
           .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
           .texture_size          = {512.0f, 256.0f},
-          .scale                 = ctx->engine->extent2D.height / 4.1f,
+          .scaling               = ctx->engine->extent2D.height / 4.1f,
           .position =
               {
                   static_cast<float>(ctx->engine->to_pixel_length_x(0.48f)),
@@ -628,7 +628,7 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
           .cursor = cursor,
       };
 
-      GenerateSdfFontCommandResult r = cmd();
+      GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
 
       vpc.character_coordinate = r.character_coordinate;
       vpc.character_size       = r.character_size;
@@ -743,12 +743,12 @@ void height_ruler_text(ThreadJobData tjd)
           .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
           .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
           .texture_size          = {512.0f, 256.0f},
-          .scale                 = static_cast<float>(text.size),
+          .scaling               = static_cast<float>(text.size),
           .position              = {text.offset.x, text.offset.y, -1.0f},
           .cursor                = cursor,
       };
 
-      GenerateSdfFontCommandResult r = cmd();
+      GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
 
       // vpc.mvp                  = gui_projection * r.transform;
 
@@ -841,12 +841,12 @@ void tilt_ruler_text(ThreadJobData tjd)
           .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
           .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
           .texture_size          = {512.0f, 256.0f},
-          .scale                 = static_cast<float>(text.size),
+          .scaling               = static_cast<float>(text.size),
           .position              = {text.offset.x, text.offset.y, -1.0f},
           .cursor                = cursor,
       };
 
-      GenerateSdfFontCommandResult r = cmd();
+      GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
 
       vpc.character_coordinate = r.character_coordinate;
       vpc.character_size       = r.character_size;
@@ -948,7 +948,7 @@ void compass_text(ThreadJobData tjd)
         .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
         .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
         .texture_size          = {512.0f, 256.0f},
-        .scale                 = 300.0f,
+        .scaling               = 300.0f,
         .position =
             {
                 static_cast<float>(ctx->engine->to_pixel_length_x(1.0f - angle_mod + (0.5f * direction_increment))),
@@ -958,7 +958,7 @@ void compass_text(ThreadJobData tjd)
         .cursor = cursor,
     };
 
-    GenerateSdfFontCommandResult r = cmd();
+    GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
 
     vpc.character_coordinate = r.character_coordinate;
     vpc.character_size       = r.character_size;
@@ -995,7 +995,7 @@ void compass_text(ThreadJobData tjd)
         .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
         .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
         .texture_size          = {512.0f, 256.0f},
-        .scale                 = 200.0f, // ctx->game->DEBUG_VEC2[0],
+        .scaling               = 200.0f, // ctx->game->DEBUG_VEC2[0],
         .position =
             {
                 static_cast<float>(ctx->engine->to_pixel_length_x(0.8f)),
@@ -1005,7 +1005,7 @@ void compass_text(ThreadJobData tjd)
         .cursor = cursor,
     };
 
-    GenerateSdfFontCommandResult r = cmd();
+    GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
 
     vpc.character_coordinate = r.character_coordinate;
     vpc.character_size       = r.character_size;
@@ -1042,7 +1042,7 @@ void compass_text(ThreadJobData tjd)
         .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
         .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
         .texture_size          = {512, 256},
-        .scale                 = 200.0f, // ctx->game->DEBUG_VEC2[0],
+        .scaling               = 200.0f, // ctx->game->DEBUG_VEC2[0],
         .position =
             {
                 static_cast<float>(ctx->engine->to_pixel_length_x(1.2f)),
@@ -1052,7 +1052,7 @@ void compass_text(ThreadJobData tjd)
         .cursor = cursor,
     };
 
-    GenerateSdfFontCommandResult r = cmd();
+    GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
 
     vpc.character_coordinate = r.character_coordinate;
     vpc.character_size       = r.character_size;
@@ -1237,12 +1237,12 @@ void weapon_selectors_left(ThreadJobData tjd)
           .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
           .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
           .texture_size          = {512, 256},
-          .scale                 = 250.0f,
+          .scaling               = 250.0f,
           .position              = {translation.x - 110.0f, translation.y - 10.0f, -1.0f},
           .cursor                = cursor,
       };
 
-      GenerateSdfFontCommandResult r = cmd();
+      GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
 
       vpc.character_coordinate = r.character_coordinate;
       vpc.character_size       = r.character_size;
@@ -1359,12 +1359,12 @@ void weapon_selectors_right(ThreadJobData tjd)
           .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
           .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
           .texture_size          = {512, 256},
-          .scale                 = 250.0f,
+          .scaling               = 250.0f,
           .position              = {t.x - 105.0f - 30.0f * (0.4f - transparencies[i]), t.y - 10.0f, -1.0f},
           .cursor                = cursor,
       };
 
-      GenerateSdfFontCommandResult r = cmd();
+      GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
 
       vpc.character_coordinate = r.character_coordinate;
       vpc.character_size       = r.character_size;
@@ -1528,7 +1528,7 @@ void imgui(ThreadJobData tjd)
     return;
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->gui_commands.push(PrioritizedCommandBuffer(command, -5));
+  ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   ctx->engine->insert_debug_marker(command, "imgui", {1.0f, 0.0f, 0.0f, 1.0f});
 
@@ -1872,7 +1872,7 @@ void update_memory_host_coherent(ThreadJobData tjd)
               ctx->game->materials.gui_lines_memory_cache + MAX_ROBOT_GUI_LINES, reinterpret_cast<Vec2*>(*map));
 #else
     const LinesRenderer& r = ctx->game->materials.lines_renderer;
-    std::copy(r.position_cache, r.position_cache + r.position_cache_size, reinterpret_cast<Vec2*>(*map));
+    std::copy(r.position_cache, r.position_cache +r.position_cache_size, reinterpret_cast<Vec2*>(*map));
 #endif
   }
 
