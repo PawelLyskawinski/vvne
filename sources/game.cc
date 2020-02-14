@@ -131,9 +131,21 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   }
 
   ScopedPerfEvent perf_event(update_profiler, __PRETTY_FUNCTION__, 0);
-  debug_gui.update(engine, *this);
-  player.update(current_time_sec, time_delta_since_last_frame_ms, level);
-  level.update(time_delta_since_last_frame_ms);
+
+  {
+    ScopedPerfEvent recording_perf(update_profiler, "debug_gui_update", 1);
+    debug_gui.update(engine, *this);
+  }
+
+  {
+    ScopedPerfEvent recording_perf(update_profiler, "player_update", 1);
+    player.update(current_time_sec, time_delta_since_last_frame_ms, level);
+  }
+
+  {
+    ScopedPerfEvent recording_perf(update_profiler, "level_update", 1);
+    level.update(time_delta_since_last_frame_ms);
+  }
 
   materials.pbr_light_sources_cache.count = 0;
   materials.lines_renderer.reset();
