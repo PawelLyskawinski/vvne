@@ -19,7 +19,7 @@ constexpr float Normal = 5.0f;
 constexpr float Small  = 3.0f;
 constexpr float Tiny   = 1.0f;
 
-} // namespace
+} // namespace size
 
 void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
 {
@@ -106,4 +106,220 @@ void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
   l.origin    = Vec2(max_right_x - ruler_lid_length + tiny_line_offset, top_y);
   l.direction = Vec2(0.0f, 1.0);
   renderer.push(l);
+
+  //
+  // Green speed meter frame
+  //
+
+  {
+    const float length  = 0.125f;
+    const float upper_y = -0.202f;
+
+    //
+    // 3 main horizontal lines
+    //
+
+    l.direction             = Vec2(length, 0.0f);
+    const float y_offsets[] = {0.000f, 0.040f, 0.065f};
+    for (float y_offset : y_offsets)
+    {
+      l.origin = Vec2(max_left_x - 0.09f - (0.5f * length), upper_y + y_offset);
+      renderer.push(l);
+    }
+
+    //
+    // 2 main side vertical lines
+    //
+
+    l.direction = Vec2(0.0f, 0.065f);
+
+    l.origin = Vec2(max_left_x - 0.09f - (0.5f * length), upper_y);
+    renderer.push(l);
+
+    l.origin = Vec2(max_left_x - 0.09f + (0.5f * length), upper_y);
+    renderer.push(l);
+
+    //
+    // "SPEED" text inside speed meter frame
+    //
+
+    float letter_left_x        = max_left_x - 0.0f - length;
+    float letter_bottom_y      = upper_y + 0.0595f;
+    float letter_width         = 0.01f;
+    float letter_height        = 0.014f;
+    float letter_space_between = 0.005f;
+
+    //
+    // S letter
+    //
+
+    l.origin    = Vec2(letter_left_x, letter_bottom_y);
+    l.direction = Vec2(letter_width, 0.0f);
+    renderer.push(l);
+
+    l.origin    = Vec2(letter_left_x, letter_bottom_y - (0.5f * letter_height));
+    l.direction = Vec2(letter_width, 0.0f);
+    renderer.push(l);
+
+    l.origin    = Vec2(letter_left_x, letter_bottom_y - letter_height);
+    l.direction = Vec2(letter_width, 0.0f);
+    renderer.push(l);
+
+    l.origin    = Vec2(letter_left_x + letter_width, letter_bottom_y);
+    l.direction = Vec2(0.0f, -(0.5f * letter_height));
+    renderer.push(l);
+
+    l.origin    = Vec2(letter_left_x, letter_bottom_y - (0.5f * letter_height));
+    l.direction = Vec2(0.0f, -(0.5f * letter_height));
+    renderer.push(l);
+
+    //
+    // P letter
+    //
+
+    letter_left_x += letter_width + letter_space_between;
+
+    l.origin    = Vec2(letter_left_x, letter_bottom_y);
+    l.direction = Vec2(0.0f, -letter_height);
+    renderer.push(l);
+
+    l.origin    = Vec2(letter_left_x, letter_bottom_y - letter_height);
+    l.direction = Vec2(letter_width, 0.0f);
+    renderer.push(l);
+
+    l.origin    = Vec2(letter_left_x + letter_width, letter_bottom_y - letter_height);
+    l.direction = Vec2(0.0f, 0.5f * letter_height);
+    renderer.push(l);
+
+    l.origin    = Vec2(letter_left_x + letter_width, letter_bottom_y - (0.5f * letter_height));
+    l.direction = Vec2(-letter_width, 0.0f);
+    renderer.push(l);
+
+    //
+    // E letters
+    //
+
+    for (int i = 0; i < 2; ++i)
+    {
+      letter_left_x += letter_width + letter_space_between;
+      l.origin    = Vec2(letter_left_x, letter_bottom_y);
+      l.direction = Vec2(0.0f, -letter_height);
+      renderer.push(l);
+
+      l.origin    = Vec2(letter_left_x, letter_bottom_y - letter_height);
+      l.direction = Vec2(letter_width, 0.0f);
+      renderer.push(l);
+
+      l.origin    = Vec2(letter_left_x, letter_bottom_y - (0.5f * letter_height));
+      l.direction = Vec2(letter_width, 0.0f);
+      renderer.push(l);
+
+      l.origin    = Vec2(letter_left_x, letter_bottom_y);
+      l.direction = Vec2(letter_width, 0.0f);
+      renderer.push(l);
+    }
+
+    //
+    // D letter
+    //
+
+    letter_left_x += letter_width + letter_space_between;
+    l.origin    = Vec2(letter_left_x, letter_bottom_y);
+    l.direction = Vec2(0.0f, -letter_height);
+    renderer.push(l);
+
+    l.origin    = Vec2(letter_left_x, letter_bottom_y - letter_height);
+    l.direction = Vec2(0.75f * letter_width, 0.0f);
+    renderer.push(l);
+
+    l.origin    = Vec2(letter_left_x, letter_bottom_y);
+    l.direction = Vec2(0.75f * letter_width, 0.0f);
+    renderer.push(l);
+
+    l.origin    = Vec2(letter_left_x + (0.75f * letter_width), letter_bottom_y - letter_height);
+    l.direction = Vec2(0.25f * letter_width, 0.25f * letter_height);
+    renderer.push(l);
+
+    l.origin    = Vec2(letter_left_x + (0.75f * letter_width), letter_bottom_y);
+    l.direction = Vec2(0.25f * letter_width, -(0.25f * letter_height));
+    renderer.push(l);
+
+    l.origin    = Vec2(letter_left_x + letter_width, letter_bottom_y - (0.25f * letter_height));
+    l.direction = Vec2(0.0f, -(0.5f * letter_height));
+    renderer.push(l);
+
+    //
+    // "km/h" text inside speed meter frame
+    //
+
+    letter_left_x              = max_left_x + 0.04f - length;
+    letter_bottom_y            = upper_y + 0.033f;
+    letter_width               = 0.01f;
+    letter_height              = 0.025f;
+    letter_space_between       = 0.003f;
+    const float letter_y_guide = -(0.6f * letter_height);
+
+    //
+    // K letter
+    //
+
+    l.origin    = Vec2(letter_left_x, letter_bottom_y);
+    l.direction = Vec2(0.0f, -letter_height);
+    renderer.push(l);
+
+    l.origin    = Vec2(letter_left_x, letter_bottom_y - (0.2f * letter_height));
+    l.direction = Vec2(letter_width, -(0.4f * letter_height));
+    renderer.push(l);
+
+    l.origin    = Vec2(letter_left_x + (0.5f * letter_width), letter_bottom_y - (0.35f * letter_height));
+    l.direction = Vec2(0.5f * letter_width, 0.008f);
+    renderer.push(l);
+
+    //
+    // M letter
+    //
+
+    letter_left_x += letter_width + letter_space_between;
+    l.origin    = Vec2(letter_left_x, letter_bottom_y + letter_y_guide);
+    l.direction = Vec2(letter_width, 0.0f);
+    renderer.push(l);
+
+    l.origin    = Vec2(letter_left_x, letter_bottom_y);
+    l.direction = Vec2(0.0f, letter_y_guide);
+    renderer.push(l);
+
+    l.origin    = Vec2(letter_left_x + (0.5f * letter_width), letter_bottom_y);
+    l.direction = Vec2(0.0f, letter_y_guide);
+    renderer.push(l);
+
+    l.origin    = Vec2(letter_left_x + letter_width, letter_bottom_y);
+    l.direction = Vec2(0.0f, letter_y_guide);
+    renderer.push(l);
+
+    //
+    // slash
+    //
+
+    letter_left_x += letter_width + letter_space_between;
+    l.origin    = Vec2(letter_left_x, letter_bottom_y);
+    l.direction = Vec2(letter_width, -letter_height);
+    renderer.push(l);
+
+    //
+    // H letter
+    //
+
+    letter_left_x += letter_width + letter_space_between;
+    l.origin    = Vec2(letter_left_x, letter_bottom_y);
+    l.direction = Vec2(0.0f, -letter_height);
+    renderer.push(l);
+
+    l.origin    = Vec2(letter_left_x, letter_bottom_y + letter_y_guide);
+    l.direction = Vec2(letter_width, 0.0f);
+    renderer.push(l);
+
+    l.origin    = Vec2(letter_left_x + letter_width, letter_bottom_y);
+    l.direction = Vec2(0.0f, letter_y_guide);
+    renderer.push(l);
+  }
 }
