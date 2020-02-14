@@ -1528,7 +1528,7 @@ void imgui(ThreadJobData tjd)
     return;
 
   VkCommandBuffer command = acquire_command_buffer(tjd);
-  ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
+  ctx->game->gui_commands.push(PrioritizedCommandBuffer(command, 5));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   ctx->engine->insert_debug_marker(command, "imgui", {1.0f, 0.0f, 0.0f, 1.0f});
 
