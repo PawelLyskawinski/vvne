@@ -78,8 +78,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
       switch (event.type)
       {
-      case SDL_MOUSEBUTTONDOWN:
-      {
+      case SDL_MOUSEBUTTONDOWN: {
         if (SDL_BUTTON_LEFT == event.button.button)
         {
           lmb_clicked = true;
@@ -90,8 +89,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
       }
       break;
 
-      case SDL_MOUSEMOTION:
-      {
+      case SDL_MOUSEMOTION: {
         if (lmb_clicked)
         {
           SDL_GetMouseState(&lmb_current_cursor_position[0], &lmb_current_cursor_position[1]);
@@ -99,8 +97,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
       }
       break;
 
-      case SDL_MOUSEBUTTONUP:
-      {
+      case SDL_MOUSEBUTTONUP: {
         if (SDL_BUTTON_LEFT == event.button.button)
         {
           lmb_clicked = false;
@@ -109,8 +106,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
       break;
 
       case SDL_KEYDOWN:
-      case SDL_KEYUP:
-      {
+      case SDL_KEYUP: {
         switch (event.key.keysym.scancode)
         {
         case SDL_SCANCODE_ESCAPE:
@@ -164,7 +160,10 @@ void Game::render(Engine& engine)
     // @todo: do something useful here as well?
     engine.job_system.wait_for_finish();
 
-    record_primary_command_buffer(engine);
+    {
+      ScopedPerfEvent recording_perf(render_profiler, "record_primary_command_buffer", 1);
+      record_primary_command_buffer(engine);
+    }
 
     shadow_mapping_pass_commands.reset();
     scene_rendering_commands.reset();
@@ -244,13 +243,17 @@ void Game::record_primary_command_buffer(Engine& engine)
         .clearValueCount = 1,
         .pClearValues    = &clear_value,
     };
-    vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-
+    {
+      ScopedPerfEvent recording_perf(render_profiler, "depth_pass_begin_render_pass", 2);
+      vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+    }
     for (const ShadowmapCommandBuffer& iter : shadow_mapping_pass_commands)
       if (cascade_idx == iter.cascade_idx)
         vkCmdExecuteCommands(cmd, 1, &iter.cmd);
-
-    vkCmdEndRenderPass(cmd);
+    {
+      ScopedPerfEvent recording_perf(render_profiler, "depth_pass_end_render_pass", 2);
+      vkCmdEndRenderPass(cmd);
+    }
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -279,9 +282,15 @@ void Game::record_primary_command_buffer(Engine& engine)
         .pClearValues    = clear_values,
     };
 
-    vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+    {
+      ScopedPerfEvent recording_perf(render_profiler, "skybox_begin_render_pass", 2);
+      vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+    }
     vkCmdExecuteCommands(cmd, 1, &skybox_command);
-    vkCmdEndRenderPass(cmd);
+    {
+      ScopedPerfEvent recording_perf(render_profiler, "skybox_end_render_pass", 2);
+      vkCmdEndRenderPass(cmd);
+    }
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -312,9 +321,15 @@ void Game::record_primary_command_buffer(Engine& engine)
         .pClearValues    = clear_values,
     };
 
-    vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+    {
+      ScopedPerfEvent recording_perf(render_profiler, "scene_pass_begin_render_pass", 2);
+      vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+    }
     execute_commands(engine, cmd, scene_rendering_commands);
-    vkCmdEndRenderPass(cmd);
+    {
+      ScopedPerfEvent recording_perf(render_profiler, "scene_pass_end_render_pass", 2);
+      vkCmdEndRenderPass(cmd);
+    }
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -343,9 +358,17 @@ void Game::record_primary_command_buffer(Engine& engine)
         .pClearValues    = clear_values,
     };
 
-    vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+    {
+      ScopedPerfEvent recording_perf(render_profiler, "gui_pass_begin_render_pass", 2);
+      vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+    }
+
     execute_commands(engine, cmd, gui_commands);
-    vkCmdEndRenderPass(cmd);
+
+    {
+      ScopedPerfEvent recording_perf(render_profiler, "gui_pass_end_render_pass", 2);
+      vkCmdEndRenderPass(cmd);
+    }
   }
 
   {
