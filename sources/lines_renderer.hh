@@ -10,8 +10,7 @@ struct Line
   Vec2  direction;
   Vec4  color;
   float width; // 7.0f is usually safe supported max across different gpu vendors
-
-  bool operator<(const Line& rhs) const;
+  bool  operator<(const Line& rhs) const;
 };
 
 struct LinesRenderer
@@ -30,8 +29,10 @@ struct LinesRenderer
     lines[lines_size++] = line;
   }
 
-  Line*    lines;
-  Vec2*    position_cache;
-  uint32_t lines_size;
-  uint32_t position_cache_size;
+  void push(const Line& line, const VkRect2D& scissor);
+
+  Line*     lines;
+  Vec2*     position_cache;
+  uint32_t  lines_size;
+  uint32_t  position_cache_size;
 };

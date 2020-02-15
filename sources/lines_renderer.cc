@@ -37,7 +37,14 @@ template <typename T, typename TFcn> T find_range_end(T begin, T end, TFcn pred)
 
 bool Line::operator<(const Line& rhs) const
 {
-  return are_colors_equal(color, rhs.color) ? (width < rhs.width) : compare_colors(color, rhs.color);
+  if (are_colors_equal(color, rhs.color))
+  {
+    return width < rhs.width;
+  }
+  else
+  {
+    return compare_colors(color, rhs.color);
+  }
 }
 
 void LinesRenderer::setup(HierarchicalAllocator& allocator)

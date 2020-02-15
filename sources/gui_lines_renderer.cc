@@ -322,4 +322,103 @@ void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
     l.direction = Vec2(0.0f, letter_y_guide);
     renderer.push(l);
   }
+
+  //
+  // Compass border
+  //
+
+  {
+    float width           = 0.5f;
+    float height          = 0.04f;
+    float bottom_y_offset = 0.38f;
+
+    l.origin    = Vec2(-0.5f * width, bottom_y_offset);
+    l.direction = Vec2(width, 0.0f);
+    renderer.push(l);
+
+    l.origin    = Vec2(-0.5f * width, bottom_y_offset - height);
+    l.direction = Vec2(width, 0.0f);
+    renderer.push(l);
+
+    l.origin    = Vec2(-0.5f * width, bottom_y_offset);
+    l.direction = Vec2(0.0f, -height);
+    renderer.push(l);
+
+    l.origin    = Vec2(0.5f * width, bottom_y_offset);
+    l.direction = Vec2(0.0f, -height);
+    renderer.push(l);
+  }
+
+  //
+  // RED - TINY
+  //
+
+  const float red_x_offset                 = 0.02f;
+  const float height_ruler_length          = 0.04f;
+  const float height_ruler_left_x_position = max_left_x + ruler_lid_length + red_x_offset;
+
+  l.color = Vec4(1.0f, 0.0f, 0.0f, 0.9f);
+  for (int side = 0; side < 2; ++side)
+  {
+    for (int i = 0; i < 5; ++i)
+    {
+      const float side_mod = (0 < side) ? -1.0f : 1.0f;
+
+      Vec2 base_offset = Vec2(side_mod * height_ruler_left_x_position, player_y_location_meters / 8.0f);
+
+      //
+      // endless repetition
+      //
+
+      while (base_offset.y > -0.5f)
+      {
+        base_offset.y -= 0.8f;
+      }
+
+      const Vec2 size   = Vec2(side_mod * height_ruler_length, 0.2f);
+      const Vec2 offset = base_offset + Vec2(0.0f, i * 0.4f);
+
+      l.origin    = Vec2(offset.x, offset.y + (0.5f * size.y));
+      l.direction = Vec2(size.x, 0.0f);
+      renderer.push(l);
+
+      l.origin    = Vec2(offset.x, offset.y + (0.5f * size.y));
+      l.direction = Vec2(0.0f, -size.y);
+      renderer.push(l);
+
+      l.origin    = Vec2(offset.x, offset.y - (0.5f * size.y));
+      l.direction = Vec2(size.x, 0.0f);
+      renderer.push(l);
+    }
+  }
+
+  //
+  // YELLOW - SMALL
+  //
+
+  l.color = Vec4(1.0f, 1.0f, 0.0f, 0.7f);
+  l.width = size::Small;
+
+  for (int i = 0; i < 7; ++i)
+  {
+    const float distance_from_main = 0.16f;
+    const float horizontal_offset  = 0.4f;
+
+    const float x_left  = (max_left_x + ruler_lid_length + distance_from_main);
+    const float x_right = -x_left;
+    const float y       = -offset_up + (i * horizontal_offset) - (2 * horizontal_offset) + camera_y_pitch_radians;
+
+    float rotation_matrix[] = {SDL_cosf(camera_x_pitch_radians), -1.0f * SDL_sinf(camera_x_pitch_radians),
+                               SDL_sinf(camera_x_pitch_radians), SDL_cosf(camera_x_pitch_radians)};
+
+    // l.origin    = Vec2(x_left * rotation_matrix[0] + y * rotation_matrix[2], x_left * rotation_matrix[1] + y *
+    // rotation_matrix[3]);
+
+    const float length = 2.0f * distance_from_main;
+
+    l.origin    = Vec2(-0.5f * length, y);
+    l.direction = Vec2(length, 0.0f);
+
+    renderer.push(l);
+  }
 }
