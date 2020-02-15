@@ -61,9 +61,10 @@ void LinesRenderer::teardown(HierarchicalAllocator& allocator)
   allocator.free(position_cache, position_cache_capacity);
 }
 
-void LinesRenderer::cache_lines()
+void LinesRenderer::cache_lines(Stack& stack)
 {
-  std::sort(lines, lines + lines_size);
+  Line* sort_helper = stack.alloc<Line>(lines_size);
+  merge_sort(lines, lines + lines_size, sort_helper);
 
   auto acc_fcn = [](Vec2* a, const Line& line) {
     *a++ = line.origin;

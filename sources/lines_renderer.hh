@@ -20,7 +20,7 @@ struct LinesRenderer
 
   void setup(HierarchicalAllocator& allocator);
   void teardown(HierarchicalAllocator& allocator);
-  void cache_lines();
+  void cache_lines(Stack& stack);
   void reset();
   void render(VkCommandBuffer cmd, VkPipelineLayout layout) const;
 
