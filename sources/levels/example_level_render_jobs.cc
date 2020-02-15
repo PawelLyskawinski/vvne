@@ -817,8 +817,8 @@ void tilt_ruler_text(ThreadJobData tjd)
 
   GenerateGuiLinesCommand cmd = {
       .player_y_location_meters = -(2.0f - ctx->game->player.position.y),
-      .camera_x_pitch_radians   = ctx->game->player.get_camera().angle,
-      .camera_y_pitch_radians   = ctx->game->player.get_camera().angle,
+      .camera_x_pitch_radians   = ctx->game->player.get_camera().updown_angle,
+      .camera_y_pitch_radians   = ctx->game->player.get_camera().updown_angle,
       .screen_extent2D          = ctx->engine->extent2D,
   };
 
