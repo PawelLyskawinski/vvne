@@ -19,12 +19,15 @@ struct LinesRenderer
 {
   void setup(HierarchicalAllocator& allocator, uint32_t capacity);
   void teardown(HierarchicalAllocator& allocator);
+  void cache_lines(HierarchicalAllocator& allocator);
   void cache_lines(Stack& stack);
+  void cache_lines(Line* tmp_helper_space);
   void reset();
-  void render(VkCommandBuffer cmd, VkPipelineLayout layout) const;
+  void render(VkCommandBuffer cmd, VkPipelineLayout layout, uint32_t base_offset = 0) const;
 
   void push(const Line& line)
   {
+    SDL_assert(lines_capacity != lines_size);
     lines[lines_size++] = line;
   }
 

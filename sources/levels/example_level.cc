@@ -2,6 +2,7 @@
 #include "materials.hh"
 #include <SDL2/SDL_events.h>
 #include <SDL2/SDL_stdinc.h>
+#include <gui_lines_renderer.hh>
 
 namespace {
 
@@ -111,12 +112,17 @@ void ExampleLevel::setup(HierarchicalAllocator& allocator, const Materials& mate
     sel.init();
   }
 
+  static_lines_renderer.setup(allocator, 50);
+  render_constant_lines(static_lines_renderer);
+  static_lines_renderer.cache_lines(allocator);
+
   lines_renderer.setup(allocator, 256);
 }
 
 void ExampleLevel::teardown(HierarchicalAllocator& allocator)
 {
   lines_renderer.teardown(allocator);
+  static_lines_renderer.teardown(allocator);
 }
 
 void ExampleLevel::process_event(const SDL_Event& event)

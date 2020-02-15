@@ -21,7 +21,7 @@ constexpr float Tiny   = 1.0f;
 
 } // namespace size
 
-void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
+void render_constant_lines(LinesRenderer& renderer)
 {
   const Vec4 green_color = Vec4(Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f), 0.9f);
 
@@ -50,30 +50,6 @@ void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
   l.origin    = Vec2(max_left_x, bottom_y + 0.005f);
   l.direction = Vec2(ruler_lid_length, 0.0f);
   renderer.push(l);
-
-  //
-  // Speed measuring ruler
-  //
-
-  l.width = size::Small;
-  for (int i = 0; i < 25; ++i)
-  {
-    const float distance_between_rulers = 0.04f;
-    const bool  is_longer_line          = (0 == (i % 5));
-    const float upper_y_limit           = -0.7f;
-
-    l.origin    = Vec2(-0.328f, -0.18f + (4.0f * player_speed) - (distance_between_rulers * i));
-    l.direction = Vec2(is_longer_line ? -0.04f : -0.02f, 0.0f);
-
-    if (l.origin.y < upper_y_limit)
-    {
-      break;
-    }
-    else
-    {
-      renderer.push(l);
-    }
-  }
 
   //   1 <-- 0
   //   |
@@ -348,6 +324,39 @@ void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
     l.direction = Vec2(0.0f, -height);
     renderer.push(l);
   }
+}
+
+void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
+{
+  // render_constant_lines(renderer);
+  const Vec4 green_color = Vec4(Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f), 0.9f);
+
+  Line l;
+  l.color = green_color;
+
+  //
+  // Speed measuring ruler
+  //
+
+  l.width = size::Small;
+  for (int i = 0; i < 25; ++i)
+  {
+    const float distance_between_rulers = 0.04f;
+    const bool  is_longer_line          = (0 == (i % 5));
+    const float upper_y_limit           = -0.7f;
+
+    l.origin    = Vec2(-0.328f, -0.18f + (4.0f * player_speed) - (distance_between_rulers * i));
+    l.direction = Vec2(is_longer_line ? -0.04f : -0.02f, 0.0f);
+
+    if (l.origin.y < upper_y_limit)
+    {
+      break;
+    }
+    else
+    {
+      renderer.push(l);
+    }
+  }
 
   //
   // RED - TINY
@@ -357,6 +366,7 @@ void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
   const float height_ruler_length          = 0.04f;
   const float height_ruler_left_x_position = max_left_x + ruler_lid_length + red_x_offset;
 
+  l.width = size::Tiny;
   l.color = Vec4(1.0f, 0.0f, 0.0f, 0.9f);
   for (int side = 0; side < 2; ++side)
   {

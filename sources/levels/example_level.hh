@@ -45,10 +45,6 @@ public:
   SimpleEntity    axis_arrow_entities[3];
   SimpleEntity    inspected_story_point;
 
-  //
-  // @TODO: split this into 3 renderers:
-  // - static elements (already precached)
-  // - dynamic with scissor
-  //
+  LinesRenderer static_lines_renderer;
   LinesRenderer lines_renderer;
 };

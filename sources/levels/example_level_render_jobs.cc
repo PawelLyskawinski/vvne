@@ -465,7 +465,25 @@ void robot_gui_lines(ThreadJobData tjd)
   vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_host_coherent_memory_buffer,
                          &ctx->game->materials.green_gui_rulers_buffer_offsets[ctx->game->image_index]);
 
-  ctx->game->level.lines_renderer.render(command, ctx->engine->pipelines.green_gui_lines.layout);
+  {
+    VkRect2D scissor = {};
+    scissor.extent   = ctx->engine->extent2D;
+    vkCmdSetScissor(command, 0, 1, &scissor);
+
+    ctx->game->level.static_lines_renderer.render(command, ctx->engine->pipelines.green_gui_lines.layout);
+  }
+
+  {
+    VkRect2D scissor      = {};
+    scissor.extent.width  = ctx->engine->to_pixel_length_x(1.5f);
+    scissor.extent.height = ctx->engine->to_pixel_length_y(1.02f);
+    scissor.offset.x      = (ctx->engine->extent2D.width / 2) - (scissor.extent.width / 2);
+    scissor.offset.y      = ctx->engine->to_pixel_length_y(0.29f);
+    vkCmdSetScissor(command, 0, 1, &scissor);
+
+    ctx->game->level.lines_renderer.render(command, ctx->engine->pipelines.green_gui_lines.layout,
+                                           2 * ctx->game->level.static_lines_renderer.lines_size);
+  }
 
 #if 0
   uint32_t offset = 0;
@@ -853,11 +871,11 @@ void tilt_ruler_text(ThreadJobData tjd)
       vpc.mvp                  = gui_projection * r.transform;
       cursor += r.cursor_movement;
 
-      VkRect2D scissor{};
-      scissor.extent.width  = ctx->engine->to_pixel_length_x(0.5f);
-      scissor.extent.height = ctx->engine->to_pixel_length_y(1.3f);
+      VkRect2D scissor      = {};
+      scissor.extent.width  = ctx->engine->to_pixel_length_x(1.5f);
+      scissor.extent.height = ctx->engine->to_pixel_length_y(1.02f);
       scissor.offset.x      = (ctx->engine->extent2D.width / 2) - (scissor.extent.width / 2);
-      scissor.offset.y      = ctx->engine->to_pixel_length_y(0.2f);
+      scissor.offset.y      = ctx->engine->to_pixel_length_y(0.29f);
       vkCmdSetScissor(command, 0, 1, &scissor);
 
       fpc.color = Vec3(1.0f, 1.0f, 0.0f);
@@ -1867,13 +1885,15 @@ void update_memory_host_coherent(ThreadJobData tjd)
                   ctx->game->materials.green_gui_rulers_buffer_offsets[ctx->game->image_index],
                   MAX_ROBOT_GUI_LINES * sizeof(Vec2));
 
-#if 0
-    std::copy(ctx->game->materials.gui_lines_memory_cache,
-              ctx->game->materials.gui_lines_memory_cache + MAX_ROBOT_GUI_LINES, reinterpret_cast<Vec2*>(*map));
-#else
-    const LinesRenderer& r = ctx->game->level.lines_renderer;
-    std::copy(r.position_cache, r.position_cache + r.position_cache_size, reinterpret_cast<Vec2*>(*map));
-#endif
+    Vec2* cursor = reinterpret_cast<Vec2*>(*map);
+    {
+      const LinesRenderer& r = ctx->game->level.static_lines_renderer;
+      cursor                 = std::copy(r.position_cache, r.position_cache + r.position_cache_size, cursor);
+    }
+    {
+      const LinesRenderer& r = ctx->game->level.lines_renderer;
+      std::copy(r.position_cache, r.position_cache + r.position_cache_size, cursor);
+    }
   }
 
   DebugGui::render(*ctx->engine, *ctx->game);

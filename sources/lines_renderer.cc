@@ -66,8 +66,19 @@ void LinesRenderer::teardown(HierarchicalAllocator& allocator)
 
 void LinesRenderer::cache_lines(Stack& stack)
 {
-  Line* sort_helper = stack.alloc<Line>(lines_size);
-  merge_sort(lines, lines + lines_size, sort_helper);
+  cache_lines(stack.alloc<Line>(lines_size));
+}
+
+void LinesRenderer::cache_lines(HierarchicalAllocator& allocator)
+{
+  Line* tmp = allocator.allocate<Line>(lines_size);
+  cache_lines(tmp);
+  allocator.free(tmp, lines_size);
+}
+
+void LinesRenderer::cache_lines(Line* tmp_helper_space)
+{
+  merge_sort(lines, lines + lines_size, tmp_helper_space);
 
   auto acc_fcn = [](Vec2* a, const Line& line) {
     *a++ = line.origin;
@@ -79,7 +90,7 @@ void LinesRenderer::cache_lines(Stack& stack)
       std::distance(position_cache, std::accumulate(lines, lines + lines_size, position_cache, acc_fcn));
 }
 
-void LinesRenderer::render(VkCommandBuffer cmd, VkPipelineLayout layout) const
+void LinesRenderer::render(VkCommandBuffer cmd, VkPipelineLayout layout, uint32_t base_offset) const
 {
   auto color_equal = [](const Line* a, const Line* b) { return are_colors_equal(a->color, b->color); };
   auto width_equal = [](const Line* a, const Line* b) { return a->width == b->width; };
@@ -96,12 +107,13 @@ void LinesRenderer::render(VkCommandBuffer cmd, VkPipelineLayout layout) const
     const Line* width_begin = color_begin;
     const Line* width_end   = find_range_end(width_begin, end, width_equal);
 
-    while (color_end != width_begin)
+    while ((color_end != width_begin) && (width_begin != width_end))
     {
-      vkCmdSetLineWidth(cmd, width_begin->width);
       const uint32_t count  = 2 * std::distance(width_begin, width_end);
       const uint32_t offset = 2 * std::distance(begin, width_begin);
-      vkCmdDraw(cmd, count, 1, offset, 0);
+
+      vkCmdSetLineWidth(cmd, width_begin->width);
+      vkCmdDraw(cmd, count, 1, base_offset + offset, 0);
 
       width_begin = width_end;
       width_end   = find_range_end(width_begin, end, width_equal);

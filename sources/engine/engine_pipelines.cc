@@ -1703,7 +1703,7 @@ void green_gui_lines(Engine& engine)
       .pAttachments    = color_blend_attachments,
   };
 
-  VkDynamicState dynamic_states[] = {VK_DYNAMIC_STATE_LINE_WIDTH};
+  VkDynamicState dynamic_states[] = {VK_DYNAMIC_STATE_LINE_WIDTH, VK_DYNAMIC_STATE_SCISSOR};
 
   VkPipelineDynamicStateCreateInfo dynamic_state_info = {
       .sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
@@ -2634,11 +2634,10 @@ void tesselated_ground(Engine& engine, float y_scale = 2.0f, float y_offset = -1
   };
 
   const float tesc_constants[] = {
-          5.0f, // tessellatedEdgeSize
-          0.01f, // tessellationFactor
-          20.0f, // frustum_check_radius
-          y_scale,
-          y_offset,
+      5.0f,  // tessellatedEdgeSize
+      0.01f, // tessellationFactor
+      20.0f, // frustum_check_radius
+      y_scale, y_offset,
   };
 
   VkSpecializationInfo tesc_specialization_info = {
@@ -2665,8 +2664,8 @@ void tesselated_ground(Engine& engine, float y_scale = 2.0f, float y_offset = -1
   };
 
   const float tese_constants[] = {
-          y_scale,
-          y_offset,
+      y_scale,
+      y_offset,
   };
 
   VkSpecializationInfo tese_specialization_info = {
