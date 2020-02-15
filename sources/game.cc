@@ -55,6 +55,7 @@ void Game::startup(Engine& engine)
 
 void Game::teardown(Engine& engine)
 {
+  level.teardown(engine.generic_allocator);
   debug_gui.teardown();
   materials.teardown(engine);
   vkDeviceWaitIdle(engine.device);
@@ -149,7 +150,6 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   }
 
   materials.pbr_light_sources_cache.count = 0;
-  materials.lines_renderer.reset();
 
   engine.job_system.fill_jobs(ExampleLevel::copy_update_jobs);
   engine.job_system.start();

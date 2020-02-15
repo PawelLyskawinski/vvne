@@ -1,4 +1,6 @@
 #include "lines_renderer.hh"
+#include "engine/allocators.hh"
+#include "engine/merge_sort.hh"
 #include <algorithm>
 #include <numeric>
 
@@ -47,10 +49,11 @@ bool Line::operator<(const Line& rhs) const
   }
 }
 
-void LinesRenderer::setup(HierarchicalAllocator& allocator)
+void LinesRenderer::setup(HierarchicalAllocator& allocator, uint32_t capacity)
 {
+  lines_capacity      = capacity;
   lines               = allocator.allocate<Line>(lines_capacity);
-  position_cache      = allocator.allocate<Vec2>(position_cache_capacity);
+  position_cache      = allocator.allocate<Vec2>(2 * lines_capacity);
   lines_size          = 0;
   position_cache_size = 0;
 }
@@ -58,7 +61,7 @@ void LinesRenderer::setup(HierarchicalAllocator& allocator)
 void LinesRenderer::teardown(HierarchicalAllocator& allocator)
 {
   allocator.free(lines, lines_capacity);
-  allocator.free(position_cache, position_cache_capacity);
+  allocator.free(position_cache, 2 * lines_capacity);
 }
 
 void LinesRenderer::cache_lines(Stack& stack)

@@ -251,9 +251,9 @@ void gui_lines_generation_job(ThreadJobData tjd)
   update.camera_y_pitch_radians   = ctx.game.player.get_camera().updown_angle;
   update.player_speed             = ctx.game.player.velocity.len();
   update.debug                    = ctx.game.DEBUG_VEC2;
-  update(ctx.game.materials.lines_renderer);
+  update(ctx.game.level.lines_renderer);
 
-  ctx.game.materials.lines_renderer.cache_lines();
+  ctx.game.level.lines_renderer.cache_lines(tjd.allocator);
 }
 
 void recalculate_csm_matrices(ThreadJobData tjd)

@@ -13,12 +13,11 @@ struct Line
   bool  operator<(const Line& rhs) const;
 };
 
+struct Stack;
+
 struct LinesRenderer
 {
-  static constexpr uint32_t lines_capacity          = 256;
-  static constexpr uint32_t position_cache_capacity = lines_capacity * 2;
-
-  void setup(HierarchicalAllocator& allocator);
+  void setup(HierarchicalAllocator& allocator, uint32_t capacity);
   void teardown(HierarchicalAllocator& allocator);
   void cache_lines(Stack& stack);
   void reset();
@@ -29,10 +28,9 @@ struct LinesRenderer
     lines[lines_size++] = line;
   }
 
-  void push(const Line& line, const VkRect2D& scissor);
-
-  Line*     lines;
-  Vec2*     position_cache;
-  uint32_t  lines_size;
-  uint32_t  position_cache_size;
+  Line*    lines;
+  Vec2*    position_cache;
+  uint32_t lines_size;
+  uint32_t position_cache_size;
+  uint32_t lines_capacity;
 };

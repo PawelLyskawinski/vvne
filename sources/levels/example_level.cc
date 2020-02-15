@@ -110,9 +110,14 @@ void ExampleLevel::setup(HierarchicalAllocator& allocator, const Materials& mate
   {
     sel.init();
   }
+
+  lines_renderer.setup(allocator, 256);
 }
 
-void ExampleLevel::teardown() {}
+void ExampleLevel::teardown(HierarchicalAllocator& allocator)
+{
+  lines_renderer.teardown(allocator);
+}
 
 void ExampleLevel::process_event(const SDL_Event& event)
 {
@@ -156,6 +161,7 @@ void ExampleLevel::update(float time_delta_since_last_frame_ms)
   {
     sel.animate(0.008f * time_delta_since_last_frame_ms);
   }
+  lines_renderer.reset();
 }
 
 //

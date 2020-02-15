@@ -465,7 +465,7 @@ void robot_gui_lines(ThreadJobData tjd)
   vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_host_coherent_memory_buffer,
                          &ctx->game->materials.green_gui_rulers_buffer_offsets[ctx->game->image_index]);
 
-  ctx->game->materials.lines_renderer.render(command, ctx->engine->pipelines.green_gui_lines.layout);
+  ctx->game->level.lines_renderer.render(command, ctx->engine->pipelines.green_gui_lines.layout);
 
 #if 0
   uint32_t offset = 0;
@@ -1871,8 +1871,8 @@ void update_memory_host_coherent(ThreadJobData tjd)
     std::copy(ctx->game->materials.gui_lines_memory_cache,
               ctx->game->materials.gui_lines_memory_cache + MAX_ROBOT_GUI_LINES, reinterpret_cast<Vec2*>(*map));
 #else
-    const LinesRenderer& r = ctx->game->materials.lines_renderer;
-    std::copy(r.position_cache, r.position_cache +r.position_cache_size, reinterpret_cast<Vec2*>(*map));
+    const LinesRenderer& r = ctx->game->level.lines_renderer;
+    std::copy(r.position_cache, r.position_cache + r.position_cache_size, reinterpret_cast<Vec2*>(*map));
 #endif
   }
 

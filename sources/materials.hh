@@ -124,7 +124,6 @@ struct Materials
   GuiLineSizeCount gui_green_lines_count;
   GuiLineSizeCount gui_red_lines_count;
   GuiLineSizeCount gui_yellow_lines_count;
-  LinesRenderer    lines_renderer;
 
   void setup(Engine& engine);
   void teardown(Engine& engine);
