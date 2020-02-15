@@ -218,23 +218,23 @@ void execute_commands(Engine& engine, VkCommandBuffer cmd, PrioritizedCommandBuf
 {
   const uint32_t list_size = list.size();
 
+  if (0 != list_size)
   {
-    PrioritizedCommandBuffer* tmp = engine.generic_allocator.allocate<PrioritizedCommandBuffer>(list_size);
-    merge_sort(list.begin(), list.begin() + list_size, tmp);
-    engine.generic_allocator.free(tmp, list_size);
-  }
+    {
+      PrioritizedCommandBuffer* tmp = engine.generic_allocator.allocate<PrioritizedCommandBuffer>(list_size);
+      merge_sort(list.begin(), list.begin() + list_size, tmp);
+      engine.generic_allocator.free(tmp, list_size);
+    }
 
-  auto             extract_command_buffer = [](const PrioritizedCommandBuffer& it) { return it.data; };
-  VkCommandBuffer* command_buffers        = engine.generic_allocator.allocate<VkCommandBuffer>(list_size);
-  VkCommandBuffer* end =
-      std::transform(list.begin(), list.begin() + list_size, command_buffers, extract_command_buffer);
+    auto             extract_command_buffer = [](const PrioritizedCommandBuffer& it) { return it.data; };
+    VkCommandBuffer* command_buffers        = engine.generic_allocator.allocate<VkCommandBuffer>(list_size);
+    VkCommandBuffer* end =
+        std::transform(list.begin(), list.begin() + list_size, command_buffers, extract_command_buffer);
 
-  if (end != command_buffers)
-  {
     vkCmdExecuteCommands(cmd, std::distance(command_buffers, end), command_buffers);
-  }
 
-  engine.generic_allocator.free(command_buffers, list_size);
+    engine.generic_allocator.free(command_buffers, list_size);
+  }
 }
 
 } // namespace

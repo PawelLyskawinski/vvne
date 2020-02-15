@@ -4,11 +4,9 @@
 
 template <typename T> void merge(T* begin, T* mid, T* end, T* tmp)
 {
-  const T*       tmp_orig = tmp;
-  const uint32_t size     = end - begin;
-
-  const T* a = begin;
-  const T* b = mid;
+  const T* tmp_orig = tmp;
+  const T* a        = begin;
+  const T* b        = mid;
 
   while ((mid != a) or (end != b))
   {
@@ -30,7 +28,7 @@ template <typename T> void merge(T* begin, T* mid, T* end, T* tmp)
     }
   }
 
-  std::copy(tmp_orig, tmp_orig + size, begin);
+  std::copy(tmp_orig, tmp_orig + (end - begin), begin);
 }
 
 template <typename T> void merge_sort(T* begin, T* end, T* tmp)
