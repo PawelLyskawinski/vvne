@@ -1,5 +1,6 @@
 #pragma once
 
+#include "lines_renderer.hh"
 #include "simple_entity.hh"
 #include <SDL2/SDL_events.h>
 
@@ -24,7 +25,7 @@ class ExampleLevel
 {
 public:
   void setup(HierarchicalAllocator& allocator, const Materials& materials);
-  void teardown();
+  void teardown(HierarchicalAllocator& allocator);
   void process_event(const SDL_Event& event);
   void update(float time_delta_since_last_frame_ms);
 
@@ -43,4 +44,7 @@ public:
   SimpleEntity    rigged_simple_entity;
   SimpleEntity    axis_arrow_entities[3];
   SimpleEntity    inspected_story_point;
+
+  LinesRenderer static_lines_renderer;
+  LinesRenderer lines_renderer;
 };

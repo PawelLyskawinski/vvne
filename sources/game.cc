@@ -2,9 +2,11 @@
 #include "engine/cascade_shadow_mapping.hh"
 #include "engine/cubemap.hh"
 #include "engine/memory_map.hh"
+#include "engine/merge_sort.hh"
 #include <SDL2/SDL_events.h>
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_stdinc.h>
+#include <algorithm>
 
 void Game::startup(Engine& engine)
 {
@@ -53,6 +55,7 @@ void Game::startup(Engine& engine)
 
 void Game::teardown(Engine& engine)
 {
+  level.teardown(engine.generic_allocator);
   debug_gui.teardown();
   materials.teardown(engine);
   vkDeviceWaitIdle(engine.device);
@@ -69,7 +72,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
     while (SDL_PollEvent(&event))
     {
       debug_gui.process_event(*this, event);
-      if(!debug_gui.engine_console_open)
+      if (!debug_gui.engine_console_open)
       {
         player.process_event(event);
         level.process_event(event);
@@ -77,8 +80,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
       switch (event.type)
       {
-      case SDL_MOUSEBUTTONDOWN:
-      {
+      case SDL_MOUSEBUTTONDOWN: {
         if (SDL_BUTTON_LEFT == event.button.button)
         {
           lmb_clicked = true;
@@ -89,8 +91,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
       }
       break;
 
-      case SDL_MOUSEMOTION:
-      {
+      case SDL_MOUSEMOTION: {
         if (lmb_clicked)
         {
           SDL_GetMouseState(&lmb_current_cursor_position[0], &lmb_current_cursor_position[1]);
@@ -98,8 +99,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
       }
       break;
 
-      case SDL_MOUSEBUTTONUP:
-      {
+      case SDL_MOUSEBUTTONUP: {
         if (SDL_BUTTON_LEFT == event.button.button)
         {
           lmb_clicked = false;
@@ -108,8 +108,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
       break;
 
       case SDL_KEYDOWN:
-      case SDL_KEYUP:
-      {
+      case SDL_KEYUP: {
         switch (event.key.keysym.scancode)
         {
         case SDL_SCANCODE_ESCAPE:
@@ -134,9 +133,21 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
   }
 
   ScopedPerfEvent perf_event(update_profiler, __PRETTY_FUNCTION__, 0);
-  debug_gui.update(engine, *this);
-  player.update(current_time_sec, time_delta_since_last_frame_ms, level);
-  level.update(time_delta_since_last_frame_ms);
+
+  {
+    ScopedPerfEvent recording_perf(update_profiler, "debug_gui_update", 1);
+    debug_gui.update(engine, *this);
+  }
+
+  {
+    ScopedPerfEvent recording_perf(update_profiler, "player_update", 1);
+    player.update(current_time_sec, time_delta_since_last_frame_ms, level);
+  }
+
+  {
+    ScopedPerfEvent recording_perf(update_profiler, "level_update", 1);
+    level.update(time_delta_since_last_frame_ms);
+  }
 
   materials.pbr_light_sources_cache.count = 0;
 
@@ -162,7 +173,10 @@ void Game::render(Engine& engine)
     // @todo: do something useful here as well?
     engine.job_system.wait_for_finish();
 
-    record_primary_command_buffer(engine);
+    {
+      ScopedPerfEvent recording_perf(render_profiler, "record_primary_command_buffer", 1);
+      record_primary_command_buffer(engine);
+    }
 
     shadow_mapping_pass_commands.reset();
     scene_rendering_commands.reset();
@@ -198,6 +212,33 @@ void Game::render(Engine& engine)
   vkQueuePresentKHR(engine.graphics_queue, &present);
 }
 
+namespace {
+
+void execute_commands(Engine& engine, VkCommandBuffer cmd, PrioritizedCommandBufferList& list)
+{
+  const uint32_t list_size = list.size();
+
+  if (0 != list_size)
+  {
+    {
+      PrioritizedCommandBuffer* tmp = engine.generic_allocator.allocate<PrioritizedCommandBuffer>(list_size);
+      merge_sort(list.begin(), list.begin() + list_size, tmp);
+      engine.generic_allocator.free(tmp, list_size);
+    }
+
+    auto             extract_command_buffer = [](const PrioritizedCommandBuffer& it) { return it.data; };
+    VkCommandBuffer* command_buffers        = engine.generic_allocator.allocate<VkCommandBuffer>(list_size);
+    VkCommandBuffer* end =
+        std::transform(list.begin(), list.begin() + list_size, command_buffers, extract_command_buffer);
+
+    vkCmdExecuteCommands(cmd, std::distance(command_buffers, end), command_buffers);
+
+    engine.generic_allocator.free(command_buffers, list_size);
+  }
+}
+
+} // namespace
+
 void Game::record_primary_command_buffer(Engine& engine)
 {
   VkCommandBuffer cmd = primary_command_buffers[image_index];
@@ -222,13 +263,17 @@ void Game::record_primary_command_buffer(Engine& engine)
         .clearValueCount = 1,
         .pClearValues    = &clear_value,
     };
-    vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-
+    {
+      ScopedPerfEvent recording_perf(render_profiler, "depth_pass_begin_render_pass", 2);
+      vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+    }
     for (const ShadowmapCommandBuffer& iter : shadow_mapping_pass_commands)
       if (cascade_idx == iter.cascade_idx)
         vkCmdExecuteCommands(cmd, 1, &iter.cmd);
-
-    vkCmdEndRenderPass(cmd);
+    {
+      ScopedPerfEvent recording_perf(render_profiler, "depth_pass_end_render_pass", 2);
+      vkCmdEndRenderPass(cmd);
+    }
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -257,9 +302,15 @@ void Game::record_primary_command_buffer(Engine& engine)
         .pClearValues    = clear_values,
     };
 
-    vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+    {
+      ScopedPerfEvent recording_perf(render_profiler, "skybox_begin_render_pass", 2);
+      vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+    }
     vkCmdExecuteCommands(cmd, 1, &skybox_command);
-    vkCmdEndRenderPass(cmd);
+    {
+      ScopedPerfEvent recording_perf(render_profiler, "skybox_end_render_pass", 2);
+      vkCmdEndRenderPass(cmd);
+    }
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -290,9 +341,15 @@ void Game::record_primary_command_buffer(Engine& engine)
         .pClearValues    = clear_values,
     };
 
-    vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-    vkCmdExecuteCommands(cmd, scene_rendering_commands.size(), scene_rendering_commands.begin());
-    vkCmdEndRenderPass(cmd);
+    {
+      ScopedPerfEvent recording_perf(render_profiler, "scene_pass_begin_render_pass", 2);
+      vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+    }
+    execute_commands(engine, cmd, scene_rendering_commands);
+    {
+      ScopedPerfEvent recording_perf(render_profiler, "scene_pass_end_render_pass", 2);
+      vkCmdEndRenderPass(cmd);
+    }
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -321,9 +378,17 @@ void Game::record_primary_command_buffer(Engine& engine)
         .pClearValues    = clear_values,
     };
 
-    vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-    vkCmdExecuteCommands(cmd, gui_commands.size(), gui_commands.begin());
-    vkCmdEndRenderPass(cmd);
+    {
+      ScopedPerfEvent recording_perf(render_profiler, "gui_pass_begin_render_pass", 2);
+      vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+    }
+
+    execute_commands(engine, cmd, gui_commands);
+
+    {
+      ScopedPerfEvent recording_perf(render_profiler, "gui_pass_end_render_pass", 2);
+      vkCmdEndRenderPass(cmd);
+    }
   }
 
   {

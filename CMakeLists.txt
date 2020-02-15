@@ -65,6 +65,8 @@ set(SOURCES
         sources/story_editor.cc
         sources/story.cc
         sources/color_palette.cc
+        sources/lines_renderer.cc
+        sources/gui_lines_renderer.cc
         thirdparty/imgui.cpp
         thirdparty/imgui_draw.cpp
         thirdparty/imgui_widgets.cpp

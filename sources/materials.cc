@@ -695,5 +695,5 @@ void Materials::setup(Engine& engine)
 
 void Materials::teardown(Engine& engine)
 {
-    SDL_DestroyMutex(pbr_light_sources_cache_lock);
+  SDL_DestroyMutex(pbr_light_sources_cache_lock);
 }
