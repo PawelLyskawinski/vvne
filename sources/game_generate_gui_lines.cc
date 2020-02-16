@@ -14,7 +14,10 @@ public:
   {
   }
 
-  void push_offset(float x, float y, float offset_x, float offset_y) { push(x, y, x + offset_x, y + offset_y); }
+  void push_offset(float x, float y, float offset_x, float offset_y)
+  {
+    push(x, y, x + offset_x, y + offset_y);
+  }
 
   void push(float x1, float y1, float x2, float y2)
   {
@@ -280,15 +283,18 @@ public:
   void push(const T items[], const uint32_t n)
   {
     T* allocation = main_allocator.alloc<T>(n);
-    if(nullptr == stack)
+    if (nullptr == stack)
     {
-        stack = allocation;
+      stack = allocation;
     }
     SDL_memcpy(allocation, items, n * sizeof(T));
     size += n;
   }
 
-  [[nodiscard]] ArrayView<T> to_arrayview() const { return {stack, size}; }
+  [[nodiscard]] ArrayView<T> to_arrayview() const
+  {
+    return {stack, size};
+  }
 
 private:
   Stack& main_allocator;
@@ -298,36 +304,40 @@ private:
 
 ArrayView<GuiHeightRulerText> generate_gui_height_ruler_text(struct GenerateGuiLinesCommand& cmd, Stack& allocator)
 {
-  float y_zeroed = line_to_pixel_length(-(cmd.player_y_location_meters / 8.0f - 1.23f), cmd.screen_extent2D.height);
-  float y_step   = line_to_pixel_length(0.2f, cmd.screen_extent2D.height);
-  float x_offset_left  = line_to_pixel_length(0.74f, cmd.screen_extent2D.width);
-  float x_offset_right = x_offset_left + line_to_pixel_length(0.51f, cmd.screen_extent2D.width);
-  int   size           = line_to_pixel_length(0.5f, cmd.screen_extent2D.height);
-
   StackAdapter<GuiHeightRulerText> stack(allocator);
+  const Vec2                       base_offset = Vec2(0.13f, cmd.player_y_location_meters / 16.0f - 1.015f);
 
-  // -------- left side --------
-  for (int i = 0; i < 7; ++i)
+  for (uint32_t side = 0; side < 2; ++side)
   {
-    int y_step_modifier = (i < 4) ? (-1 * i) : (i - 3);
-    y_step_modifier += static_cast<int>(cmd.player_y_location_meters * 0.6f) - 2;
+    for (int i = 0; i < 6; ++i)
+    {
+      Vec2 offset = base_offset;
+      if (side)
+      {
+        offset.x *= -1.0f;
+      }
+      else
+      {
+        offset.x -= 0.016f;
+      }
 
-    GuiHeightRulerText item = {{x_offset_left, y_zeroed + (y_step_modifier * y_step)}, size, -5 * y_step_modifier};
-    stack.push(&item, 1);
-  }
+      offset += Vec2(0.5f, 0.5f);
+      offset.y *= -1.0f;
+      offset.y += (i * 0.1f);
 
-  // -------- right side --------
-  for (int i = 0; i < 7; ++i)
-  {
-    int y_step_modifier = (i < 4) ? (-1 * i) : (i - 3);
-    y_step_modifier += static_cast<int>(cmd.player_y_location_meters * 0.6f) - 2;
+      int height_number = 15 - (5 * i);
 
-    const int   value                       = -5 * y_step_modifier;
-    const float additional_character_offset = ((SDL_abs(value) > 9) ? 6.0f : 0.0f) + ((value < 0) ? 6.8f : 0.0f);
+      if (offset.y < 0.12f)
+      {
+        offset.y += 0.6f;
+        height_number -= 30;
+      }
 
-    GuiHeightRulerText item = {
-        {x_offset_right - additional_character_offset, y_zeroed + (y_step_modifier * y_step)}, size, value};
-    stack.push(&item, 1);
+      offset = offset.scale(Vec2(cmd.screen_extent2D.width, cmd.screen_extent2D.height));
+
+      GuiHeightRulerText item = {offset, (int)line_to_pixel_length(0.5f, cmd.screen_extent2D.height), height_number};
+      stack.push(&item, 1);
+    }
   }
 
   return stack.to_arrayview();

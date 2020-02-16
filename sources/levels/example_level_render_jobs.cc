@@ -631,21 +631,6 @@ void height_ruler_text(ThreadJobData tjd)
   vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer,
                          &ctx->game->materials.green_gui_billboard_vertex_buffer_offset);
 
-#if 0
-        struct VertexPushConstant
-  {
-    Mat4x4 mvp;
-    Vec2   character_coordinate;
-    Vec2   character_size;
-  } vpc;
-
-  struct FragmentPushConstant
-  {
-    Vec3  color;
-    float time;
-  } fpc;
-#endif
-
   const float time  = ctx->game->current_time_sec;
   const Vec3  color = Vec3(1.0f, 0.0f, 0.0f);
 
@@ -699,6 +684,7 @@ void height_ruler_text(ThreadJobData tjd)
       scissor.extent.height = ctx->engine->to_pixel_length_y(1.02f);
       scissor.offset.x      = (ctx->engine->extent2D.width / 2) - (scissor.extent.width / 2);
       scissor.offset.y      = ctx->engine->to_pixel_length_y(0.29f);
+
       vkCmdSetScissor(command, 0, 1, &scissor);
 
       AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
