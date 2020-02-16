@@ -385,6 +385,11 @@ void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
         base_offset.y -= 0.8f;
       }
 
+      while (base_offset.y < -1.2f)
+      {
+          base_offset.y += 0.8f;
+      }
+
       const Vec2 size   = Vec2(side_mod * height_ruler_length, 0.2f);
       const Vec2 offset = base_offset + Vec2(0.0f, i * 0.4f);
 
