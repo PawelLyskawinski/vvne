@@ -12,23 +12,11 @@ struct GenerateGuiLinesCommand
   VkExtent2D screen_extent2D;
 };
 
-struct GuiLineSizeCount
-{
-  int big;
-  int normal;
-  int small;
-  int tiny;
-};
-
-void generate_gui_lines(const GenerateGuiLinesCommand& cmd, Vec2 dst[], uint32_t dst_capacity,
-                        GuiLineSizeCount& green_counter, GuiLineSizeCount& red_counter,
-                        GuiLineSizeCount& yellow_counter);
-
 struct GuiHeightRulerText
 {
-  Vec2 offset;
-  int  size  = 0;
-  int  value = 0;
+  Vec2 offset = {};
+  int  size   = 0;
+  int  value  = 0;
 };
 
 ArrayView<GuiHeightRulerText> generate_gui_height_ruler_text(struct GenerateGuiLinesCommand& cmd, Stack& allocator);

@@ -119,10 +119,7 @@ struct Materials
   VkDeviceSize tesselation_vb_offset;
   uint32_t     tesselation_instances;
 
-  VkDeviceSize     green_gui_rulers_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
-  GuiLineSizeCount gui_green_lines_count;
-  GuiLineSizeCount gui_red_lines_count;
-  GuiLineSizeCount gui_yellow_lines_count;
+  VkDeviceSize green_gui_rulers_buffer_offsets[SWAPCHAIN_IMAGES_COUNT];
 
   void setup(Engine& engine);
   void teardown(Engine& engine);
