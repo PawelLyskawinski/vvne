@@ -6,43 +6,13 @@ static uint32_t line_to_pixel_length(float coord, int pixel_max_size)
   return static_cast<uint32_t>((coord * pixel_max_size * 0.5f));
 }
 
-template <typename T> class StackAdapter
-{
-public:
-  explicit StackAdapter(Stack& main_allocator)
-      : main_allocator(main_allocator)
-      , stack(nullptr)
-      , size(0)
-  {
-  }
-
-  void push(const T items[], const uint32_t n)
-  {
-    T* allocation = main_allocator.alloc<T>(n);
-    if (nullptr == stack)
-    {
-      stack = allocation;
-    }
-    SDL_memcpy(allocation, items, n * sizeof(T));
-    size += n;
-  }
-
-  [[nodiscard]] ArrayView<T> to_arrayview() const
-  {
-    return {stack, size};
-  }
-
-private:
-  Stack& main_allocator;
-  T*     stack;
-  int    size;
-};
-
 ArrayView<GuiHeightRulerText> generate_gui_height_ruler_text(struct GenerateGuiLinesCommand& cmd, Stack& allocator)
 {
-  StackAdapter<GuiHeightRulerText> stack(allocator);
-  const Vec2                       base_offset = Vec2(0.13f, cmd.player_y_location_meters / 16.0f - 1.015f);
-  const Vec3                       color       = Vec3(1.0f, 0.0f, 0.0f);
+  ArrayView<GuiHeightRulerText> stack = {};
+  stack.data                          = allocator.alloc<GuiHeightRulerText>(12);
+
+  const Vec2 base_offset = Vec2(0.13f, cmd.player_y_location_meters / 16.0f - 1.015f);
+  const Vec3 color       = Vec3(1.0f, 0.0f, 0.0f);
 
   for (uint32_t side = 0; side < 2; ++side)
   {
@@ -72,15 +42,13 @@ ArrayView<GuiHeightRulerText> generate_gui_height_ruler_text(struct GenerateGuiL
 
       offset = offset.scale(Vec2(cmd.screen_extent2D.width, cmd.screen_extent2D.height));
 
-      GuiHeightRulerText item = {offset,
-                                 // color,
-                                 (int)line_to_pixel_length(0.5f, cmd.screen_extent2D.height),
+      GuiHeightRulerText item = {offset, color, (int)line_to_pixel_length(0.5f, cmd.screen_extent2D.height),
                                  height_number};
-      stack.push(&item, 1);
+      stack[stack.count++]    = item;
     }
   }
 
-  return stack.to_arrayview();
+  return stack;
 }
 
 ArrayView<GuiHeightRulerText> generate_gui_tilt_ruler_text(struct GenerateGuiLinesCommand& cmd, Stack& allocator)
@@ -93,17 +61,18 @@ ArrayView<GuiHeightRulerText> generate_gui_tilt_ruler_text(struct GenerateGuiLin
   int        size                     = line_to_pixel_length(0.6f, cmd.screen_extent2D.height);
   const Vec3 color                    = Vec3(1.0f, 1.0f, 0.0f);
 
-  StackAdapter<GuiHeightRulerText> stack(allocator);
+  ArrayView<GuiHeightRulerText> stack = {};
+  stack.data                          = allocator.alloc<GuiHeightRulerText>(12);
 
   for (int i = 0; i < 7; ++i)
   {
     GuiHeightRulerText item = {{start_x_offset, start_y_offset + ((2 - i) * y_distance_between_lines) +
                                                     (y_pitch_modifier * cmd.camera_y_pitch_radians)},
-                               // color,
+                               color,
                                size,
                                -(4 - i) * step_between_lines + 10};
-    stack.push(&item, 1);
+    stack[stack.count++]    = item;
   }
 
-  return stack.to_arrayview();
+  return stack;
 }

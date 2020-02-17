@@ -15,9 +15,9 @@ struct GenerateGuiLinesCommand
 struct GuiHeightRulerText
 {
   Vec2 offset = {};
-  // Vec3 color  = {};
-  int size  = 0;
-  int value = 0;
+  Vec3 color  = {};
+  int  size   = 0;
+  int  value  = 0;
 };
 
 ArrayView<GuiHeightRulerText> generate_gui_height_ruler_text(struct GenerateGuiLinesCommand& cmd, Stack& allocator);
