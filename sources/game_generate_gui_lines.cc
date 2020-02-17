@@ -349,7 +349,7 @@ ArrayView<GuiHeightRulerText> generate_gui_tilt_ruler_text(struct GenerateGuiLin
   float start_y_offset           = line_to_pixel_length(1.58f, cmd.screen_extent2D.height);
   float y_distance_between_lines = line_to_pixel_length(0.4f, cmd.screen_extent2D.height);
   float y_pitch_modifier         = line_to_pixel_length(1.0f, cmd.screen_extent2D.height);
-  int   step_between_lines       = 10;
+  int   step_between_lines       = 20;
   int   size                     = line_to_pixel_length(0.6f, cmd.screen_extent2D.height);
 
   StackAdapter<GuiHeightRulerText> stack(allocator);
@@ -359,7 +359,7 @@ ArrayView<GuiHeightRulerText> generate_gui_tilt_ruler_text(struct GenerateGuiLin
     GuiHeightRulerText item = {{start_x_offset, start_y_offset + ((2 - i) * y_distance_between_lines) +
                                                     (y_pitch_modifier * cmd.camera_y_pitch_radians)},
                                size,
-                               SDL_abs((4 - i) * step_between_lines)};
+                               -(4 - i) * step_between_lines + 10};
     stack.push(&item, 1);
   }
 
