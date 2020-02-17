@@ -374,10 +374,9 @@ void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
     {
       const float side_mod = (0 < side) ? -1.0f : 1.0f;
 
-      Vec2 base_offset = Vec2(side_mod * height_ruler_left_x_position, player_y_location_meters / 8.0f);
-      l.color = Vec4(1.0f, 0.0f, 0.0f, 0.9f);
+      Vec2 base_offset           = Vec2(side_mod * height_ruler_left_x_position, player_y_location_meters / 8.0f);
+      l.color                    = Vec4(1.0f, 0.0f, 0.0f, 0.9f);
       int color_decision_counter = 3;
-
 
       //
       // endless repetition
@@ -390,8 +389,8 @@ void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
 
       while (base_offset.y < -1.2f)
       {
-          base_offset.y += 0.8f;
-          color_decision_counter -= 2;
+        base_offset.y += 0.8f;
+        color_decision_counter -= 2;
       }
 
       const Vec2 size   = Vec2(side_mod * height_ruler_length, 0.2f);
@@ -402,9 +401,9 @@ void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
       // We know that if we go higher, then new elements start showing.
       // Base element '0' is in the middle!
       //
-      if(0 < (color_decision_counter - i))
+      if (0 < (color_decision_counter - i))
       {
-        l.color = Vec4(0.0f, 1.0f, 0.0f, 0.9f);
+        l.color = green_color;
       }
 
       l.origin    = Vec2(offset.x, offset.y + (0.5f * size.y));
@@ -425,23 +424,32 @@ void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
   // YELLOW - SMALL
   //
 
-  l.color = Vec4(1.0f, 1.0f, 0.0f, 0.7f);
   l.width = size::Small;
 
-  for (int i = 0; i < 7; ++i)
+  for (int i = 0; i < 10; ++i)
   {
     const float distance_from_main = 0.16f;
     const float horizontal_offset  = 0.4f;
 
     const float x_left  = (max_left_x + ruler_lid_length + distance_from_main);
     const float x_right = -x_left;
-    const float y       = -offset_up + (i * horizontal_offset) - (2 * horizontal_offset) + camera_y_pitch_radians;
+    // const float y       = -offset_up + (i * horizontal_offset) - (2 * horizontal_offset) + camera_y_pitch_radians;
+    const float y = -offset_up + (i * horizontal_offset) - (3.5f * horizontal_offset) + camera_y_pitch_radians;
 
     float rotation_matrix[] = {SDL_cosf(camera_x_pitch_radians), -1.0f * SDL_sinf(camera_x_pitch_radians),
                                SDL_sinf(camera_x_pitch_radians), SDL_cosf(camera_x_pitch_radians)};
 
     // l.origin    = Vec2(x_left * rotation_matrix[0] + y * rotation_matrix[2], x_left * rotation_matrix[1] + y *
     // rotation_matrix[3]);
+
+    if (i < 5)
+    {
+      l.color = green_color;
+    }
+    else
+    {
+      l.color = Vec4(1.0f, 1.0f, 0.0f, 0.7f);
+    }
 
     const float length = 2.0f * distance_from_main;
 
