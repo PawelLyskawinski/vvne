@@ -631,8 +631,7 @@ void height_ruler_text(ThreadJobData tjd)
   vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer,
                          &ctx->game->materials.green_gui_billboard_vertex_buffer_offset);
 
-  const float time  = ctx->game->current_time_sec;
-  const Vec3  color = Vec3(1.0f, 0.0f, 0.0f);
+  const float time = ctx->game->current_time_sec;
 
   //--------------------------------------------------------------------------
   // height rulers values
@@ -691,7 +690,8 @@ void height_ruler_text(ThreadJobData tjd)
           .push(VK_SHADER_STAGE_VERTEX_BIT, mvp)
           .push(VK_SHADER_STAGE_VERTEX_BIT, character_coordinate)
           .push(VK_SHADER_STAGE_VERTEX_BIT, character_size)
-          .push(VK_SHADER_STAGE_FRAGMENT_BIT, color)
+          //.push(VK_SHADER_STAGE_FRAGMENT_BIT, text.color)
+          .push(VK_SHADER_STAGE_FRAGMENT_BIT, Vec3(0.0, 0.0, 1.0))
           .push(VK_SHADER_STAGE_FRAGMENT_BIT, time);
 
       vkCmdDraw(command, 4, 1, 0, 0);
@@ -782,11 +782,12 @@ void tilt_ruler_text(ThreadJobData tjd)
       scissor.offset.y      = ctx->engine->to_pixel_length_y(0.29f);
       vkCmdSetScissor(command, 0, 1, &scissor);
 
-      fpc.color = Vec3(1.0f, 1.0f, 0.0f);
+      // fpc.color = text.color;
+      fpc.color = Vec3(0.0, 0.0, 1.0);
 
       AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
-          .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(vpc), &vpc)
-          .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(fpc), &fpc);
+          .push(VK_SHADER_STAGE_VERTEX_BIT, vpc)
+          .push(VK_SHADER_STAGE_FRAGMENT_BIT, fpc);
 
       vkCmdDraw(command, 4, 1, 0, 0);
     }
