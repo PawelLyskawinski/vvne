@@ -359,7 +359,7 @@ void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
   }
 
   //
-  // RED - TINY
+  // Height rulers
   //
 
   const float red_x_offset                 = 0.02f;
@@ -375,6 +375,9 @@ void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
       const float side_mod = (0 < side) ? -1.0f : 1.0f;
 
       Vec2 base_offset = Vec2(side_mod * height_ruler_left_x_position, player_y_location_meters / 8.0f);
+      l.color = Vec4(1.0f, 0.0f, 0.0f, 0.9f);
+      int color_decision_counter = 3;
+
 
       //
       // endless repetition
@@ -388,10 +391,21 @@ void GuiLinesUpdate::operator()(LinesRenderer& renderer) const
       while (base_offset.y < -1.2f)
       {
           base_offset.y += 0.8f;
+          color_decision_counter -= 2;
       }
 
       const Vec2 size   = Vec2(side_mod * height_ruler_length, 0.2f);
       const Vec2 offset = base_offset + Vec2(0.0f, i * 0.4f);
+
+      //
+      // Lines will be green ONLY for lines which indicate >= 0 position.
+      // We know that if we go higher, then new elements start showing.
+      // Base element '0' is in the middle!
+      //
+      if(0 < (color_decision_counter - i))
+      {
+        l.color = Vec4(0.0f, 1.0f, 0.0f, 0.9f);
+      }
 
       l.origin    = Vec2(offset.x, offset.y + (0.5f * size.y));
       l.direction = Vec2(size.x, 0.0f);
