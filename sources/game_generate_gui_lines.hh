@@ -15,6 +15,7 @@ struct GenerateGuiLinesCommand
 struct GuiHeightRulerText
 {
   Vec2 offset = {};
+  Vec3 color  = {};
   int  size   = 0;
   int  value  = 0;
 };

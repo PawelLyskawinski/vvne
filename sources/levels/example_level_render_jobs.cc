@@ -554,10 +554,10 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
           .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
           .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
           .texture_size          = {512.0f, 256.0f},
-          .scaling               = ctx->engine->extent2D.height / 4.1f,
+          .scaling               = ctx->engine->extent2D.height / 3.8f,
           .position =
               {
-                  static_cast<float>(ctx->engine->to_pixel_length_x(0.48f)),
+                  static_cast<float>(ctx->engine->to_pixel_length_x(0.482f)),
                   static_cast<float>(ctx->engine->to_pixel_length_y(0.80f)),
                   -1.0f,
               },
@@ -577,15 +577,15 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
       fpc.color = Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f);
 
       AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
-          .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(vpc), &vpc)
-          .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(fpc), &fpc);
+          .push(VK_SHADER_STAGE_VERTEX_BIT, vpc)
+          .push(VK_SHADER_STAGE_FRAGMENT_BIT, fpc);
 
       vkCmdDraw(command, 4, 1, 0, 0);
     }
   }
 
   vkEndCommandBuffer(command);
-} // namespace render
+}
 
 void robot_gui_speed_meter_triangle(ThreadJobData tjd)
 {
@@ -631,8 +631,7 @@ void height_ruler_text(ThreadJobData tjd)
   vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer,
                          &ctx->game->materials.green_gui_billboard_vertex_buffer_offset);
 
-  const float time  = ctx->game->current_time_sec;
-  const Vec3  color = Vec3(1.0f, 0.0f, 0.0f);
+  const float time = ctx->game->current_time_sec;
 
   //--------------------------------------------------------------------------
   // height rulers values
@@ -655,7 +654,8 @@ void height_ruler_text(ThreadJobData tjd)
 
     float cursor = 0.0f;
 
-    const int length = SDL_snprintf(buffer, 256, "%d", text.value);
+    const int length = SDL_snprintf(buffer, 256, "%.3d", text.value);
+
     for (int i = 0; i < length; ++i)
     {
       GenerateSdfFontCommand cmd = {
@@ -670,8 +670,6 @@ void height_ruler_text(ThreadJobData tjd)
       };
 
       GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
-
-      // vpc.mvp                  = gui_projection * r.transform;
 
       const Mat4x4 mvp                  = gui_projection * r.transform;
       const Vec2   character_coordinate = r.character_coordinate;
@@ -691,7 +689,7 @@ void height_ruler_text(ThreadJobData tjd)
           .push(VK_SHADER_STAGE_VERTEX_BIT, mvp)
           .push(VK_SHADER_STAGE_VERTEX_BIT, character_coordinate)
           .push(VK_SHADER_STAGE_VERTEX_BIT, character_size)
-          .push(VK_SHADER_STAGE_FRAGMENT_BIT, color)
+          .push(VK_SHADER_STAGE_FRAGMENT_BIT, text.color)
           .push(VK_SHADER_STAGE_FRAGMENT_BIT, time);
 
       vkCmdDraw(command, 4, 1, 0, 0);
@@ -782,11 +780,11 @@ void tilt_ruler_text(ThreadJobData tjd)
       scissor.offset.y      = ctx->engine->to_pixel_length_y(0.29f);
       vkCmdSetScissor(command, 0, 1, &scissor);
 
-      fpc.color = Vec3(1.0f, 1.0f, 0.0f);
+      fpc.color = text.color;
 
       AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
-          .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(vpc), &vpc)
-          .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(fpc), &fpc);
+          .push(VK_SHADER_STAGE_VERTEX_BIT, vpc)
+          .push(VK_SHADER_STAGE_FRAGMENT_BIT, fpc);
 
       vkCmdDraw(command, 4, 1, 0, 0);
     }
