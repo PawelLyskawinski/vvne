@@ -793,6 +793,79 @@ void tilt_ruler_text(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
+void story_dialog_text(ThreadJobData tjd)
+{
+  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
+  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+
+  VkCommandBuffer command = acquire_command_buffer(tjd);
+  ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
+  ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
+  vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_sdf_font.pipeline);
+  vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_sdf_font.layout, 0,
+                          1, &ctx->game->materials.lucida_sans_sdf_dset, 0, nullptr);
+  vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_device_local_memory_buffer,
+                         &ctx->game->materials.green_gui_billboard_vertex_buffer_offset);
+
+  struct VertexPushConstant
+  {
+    Mat4x4 mvp;
+    Vec2   character_coordinate;
+    Vec2   character_size;
+  } vpc;
+
+  struct FragmentPushConstant
+  {
+    Vec3  color;
+    float time = 0.0f;
+  } fpc;
+
+  fpc.time = ctx->game->current_time_sec;
+
+  {
+    Mat4x4 gui_projection;
+    gui_projection.ortho(0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
+
+    float cursor = 0.0f;
+
+    char buffer[256];
+    const int length = SDL_snprintf(buffer, 256, "Hello World!");
+    for (int i = 0; i < length; ++i)
+    {
+      GenerateSdfFontCommand cmd = {
+          .character             = buffer[i],
+          .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
+          .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
+          .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
+          .texture_size          = {512.0f, 256.0f},
+          .scaling               = static_cast<float>(1000.0f),
+          .position              = {0.4f * ctx->engine->extent2D.width, 0.9f * ctx->engine->extent2D.height, -1.0f},
+          .cursor                = cursor,
+      };
+
+      GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
+
+      vpc.character_coordinate = r.character_coordinate;
+      vpc.character_size       = r.character_size;
+      vpc.mvp                  = gui_projection * r.transform;
+      cursor += r.cursor_movement;
+
+      VkRect2D scissor = {.extent = ctx->engine->extent2D};
+      vkCmdSetScissor(command, 0, 1, &scissor);
+
+      fpc.color = Vec3(1.0f, 0.0f, 0.0f);
+
+      AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
+          .push(VK_SHADER_STAGE_VERTEX_BIT, vpc)
+          .push(VK_SHADER_STAGE_FRAGMENT_BIT, fpc);
+
+      vkCmdDraw(command, 4, 1, 0, 0);
+    }
+  }
+
+  vkEndCommandBuffer(command);
+}
+
 void compass_text(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
@@ -1814,6 +1887,7 @@ Job* ExampleLevel::copy_render_jobs(Job* dst)
       robot_gui_lines,
       height_ruler_text,
       tilt_ruler_text,
+      story_dialog_text,
       robot_gui_speed_meter_text,
       robot_gui_speed_meter_triangle,
       compass_text,
