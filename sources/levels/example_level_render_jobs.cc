@@ -836,18 +836,20 @@ void story_dialog_text(ThreadJobData tjd)
     const story::Dialogue* dialogue = ctx->game->story.active_dialogue;
     const int              length   = SDL_strlen(dialogue->text);
 
+    GenerateSdfFontCommand cmd = {
+        .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
+        .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
+        .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
+        .texture_size          = {512.0f, 256.0f},
+        .scaling               = static_cast<float>(1000.0f),
+        .position              = {0.2f * ctx->engine->extent2D.width, 0.8f * ctx->engine->extent2D.height, -1.0f},
+        .cursor                = cursor,
+    };
+
     for (int i = 0; i < length; ++i)
     {
-      GenerateSdfFontCommand cmd = {
-          .character             = dialogue->text[i],
-          .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
-          .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
-          .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
-          .texture_size          = {512.0f, 256.0f},
-          .scaling               = static_cast<float>(1000.0f),
-          .position              = {0.2f * ctx->engine->extent2D.width, 0.9f * ctx->engine->extent2D.height, -1.0f},
-          .cursor                = cursor,
-      };
+      cmd.character = dialogue->text[i];
+      cmd.cursor    = cursor;
 
       GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
 
