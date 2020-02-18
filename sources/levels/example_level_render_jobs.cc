@@ -544,7 +544,7 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
         char('0' + static_cast<char>(speed_int)),
     };
 
-    float cursor = 0.0f;
+    Vec2 cursor = {};
 
     for (const char c : text_form)
     {
@@ -652,7 +652,7 @@ void height_ruler_text(ThreadJobData tjd)
     Mat4x4 gui_projection;
     gui_projection.ortho(0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
 
-    float cursor = 0.0f;
+    Vec2 cursor = {};
 
     const int length = SDL_snprintf(buffer, 256, "%.3d", text.value);
 
@@ -750,7 +750,7 @@ void tilt_ruler_text(ThreadJobData tjd)
     Mat4x4 gui_projection;
     gui_projection.ortho(0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
 
-    float cursor = 0.0f;
+    Vec2 cursor = {};
 
     const int length = SDL_snprintf(buffer, 256, "%d", text.value);
     for (int i = 0; i < length; ++i)
@@ -798,6 +798,9 @@ void story_dialog_text(ThreadJobData tjd)
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
+  if (ctx->game->player.freecam_mode)
+    return;
+
   if (nullptr == ctx->game->story.active_dialogue)
     return;
 
@@ -829,13 +832,9 @@ void story_dialog_text(ThreadJobData tjd)
     Mat4x4 gui_projection;
     gui_projection.ortho(0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
 
-    float cursor = 0.0f;
-
-    //char      buffer[256];
-
+    Vec2                   cursor   = {};
     const story::Dialogue* dialogue = ctx->game->story.active_dialogue;
-    const int length = SDL_strlen(dialogue->text);
-            //SDL_snprintf(buffer, 256, "Hello World!");
+    const int              length   = SDL_strlen(dialogue->text);
 
     for (int i = 0; i < length; ++i)
     {
@@ -930,7 +929,7 @@ void compass_text(ThreadJobData tjd)
 
   Mat4x4 gui_projection;
   gui_projection.ortho(0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
-  float cursor = 0.0f;
+  Vec2 cursor = {};
 
   //////////////////////////////////////////////////////////////////////////////
   // CENTER TEXT RENDERING
@@ -977,7 +976,7 @@ void compass_text(ThreadJobData tjd)
     vkCmdDraw(command, 4, 1, 0, 0);
   }
 
-  cursor = 0.0f;
+  cursor = {};
 
   //////////////////////////////////////////////////////////////////////////////
   // LEFT TEXT RENDERING
@@ -1024,7 +1023,7 @@ void compass_text(ThreadJobData tjd)
     vkCmdDraw(command, 4, 1, 0, 0);
   }
 
-  cursor = 0.0f;
+  cursor = {};
 
   //////////////////////////////////////////////////////////////////////////////
   // RIGHT TEXT RENDERING
@@ -1229,7 +1228,7 @@ void weapon_selectors_left(ThreadJobData tjd)
     //--------------------------------------------------------------------------
     const char* selection = descriptions[i];
     const int   length    = static_cast<int>(SDL_strlen(selection));
-    float       cursor    = 0.0f;
+    Vec2        cursor    = {};
 
     for (int j = 0; j < length; ++j)
     {
@@ -1351,7 +1350,7 @@ void weapon_selectors_right(ThreadJobData tjd)
     //--------------------------------------------------------------------------
     const char* selection = descriptions[i];
     const int   length    = static_cast<int>(SDL_strlen(selection));
-    float       cursor    = 0.0f;
+    Vec2        cursor    = {};
 
     for (int j = 0; j < length; ++j)
     {

@@ -21,8 +21,8 @@ GenerateSdfFontCommandResult generate_sdf_font(const GenerateSdfFontCommand& cmd
   const Vec2     uv_adjusted   = char_size.scale(cmd.texture_size.invert()).scale(Vec2(0.5f, 0.25f));
   const Vec2     scaling       = uv_adjusted.scale(cmd.scaling);
 
-  const Vec2 model_adjustment =
-      scaling + char_offsets.scale(cmd.texture_size.invert()).scale(0.5f * cmd.scaling) - Vec2(2.0f - cmd.cursor, 1.0f);
+  const Vec2 model_adjustment = scaling + char_offsets.scale(cmd.texture_size.invert()).scale(0.5f * cmd.scaling) -
+                                Vec2(2.0f - cmd.cursor.x, 1.0f);
 
   const Mat4x4 translation = Mat4x4::Translation(Vec3(model_adjustment, 0.0f) + cmd.position);
   const Mat4x4 scale       = Mat4x4::Scale(Vec3(uv_adjusted.scale(cmd.scaling), 1.0f));
@@ -31,7 +31,7 @@ GenerateSdfFontCommandResult generate_sdf_font(const GenerateSdfFontCommand& cmd
       .character_coordinate = char_position.scale(cmd.texture_size.invert()),
       .character_size       = char_size.scale(cmd.texture_size.invert()),
       .transform            = translation * scale,
-      .cursor_movement      = cmd.scaling * (static_cast<float>(char_data.xadvance) / cmd.texture_size.x),
+      .cursor_movement      = Vec2(cmd.scaling * (static_cast<float>(char_data.xadvance) / cmd.texture_size.x), 0.0f),
   };
 
   return result;

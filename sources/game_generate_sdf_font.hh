@@ -13,7 +13,7 @@ struct GenerateSdfFontCommand
   Vec2     texture_size          = {};
   float    scaling               = 0;
   Vec3     position              = {};
-  float    cursor                = 0.0f;
+  Vec2     cursor                = {};
 };
 
 struct GenerateSdfFontCommandResult
@@ -21,7 +21,7 @@ struct GenerateSdfFontCommandResult
   Vec2   character_coordinate = {};
   Vec2   character_size       = {};
   Mat4x4 transform            = {};
-  float  cursor_movement      = 0;
+  Vec2   cursor_movement      = {};
 };
 
 GenerateSdfFontCommandResult generate_sdf_font(const GenerateSdfFontCommand& cmd);
