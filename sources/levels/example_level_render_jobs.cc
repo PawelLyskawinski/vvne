@@ -544,32 +544,29 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
         char('0' + static_cast<char>(speed_int)),
     };
 
-    Vec2 cursor = {};
+    SdfFontGenerator gen = {
+        .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
+        .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
+        .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
+        .texture_size          = {512.0f, 256.0f},
+        .rescaling             = ctx->engine->extent2D.height / 3.8f,
+        .position =
+            {
+                static_cast<float>(ctx->engine->to_pixel_length_x(0.482f)),
+                static_cast<float>(ctx->engine->to_pixel_length_y(0.80f)),
+                -1.0f,
+            },
+    };
 
     for (const char c : text_form)
     {
-      GenerateSdfFontCommand cmd = {
-          .character             = c,
-          .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
-          .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
-          .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
-          .texture_size          = {512.0f, 256.0f},
-          .scaling               = ctx->engine->extent2D.height / 3.8f,
-          .position =
-              {
-                  static_cast<float>(ctx->engine->to_pixel_length_x(0.482f)),
-                  static_cast<float>(ctx->engine->to_pixel_length_y(0.80f)),
-                  -1.0f,
-              },
-          .cursor = cursor,
-      };
 
-      GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
+      gen.character    = c;
+      RenderableChar r = gen();
 
       vpc.character_coordinate = r.character_coordinate;
       vpc.character_size       = r.character_size;
       vpc.mvp                  = gui_projection * r.transform;
-      cursor += r.cursor_movement;
 
       VkRect2D scissor = {.extent = ctx->engine->extent2D};
       vkCmdSetScissor(command, 0, 1, &scissor);
@@ -652,30 +649,24 @@ void height_ruler_text(ThreadJobData tjd)
     Mat4x4 gui_projection;
     gui_projection.ortho(0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
 
-    Vec2 cursor = {};
-
-    const int length = SDL_snprintf(buffer, 256, "%.3d", text.value);
+    const int        length = SDL_snprintf(buffer, 256, "%.3d", text.value);
+    SdfFontGenerator gen    = {
+        .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
+        .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
+        .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
+        .texture_size          = {512.0f, 256.0f},
+        .rescaling             = static_cast<float>(text.size),
+        .position              = {text.offset.x, text.offset.y, -1.0f},
+    };
 
     for (int i = 0; i < length; ++i)
     {
-      GenerateSdfFontCommand cmd = {
-          .character             = buffer[i],
-          .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
-          .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
-          .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
-          .texture_size          = {512.0f, 256.0f},
-          .scaling               = static_cast<float>(text.size),
-          .position              = {text.offset.x, text.offset.y, -1.0f},
-          .cursor                = cursor,
-      };
-
-      GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
+      gen.character    = buffer[i];
+      RenderableChar r = gen();
 
       const Mat4x4 mvp                  = gui_projection * r.transform;
       const Vec2   character_coordinate = r.character_coordinate;
       const Vec2   character_size       = r.character_size;
-
-      cursor += r.cursor_movement;
 
       VkRect2D scissor{};
       scissor.extent.width  = ctx->engine->to_pixel_length_x(0.75f);
@@ -750,28 +741,26 @@ void tilt_ruler_text(ThreadJobData tjd)
     Mat4x4 gui_projection;
     gui_projection.ortho(0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
 
-    Vec2 cursor = {};
-
     const int length = SDL_snprintf(buffer, 256, "%d", text.value);
+
+    SdfFontGenerator gen = {
+        .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
+        .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
+        .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
+        .texture_size          = {512.0f, 256.0f},
+        .rescaling             = static_cast<float>(text.size),
+        .position              = {text.offset.x, text.offset.y, -1.0f},
+    };
+
     for (int i = 0; i < length; ++i)
     {
-      GenerateSdfFontCommand cmd = {
-          .character             = buffer[i],
-          .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
-          .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
-          .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
-          .texture_size          = {512.0f, 256.0f},
-          .scaling               = static_cast<float>(text.size),
-          .position              = {text.offset.x, text.offset.y, -1.0f},
-          .cursor                = cursor,
-      };
 
-      GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
+      gen.character    = buffer[i];
+      RenderableChar r = gen();
 
       vpc.character_coordinate = r.character_coordinate;
       vpc.character_size       = r.character_size;
       vpc.mvp                  = gui_projection * r.transform;
-      cursor += r.cursor_movement;
 
       VkRect2D scissor      = {};
       scissor.extent.width  = ctx->engine->to_pixel_length_x(1.5f);
@@ -832,31 +821,26 @@ void story_dialog_text(ThreadJobData tjd)
     Mat4x4 gui_projection;
     gui_projection.ortho(0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
 
-    Vec2                   cursor   = {};
     const story::Dialogue* dialogue = ctx->game->story.active_dialogue;
     const int              length   = SDL_strlen(dialogue->text);
 
-    GenerateSdfFontCommand cmd = {
+    SdfFontGenerator gen = {
         .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
         .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
         .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
         .texture_size          = {512.0f, 256.0f},
-        .scaling               = static_cast<float>(1000.0f),
+        .rescaling             = static_cast<float>(800.0f),
         .position              = {0.2f * ctx->engine->extent2D.width, 0.8f * ctx->engine->extent2D.height, -1.0f},
-        .cursor                = cursor,
     };
 
     for (int i = 0; i < length; ++i)
     {
-      cmd.character = dialogue->text[i];
-      cmd.cursor    = cursor;
-
-      GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
+      gen.character    = dialogue->text[i];
+      RenderableChar r = gen();
 
       vpc.character_coordinate = r.character_coordinate;
       vpc.character_size       = r.character_size;
       vpc.mvp                  = gui_projection * r.transform;
-      cursor += r.cursor_movement;
 
       VkRect2D scissor = {.extent = ctx->engine->extent2D};
       vkCmdSetScissor(command, 0, 1, &scissor);
@@ -931,7 +915,20 @@ void compass_text(ThreadJobData tjd)
 
   Mat4x4 gui_projection;
   gui_projection.ortho(0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
-  Vec2 cursor = {};
+
+  SdfFontGenerator gen = {
+      .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
+      .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
+      .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
+      .texture_size          = {512.0f, 256.0f},
+      .rescaling             = 300.0f,
+      .position =
+          {
+              static_cast<float>(ctx->engine->to_pixel_length_x(1.0f - angle_mod + (0.5f * direction_increment))),
+              static_cast<float>(ctx->engine->to_pixel_length_y(1.335f)),
+              -1.0f,
+          },
+  };
 
   //////////////////////////////////////////////////////////////////////////////
   // CENTER TEXT RENDERING
@@ -943,28 +940,12 @@ void compass_text(ThreadJobData tjd)
     if ('\0' == c)
       continue;
 
-    GenerateSdfFontCommand cmd = {
-        .character             = c,
-        .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
-        .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
-        .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
-        .texture_size          = {512.0f, 256.0f},
-        .scaling               = 300.0f,
-        .position =
-            {
-                static_cast<float>(ctx->engine->to_pixel_length_x(1.0f - angle_mod + (0.5f * direction_increment))),
-                static_cast<float>(ctx->engine->to_pixel_length_y(1.335f)),
-                -1.0f,
-            },
-        .cursor = cursor,
-    };
-
-    GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
+    gen.character    = c;
+    RenderableChar r = gen();
 
     vpc.character_coordinate = r.character_coordinate;
     vpc.character_size       = r.character_size;
     vpc.mvp                  = gui_projection * r.transform;
-    cursor += r.cursor_movement;
 
     VkRect2D scissor = {.extent = ctx->engine->extent2D};
     vkCmdSetScissor(command, 0, 1, &scissor);
@@ -978,11 +959,15 @@ void compass_text(ThreadJobData tjd)
     vkCmdDraw(command, 4, 1, 0, 0);
   }
 
-  cursor = {};
-
   //////////////////////////////////////////////////////////////////////////////
   // LEFT TEXT RENDERING
   //////////////////////////////////////////////////////////////////////////////
+
+  gen.cursor    = {};
+  gen.rescaling = 200.0f;
+  gen.position  = Vec3(static_cast<float>(ctx->engine->to_pixel_length_x(0.8f)),
+                      static_cast<float>(ctx->engine->to_pixel_length_y(1.345f)), -1.0f);
+
   for (unsigned i = 0; i < SDL_strlen(left_text); ++i)
   {
     const char c = left_text[i];
@@ -990,28 +975,12 @@ void compass_text(ThreadJobData tjd)
     if ('\0' == c)
       continue;
 
-    GenerateSdfFontCommand cmd = {
-        .character             = c,
-        .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
-        .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
-        .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
-        .texture_size          = {512.0f, 256.0f},
-        .scaling               = 200.0f, // ctx->game->DEBUG_VEC2[0],
-        .position =
-            {
-                static_cast<float>(ctx->engine->to_pixel_length_x(0.8f)),
-                static_cast<float>(ctx->engine->to_pixel_length_y(1.345f)),
-                -1.0f,
-            },
-        .cursor = cursor,
-    };
-
-    GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
+    gen.character    = c;
+    RenderableChar r = gen();
 
     vpc.character_coordinate = r.character_coordinate;
     vpc.character_size       = r.character_size;
     vpc.mvp                  = gui_projection * r.transform;
-    cursor += r.cursor_movement;
 
     VkRect2D scissor = {.extent = ctx->engine->extent2D};
     vkCmdSetScissor(command, 0, 1, &scissor);
@@ -1025,11 +994,15 @@ void compass_text(ThreadJobData tjd)
     vkCmdDraw(command, 4, 1, 0, 0);
   }
 
-  cursor = {};
+  gen.cursor = {};
 
   //////////////////////////////////////////////////////////////////////////////
   // RIGHT TEXT RENDERING
   //////////////////////////////////////////////////////////////////////////////
+
+  gen.position = Vec3(static_cast<float>(ctx->engine->to_pixel_length_x(1.2f)),
+                      static_cast<float>(ctx->engine->to_pixel_length_y(1.345f)), -1.0f);
+
   for (unsigned i = 0; i < SDL_strlen(right_text); ++i)
   {
     const char c = right_text[i];
@@ -1037,28 +1010,12 @@ void compass_text(ThreadJobData tjd)
     if ('\0' == c)
       continue;
 
-    GenerateSdfFontCommand cmd = {
-        .character             = c,
-        .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
-        .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
-        .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
-        .texture_size          = {512, 256},
-        .scaling               = 200.0f, // ctx->game->DEBUG_VEC2[0],
-        .position =
-            {
-                static_cast<float>(ctx->engine->to_pixel_length_x(1.2f)),
-                static_cast<float>(ctx->engine->to_pixel_length_y(1.345f)),
-                -1.0f,
-            },
-        .cursor = cursor,
-    };
-
-    GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
+    gen.character    = c;
+    RenderableChar r = gen();
 
     vpc.character_coordinate = r.character_coordinate;
     vpc.character_size       = r.character_size;
     vpc.mvp                  = gui_projection * r.transform;
-    cursor += r.cursor_movement;
 
     VkRect2D scissor = {.extent = ctx->engine->extent2D};
     vkCmdSetScissor(command, 0, 1, &scissor);
@@ -1230,27 +1187,24 @@ void weapon_selectors_left(ThreadJobData tjd)
     //--------------------------------------------------------------------------
     const char* selection = descriptions[i];
     const int   length    = static_cast<int>(SDL_strlen(selection));
-    Vec2        cursor    = {};
+
+    SdfFontGenerator gen = {
+        .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
+        .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
+        .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
+        .texture_size          = {512, 256},
+        .rescaling             = 250.0f,
+        .position              = {translation.x - 110.0f, translation.y - 10.0f, -1.0f},
+    };
 
     for (int j = 0; j < length; ++j)
     {
-      GenerateSdfFontCommand cmd = {
-          .character             = selection[j],
-          .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
-          .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
-          .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
-          .texture_size          = {512, 256},
-          .scaling               = 250.0f,
-          .position              = {translation.x - 110.0f, translation.y - 10.0f, -1.0f},
-          .cursor                = cursor,
-      };
-
-      GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
+      gen.character    = selection[j];
+      RenderableChar r = gen();
 
       vpc.character_coordinate = r.character_coordinate;
       vpc.character_size       = r.character_size;
       vpc.mvp                  = gui_projection * r.transform;
-      cursor += r.cursor_movement;
 
       VkRect2D scissor = {.extent = ctx->engine->extent2D};
       vkCmdSetScissor(command, 0, 1, &scissor);
@@ -1352,27 +1306,24 @@ void weapon_selectors_right(ThreadJobData tjd)
     //--------------------------------------------------------------------------
     const char* selection = descriptions[i];
     const int   length    = static_cast<int>(SDL_strlen(selection));
-    Vec2        cursor    = {};
+
+    SdfFontGenerator gen = {
+        .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
+        .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
+        .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
+        .texture_size          = {512, 256},
+        .rescaling             = 250.0f,
+        .position              = {t.x - 105.0f - 30.0f * (0.4f - transparencies[i]), t.y - 10.0f, -1.0f},
+    };
 
     for (int j = 0; j < length; ++j)
     {
-      GenerateSdfFontCommand cmd = {
-          .character             = selection[j],
-          .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
-          .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
-          .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
-          .texture_size          = {512, 256},
-          .scaling               = 250.0f,
-          .position              = {t.x - 105.0f - 30.0f * (0.4f - transparencies[i]), t.y - 10.0f, -1.0f},
-          .cursor                = cursor,
-      };
-
-      GenerateSdfFontCommandResult r = generate_sdf_font(cmd);
+      gen.character    = selection[j];
+      RenderableChar r = gen();
 
       vpc.character_coordinate = r.character_coordinate;
       vpc.character_size       = r.character_size;
       vpc.mvp                  = gui_projection * r.transform;
-      cursor += r.cursor_movement;
 
       VkRect2D scissor = {.extent = ctx->engine->extent2D};
       vkCmdSetScissor(command, 0, 1, &scissor);
