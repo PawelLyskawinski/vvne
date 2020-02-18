@@ -4,7 +4,7 @@
 #include "engine/gltf.hh"
 #include "engine/math.hh"
 #include "game_constants.hh"
-#include "game_generate_gui_lines.hh"
+#include "gui_text_generator.hh"
 
 struct LightSource
 {

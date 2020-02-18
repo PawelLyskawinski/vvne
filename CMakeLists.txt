@@ -49,7 +49,7 @@ set(SOURCES
         sources/engine/cubemap.cc
         sources/engine/math.cc
         sources/game.cc
-        sources/game_generate_gui_lines.cc
+        sources/gui_text_generator.cc
         sources/game_generate_sdf_font.cc
         sources/game_render_entity.cc
         sources/simple_entity.cc

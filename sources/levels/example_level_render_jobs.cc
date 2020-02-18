@@ -637,17 +637,17 @@ void height_ruler_text(ThreadJobData tjd)
   // height rulers values
   //--------------------------------------------------------------------------
 
-  GenerateGuiLinesCommand cmd = {
+  const GuiTextGenerator gen = {
       .player_y_location_meters = -(2.0f - ctx->game->player.position.y),
       .camera_x_pitch_radians   = ctx->game->player.get_camera().angle,
       .camera_y_pitch_radians   = ctx->game->player.get_camera().angle,
       .screen_extent2D          = ctx->engine->extent2D,
   };
 
-  ArrayView<GuiHeightRulerText> scheduled_text_data = generate_gui_height_ruler_text(cmd, tjd.allocator);
+  ArrayView<GuiText> scheduled_text_data = gen.height_ruler(tjd.allocator);
 
   char buffer[256];
-  for (GuiHeightRulerText& text : scheduled_text_data)
+  for (GuiText& text : scheduled_text_data)
   {
     Mat4x4 gui_projection;
     gui_projection.ortho(0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
@@ -735,17 +735,17 @@ void tilt_ruler_text(ThreadJobData tjd)
   // tilt rulers values
   //--------------------------------------------------------------------------
 
-  GenerateGuiLinesCommand cmd = {
+  const GuiTextGenerator gen = {
       .player_y_location_meters = -(2.0f - ctx->game->player.position.y),
       .camera_x_pitch_radians   = ctx->game->player.get_camera().updown_angle,
       .camera_y_pitch_radians   = ctx->game->player.get_camera().updown_angle,
       .screen_extent2D          = ctx->engine->extent2D,
   };
 
-  ArrayView<GuiHeightRulerText> scheduled_text_data = generate_gui_tilt_ruler_text(cmd, tjd.allocator);
+  ArrayView<GuiText> scheduled_text_data = gen.tilt_ruler(tjd.allocator);
 
   char buffer[256];
-  for (GuiHeightRulerText& text : scheduled_text_data)
+  for (GuiText& text : scheduled_text_data)
   {
     Mat4x4 gui_projection;
     gui_projection.ortho(0, ctx->engine->extent2D.width, 0, ctx->engine->extent2D.height, 0.0f, 1.0f);
@@ -828,7 +828,7 @@ void story_dialog_text(ThreadJobData tjd)
 
     float cursor = 0.0f;
 
-    char buffer[256];
+    char      buffer[256];
     const int length = SDL_snprintf(buffer, 256, "Hello World!");
     for (int i = 0; i < length; ++i)
     {
