@@ -26,7 +26,7 @@ struct ClickedPositionTracker
   void update(const Vec2& position);
 };
 
-struct StoryEditor : protected Story
+struct StoryEditor : public Story
 {
   ClickedPositionTracker lmb                                   = {};
   ClickedPositionTracker rmb                                   = {};

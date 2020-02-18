@@ -244,7 +244,6 @@ void orientation_axis_job(ThreadJobData tjd)
 void gui_lines_generation_job(ThreadJobData tjd)
 {
   UpdateJob ctx(tjd, __FUNCTION__);
-
   GuiLinesUpdate update;
   update.player_y_location_meters = -ctx.game.player.position.y;
   update.camera_x_pitch_radians   = 0.0f;

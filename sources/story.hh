@@ -26,6 +26,7 @@ struct Story
   uint32_t               connections_count      = 0;
   Dialogue*              dialogues              = nullptr;
   uint32_t               dialogues_count        = 0;
+  const Dialogue*        active_dialogue        = nullptr;
 
   void setup(HierarchicalAllocator& allocator);
   void teardown();

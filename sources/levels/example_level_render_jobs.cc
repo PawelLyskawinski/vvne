@@ -798,6 +798,9 @@ void story_dialog_text(ThreadJobData tjd)
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
   ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
 
+  if (nullptr == ctx->game->story.active_dialogue)
+    return;
+
   VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
@@ -828,18 +831,22 @@ void story_dialog_text(ThreadJobData tjd)
 
     float cursor = 0.0f;
 
-    char      buffer[256];
-    const int length = SDL_snprintf(buffer, 256, "Hello World!");
+    //char      buffer[256];
+
+    const story::Dialogue* dialogue = ctx->game->story.active_dialogue;
+    const int length = SDL_strlen(dialogue->text);
+            //SDL_snprintf(buffer, 256, "Hello World!");
+
     for (int i = 0; i < length; ++i)
     {
       GenerateSdfFontCommand cmd = {
-          .character             = buffer[i],
+          .character             = dialogue->text[i],
           .lookup_table          = ctx->game->materials.lucida_sans_sdf_char_ids,
           .character_data        = ctx->game->materials.lucida_sans_sdf_chars,
           .characters_pool_count = SDL_arraysize(ctx->game->materials.lucida_sans_sdf_char_ids),
           .texture_size          = {512.0f, 256.0f},
           .scaling               = static_cast<float>(1000.0f),
-          .position              = {0.4f * ctx->engine->extent2D.width, 0.9f * ctx->engine->extent2D.height, -1.0f},
+          .position              = {0.2f * ctx->engine->extent2D.width, 0.9f * ctx->engine->extent2D.height, -1.0f},
           .cursor                = cursor,
       };
 

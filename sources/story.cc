@@ -283,6 +283,7 @@ bool Story::update(const Player& player, uint32_t entity_idx)
     node_states[entity_idx] = State::Finished;
     const Dialogue* co = std::find(dialogues, dialogues + dialogues_count, entity_idx);
     SDL_Log("%s", co->text);
+    active_dialogue = co;
     return false;
   }
   default:
