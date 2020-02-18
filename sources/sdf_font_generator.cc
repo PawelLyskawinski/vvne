@@ -1,4 +1,4 @@
-#include "game_generate_sdf_font.hh"
+#include "sdf_font_generator.hh"
 #include "materials.hh"
 #include <SDL2/SDL_assert.h>
 #include <algorithm>

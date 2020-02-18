@@ -1,7 +1,7 @@
 #include "engine/aligned_push_consts.hh"
 #include "engine/memory_map.hh"
 #include "game.hh"
-#include "game_generate_sdf_font.hh"
+#include "sdf_font_generator.hh"
 #include "game_render_entity.hh"
 #include <SDL2/SDL_log.h>
 

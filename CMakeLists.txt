@@ -50,7 +50,7 @@ set(SOURCES
         sources/engine/math.cc
         sources/game.cc
         sources/gui_text_generator.cc
-        sources/game_generate_sdf_font.cc
+        sources/sdf_font_generator.cc
         sources/game_render_entity.cc
         sources/simple_entity.cc
         sources/player.cc
