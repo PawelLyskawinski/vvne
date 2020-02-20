@@ -188,6 +188,8 @@ void Story::validate_and_fix()
         const Dialogue stub = {
             .entity = entity,
             .type   = Dialogue::Type::Short,
+            .color  = Vec3(1.0f, 0.0f, 0.0f),
+            .size   = 800.0f,
             .text   = allocator->allocate<char>(Dialogue::type_to_size(Dialogue::Type::Short)),
         };
 
@@ -212,7 +214,8 @@ void Story::depth_first_cancel(const Connection& connection)
   switch (node_states[investigated])
   {
   case State::Upcoming:
-  case State::Active: {
+  case State::Active:
+  {
     node_states[investigated] = State::Cancelled;
     depth_first_cancel(investigated);
     break;
@@ -244,7 +247,8 @@ bool Story::update(const Player& player, uint32_t entity_idx)
   case Node::Any:
     node_states[entity_idx] = State::Finished;
     return false;
-  case Node::All: {
+  case Node::All:
+  {
     auto is_connection_satisfying_all = [&](const Connection& connection) {
       if (entity_idx == connection.dst_node_idx)
       {
@@ -265,7 +269,8 @@ bool Story::update(const Player& player, uint32_t entity_idx)
       return true;
     }
   }
-  case Node::GoTo: {
+  case Node::GoTo:
+  {
     const TargetPosition* co = std::find(target_positions, target_positions + target_positions_count, entity_idx);
     SDL_assert(co);
     if ((player.position - co->position).len() >= co->radius)
@@ -279,10 +284,11 @@ bool Story::update(const Player& player, uint32_t entity_idx)
       return false;
     }
   }
-  case Node::Dialogue: {
+  case Node::Dialogue:
+  {
     node_states[entity_idx] = State::Finished;
-    const Dialogue* co = std::find(dialogues, dialogues + dialogues_count, entity_idx);
-    active_dialogue = co;
+    const Dialogue* co      = std::find(dialogues, dialogues + dialogues_count, entity_idx);
+    active_dialogue         = co;
     return false;
   }
   default:

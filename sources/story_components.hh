@@ -61,6 +61,8 @@ struct Dialogue
 
   uint32_t entity;
   Type     type;
+  Vec3     color;
+  float    size;
   char*    text;
 };
 

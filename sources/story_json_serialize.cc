@@ -2,6 +2,8 @@
 #include "story_editor.hh"
 #include <SDL2/SDL_log.h>
 #include <json.h>
+
+#include <algorithm>
 #include <vector>
 
 //
@@ -32,10 +34,25 @@ const char* type_to_string(const Dialogue::Type& type)
   }
 }
 
+struct JsonNumber
+{
+  explicit JsonNumber(uint32_t number)
+      : number_as_string{}
+      , number_as_json{number_as_string, static_cast<size_t>(SDL_snprintf(number_as_string, 8, "%u", number))}
+  {
+  }
+
+  char          number_as_string[32] = {};
+  json_number_s number_as_json       = {};
+};
+
 struct DialogueObject
 {
   explicit DialogueObject(const Dialogue& dialogue);
 
+  json_string_s         entity_name_s;
+  JsonNumber            entity_n;
+  json_value_s          entity_v;
   json_string_s         type_name_s;
   json_string_s         type_s;
   json_value_s          type_v;
@@ -44,11 +61,15 @@ struct DialogueObject
   json_value_s          text_v;
   json_object_element_s text_element;
   json_object_element_s type_element;
+  json_object_element_s entity_element;
   json_object_s         object;
 };
 
 DialogueObject::DialogueObject(const Dialogue& dialogue)
-    : type_name_s{"type", 4}
+    : entity_name_s{"entity", 6}
+    , entity_n(dialogue.entity)
+    , entity_v{&entity_n.number_as_json, json_type_number}
+    , type_name_s{"type", 4}
     , type_s{type_to_string(dialogue.type), SDL_strlen(type_to_string(dialogue.type))}
     , type_v{&type_s, json_type_string}
     , text_name_s{"text", 4}
@@ -56,6 +77,7 @@ DialogueObject::DialogueObject(const Dialogue& dialogue)
     , text_v{&text_s, json_type_string}
     , text_element{&text_name_s, &text_v, nullptr}
     , type_element{&type_name_s, &type_v, &text_element}
+    , entity_element{&entity_name_s, &entity_v, &type_element}
     , object{&type_element, 2}
 {
 }
