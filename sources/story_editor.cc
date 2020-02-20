@@ -3,6 +3,7 @@
 #include "engine/fileops.hh"
 #include "imgui.h"
 #include "player.hh"
+#include "story_json_serialize.hh"
 #include <SDL2/SDL_log.h>
 #include <algorithm>
 
@@ -612,6 +613,11 @@ void StoryEditor::imgui_update()
         save(handle);
         SDL_RWclose(handle);
         SDL_Log("Saved file %s", default_script_file_name);
+
+        handle = SDL_RWFromFile("test.json", "wc");
+        serialize_to_file(handle, *this);
+        SDL_RWclose(handle);
+        SDL_Log("Saved file test.json");
       }
 
       ImGui::EndMenu();

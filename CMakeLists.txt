@@ -64,6 +64,7 @@ set(SOURCES
         sources/debug_gui.cc
         sources/story_editor.cc
         sources/story.cc
+        sources/story_json_serialize.cc
         sources/color_palette.cc
         sources/lines_renderer.cc
         sources/gui_lines_renderer.cc
