@@ -116,13 +116,12 @@ std::vector<json_array_element_s> DialoguesArray::convert_to_array_elements(std:
 
 void DialoguesArray::form_linked_list(std::vector<json_array_element_s>& elements)
 {
-  for (uint32_t i = 0; i < (elements.size() - 1); ++i)
+  if (not elements.empty())
   {
-    elements[i].next = &elements[i + 1];
-  }
-
-  if (!elements.empty())
-  {
+    for (uint32_t i = 0; i < (elements.size() - 1); ++i)
+    {
+      elements[i].next = &elements[i + 1];
+    }
     elements.rbegin()->next = nullptr;
   }
 }

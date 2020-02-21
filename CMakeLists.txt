@@ -92,4 +92,8 @@ target_link_libraries(tests ${SDL_LIBRARY})
 target_link_libraries(level_generator_tests ${SDL_LIBRARY})
 target_link_libraries(jobsytem ${SDL_LIBRARY})
 target_link_libraries(allocator_tests ${SDL_LIBRARY})
+target_link_libraries(sandbox ${SDL_LIBRARY}
+        mingw32 opengl32 m dinput8 dxguid dxerr8 user32 gdi32 winmm
+        imm32 ole32 oleaut32 shell32 version uuid pthread setupapi
+        -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive)
 
