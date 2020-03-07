@@ -1,5 +1,6 @@
 #pragma once
 
+#include "multibitfield64.hh"
 #include <SDL2/SDL_stdinc.h>
 
 //
@@ -34,8 +35,8 @@ public:
   }
 
 private:
-  uint8_t* data                    = nullptr;
-  uint32_t block_size              = 0;
-  uint64_t block_usage_bitmaps[20] = {};
-  uint32_t block_capacity          = 0;
+  uint8_t*            data               = nullptr;
+  uint32_t            block_size         = 0;
+  MultiBitfield64<20> block_usage_bitmap = {};
+  uint32_t            block_capacity     = 0;
 };
