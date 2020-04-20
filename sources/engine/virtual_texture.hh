@@ -1,25 +1,38 @@
 #pragma once
 
+#include "align.hh"
+#include "multibitfield64.hh"
 #include <vulkan/vulkan.h>
+
+constexpr uint32_t calculate_page_size_exponential_mips(uint32_t mips)
+{
+  uint32_t size = 1u;
+  for (uint32_t i = 0; i < mips; ++i)
+  {
+    size *= 2.0f;
+  }
+  return size;
+}
 
 struct VirtualTexture
 {
-  static constexpr uint32_t page_dimension_pix   = 256;
-  static constexpr uint32_t page_pixel_count     = page_dimension_pix * page_dimension_pix;
-  static constexpr uint32_t pages_on_x_in_mip_0  = 50;
-  static constexpr uint32_t pages_on_y_in_mip_0  = pages_on_x_in_mip_0;
-  static constexpr uint32_t pages_count_in_mip_0 = pages_on_x_in_mip_0 * pages_on_y_in_mip_0;
-  static constexpr uint32_t bytes_per_pixel      = 4; // RGBA32
-  static constexpr uint32_t mip_0_memory         = pages_count_in_mip_0 * page_pixel_count * bytes_per_pixel;
+  static constexpr uint32_t mips_count        = 8;
+  static constexpr uint32_t pages_host_x      = 50;
+  static constexpr uint32_t pages_host_y      = pages_host_x;
+  static constexpr uint32_t pages_host_count  = pages_host_x * pages_host_y;
+  static constexpr uint32_t bytes_per_pixel   = 4; // RGBA32
 
-  VkDeviceMemory memory;
-};
+  //
+  // Row major layout indexing
+  //  _______________
+  // | 0 | 1 | 2 | 3 |
+  // | 4 | 5 | 6 | 7 |
+  // |___|___|___|___|
+  //
+  static constexpr uint32_t usage_bitfield_size = (pages_host_count / 64u) + 1;
 
-//
-// Points from texture coordinates of specific MIP to physical memory on GPU
-//
-//
+  void     debug_dump() const;
+  uint32_t calculate_all_required_memory() const;
 
-struct VirtualPageTable
-{
+  MultiBitfield64<usage_bitfield_size> usage;
 };

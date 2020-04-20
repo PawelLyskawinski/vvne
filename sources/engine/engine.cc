@@ -611,6 +611,7 @@ void Engine::startup(bool vulkan_validation_enabled)
 
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(device, depth_image.image, &reqs);
+    memory_blocks.device_images.alignment = reqs.alignment;
 
     VkPhysicalDeviceMemoryProperties properties = {};
     vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
@@ -857,6 +858,9 @@ void Engine::startup(bool vulkan_validation_enabled)
     VkFenceCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, .flags = VK_FENCE_CREATE_SIGNALED_BIT};
     vkCreateFence(device, &ci, nullptr, &submition_fence);
   }
+
+  // debug!
+  virtual_texture.debug_dump();
 }
 
 namespace {
@@ -1385,9 +1389,7 @@ Texture Engine::load_texture(SDL_Surface* surface, bool register_for_destruction
     };
 
     vkCreateImage(device, &ci, nullptr, &result.image);
-  }
 
-  {
     VkMemoryRequirements reqs = {};
     vkGetImageMemoryRequirements(device, result.image, &reqs);
     result.memory_offset = memory_blocks.device_images.allocator.allocate_bytes(align(reqs.size, reqs.alignment));

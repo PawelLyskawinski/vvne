@@ -845,7 +845,7 @@ void story_dialog_text(ThreadJobData tjd)
       VkRect2D scissor = {.extent = ctx->engine->extent2D};
       vkCmdSetScissor(command, 0, 1, &scissor);
 
-      fpc.color = Vec3(1.0f, 0.0f, 0.0f);
+      fpc.color = Vec3(1.0f, 1.0f, 1.0f);
 
       AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
           .push(VK_SHADER_STAGE_VERTEX_BIT, vpc)

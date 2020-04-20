@@ -2,11 +2,7 @@
 
 #include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_stdinc.h>
-
-template <typename T> constexpr T align(T unaligned, T alignment)
-{
-  return (unaligned + (alignment - 1)) & (~(alignment - 1));
-}
+#include "align.hh"
 
 class Stack
 {

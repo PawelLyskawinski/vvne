@@ -6,6 +6,7 @@
 #include "hierarchical_allocator.hh"
 #include "job_system.hh"
 #include "literals.hh"
+#include "virtual_texture.hh"
 #include <SDL2/SDL_video.h>
 #include <vulkan/vulkan.h>
 
@@ -133,13 +134,15 @@ struct Engine
   VkDescriptorPool           descriptor_pool;
   Texture                    msaa_color_image;
   Texture                    depth_image;
+  VirtualTexture             virtual_texture;
   VkSemaphore                image_available;
   VkSemaphore                render_finished;
   VkSampler                  texture_sampler;
   VkSampler                  shadowmap_sampler;
   Texture                    shadowmap_image;
-  VkImageView                shadowmap_cascade_image_views[SHADOWMAP_CASCADE_COUNT];
-  VkFence                    submition_fences[SWAPCHAIN_IMAGES_COUNT];
+
+  VkImageView shadowmap_cascade_image_views[SHADOWMAP_CASCADE_COUNT];
+  VkFence     submition_fences[SWAPCHAIN_IMAGES_COUNT];
 
   MemoryBlocks memory_blocks;
 

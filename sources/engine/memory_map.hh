@@ -21,4 +21,3 @@ private:
     VkDeviceMemory memory;
     void*          ptr;
 };
-

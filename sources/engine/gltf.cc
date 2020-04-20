@@ -31,9 +31,15 @@ size_t find_substring_idx(const char* big_string, const size_t big_string_length
   return result;
 }
 
-bool is_open_bracket(char in) { return ('{' == in) or ('[' == in); }
+bool is_open_bracket(char in)
+{
+  return ('{' == in) or ('[' == in);
+}
 
-bool is_closing_bracket(char in) { return ('}' == in) or (']' == in); }
+bool is_closing_bracket(char in)
+{
+  return ('}' == in) or (']' == in);
+}
 
 struct Seeker
 {
@@ -240,7 +246,8 @@ void load_textures(TextureLoadOp ops[], uint32_t n, Engine& engine, const uint8_
     SDL_PixelFormat format  = {.format = SDL_PIXELFORMAT_RGBA32, .BitsPerPixel = 32, .BytesPerPixel = (32 + 7) / 8};
     stbi_uc*        pixels  = stbi_load_from_memory(&binary_data[offset], length, &x, &y, &real_format, STBI_rgb_alpha);
     SDL_Surface     surface = {.format = &format, .w = x, .h = y, .pitch = 4 * x, .pixels = pixels};
-    t->dst                  = engine.load_texture(&surface);
+
+    t->dst = engine.load_texture(&surface);
     stbi_image_free(pixels);
   }
 }
@@ -674,7 +681,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
     if (node_json.has("matrix"))
     {
       node.flags.matrix = true;
-      Seeker matrix = node_json.node("matrix");
+      Seeker matrix     = node_json.node("matrix");
 
       for (int row = 0; row < 4; ++row)
         for (int column = 0; column < 4; ++column)
@@ -684,7 +691,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
     if (node_json.has("rotation"))
     {
       node.flags.rotation = true;
-      Seeker rotation = node_json.node("rotation");
+      Seeker rotation     = node_json.node("rotation");
       for (int i = 0; i < 4; ++i)
       {
         node.rotation.data[i] = rotation.idx_float(i);
@@ -694,7 +701,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
     if (node_json.has("translation"))
     {
       node.flags.translation = true;
-      Seeker translation = node_json.node("translation");
+      Seeker translation     = node_json.node("translation");
 
       node.translation.x = translation.idx_float(0);
       node.translation.y = translation.idx_float(1);
@@ -704,7 +711,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
     if (node_json.has("scale"))
     {
       node.flags.scale = true;
-      Seeker scale = node_json.node("scale");
+      Seeker scale     = node_json.node("scale");
 
       node.scale.x = scale.idx_float(0);
       node.scale.y = scale.idx_float(1);
@@ -714,13 +721,13 @@ SceneGraph loadGLB(Engine& engine, const char* path)
     if (node_json.has("mesh"))
     {
       node.flags.mesh = true;
-      node.mesh = node_json.integer("mesh");
+      node.mesh       = node_json.integer("mesh");
     }
 
     if (node_json.has("skin"))
     {
       node.flags.skin = true;
-      node.skin = node_json.integer("skin");
+      node.skin       = node_json.integer("skin");
     }
   }
 

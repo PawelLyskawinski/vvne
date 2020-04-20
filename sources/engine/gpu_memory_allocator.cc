@@ -1,7 +1,9 @@
 #include "gpu_memory_allocator.hh"
+#include "literals.hh"
 #include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_stdinc.h>
 
+#include <SDL2/SDL_log.h>
 #include <algorithm>
 
 void GpuMemoryAllocator::init(const VkDeviceSize init_max_size)
