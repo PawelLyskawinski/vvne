@@ -37,7 +37,7 @@ set(SOURCES
         sources/engine/engine_pipeline_layouts.cc
         sources/engine/engine_pipelines.cc
         sources/engine/engine_instance_create.cc
-        sources/engine/engine_instance_create.hh
+        sources/engine/engine_debug_messenger.cc
         sources/engine/aligned_push_consts.cc
         sources/engine/block_allocator.cc
         sources/engine/block_allocator_visualizer.cc
@@ -75,7 +75,6 @@ set(SOURCES
         thirdparty/imgui_draw.cpp
         thirdparty/imgui_widgets.cpp
         thirdparty/sha256.cpp
-
         )
 
 if(WIN32)

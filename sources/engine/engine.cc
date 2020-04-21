@@ -1,12 +1,10 @@
 #include "engine.hh"
 #include "engine_instance_create.hh"
+#include "engine_debug_messenger.hh"
 #include "math.hh"
 #include "sha256.h"
-#include "vtl/span.hh"
-#include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_log.h>
 #include <SDL2/SDL_vulkan.h>
-
 #include <algorithm>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -15,18 +13,6 @@
 #include <SDL2/SDL_timer.h>
 #include <stb_image.h>
 #pragma GCC diagnostic pop
-
-static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
-                                                            VkDebugUtilsMessageTypeFlagsEXT             messageType,
-                                                            const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-                                                            void*                                       pUserData)
-{
-  (void)messageSeverity;
-  (void)messageType;
-  (void)pUserData;
-  SDL_Log("validation layer: %s", pCallbackData->pMessage);
-  return VK_FALSE;
-}
 
 namespace {
 
@@ -123,24 +109,13 @@ void Engine::startup(bool vulkan_validation_enabled)
         .allocator          = &generic_allocator,
         .validation_enabled = vulkan_validation_enabled,
     };
+
     instance = instance_create(info);
   }
 
   if (vulkan_validation_enabled)
   {
-    VkDebugUtilsMessengerCreateInfoEXT ci = {
-        .sType           = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-        .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-                           VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-                           VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-        .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-                       VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
-        .pfnUserCallback = vulkan_debug_callback,
-    };
-
-    auto fcn = (PFN_vkCreateDebugUtilsMessengerEXT)(vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"));
-    SDL_assert(fcn);
-    fcn(instance, &ci, nullptr, &debug_callback);
+    debug_callback = debug_utils_messenger_create(instance);
   }
 
   {
@@ -947,10 +922,7 @@ void Engine::teardown()
 
   if (VK_NULL_HANDLE != debug_callback)
   {
-    using Fcn = PFN_vkDestroyDebugUtilsMessengerEXT;
-    auto fcn  = (Fcn)(vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT"));
-    SDL_assert(fcn);
-    fcn(instance, debug_callback, nullptr);
+    debug_utils_messenger_destroy(instance, debug_callback);
   }
 
   vkDestroyInstance(instance, nullptr);
