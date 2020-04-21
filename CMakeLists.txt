@@ -36,6 +36,9 @@ set(SOURCES
         sources/engine/engine_descriptor_set_layouts.cc
         sources/engine/engine_pipeline_layouts.cc
         sources/engine/engine_pipelines.cc
+        sources/engine/engine_instance_create.cc
+        sources/engine/engine_instance_create.hh
+        sources/engine/aligned_push_consts.cc
         sources/engine/block_allocator.cc
         sources/engine/block_allocator_visualizer.cc
         sources/engine/hierarchical_allocator.cc
@@ -68,12 +71,12 @@ set(SOURCES
         sources/lines_renderer.cc
         sources/gui_lines_renderer.cc
         sources/engine/virtual_texture.cc
-        sources/vtl/multibitfield64.hh
         thirdparty/imgui.cpp
         thirdparty/imgui_draw.cpp
         thirdparty/imgui_widgets.cpp
         thirdparty/sha256.cpp
-        sources/vtl/align.hh sources/vtl/span.hh sources/engine/aligned_push_consts.cc)
+
+        )
 
 if(WIN32)
 add_executable(${PROJECT_NAME} ${SOURCES} assets/applicationIcon.rc)

@@ -1,4 +1,5 @@
 #include "engine.hh"
+#include "engine_instance_create.hh"
 #include "math.hh"
 #include "sha256.h"
 #include "vtl/span.hh"
@@ -115,40 +116,14 @@ void Engine::startup(bool vulkan_validation_enabled)
                             initial_window_height, SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
 
   {
-    VkApplicationInfo ai = {
-        .sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        .pApplicationName   = "vvne",
-        .applicationVersion = 1,
-        .pEngineName        = "vvne_engine",
-        .engineVersion      = 1,
-        .apiVersion         = VK_API_VERSION_1_0,
+    InstanceCreateInfo info = {
+        .application_name   = "vvne",
+        .engine_name        = "vvne_engine",
+        .window             = window,
+        .allocator          = &generic_allocator,
+        .validation_enabled = vulkan_validation_enabled,
     };
-
-    const char* validation_layers[]     = {"VK_LAYER_KHRONOS_validation"};
-    const char* validation_extensions[] = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
-
-    uint32_t count = 0;
-    SDL_Vulkan_GetInstanceExtensions(window, &count, nullptr);
-    const char** extensions = generic_allocator.allocate<const char*>(count + SDL_arraysize(validation_extensions));
-    SDL_Vulkan_GetInstanceExtensions(window, &count, extensions);
-
-    if (vulkan_validation_enabled)
-    {
-      SDL_memcpy(&extensions[count], validation_extensions, sizeof(validation_extensions));
-      count += SDL_arraysize(validation_extensions);
-    }
-
-    VkInstanceCreateInfo ci = {
-        .sType               = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-        .pApplicationInfo    = &ai,
-        .enabledLayerCount   = vulkan_validation_enabled ? static_cast<uint32_t>(SDL_arraysize(validation_layers)) : 0u,
-        .ppEnabledLayerNames = vulkan_validation_enabled ? validation_layers : nullptr,
-        .enabledExtensionCount   = count,
-        .ppEnabledExtensionNames = extensions,
-    };
-
-    vkCreateInstance(&ci, nullptr, &instance);
-    generic_allocator.free(extensions, count + SDL_arraysize(validation_extensions));
+    instance = instance_create(info);
   }
 
   if (vulkan_validation_enabled)
