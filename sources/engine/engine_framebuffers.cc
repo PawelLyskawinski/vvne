@@ -15,7 +15,7 @@ void shadowmap(Engine& engine)
       .layers          = 1,
   };
 
-  for (unsigned i = 0; i < render_pass.framebuffers_count; ++i)
+  for (unsigned i = 0; i < render_pass.framebuffers.count; ++i)
   {
     ci.pAttachments = &engine.shadowmap_cascade_image_views[i];
     vkCreateFramebuffer(engine.device, &ci, nullptr, &render_pass.framebuffers[i]);
@@ -38,7 +38,7 @@ void skybox(Engine& engine)
       .layers          = 1,
   };
 
-  for (uint32_t i = 0; i < render_pass.framebuffers_count; ++i)
+  for (uint32_t i = 0; i < render_pass.framebuffers.count; ++i)
   {
     attachments[0] = engine.swapchain_image_views[i];
     vkCreateFramebuffer(engine.device, &ci, nullptr, &render_pass.framebuffers[i]);
@@ -61,7 +61,7 @@ void color_and_depth(Engine& engine)
       .layers          = 1,
   };
 
-  for (uint32_t i = 0; i < render_pass.framebuffers_count; ++i)
+  for (uint32_t i = 0; i < render_pass.framebuffers.count; ++i)
   {
     attachments[0] = engine.swapchain_image_views[i];
     vkCreateFramebuffer(engine.device, &ci, nullptr, &render_pass.framebuffers[i]);
@@ -84,7 +84,7 @@ void gui(Engine& engine)
       .layers          = 1,
   };
 
-  for (uint32_t i = 0; i < render_pass.framebuffers_count; ++i)
+  for (uint32_t i = 0; i < render_pass.framebuffers.count; ++i)
   {
     attachments[0] = engine.swapchain_image_views[i];
     vkCreateFramebuffer(engine.device, &ci, nullptr, &render_pass.framebuffers[i]);

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "engine/allocators.hh"
 #include "engine/hierarchical_allocator.hh"
 #include "story_components.hh"
+#include "vtl/allocators.hh"
 #include <SDL2/SDL_rwops.h>
 
 struct Player;

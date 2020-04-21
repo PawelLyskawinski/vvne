@@ -110,7 +110,7 @@ struct Seeker
     return (0 != find_substring_idx(data, sublen, name));
   }
 
-  [[nodiscard]] Seeker idx(const int desired_array_element) const
+  [[nodiscard]] Seeker idx(const unsigned desired_array_element) const
   {
     Seeker result{};
 
@@ -312,7 +312,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
   {
     Seeker images = document.node("images");
 
-    for (int material_idx = 0; material_idx < scene_graph.materials.count; ++material_idx)
+    for (unsigned material_idx = 0; material_idx < scene_graph.materials.count; ++material_idx)
     {
       Material& material      = scene_graph.materials.data[material_idx];
       Seeker    material_json = document.node("materials").idx(material_idx);
@@ -675,7 +675,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
     }
     else
     {
-      node.children.reset();
+      node.children = Span<int>();
     }
 
     if (node_json.has("matrix"))
@@ -921,7 +921,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
       }
     }
 
-    auto has_path = [](const ArrayView<AnimationChannel>& c, AnimationChannel::Path path) {
+    auto has_path = [](const Span<AnimationChannel>& c, AnimationChannel::Path path) {
       return c.end() != std::find(c.begin(), c.end(), path);
     };
 

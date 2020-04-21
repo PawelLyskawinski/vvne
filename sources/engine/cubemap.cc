@@ -512,7 +512,21 @@ Texture generate_cubemap(Engine* engine, Materials* materials, const char* equir
       const Mat4x4 projectionview = projection * views[i];
 
       vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[i]);
-      AlignedPushConsts(cmd, pipeline_layout).push(VK_SHADER_STAGE_VERTEX_BIT, projectionview);
+
+      AlignedPushConstsContext ctx = {
+          .command = cmd,
+          .layout  = pipeline_layout,
+      };
+
+      AlignedPushElement elements[] = {
+          {
+              .stage = VK_SHADER_STAGE_VERTEX_BIT,
+              .size  = sizeof(projectionview),
+              .data  = &projectionview,
+          },
+      };
+
+      push_constants(ctx, Span(elements));
 
       const Node& node = materials->box.nodes.data[1];
       Mesh&       mesh = materials->box.meshes.data[node.mesh];
@@ -991,7 +1005,21 @@ Texture generate_irradiance_cubemap(Engine* engine, Materials* materials, Textur
 
       vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[i]);
       vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set, 0, nullptr);
-      AlignedPushConsts(cmd, pipeline_layout).push(VK_SHADER_STAGE_VERTEX_BIT, projectionview);
+
+      AlignedPushConstsContext ctx = {
+          .command = cmd,
+          .layout  = pipeline_layout,
+      };
+
+      AlignedPushElement elements[] = {
+          {
+              .stage = VK_SHADER_STAGE_VERTEX_BIT,
+              .size  = sizeof(projectionview),
+              .data  = &projectionview,
+          },
+      };
+
+      push_constants(ctx, Span(elements));
 
       const Node& node = materials->box.nodes.data[1];
       Mesh&       mesh = materials->box.meshes.data[node.mesh];
@@ -1490,9 +1518,25 @@ Texture generate_prefiltered_cubemap(Engine* engine, Materials* materials, Textu
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set, 0,
                                 nullptr);
 
-        AlignedPushConsts(cmd, pipeline_layout)
-            .push(VK_SHADER_STAGE_VERTEX_BIT, projectionview)
-            .push(VK_SHADER_STAGE_FRAGMENT_BIT, roughness);
+        AlignedPushConstsContext ctx = {
+            .command = cmd,
+            .layout  = pipeline_layout,
+        };
+
+        AlignedPushElement elements[] = {
+            {
+                .stage = VK_SHADER_STAGE_VERTEX_BIT,
+                .size  = sizeof(projectionview),
+                .data  = &projectionview,
+            },
+            {
+                .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+                .size  = sizeof(roughness),
+                .data  = &roughness,
+            },
+        };
+
+        push_constants(ctx, Span(elements));
 
         const Node& node = materials->box.nodes.data[1];
         Mesh&       mesh = materials->box.meshes.data[node.mesh];

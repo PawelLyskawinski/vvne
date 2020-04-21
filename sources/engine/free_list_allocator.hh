@@ -1,6 +1,6 @@
 #pragma once
 
-#include "literals.hh"
+#include "vtl/literals.hh"
 #include <SDL2/SDL_assert.h>
 
 struct FreeListAllocator

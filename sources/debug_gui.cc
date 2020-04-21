@@ -3,9 +3,9 @@
 #include "engine/engine.hh"
 #include "engine/free_list_visualizer.hh"
 #include "engine/gpu_memory_visualizer.hh"
-#include "engine/memory_map.hh"
 #include "game.hh"
 #include "profiler_visualizer.hh"
+#include "vtl/memory_map.hh"
 #include <SDL2/SDL_clipboard.h>
 
 #include <SDL2/SDL_log.h>

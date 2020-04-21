@@ -1,6 +1,7 @@
 #include "engine.hh"
 #include "math.hh"
 #include "sha256.h"
+#include "vtl/span.hh"
 #include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_log.h>
 #include <SDL2/SDL_vulkan.h>
@@ -63,8 +64,7 @@ const char* to_cstr(VkPresentModeKHR mode)
 
 void renderpass_allocate_memory(HierarchicalAllocator& a, RenderPass& rp, uint32_t n)
 {
-  rp.framebuffers_count = n;
-  rp.framebuffers       = a.allocate<VkFramebuffer>(n);
+  rp.framebuffers = Span(a.allocate<VkFramebuffer>(n), n);
 }
 
 VkComponentMapping gen_rgba_cm()
@@ -904,7 +904,7 @@ void Engine::teardown()
   for (const RenderPass& it : StructureAsArrayView<RenderPass>(&render_passes))
   {
     vkDestroyRenderPass(device, it.render_pass, nullptr);
-    for (const VkFramebuffer& fb : ArrayView<VkFramebuffer>{it.framebuffers, static_cast<int>(it.framebuffers_count)})
+    for (const VkFramebuffer& fb : it.framebuffers)
     {
       vkDestroyFramebuffer(device, fb, nullptr);
     }
@@ -1652,8 +1652,10 @@ void Engine::change_resolution(const VkExtent2D new_size)
   for (const RenderPass& it : StructureAsArrayView<RenderPass>(&render_passes))
   {
     vkDestroyRenderPass(device, it.render_pass, nullptr);
-    for (uint32_t i = 0; i < it.framebuffers_count; ++i)
-      vkDestroyFramebuffer(device, it.framebuffers[i], nullptr);
+    for (VkFramebuffer f : it.framebuffers)
+    {
+      vkDestroyFramebuffer(device, f, nullptr);
+    }
   }
 
   for (const Pipelines::Pair& it : StructureAsArrayView<Pipelines::Pair>(&pipelines))

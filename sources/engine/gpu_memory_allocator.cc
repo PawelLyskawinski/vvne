@@ -1,5 +1,5 @@
 #include "gpu_memory_allocator.hh"
-#include "literals.hh"
+#include "vtl/literals.hh"
 #include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_stdinc.h>
 

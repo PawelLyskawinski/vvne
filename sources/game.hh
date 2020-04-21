@@ -1,14 +1,14 @@
 #pragma once
 
 #include "debug_gui.hh"
-#include "engine/atomic_stack.hh"
-#include "engine/priority_pair.hh"
 #include "levels/example_level.hh"
 #include "materials.hh"
 #include "player.hh"
 #include "profiler.hh"
 #include "simple_entity.hh"
 #include "story_editor.hh"
+#include "vtl/atomic_stack.hh"
+#include "vtl/priority_pair.hh"
 
 struct ShadowmapCommandBuffer
 {

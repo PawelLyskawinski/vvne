@@ -1,7 +1,7 @@
 #pragma once
 
-#include "align.hh"
-#include "multibitfield64.hh"
+#include "vtl/align.hh"
+#include "vtl/multibitfield64.hh"
 #include <vulkan/vulkan.h>
 
 constexpr uint32_t calculate_page_size_exponential_mips(uint32_t mips)

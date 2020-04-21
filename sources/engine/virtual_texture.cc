@@ -1,5 +1,5 @@
 #include "virtual_texture.hh"
-#include "literals.hh"
+#include "vtl/literals.hh"
 #include <SDL2/SDL_log.h>
 
 static void print_bytes(const char* issuer, uint32_t bytes)

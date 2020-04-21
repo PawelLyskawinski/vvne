@@ -1,6 +1,6 @@
 #include "lines_renderer.hh"
-#include "engine/allocators.hh"
-#include "engine/merge_sort.hh"
+#include "vtl/allocators.hh"
+#include "vtl/merge_sort.hh"
 #include <numeric>
 
 namespace {

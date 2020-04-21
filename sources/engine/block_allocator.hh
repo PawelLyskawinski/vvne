@@ -1,6 +1,6 @@
 #pragma once
 
-#include "multibitfield64.hh"
+#include "vtl/multibitfield64.hh"
 #include <SDL2/SDL_stdinc.h>
 
 //

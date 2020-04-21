@@ -1,8 +1,8 @@
 #include "engine/aligned_push_consts.hh"
-#include "engine/memory_map.hh"
 #include "game.hh"
-#include "sdf_font_generator.hh"
 #include "game_render_entity.hh"
+#include "sdf_font_generator.hh"
+#include "vtl/memory_map.hh"
 #include <SDL2/SDL_log.h>
 
 namespace {
@@ -20,9 +20,25 @@ VkCommandBuffer acquire_command_buffer(ThreadJobData& tjd)
   vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe.layout, 0, 1, &materials.skybox_cubemap_dset,
                           0, nullptr);
 
-  AlignedPushConsts(command, pipe.layout)
-      .push(VK_SHADER_STAGE_VERTEX_BIT, player.camera_projection)
-      .push(VK_SHADER_STAGE_VERTEX_BIT, player.camera_view);
+  AlignedPushConstsContext ctx = {
+      .command = command,
+      .layout  = pipe.layout,
+  };
+
+  AlignedPushElement elements[] = {
+      {
+          .stage = VK_SHADER_STAGE_VERTEX_BIT,
+          .size  = sizeof(player.camera_projection),
+          .data  = &player.camera_projection,
+      },
+      {
+          .stage = VK_SHADER_STAGE_VERTEX_BIT,
+          .size  = sizeof(player.camera_view),
+          .data  = &player.camera_view,
+      },
+  };
+
+  push_constants(ctx, Span(elements));
 
   const Node& node = materials.box.nodes.data[1];
   const Mesh& mesh = materials.box.meshes.data[node.mesh];
@@ -442,9 +458,25 @@ void radar(ThreadJobData tjd)
                                           rectangle_dimension_pixels + offset_from_edge, -1.0f}) *
                      Mat4x4::Scale({rectangle_dimension_pixels, rectangle_dimension_pixels, 1.0f});
 
-  AlignedPushConsts(command, ctx->engine->pipelines.green_gui.layout)
-      .push(VK_SHADER_STAGE_VERTEX_BIT, mvp)
-      .push(VK_SHADER_STAGE_FRAGMENT_BIT, ctx->game->current_time_sec);
+  AlignedPushConstsContext push_ctx = {
+      .command = command,
+      .layout  = ctx->engine->pipelines.green_gui.layout,
+  };
+
+  AlignedPushElement elements[] = {
+      {
+          .stage = VK_SHADER_STAGE_VERTEX_BIT,
+          .size  = sizeof(mvp),
+          .data  = &mvp,
+      },
+      {
+          .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+          .size  = sizeof(ctx->game->current_time_sec),
+          .data  = &ctx->game->current_time_sec,
+      },
+  };
+
+  push_constants(push_ctx, Span(elements));
 
   vkCmdDraw(command, 4, 1, 0, 0);
   vkEndCommandBuffer(command);
@@ -573,9 +605,25 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
 
       fpc.color = Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f);
 
-      AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
-          .push(VK_SHADER_STAGE_VERTEX_BIT, vpc)
-          .push(VK_SHADER_STAGE_FRAGMENT_BIT, fpc);
+      AlignedPushConstsContext push_ctx = {
+          .command = command,
+          .layout  = ctx->engine->pipelines.green_gui_sdf_font.layout,
+      };
+
+      AlignedPushElement elements[] = {
+          {
+              .stage = VK_SHADER_STAGE_VERTEX_BIT,
+              .size  = sizeof(vpc),
+              .data  = &vpc,
+          },
+          {
+              .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+              .size  = sizeof(fpc),
+              .data  = &fpc,
+          },
+      };
+
+      push_constants(push_ctx, Span(elements));
 
       vkCmdDraw(command, 4, 1, 0, 0);
     }
@@ -601,10 +649,30 @@ void robot_gui_speed_meter_triangle(ThreadJobData tjd)
   const Vec4 scale  = Vec4(0.012f, 0.02f, 1.0f, 1.0f);
   const Vec4 color  = Vec4(Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f), 1.0f);
 
-  AlignedPushConsts(command, ctx->engine->pipelines.green_gui_triangle.layout)
-      .push(VK_SHADER_STAGE_VERTEX_BIT, offset)
-      .push(VK_SHADER_STAGE_VERTEX_BIT, scale)
-      .push(VK_SHADER_STAGE_FRAGMENT_BIT, color);
+  AlignedPushConstsContext push_ctx = {
+      .command = command,
+      .layout  = ctx->engine->pipelines.green_gui_triangle.layout,
+  };
+
+  AlignedPushElement elements[] = {
+      {
+          .stage = VK_SHADER_STAGE_VERTEX_BIT,
+          .size  = sizeof(offset),
+          .data  = &offset,
+      },
+      {
+          .stage = VK_SHADER_STAGE_VERTEX_BIT,
+          .size  = sizeof(scale),
+          .data  = &scale,
+      },
+      {
+          .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+          .size  = sizeof(color),
+          .data  = &color,
+      },
+  };
+
+  push_constants(push_ctx, Span(elements));
 
   vkCmdDraw(command, 3, 1, 0, 0);
   vkEndCommandBuffer(command);
@@ -641,7 +709,7 @@ void height_ruler_text(ThreadJobData tjd)
       .screen_extent2D          = ctx->engine->extent2D,
   };
 
-  ArrayView<GuiText> scheduled_text_data = gen.height_ruler(tjd.allocator);
+  Span<GuiText> scheduled_text_data = gen.height_ruler(tjd.allocator);
 
   char buffer[256];
   for (GuiText& text : scheduled_text_data)
@@ -676,12 +744,40 @@ void height_ruler_text(ThreadJobData tjd)
 
       vkCmdSetScissor(command, 0, 1, &scissor);
 
-      AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
-          .push(VK_SHADER_STAGE_VERTEX_BIT, mvp)
-          .push(VK_SHADER_STAGE_VERTEX_BIT, character_coordinate)
-          .push(VK_SHADER_STAGE_VERTEX_BIT, character_size)
-          .push(VK_SHADER_STAGE_FRAGMENT_BIT, text.color)
-          .push(VK_SHADER_STAGE_FRAGMENT_BIT, time);
+      AlignedPushConstsContext push_ctx = {
+          .command = command,
+          .layout  = ctx->engine->pipelines.green_gui_sdf_font.layout,
+      };
+
+      AlignedPushElement elements[] = {
+          {
+              .stage = VK_SHADER_STAGE_VERTEX_BIT,
+              .size  = sizeof(mvp),
+              .data  = &mvp,
+          },
+          {
+              .stage = VK_SHADER_STAGE_VERTEX_BIT,
+              .size  = sizeof(character_coordinate),
+              .data  = &character_coordinate,
+          },
+          {
+              .stage = VK_SHADER_STAGE_VERTEX_BIT,
+              .size  = sizeof(character_size),
+              .data  = &character_size,
+          },
+          {
+              .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+              .size  = sizeof(text.color),
+              .data  = &text.color,
+          },
+          {
+              .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+              .size  = sizeof(time),
+              .data  = &time,
+          },
+      };
+
+      push_constants(push_ctx, Span(elements));
 
       vkCmdDraw(command, 4, 1, 0, 0);
     }
@@ -733,7 +829,7 @@ void tilt_ruler_text(ThreadJobData tjd)
       .screen_extent2D          = ctx->engine->extent2D,
   };
 
-  ArrayView<GuiText> scheduled_text_data = gen.tilt_ruler(tjd.allocator);
+  Span<GuiText> scheduled_text_data = gen.tilt_ruler(tjd.allocator);
 
   char buffer[256];
   for (GuiText& text : scheduled_text_data)
@@ -771,9 +867,25 @@ void tilt_ruler_text(ThreadJobData tjd)
 
       fpc.color = text.color;
 
-      AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
-          .push(VK_SHADER_STAGE_VERTEX_BIT, vpc)
-          .push(VK_SHADER_STAGE_FRAGMENT_BIT, fpc);
+      AlignedPushConstsContext push_ctx = {
+          .command = command,
+          .layout  = ctx->engine->pipelines.green_gui_sdf_font.layout,
+      };
+
+      AlignedPushElement elements[] = {
+          {
+              .stage = VK_SHADER_STAGE_VERTEX_BIT,
+              .size  = sizeof(vpc),
+              .data  = &vpc,
+          },
+          {
+              .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+              .size  = sizeof(fpc),
+              .data  = &fpc,
+          },
+      };
+
+      push_constants(push_ctx, Span(elements));
 
       vkCmdDraw(command, 4, 1, 0, 0);
     }
@@ -847,9 +959,25 @@ void story_dialog_text(ThreadJobData tjd)
 
       fpc.color = Vec3(1.0f, 1.0f, 1.0f);
 
-      AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
-          .push(VK_SHADER_STAGE_VERTEX_BIT, vpc)
-          .push(VK_SHADER_STAGE_FRAGMENT_BIT, fpc);
+      AlignedPushConstsContext push_ctx = {
+          .command = command,
+          .layout  = ctx->engine->pipelines.green_gui_sdf_font.layout,
+      };
+
+      AlignedPushElement elements[] = {
+          {
+              .stage = VK_SHADER_STAGE_VERTEX_BIT,
+              .size  = sizeof(vpc),
+              .data  = &vpc,
+          },
+          {
+              .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+              .size  = sizeof(fpc),
+              .data  = &fpc,
+          },
+      };
+
+      push_constants(push_ctx, Span(elements));
 
       vkCmdDraw(command, 4, 1, 0, 0);
     }
@@ -952,9 +1080,25 @@ void compass_text(ThreadJobData tjd)
 
     fpc.color = Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f);
 
-    AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
-        .push(VK_SHADER_STAGE_VERTEX_BIT, vpc)
-        .push(VK_SHADER_STAGE_FRAGMENT_BIT, fpc);
+    AlignedPushConstsContext push_ctx = {
+        .command = command,
+        .layout  = ctx->engine->pipelines.green_gui_sdf_font.layout,
+    };
+
+    AlignedPushElement elements[] = {
+        {
+            .stage = VK_SHADER_STAGE_VERTEX_BIT,
+            .size  = sizeof(vpc),
+            .data  = &vpc,
+        },
+        {
+            .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .size  = sizeof(fpc),
+            .data  = &fpc,
+        },
+    };
+
+    push_constants(push_ctx, Span(elements));
 
     vkCmdDraw(command, 4, 1, 0, 0);
   }
@@ -987,9 +1131,25 @@ void compass_text(ThreadJobData tjd)
 
     fpc.color = Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f);
 
-    AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
-        .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(vpc), &vpc)
-        .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(fpc), &fpc);
+    AlignedPushConstsContext push_ctx = {
+        .command = command,
+        .layout  = ctx->engine->pipelines.green_gui_sdf_font.layout,
+    };
+
+    AlignedPushElement elements[] = {
+        {
+            .stage = VK_SHADER_STAGE_VERTEX_BIT,
+            .size  = sizeof(vpc),
+            .data  = &vpc,
+        },
+        {
+            .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .size  = sizeof(fpc),
+            .data  = &fpc,
+        },
+    };
+
+    push_constants(push_ctx, Span(elements));
 
     vkCmdDraw(command, 4, 1, 0, 0);
   }
@@ -1022,9 +1182,25 @@ void compass_text(ThreadJobData tjd)
 
     fpc.color = Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f);
 
-    AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
-        .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(vpc), &vpc)
-        .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(fpc), &fpc);
+    AlignedPushConstsContext push_ctx = {
+        .command = command,
+        .layout  = ctx->engine->pipelines.green_gui_sdf_font.layout,
+    };
+
+    AlignedPushElement elements[] = {
+        {
+            .stage = VK_SHADER_STAGE_VERTEX_BIT,
+            .size  = sizeof(vpc),
+            .data  = &vpc,
+        },
+        {
+            .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .size  = sizeof(fpc),
+            .data  = &fpc,
+        },
+    };
+
+    push_constants(push_ctx, Span(elements));
 
     vkCmdDraw(command, 4, 1, 0, 0);
   }
@@ -1073,9 +1249,25 @@ void radar_dots(ThreadJobData tjd)
   Vec4 position = {relative_helmet_position.x, relative_helmet_position.y, 0.0f, 1.0f};
   Vec4 color    = Vec4(1.0f, 0.0f, 0.0f, (final_distance < 0.22f) ? 0.6f : 0.0f);
 
-  AlignedPushConsts(command, ctx->engine->pipelines.green_gui_radar_dots.layout)
-      .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(Vec4), position.data())
-      .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(Vec4), color.data());
+  AlignedPushConstsContext push_ctx = {
+      .command = command,
+      .layout  = ctx->engine->pipelines.green_gui_radar_dots.layout,
+  };
+
+  AlignedPushElement elements[] = {
+      {
+          .stage = VK_SHADER_STAGE_VERTEX_BIT,
+          .size  = sizeof(position),
+          .data  = &position,
+      },
+      {
+          .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+          .size  = sizeof(color),
+          .data  = &color,
+      },
+  };
+
+  push_constants(push_ctx, Span(elements));
 
   Vec4 marker_color = Vec4(1.0f, 0.0f, 0.0f, 1.0f);
   ctx->engine->insert_debug_marker(command, "TEST", marker_color);
@@ -1145,9 +1337,27 @@ void weapon_selectors_left(ThreadJobData tjd)
 
     float frag_push[3] = {ctx->game->current_time_sec, box_size.y / box_size.x, transparencies[i]};
 
-    AlignedPushConsts(command, ctx->engine->pipelines.green_gui_weapon_selector_box_left.layout)
-        .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(Mat4x4), mvp.data())
-        .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(frag_push), &frag_push);
+    {
+      AlignedPushConstsContext push_ctx = {
+          .command = command,
+          .layout  = ctx->engine->pipelines.green_gui_weapon_selector_box_left.layout,
+      };
+
+      AlignedPushElement elements[] = {
+          {
+              .stage = VK_SHADER_STAGE_VERTEX_BIT,
+              .size  = sizeof(mvp),
+              .data  = &mvp,
+          },
+          {
+              .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+              .size  = sizeof(frag_push),
+              .data  = &frag_push,
+          },
+      };
+
+      push_constants(push_ctx, Span(elements));
+    }
 
     vkCmdDraw(command, 4, 1, 0, 0);
 
@@ -1211,9 +1421,25 @@ void weapon_selectors_left(ThreadJobData tjd)
 
       fpc.color = Vec3(145.0f, 224.0f, 194.0f).scale(1.0f / 255.0f);
 
-      AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
-          .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(vpc), &vpc)
-          .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(fpc), &fpc);
+      AlignedPushConstsContext push_ctx = {
+          .command = command,
+          .layout  = ctx->engine->pipelines.green_gui_sdf_font.layout,
+      };
+
+      AlignedPushElement elements[] = {
+          {
+              .stage = VK_SHADER_STAGE_VERTEX_BIT,
+              .size  = sizeof(vpc),
+              .data  = &vpc,
+          },
+          {
+              .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+              .size  = sizeof(fpc),
+              .data  = &fpc,
+          },
+      };
+
+      push_constants(push_ctx, Span(elements));
 
       vkCmdDraw(command, 4, 1, 0, 0);
     }
@@ -1264,9 +1490,27 @@ void weapon_selectors_right(ThreadJobData tjd)
 
     float frag_push[3] = {ctx->game->current_time_sec, box_size.y / box_size.x, transparencies[i]};
 
-    AlignedPushConsts(command, ctx->engine->pipelines.green_gui_weapon_selector_box_right.layout)
-        .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(Mat4x4), mvp.data())
-        .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(frag_push), &frag_push);
+    {
+      AlignedPushConstsContext push_ctx = {
+          .command = command,
+          .layout  = ctx->engine->pipelines.green_gui_weapon_selector_box_right.layout,
+      };
+
+      AlignedPushElement elements[] = {
+          {
+              .stage = VK_SHADER_STAGE_VERTEX_BIT,
+              .size  = sizeof(mvp),
+              .data  = &mvp,
+          },
+          {
+              .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+              .size  = sizeof(frag_push),
+              .data  = &frag_push,
+          },
+      };
+
+      push_constants(push_ctx, Span(elements));
+    }
 
     vkCmdDraw(command, 4, 1, 0, 0);
 
@@ -1330,9 +1574,27 @@ void weapon_selectors_right(ThreadJobData tjd)
 
       fpc.color = Vec3(145.0f, 224.0f, 194.0f).scale(1.0f / 255.0f);
 
-      AlignedPushConsts(command, ctx->engine->pipelines.green_gui_sdf_font.layout)
-          .push(VK_SHADER_STAGE_VERTEX_BIT, vpc)
-          .push(VK_SHADER_STAGE_FRAGMENT_BIT, fpc);
+      {
+        AlignedPushConstsContext push_ctx = {
+            .command = command,
+            .layout  = ctx->engine->pipelines.green_gui_sdf_font.layout,
+        };
+
+        AlignedPushElement elements[] = {
+            {
+                .stage = VK_SHADER_STAGE_VERTEX_BIT,
+                .size  = sizeof(vpc),
+                .data  = &vpc,
+            },
+            {
+                .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+                .size  = sizeof(fpc),
+                .data  = &fpc,
+            },
+        };
+
+        push_constants(push_ctx, Span(elements));
+      }
 
       vkCmdDraw(command, 4, 1, 0, 0);
     }
@@ -1514,9 +1776,27 @@ void imgui(ThreadJobData tjd)
     float scale[]     = {2.0f / io.DisplaySize.x, 2.0f / io.DisplaySize.y};
     float translate[] = {-1.0f, -1.0f};
 
-    AlignedPushConsts(command, ctx->engine->pipelines.imgui.layout)
-        .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(scale), scale)
-        .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(translate), translate);
+    {
+      AlignedPushConstsContext push_ctx = {
+          .command = command,
+          .layout  = ctx->engine->pipelines.imgui.layout,
+      };
+
+      AlignedPushElement elements[] = {
+          {
+              .stage = VK_SHADER_STAGE_VERTEX_BIT,
+              .size  = sizeof(scale),
+              .data  = &scale,
+          },
+          {
+              .stage = VK_SHADER_STAGE_VERTEX_BIT,
+              .size  = sizeof(translate),
+              .data  = &translate,
+          },
+      };
+
+      push_constants(push_ctx, Span(elements));
+    }
 
     {
       int32_t  vtx_offset = 0;
@@ -1659,9 +1939,27 @@ void water(ThreadJobData tjd)
     const Mat4x4 mvp = gui_projection * Mat4x4::Translation(Vec3(translation.x, translation.y, -1.0f)) *
                        Mat4x4::Scale(Vec3(rectangle_dimension_pixels, rectangle_dimension_pixels, 1.0f));
 
-    AlignedPushConsts(command, ctx->engine->pipelines.debug_billboard.layout)
-        .push(VK_SHADER_STAGE_VERTEX_BIT, sizeof(Mat4x4), mvp.data())
-        .push(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(cascade), &cascade);
+    {
+      AlignedPushConstsContext push_ctx = {
+          .command = command,
+          .layout  = ctx->engine->pipelines.debug_billboard.layout,
+      };
+
+      AlignedPushElement elements[] = {
+          {
+              .stage = VK_SHADER_STAGE_VERTEX_BIT,
+              .size  = sizeof(mvp),
+              .data  = &mvp,
+          },
+          {
+              .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+              .size  = sizeof(cascade),
+              .data  = &cascade,
+          },
+      };
+
+      push_constants(push_ctx, Span(elements));
+    }
 
     vkCmdDraw(command, 4, 1, 0, 0);
   }
@@ -1710,15 +2008,45 @@ void tesselated_ground(ThreadJobData tjd)
   vkCmdBindVertexBuffers(command, 0, 1, &ctx->engine->gpu_host_coherent_memory_buffer,
                          &ctx->game->materials.tesselation_vb_offset);
 
-  const VkShaderStageFlags stages = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT |
-                                    VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+  {
+    const VkShaderStageFlags stages = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT |
+                                      VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-  AlignedPushConsts(command, ctx->engine->pipelines.tesselated_ground.layout)
-      .push(stages, ctx->game->player.camera_projection)
-      .push(stages, ctx->game->player.camera_view)
-      .push(stages, ctx->game->player.get_camera().position)
-      .push(stages, ctx->game->DEBUG_VEC2.x)
-      .push(stages, ctx->game->current_time_sec);
+    AlignedPushConstsContext push_ctx = {
+        .command = command,
+        .layout  = ctx->engine->pipelines.tesselated_ground.layout,
+    };
+
+    AlignedPushElement elements[] = {
+        {
+            .stage = stages,
+            .size  = sizeof(ctx->game->player.camera_projection),
+            .data  = &ctx->game->player.camera_projection,
+        },
+        {
+            .stage = stages,
+            .size  = sizeof(ctx->game->player.camera_view),
+            .data  = &ctx->game->player.camera_view,
+        },
+        {
+            .stage = stages,
+            .size  = sizeof(ctx->game->player.get_camera().position),
+            .data  = &ctx->game->player.get_camera(),
+        },
+        {
+            .stage = stages,
+            .size  = sizeof(ctx->game->DEBUG_VEC2.x),
+            .data  = &ctx->game->DEBUG_VEC2.x,
+        },
+        {
+            .stage = stages,
+            .size  = sizeof(ctx->game->current_time_sec),
+            .data  = &ctx->game->current_time_sec,
+        },
+    };
+
+    push_constants(push_ctx, Span(elements));
+  }
 
   const Materials& mats    = ctx->game->materials;
   VkDescriptorSet  dsets[] = {

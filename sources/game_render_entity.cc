@@ -5,7 +5,7 @@
 
 namespace {
 
-uint64_t filter_nodes_with_mesh(const ArrayView<Node>& nodes)
+uint64_t filter_nodes_with_mesh(const Span<Node>& nodes)
 {
   uint64_t result = 0;
   for (uint32_t i = 0; i < static_cast<uint32_t>(nodes.count); ++i)
@@ -55,7 +55,22 @@ void render_pbr_entity_shadow(const SimpleEntity& entity, const SceneGraph& scen
 
       vkCmdBindIndexBuffer(cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
-      AlignedPushConsts(cmd, engine.pipelines.shadowmap.layout).push(VK_SHADER_STAGE_VERTEX_BIT, push);
+
+      AlignedPushConstsContext ctx = {
+          .command = cmd,
+          .layout  = engine.pipelines.shadowmap.layout,
+      };
+
+      AlignedPushElement elements[] = {
+          {
+              .stage = VK_SHADER_STAGE_VERTEX_BIT,
+              .size  = sizeof(push),
+              .data  = &push,
+          },
+      };
+
+      push_constants(ctx, Span(elements));
+
       vkCmdDrawIndexed(cmd, mesh.indices_count, 1, 0, 0, 0);
     }
   }
@@ -83,7 +98,22 @@ void render_pbr_entity(const SimpleEntity& entity, const SceneGraph& scene_graph
 
       vkCmdBindIndexBuffer(p.cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(p.cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
-      AlignedPushConsts(p.cmd, p.pipeline_layout).push(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, ubo);
+
+      AlignedPushConstsContext ctx = {
+          .command = p.cmd,
+          .layout  = p.pipeline_layout,
+      };
+
+      AlignedPushElement elements[] = {
+          {
+              .stage = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+              .size  = sizeof(ubo),
+              .data  = &ubo,
+          },
+      };
+
+      push_constants(ctx, Span(elements));
+
       vkCmdDrawIndexed(p.cmd, mesh.indices_count, 1, 0, 0, 0);
     }
   }
@@ -105,9 +135,27 @@ void render_wireframe_entity(const SimpleEntity& entity, const SceneGraph& scene
 
       vkCmdBindIndexBuffer(p.cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(p.cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
-      AlignedPushConsts(p.cmd, p.pipeline_layout)
-          .push(VK_SHADER_STAGE_VERTEX_BIT, mvp)
-          .push(VK_SHADER_STAGE_FRAGMENT_BIT, p.color);
+
+      AlignedPushConstsContext ctx = {
+          .command = p.cmd,
+          .layout  = p.pipeline_layout,
+      };
+
+      AlignedPushElement elements[] = {
+          {
+              .stage = VK_SHADER_STAGE_VERTEX_BIT,
+              .size  = sizeof(mvp),
+              .data  = &mvp,
+          },
+          {
+              .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+              .size  = sizeof(p.color),
+              .data  = &p.color,
+          },
+      };
+
+      push_constants(ctx, Span(elements));
+
       vkCmdDrawIndexed(p.cmd, mesh.indices_count, 1, 0, 0, 0);
     }
   }
@@ -129,9 +177,27 @@ void render_entity(const SimpleEntity& entity, const SceneGraph& scene_graph, co
       vkCmdBindIndexBuffer(p.cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(p.cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
       const Mat4x4 calculated_mvp = projection_view * entity.node_transforms[node_idx];
-      AlignedPushConsts(p.cmd, p.pipeline_layout)
-          .push(VK_SHADER_STAGE_VERTEX_BIT, calculated_mvp)
-          .push(VK_SHADER_STAGE_FRAGMENT_BIT, p.color);
+
+      AlignedPushConstsContext ctx = {
+          .command = p.cmd,
+          .layout  = p.pipeline_layout,
+      };
+
+      AlignedPushElement elements[] = {
+          {
+              .stage = VK_SHADER_STAGE_VERTEX_BIT,
+              .size  = sizeof(calculated_mvp),
+              .data  = &calculated_mvp,
+          },
+          {
+              .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+              .size  = sizeof(p.color),
+              .data  = &p.color,
+          },
+      };
+
+      push_constants(ctx, Span(elements));
+
       vkCmdDrawIndexed(p.cmd, mesh.indices_count, 1, 0, 0, 0);
     }
   }
@@ -152,9 +218,27 @@ void render_entity_skinned(const SimpleEntity& entity, const SceneGraph& scene_g
 
       vkCmdBindIndexBuffer(p.cmd, engine.gpu_device_local_memory_buffer, mesh.indices_offset, mesh.indices_type);
       vkCmdBindVertexBuffers(p.cmd, 0, 1, &engine.gpu_device_local_memory_buffer, &mesh.vertices_offset);
-      AlignedPushConsts(p.cmd, p.pipeline_layout)
-          .push(VK_SHADER_STAGE_VERTEX_BIT, projection_view)
-          .push(VK_SHADER_STAGE_FRAGMENT_BIT, p.color);
+
+      AlignedPushConstsContext ctx = {
+          .command = p.cmd,
+          .layout  = p.pipeline_layout,
+      };
+
+      AlignedPushElement elements[] = {
+          {
+              .stage = VK_SHADER_STAGE_VERTEX_BIT,
+              .size  = sizeof(projection_view),
+              .data  = &projection_view,
+          },
+          {
+              .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+              .size  = sizeof(p.color),
+              .data  = &p.color,
+          },
+      };
+
+      push_constants(ctx, Span(elements));
+
       vkCmdDrawIndexed(p.cmd, mesh.indices_count, 1, 0, 0, 0);
     }
   }

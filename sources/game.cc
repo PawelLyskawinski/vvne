@@ -1,8 +1,8 @@
 #include "game.hh"
 #include "engine/cascade_shadow_mapping.hh"
 #include "engine/cubemap.hh"
-#include "engine/memory_map.hh"
-#include "engine/merge_sort.hh"
+#include "vtl/memory_map.hh"
+#include "vtl/merge_sort.hh"
 #include <SDL2/SDL_events.h>
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_stdinc.h>

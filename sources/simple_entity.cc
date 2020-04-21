@@ -11,7 +11,7 @@ void depth_first_node_parent_hierarchy(uint8_t* hierarchy, const Node* nodes, ui
   hierarchy[node_idx] = parent_idx;
 }
 
-void propagate_node_renderability_hierarchy(int node_idx, uint64_t& dst, const ArrayView<Node>& nodes)
+void propagate_node_renderability_hierarchy(int node_idx, uint64_t& dst, const Span<Node>& nodes)
 {
   for (int child_idx : nodes[node_idx].children)
     propagate_node_renderability_hierarchy(child_idx, dst, nodes);
@@ -117,7 +117,7 @@ void SimpleEntity::init(HierarchicalAllocator& allocator, const SceneGraph& mode
 
 void SimpleEntity::recalculate_node_transforms(const SceneGraph& model, const Mat4x4& world_transform)
 {
-  const ArrayView<Node>& nodes = model.nodes;
+  const Span<Node>& nodes = model.nodes;
 
   Mat4x4 transforms[64];
   std::for_each(transforms, transforms + nodes.count, [](Mat4x4& it) { it.identity(); });
@@ -137,7 +137,7 @@ void SimpleEntity::recalculate_node_transforms(const SceneGraph& model, const Ma
   //////////////////////////////////////////////////////////////////////////////
   /// Apply Translations
   //////////////////////////////////////////////////////////////////////////////
-  for (int i = 0; i < nodes.count; ++i)
+  for (unsigned i = 0; i < nodes.count; ++i)
   {
     Mat4x4 translation_matrix;
     translation_matrix.identity();

@@ -1,7 +1,7 @@
 #include "story.hh"
-#include "engine/allocators.hh"
-#include "engine/fileops.hh"
 #include "player.hh"
+#include "vtl/allocators.hh"
+#include "vtl/fileops.hh"
 #include <SDL2/SDL_log.h>
 #include <algorithm>
 

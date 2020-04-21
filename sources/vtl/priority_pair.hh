@@ -1,6 +1,6 @@
 #pragma once
 
-#include "math.hh"
+#include "engine/math.hh"
 #include <vulkan/vulkan_core.h>
 
 struct Priority

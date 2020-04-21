@@ -1,31 +1,19 @@
 #pragma once
 
+#include "vtl/span.hh"
 #include <vulkan/vulkan_core.h>
 
-class AlignedPushConsts
+struct AlignedPushConstsContext
 {
-public:
-  AlignedPushConsts(VkCommandBuffer command, VkPipelineLayout layout)
-      : command(command)
-      , layout(layout)
-      , offset(0)
-  {
-  }
-
-  AlignedPushConsts& push(const VkShaderStageFlags stage, const size_t size, const void* data)
-  {
-    vkCmdPushConstants(command, layout, stage, offset, size, data);
-    offset += size;
-    return *this;
-  }
-
-  template <typename T> AlignedPushConsts& push(const VkShaderStageFlags stage, const T& data)
-  {
-    return push(stage, sizeof(T), &data);
-  }
-
-private:
-  VkCommandBuffer  command;
-  VkPipelineLayout layout;
-  size_t           offset;
+  VkCommandBuffer  command = VK_NULL_HANDLE;
+  VkPipelineLayout layout  = VK_NULL_HANDLE;
 };
+
+struct AlignedPushElement
+{
+  VkShaderStageFlags stage = 0;
+  size_t             size  = 0;
+  const void*        data  = nullptr;
+};
+
+void push_constants(AlignedPushConstsContext ctx, Span<AlignedPushElement> elements);

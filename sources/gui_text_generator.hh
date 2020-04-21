@@ -1,7 +1,8 @@
 #pragma once
 
-#include "engine/allocators.hh"
 #include "engine/math.hh"
+#include "vtl/allocators.hh"
+#include "vtl/span.hh"
 #include <vulkan/vulkan.h>
 
 struct GuiText
@@ -19,6 +20,6 @@ struct GuiTextGenerator
   float      camera_y_pitch_radians;
   VkExtent2D screen_extent2D;
 
-  [[nodiscard]] ArrayView<GuiText> height_ruler(Stack& allocator) const;
-  [[nodiscard]] ArrayView<GuiText> tilt_ruler(Stack& allocator) const;
+  [[nodiscard]] Span<GuiText> height_ruler(Stack& allocator) const;
+  [[nodiscard]] Span<GuiText> tilt_ruler(Stack& allocator) const;
 };

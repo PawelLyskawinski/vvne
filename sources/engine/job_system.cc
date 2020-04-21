@@ -1,6 +1,6 @@
 #include "job_system.hh"
-#include "allocators.hh"
-#include "literals.hh"
+#include "vtl/allocators.hh"
+#include "vtl/literals.hh"
 #include <algorithm>
 
 namespace {

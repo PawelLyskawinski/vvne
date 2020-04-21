@@ -1,5 +1,5 @@
 #include "hierarchical_allocator.hh"
-#include "allocators.hh"
+#include "vtl/allocators.hh"
 
 namespace {
 

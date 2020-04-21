@@ -2,6 +2,7 @@
 
 #include "engine.hh"
 #include "math.hh"
+#include "vtl/span.hh"
 #include <SDL2/SDL_stdinc.h>
 #include <vulkan/vulkan.h>
 
@@ -26,7 +27,7 @@ struct Mesh
 class Node
 {
 public:
-  ArrayView<int> children = {};
+  Span<int> children = {};
 
   Quaternion rotation;
   Vec3       translation;
@@ -52,7 +53,7 @@ public:
 
 struct Scene
 {
-  ArrayView<int> nodes;
+  Span<int> nodes;
 };
 
 struct AnimationChannel
@@ -90,8 +91,8 @@ struct AnimationSampler
 
 struct Animation
 {
-  ArrayView<AnimationChannel> channels;
-  ArrayView<AnimationSampler> samplers;
+  Span<AnimationChannel> channels;
+  Span<AnimationSampler> samplers;
 
   bool has_rotations;
   bool has_translations;
@@ -99,19 +100,19 @@ struct Animation
 
 struct Skin
 {
-  ArrayView<Mat4x4> inverse_bind_matrices;
-  ArrayView<int>    joints;
+  Span<Mat4x4> inverse_bind_matrices;
+  Span<int>    joints;
   int               skeleton;
 };
 
 struct SceneGraph
 {
-  ArrayView<Material>  materials;
-  ArrayView<Mesh>      meshes;
-  ArrayView<Node>      nodes;
-  ArrayView<Scene>     scenes;
-  ArrayView<Animation> animations;
-  ArrayView<Skin>      skins;
+  Span<Material>  materials;
+  Span<Mesh>      meshes;
+  Span<Node>      nodes;
+  Span<Scene>     scenes;
+  Span<Animation> animations;
+  Span<Skin>      skins;
 };
 
 SceneGraph loadGLB(Engine& engine, const char* path);

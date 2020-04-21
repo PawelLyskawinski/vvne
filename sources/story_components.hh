@@ -1,7 +1,7 @@
 #pragma once
 
-#include "engine/literals.hh"
 #include "engine/math.hh"
+#include "vtl/literals.hh"
 
 namespace story {
 

@@ -1,12 +1,13 @@
 #pragma once
 
-#include "allocators.hh"
 #include "engine_constants.hh"
 #include "gpu_memory_allocator.hh"
 #include "hierarchical_allocator.hh"
 #include "job_system.hh"
-#include "literals.hh"
 #include "virtual_texture.hh"
+#include "vtl/allocators.hh"
+#include "vtl/literals.hh"
+#include "vtl/span.hh"
 #include <SDL2/SDL_video.h>
 #include <vulkan/vulkan.h>
 
@@ -47,9 +48,8 @@ struct Pipelines
 
 struct RenderPass
 {
-  VkRenderPass   render_pass;
-  VkFramebuffer* framebuffers;
-  uint32_t       framebuffers_count;
+  VkRenderPass        render_pass;
+  Span<VkFramebuffer> framebuffers;
 
   void begin(VkCommandBuffer cmd, uint32_t image_index) const;
 };
