@@ -102,7 +102,7 @@ void Engine::startup(bool vulkan_validation_enabled)
                             initial_window_height, SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
 
   {
-    InstanceCreateInfo info = {
+    const InstanceCreateInfo info = {
         .application_name   = "vvne",
         .engine_name        = "vvne_engine",
         .window             = window,

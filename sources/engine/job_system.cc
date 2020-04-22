@@ -132,16 +132,45 @@ VkCommandBuffer JobSystem::acquire(uint32_t worker_index, uint32_t image_index)
   return commands.commands[commands.submitted_count++];
 }
 
+struct JobUtilsConcrete : public JobUtils
+{
+  explicit JobUtilsConcrete(JobSystem& parent, void* user_data)
+      : memory(256_KB)
+      , user_data(user_data)
+      , parent(parent)
+      , thread_id(SDL_AtomicIncRef(&parent.threads_finished_work))
+  {
+  }
+
+  void* get_user_data() override
+  {
+    return user_data;
+  }
+
+  Stack& get_allocator() override
+  {
+    return memory;
+  }
+
+  VkCommandBuffer request_command_buffer(uint32_t image_index) override
+  {
+    return parent.acquire(thread_id, image_index);
+  }
+
+  Stack      memory;
+  void*      user_data;
+  JobSystem& parent;
+  int        thread_id;
+};
+
 void JobSystem::worker_loop()
 {
-  const int threadId = SDL_AtomicIncRef(&threads_finished_work);
+  JobUtilsConcrete utils(*this, user_data);
 
-  if (SDL_arraysize(workers) == threadId)
+  if (SDL_arraysize(workers) == utils.thread_id)
   {
     SDL_SemPost(all_threads_idle_signal);
   }
-
-  Stack allocator(256_KB);
 
   SDL_LockMutex(new_jobs_available_mutex);
   while (not thread_end_requested)
@@ -153,14 +182,14 @@ void JobSystem::worker_loop()
 
     while (job_idx < jobs_count)
     {
-      ThreadJobData tjd = {
-          .thread_id = threadId,
-          .allocator = allocator,
-          .user_data = user_data,
-      };
+      Job& job = jobs[job_idx];
 
-      jobs[job_idx](tjd);
-      allocator.reset();
+      {
+        ScopedPerfEvent perf_event(*profiler, job.name, utils.thread_id);
+        job(utils);
+      }
+
+      utils.memory.reset();
       job_idx = SDL_AtomicIncRef(&jobs_taken);
     }
 

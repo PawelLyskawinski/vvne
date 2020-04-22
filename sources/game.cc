@@ -151,6 +151,7 @@ void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
 
   materials.pbr_light_sources_cache.count = 0;
 
+  engine.job_system.profiler = &update_profiler;
   engine.job_system.fill_jobs(ExampleLevel::copy_update_jobs);
   engine.job_system.start();
   ImGui::Render();
@@ -168,6 +169,7 @@ void Game::render(Engine& engine)
   {
     ScopedPerfEvent perf_event(render_profiler, __PRETTY_FUNCTION__, 0);
 
+    engine.job_system.profiler = &render_profiler;
     engine.job_system.fill_jobs(ExampleLevel::copy_render_jobs);
     engine.job_system.start();
     // @todo: do something useful here as well?

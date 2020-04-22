@@ -58,8 +58,8 @@ set(SOURCES
         sources/simple_entity.cc
         sources/player.cc
         sources/terrain_as_a_function.cc
-        sources/profiler.cc
-        sources/profiler_visualizer.cc
+        sources/engine/profiler.cc
+        sources/engine/profiler_visualizer.cc
         sources/levels/example_level.cc
         sources/levels/example_level_update_jobs.cc
         sources/levels/example_level_render_jobs.cc

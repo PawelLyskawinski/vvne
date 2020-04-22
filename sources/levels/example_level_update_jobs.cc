@@ -120,21 +120,19 @@ void update_orientation_axis_right(SimpleEntity& entity, const SceneGraph& scene
 
 struct UpdateJob
 {
-  UpdateJob(JobContext& ctx, uint32_t thread_id, const char* name)
+  UpdateJob(JobContext& ctx, const char* name)
       : game(*ctx.game)
       , level(game.level)
-      , perf_event(game.update_profiler, name, thread_id)
   {
   }
 
   UpdateJob(ThreadJobData& tjd, const char* name)
-      : UpdateJob(*reinterpret_cast<JobContext*>(tjd.user_data), tjd.thread_id, name)
+      : UpdateJob(*reinterpret_cast<JobContext*>(tjd.user_data), name)
   {
   }
 
   Game&           game;
   ExampleLevel&   level;
-  ScopedPerfEvent perf_event;
 };
 
 void helmet_job(ThreadJobData tjd)
@@ -243,7 +241,7 @@ void orientation_axis_job(ThreadJobData tjd)
 
 void gui_lines_generation_job(ThreadJobData tjd)
 {
-  UpdateJob ctx(tjd, __FUNCTION__);
+  UpdateJob      ctx(tjd, __FUNCTION__);
   GuiLinesUpdate update;
   update.player_y_location_meters = -ctx.game.player.position.y;
   update.camera_x_pitch_radians   = 0.0f;
@@ -273,15 +271,17 @@ void story_job(ThreadJobData tjd)
 
 Job* ExampleLevel::copy_update_jobs(Job* dst)
 {
-  const Job jobs[] = {monster_job,              //
-                      helmet_job,               //
-                      robot_job,                //
-                      rigged_simple_job,        //
-                      moving_lights_job,        //
-                      matrioshka_job,           //
-                      orientation_axis_job,     //
-                      gui_lines_generation_job, //
-                      recalculate_csm_matrices, //
-                      story_job};
+  const Job jobs[] = {
+      {monster_job, "monster_job"},
+      {helmet_job, "helmet_job"},
+      {robot_job, "robot_job"},
+      {rigged_simple_job, "rigged_simple_job"},
+      {moving_lights_job, "moving_lights_job"},
+      {matrioshka_job, "matrioshka_job"},
+      {orientation_axis_job, "orientation_axis_job"},
+      {gui_lines_generation_job, "gui_lines_generation_job"},
+      {recalculate_csm_matrices, "recalculate_csm_matrices"},
+      {story_job, "story_job"},
+  };
   return std::copy(jobs, &jobs[SDL_arraysize(jobs)], dst);
 }

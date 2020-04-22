@@ -7,12 +7,6 @@
 
 namespace {
 
-VkCommandBuffer acquire_command_buffer(ThreadJobData& tjd)
-{
-  JobContext* ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  return ctx->engine->job_system.acquire(tjd.thread_id, ctx->game->image_index);
-}
-
 [[maybe_unused]] void render_skybox(VkCommandBuffer command, VkBuffer buffer, const Player& player,
                                     const Pipelines::Pair& pipe, const Materials& materials)
 {
@@ -48,12 +42,11 @@ VkCommandBuffer acquire_command_buffer(ThreadJobData& tjd)
   vkCmdDrawIndexed(command, mesh.indices_count, 1, 0, 0, 0);
 }
 
-void skybox_job(ThreadJobData tjd)
+void skybox_job(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext*     ctx     = reinterpret_cast<JobContext*>(utils.get_user_data());
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
 
-  VkCommandBuffer command   = acquire_command_buffer(tjd);
   ctx->game->skybox_command = command;
   ctx->engine->render_passes.skybox.begin(command, ctx->game->image_index);
 
@@ -81,14 +74,13 @@ void skybox_job(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-void robot_depth_job(ThreadJobData tjd)
+void robot_depth_job(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext* ctx = reinterpret_cast<JobContext*>(utils.get_user_data());
 
   for (int cascade_idx = 0; cascade_idx < SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
   {
-    VkCommandBuffer command = acquire_command_buffer(tjd);
+    VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
     ctx->game->shadow_mapping_pass_commands.push({command, cascade_idx});
     ctx->engine->render_passes.shadowmap.begin(command, static_cast<uint32_t>(cascade_idx));
     vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.shadowmap.pipeline);
@@ -101,12 +93,11 @@ void robot_depth_job(ThreadJobData tjd)
   }
 }
 
-void robot_job(ThreadJobData tjd)
+void robot_job(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext*     ctx     = reinterpret_cast<JobContext*>(utils.get_user_data());
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->scene_rendering_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.scene3D.pipeline);
@@ -149,14 +140,13 @@ void robot_job(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-void helmet_depth_job(ThreadJobData tjd)
+void helmet_depth_job(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext* ctx = reinterpret_cast<JobContext*>(utils.get_user_data());
 
   for (int cascade_idx = 0; cascade_idx < SHADOWMAP_CASCADE_COUNT; ++cascade_idx)
   {
-    VkCommandBuffer command = acquire_command_buffer(tjd);
+    VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
     ctx->game->shadow_mapping_pass_commands.push({command, cascade_idx});
     ctx->engine->render_passes.shadowmap.begin(command, static_cast<uint32_t>(cascade_idx));
     vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.shadowmap.pipeline);
@@ -2168,31 +2158,31 @@ void update_memory_host_coherent(ThreadJobData tjd)
 Job* ExampleLevel::copy_render_jobs(Job* dst)
 {
   const Job jobs[] = {
-      update_memory_host_coherent_ubo,
-      update_memory_host_coherent,
-      radar,
-      robot_gui_lines,
-      height_ruler_text,
-      tilt_ruler_text,
-      story_dialog_text,
-      robot_gui_speed_meter_text,
-      robot_gui_speed_meter_triangle,
-      compass_text,
-      radar_dots,
-      weapon_selectors_left,
-      weapon_selectors_right,
-      skybox_job,
-      tesselated_ground,
-      robot_job,
-      helmet_job,
-      point_light_boxes,
-      matrioshka_box,
-      water,
-      simple_rigged,
-      monster_rigged,
-      robot_depth_job,
-      helmet_depth_job,
-      imgui,
+      {update_memory_host_coherent_ubo, "update_memory_host_coherent_ubo"},
+      {update_memory_host_coherent, "update_memory_host_coherent"},
+      {radar, "radar"},
+      {robot_gui_lines, "robot_gui_lines"},
+      {height_ruler_text, "height_ruler_text"},
+      {tilt_ruler_text, "tilt_ruler_text"},
+      {story_dialog_text, "story_dialog_text"},
+      {robot_gui_speed_meter_text, "robot_gui_speed_meter_text"},
+      {robot_gui_speed_meter_triangle, "robot_gui_speed_meter_triangle"},
+      {compass_text, "compass_text"},
+      {radar_dots, "radar_dots"},
+      {weapon_selectors_left, "weapon_selectors_left"},
+      {weapon_selectors_right, "weapon_selectors_right"},
+      {skybox_job, "skybox_job"},
+      {tesselated_ground, "tesselated_ground"},
+      {robot_job, "robot_job"},
+      {helmet_job, "helmet_job"},
+      {point_light_boxes, "point_light_boxes"},
+      {matrioshka_box, "matrioshka_box"},
+      {water, "water"},
+      {simple_rigged, "simple_rigged"},
+      {monster_rigged, "monster_rigged"},
+      {robot_depth_job, "robot_depth_job"},
+      {helmet_depth_job, "helmet_depth_job"},
+      {imgui, "imgui"},
   };
   return std::copy(jobs, jobs + array_size(jobs), dst);
 }

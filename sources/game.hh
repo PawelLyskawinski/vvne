@@ -1,10 +1,10 @@
 #pragma once
 
 #include "debug_gui.hh"
+#include "engine/profiler.hh"
 #include "levels/example_level.hh"
 #include "materials.hh"
 #include "player.hh"
-#include "profiler.hh"
 #include "simple_entity.hh"
 #include "story_editor.hh"
 #include "vtl/atomic_stack.hh"

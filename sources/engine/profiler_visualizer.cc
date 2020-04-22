@@ -1,8 +1,6 @@
-#include "profiler.hh"
-#include "vtl/allocators.hh"
+#include "engine/profiler.hh"
 #include <SDL2/SDL_timer.h>
 #include <imgui.h>
-
 #include <algorithm>
 
 void profiler_visualize(const Profiler& profiler, const char* context_name, const char* highlight_filter,
