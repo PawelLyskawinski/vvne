@@ -3,7 +3,6 @@
 #include "game_render_entity.hh"
 #include "sdf_font_generator.hh"
 #include "vtl/memory_map.hh"
-#include <SDL2/SDL_log.h>
 
 namespace {
 
@@ -159,12 +158,11 @@ void helmet_depth_job(JobUtils& utils)
   }
 }
 
-void helmet_job(ThreadJobData tjd)
+void helmet_job(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext*     ctx     = reinterpret_cast<JobContext*>(utils.get_user_data());
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->scene_rendering_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.scene3D.pipeline);
@@ -195,12 +193,11 @@ void helmet_job(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-void point_light_boxes(ThreadJobData tjd)
+void point_light_boxes(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext*     ctx     = reinterpret_cast<JobContext*>(utils.get_user_data());
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->scene_rendering_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry.pipeline);
@@ -227,12 +224,11 @@ void point_light_boxes(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-void matrioshka_box(ThreadJobData tjd)
+void matrioshka_box(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext*     ctx     = reinterpret_cast<JobContext*>(utils.get_user_data());
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->scene_rendering_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry.pipeline);
@@ -247,6 +243,7 @@ void matrioshka_box(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
+#if 0
 [[maybe_unused]] void vr_scene(ThreadJobData tjd)
 {
   JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
@@ -308,6 +305,7 @@ void matrioshka_box(ThreadJobData tjd)
 
   vkEndCommandBuffer(command);
 }
+#endif
 
 #if 0
     void vr_scene_depth(ThreadJobData tjd)
@@ -368,12 +366,11 @@ void matrioshka_box(ThreadJobData tjd)
 }
 #endif
 
-void simple_rigged(ThreadJobData tjd)
+void simple_rigged(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext*     ctx     = reinterpret_cast<JobContext*>(utils.get_user_data());
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->scene_rendering_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry_skinned.pipeline);
@@ -395,12 +392,11 @@ void simple_rigged(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-void monster_rigged(ThreadJobData tjd)
+void monster_rigged(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext*     ctx     = reinterpret_cast<JobContext*>(utils.get_user_data());
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
   ctx->game->scene_rendering_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry_skinned.pipeline);
@@ -422,15 +418,14 @@ void monster_rigged(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-void radar(ThreadJobData tjd)
+void radar(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext* ctx = reinterpret_cast<JobContext*>(utils.get_user_data());
 
   if (ctx->game->player.freecam_mode)
     return;
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
   ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui.pipeline);
@@ -472,15 +467,14 @@ void radar(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-void robot_gui_lines(ThreadJobData tjd)
+void robot_gui_lines(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext* ctx = reinterpret_cast<JobContext*>(utils.get_user_data());
 
   if (ctx->game->player.freecam_mode)
     return;
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
   ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_lines.pipeline);
@@ -513,15 +507,14 @@ void robot_gui_lines(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-void robot_gui_speed_meter_text(ThreadJobData tjd)
+void robot_gui_speed_meter_text(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext* ctx = reinterpret_cast<JobContext*>(utils.get_user_data());
 
   if (ctx->game->player.freecam_mode)
     return;
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
   ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_sdf_font.pipeline);
@@ -622,15 +615,14 @@ void robot_gui_speed_meter_text(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-void robot_gui_speed_meter_triangle(ThreadJobData tjd)
+void robot_gui_speed_meter_triangle(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext* ctx = reinterpret_cast<JobContext*>(utils.get_user_data());
 
   if (ctx->game->player.freecam_mode)
     return;
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
   ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_triangle.pipeline);
@@ -668,15 +660,14 @@ void robot_gui_speed_meter_triangle(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-void height_ruler_text(ThreadJobData tjd)
+void height_ruler_text(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext* ctx = reinterpret_cast<JobContext*>(utils.get_user_data());
 
   if (ctx->game->player.freecam_mode)
     return;
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
   ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_sdf_font.pipeline);
@@ -699,7 +690,7 @@ void height_ruler_text(ThreadJobData tjd)
       .screen_extent2D          = ctx->engine->extent2D,
   };
 
-  Span<GuiText> scheduled_text_data = gen.height_ruler(tjd.allocator);
+  Span<GuiText> scheduled_text_data = gen.height_ruler(utils.get_allocator());
 
   char buffer[256];
   for (GuiText& text : scheduled_text_data)
@@ -776,15 +767,14 @@ void height_ruler_text(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-void tilt_ruler_text(ThreadJobData tjd)
+void tilt_ruler_text(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext* ctx = reinterpret_cast<JobContext*>(utils.get_user_data());
 
   if (ctx->game->player.freecam_mode)
     return;
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
   ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_sdf_font.pipeline);
@@ -819,7 +809,7 @@ void tilt_ruler_text(ThreadJobData tjd)
       .screen_extent2D          = ctx->engine->extent2D,
   };
 
-  Span<GuiText> scheduled_text_data = gen.tilt_ruler(tjd.allocator);
+  Span<GuiText> scheduled_text_data = gen.tilt_ruler(utils.get_allocator());
 
   char buffer[256];
   for (GuiText& text : scheduled_text_data)
@@ -884,10 +874,9 @@ void tilt_ruler_text(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-void story_dialog_text(ThreadJobData tjd)
+void story_dialog_text(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext* ctx = reinterpret_cast<JobContext*>(utils.get_user_data());
 
   if (ctx->game->player.freecam_mode)
     return;
@@ -895,7 +884,7 @@ void story_dialog_text(ThreadJobData tjd)
   if (nullptr == ctx->game->story.active_dialogue)
     return;
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
   ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_sdf_font.pipeline);
@@ -976,15 +965,14 @@ void story_dialog_text(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-void compass_text(ThreadJobData tjd)
+void compass_text(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext* ctx = reinterpret_cast<JobContext*>(utils.get_user_data());
 
   if (ctx->game->player.freecam_mode)
     return;
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
   ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_sdf_font.pipeline);
@@ -1198,15 +1186,14 @@ void compass_text(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-void radar_dots(ThreadJobData tjd)
+void radar_dots(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext* ctx = reinterpret_cast<JobContext*>(utils.get_user_data());
 
   if (ctx->game->player.freecam_mode)
     return;
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
   ctx->game->gui_commands.push(PrioritizedCommandBuffer(command, 1));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.green_gui_radar_dots.pipeline);
@@ -1265,15 +1252,14 @@ void radar_dots(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-void weapon_selectors_left(ThreadJobData tjd)
+void weapon_selectors_left(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext* ctx = reinterpret_cast<JobContext*>(utils.get_user_data());
 
   if (ctx->game->player.freecam_mode)
     return;
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
   ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
 
   {
@@ -1438,15 +1424,14 @@ void weapon_selectors_left(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-void weapon_selectors_right(ThreadJobData tjd)
+void weapon_selectors_right(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext* ctx = reinterpret_cast<JobContext*>(utils.get_user_data());
 
   if (ctx->game->player.freecam_mode)
     return;
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
   ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
 
@@ -1721,10 +1706,9 @@ void weapon_selectors_right(ThreadJobData tjd)
 }
 #endif
 
-void imgui(ThreadJobData tjd)
+void imgui(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext* ctx = reinterpret_cast<JobContext*>(utils.get_user_data());
 
   const ImDrawData* draw_data   = ImGui::GetDrawData();
   const size_t      vertex_size = draw_data->TotalVtxCount * sizeof(ImDrawVert);
@@ -1733,7 +1717,7 @@ void imgui(ThreadJobData tjd)
   if ((0 == vertex_size) or (0 == index_size))
     return;
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
   ctx->game->gui_commands.push(PrioritizedCommandBuffer(command, 5));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   ctx->engine->insert_debug_marker(command, "imgui", {1.0f, 0.0f, 0.0f, 1.0f});
@@ -1829,12 +1813,11 @@ void imgui(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-void water(ThreadJobData tjd)
+void water(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext* ctx = reinterpret_cast<JobContext*>(utils.get_user_data());
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
   ctx->game->scene_rendering_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.pbr_water.pipeline);
@@ -1884,12 +1867,11 @@ void water(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-[[maybe_unused]] void debug_shadowmap(ThreadJobData tjd)
+[[maybe_unused]] void debug_shadowmap(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext* ctx = reinterpret_cast<JobContext*>(utils.get_user_data());
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
   ctx->game->gui_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.gui.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.debug_billboard.pipeline);
@@ -1957,12 +1939,11 @@ void water(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-[[maybe_unused]] void orientation_axis(ThreadJobData tjd)
+[[maybe_unused]] void orientation_axis(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext* ctx = reinterpret_cast<JobContext*>(utils.get_user_data());
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
   ctx->game->scene_rendering_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.colored_geometry.pipeline);
@@ -1986,12 +1967,11 @@ void water(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-void tesselated_ground(ThreadJobData tjd)
+void tesselated_ground(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext* ctx = reinterpret_cast<JobContext*>(utils.get_user_data());
 
-  VkCommandBuffer command = acquire_command_buffer(tjd);
+  VkCommandBuffer command = utils.request_command_buffer(ctx->game->image_index);
   ctx->game->scene_rendering_commands.push(PrioritizedCommandBuffer(command));
   ctx->engine->render_passes.color_and_depth.begin(command, ctx->game->image_index);
   vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->engine->pipelines.tesselated_ground.pipeline);
@@ -2060,10 +2040,9 @@ void tesselated_ground(ThreadJobData tjd)
   vkEndCommandBuffer(command);
 }
 
-void update_memory_host_coherent_ubo(ThreadJobData tjd)
+void update_memory_host_coherent_ubo(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext* ctx = reinterpret_cast<JobContext*>(utils.get_user_data());
 
   Engine& e = *ctx->engine;
   Game&   g = *ctx->game;
@@ -2129,10 +2108,9 @@ void update_memory_host_coherent_ubo(ThreadJobData tjd)
   }
 }
 
-void update_memory_host_coherent(ThreadJobData tjd)
+void update_memory_host_coherent(JobUtils& utils)
 {
-  JobContext*     ctx = reinterpret_cast<JobContext*>(tjd.user_data);
-  ScopedPerfEvent perf_event(ctx->game->render_profiler, __FUNCTION__, tjd.thread_id);
+  JobContext* ctx = reinterpret_cast<JobContext*>(utils.get_user_data());
 
   {
     MemoryMap map(ctx->engine->device, ctx->engine->memory_blocks.host_coherent.memory,

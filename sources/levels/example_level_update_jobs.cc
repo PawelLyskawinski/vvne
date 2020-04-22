@@ -120,48 +120,43 @@ void update_orientation_axis_right(SimpleEntity& entity, const SceneGraph& scene
 
 struct UpdateJob
 {
-  UpdateJob(JobContext& ctx, const char* name)
+  explicit UpdateJob(JobContext& ctx)
       : game(*ctx.game)
       , level(game.level)
   {
   }
 
-  UpdateJob(ThreadJobData& tjd, const char* name)
-      : UpdateJob(*reinterpret_cast<JobContext*>(tjd.user_data), name)
-  {
-  }
-
-  Game&           game;
-  ExampleLevel&   level;
+  Game&         game;
+  ExampleLevel& level;
 };
 
-void helmet_job(ThreadJobData tjd)
+void helmet_job(JobUtils& utils)
 {
-  UpdateJob ctx(tjd, __FUNCTION__);
+  UpdateJob ctx(*reinterpret_cast<JobContext*>(utils.get_user_data()));
   update_helmet(ctx.level.helmet_entity, ctx.game.materials.helmet);
 }
 
-void robot_job(ThreadJobData tjd)
+void robot_job(JobUtils& utils)
 {
-  UpdateJob ctx(tjd, __FUNCTION__);
+  UpdateJob ctx(*reinterpret_cast<JobContext*>(utils.get_user_data()));
   update_robot(ctx.level.robot_entity, ctx.game.materials.robot, ctx.game.player);
 }
 
-void monster_job(ThreadJobData tjd)
+void monster_job(JobUtils& utils)
 {
-  UpdateJob ctx(tjd, __FUNCTION__);
+  UpdateJob ctx(*reinterpret_cast<JobContext*>(utils.get_user_data()));
   update_monster(ctx.level.monster_entity, ctx.game.materials.monster, ctx.game.current_time_sec);
 }
 
-void rigged_simple_job(ThreadJobData tjd)
+void rigged_simple_job(JobUtils& utils)
 {
-  UpdateJob ctx(tjd, __FUNCTION__);
+  UpdateJob ctx(*reinterpret_cast<JobContext*>(utils.get_user_data()));
   update_rigged_simple(ctx.level.rigged_simple_entity, ctx.game.materials.riggedSimple, ctx.game.current_time_sec);
 }
 
-void moving_lights_job(ThreadJobData tjd)
+void moving_lights_job(JobUtils& utils)
 {
-  UpdateJob ctx(tjd, __FUNCTION__);
+  UpdateJob ctx(*reinterpret_cast<JobContext*>(utils.get_user_data()));
 
   const float acceleration_length = 5.0f * 1000.0f * ctx.game.player.acceleration.len();
 
@@ -225,23 +220,23 @@ void moving_lights_job(ThreadJobData tjd)
   }
 }
 
-void matrioshka_job(ThreadJobData tjd)
+void matrioshka_job(JobUtils& utils)
 {
-  UpdateJob ctx(tjd, __FUNCTION__);
+  UpdateJob ctx(*reinterpret_cast<JobContext*>(utils.get_user_data()));
   update_matrioshka(ctx.level.matrioshka_entity, ctx.game.materials.animatedBox, ctx.game.current_time_sec);
 }
 
-void orientation_axis_job(ThreadJobData tjd)
+void orientation_axis_job(JobUtils& utils)
 {
-  UpdateJob ctx(tjd, __FUNCTION__);
+  UpdateJob ctx(*reinterpret_cast<JobContext*>(utils.get_user_data()));
   update_orientation_axis_up(ctx.level.axis_arrow_entities[0], ctx.game.materials.lil_arrow, ctx.game.player);
   update_orientation_axis_left(ctx.level.axis_arrow_entities[1], ctx.game.materials.lil_arrow, ctx.game.player);
   update_orientation_axis_right(ctx.level.axis_arrow_entities[2], ctx.game.materials.lil_arrow, ctx.game.player);
 }
 
-void gui_lines_generation_job(ThreadJobData tjd)
+void gui_lines_generation_job(JobUtils& utils)
 {
-  UpdateJob      ctx(tjd, __FUNCTION__);
+  UpdateJob ctx(*reinterpret_cast<JobContext*>(utils.get_user_data()));
   GuiLinesUpdate update;
   update.player_y_location_meters = -ctx.game.player.position.y;
   update.camera_x_pitch_radians   = 0.0f;
@@ -250,21 +245,21 @@ void gui_lines_generation_job(ThreadJobData tjd)
   update.debug                    = ctx.game.DEBUG_VEC2;
   update(ctx.game.level.lines_renderer);
 
-  ctx.game.level.lines_renderer.cache_lines(tjd.allocator);
+  ctx.game.level.lines_renderer.cache_lines(utils.get_allocator());
 }
 
-void recalculate_csm_matrices(ThreadJobData tjd)
+void recalculate_csm_matrices(JobUtils& utils)
 {
-  UpdateJob ctx(tjd, __FUNCTION__);
+  UpdateJob ctx(*reinterpret_cast<JobContext*>(utils.get_user_data()));
   recalculate_cascade_view_proj_matrices(ctx.game.materials.cascade_view_proj_mat,
                                          ctx.game.materials.cascade_split_depths, ctx.game.player.camera_projection,
                                          ctx.game.player.camera_view, ctx.game.materials.light_source_position);
 }
 
-void story_job(ThreadJobData tjd)
+void story_job(JobUtils& utils)
 {
-  UpdateJob ctx(tjd, __FUNCTION__);
-  ctx.game.story.tick(ctx.game.player, tjd.allocator);
+  UpdateJob ctx(*reinterpret_cast<JobContext*>(utils.get_user_data()));
+  ctx.game.story.tick(ctx.game.player, utils.get_allocator());
 }
 
 } // namespace
