@@ -174,10 +174,12 @@ void Materials::setup(Engine& engine)
     };
 
     fill_infos(helmet.materials[0], images);
-    update.dstSet = helmet_pbr_material_dset, vkUpdateDescriptorSets(engine.device, 1, &update, 0, nullptr);
+    update.dstSet = helmet_pbr_material_dset;
+    vkUpdateDescriptorSets(engine.device, 1, &update, 0, nullptr);
 
     fill_infos(robot.materials[0], images);
-    update.dstSet = robot_pbr_material_dset, vkUpdateDescriptorSets(engine.device, 1, &update, 0, nullptr);
+    update.dstSet = robot_pbr_material_dset;
+    vkUpdateDescriptorSets(engine.device, 1, &update, 0, nullptr);
 
     Material sand_material = {
         .albedo_texture          = sand_albedo,
