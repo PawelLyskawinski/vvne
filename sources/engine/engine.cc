@@ -232,7 +232,6 @@ void Engine::startup(bool vulkan_validation_enabled)
   }
 
   vkGetDeviceQueue(device, graphics_family_index, 0, &graphics_queue);
-  job_system.setup(device, graphics_family_index);
 
   {
     uint32_t count = 0;
@@ -844,7 +843,6 @@ private:
 void Engine::teardown()
 {
   vkDeviceWaitIdle(device);
-  job_system.teardown(device);
 
   for (const VkDescriptorSetLayout& it : StructureAsArrayView<VkDescriptorSetLayout>(&descriptor_set_layouts))
   {

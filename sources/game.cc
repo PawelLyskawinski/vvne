@@ -51,14 +51,16 @@ void Game::startup(Engine& engine)
   job_context.engine          = &engine;
   job_context.game            = this;
   engine.job_system.user_data = &job_context;
+  engine.job_system.setup(engine.device, engine.graphics_family_index);
 }
 
 void Game::teardown(Engine& engine)
 {
+  vkDeviceWaitIdle(engine.device);
+  engine.job_system.teardown(engine.device);
   level.teardown(engine.generic_allocator);
   debug_gui.teardown();
   materials.teardown(engine);
-  vkDeviceWaitIdle(engine.device);
 }
 
 void Game::update(Engine& engine, float time_delta_since_last_frame_ms)
