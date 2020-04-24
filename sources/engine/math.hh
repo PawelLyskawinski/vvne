@@ -13,12 +13,12 @@
 
 constexpr float to_rad(float deg) noexcept
 {
-  return (M_PI * deg) / 180.0f;
+  return (float(M_PI) * deg) / 180.0f;
 }
 
 constexpr float to_deg(float rad) noexcept
 {
-  return (180.0f * rad) / M_PI;
+  return (180.0f * rad) / float(M_PI);
 }
 
 template <typename T> constexpr T clamp(T val, T min, T max)
