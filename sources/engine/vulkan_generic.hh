@@ -23,3 +23,11 @@ struct InstanceConf
 
 VkInstance               CreateInstance(const InstanceConf& conf, MemoryAllocator& allocator);
 VkDebugUtilsMessengerEXT CreateDebugUtilsMessenger(VkInstance instance);
+
+enum class PhysicalDeviceSelectionStrategy
+{
+  SelectFirst
+};
+
+VkPhysicalDevice SelectPhysicalDevice(VkInstance instance, PhysicalDeviceSelectionStrategy strategy,
+                                      MemoryAllocator& allocator);

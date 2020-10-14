@@ -80,13 +80,16 @@ VkDebugUtilsMessengerEXT CreateDebugUtilsMessenger(VkInstance instance)
 {
   VkDebugUtilsMessengerCreateInfoEXT ci = {
       .sType           = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-      .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-                         VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-                         VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-      .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-                     VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
       .pfnUserCallback = vulkan_debug_callback,
   };
+
+  ci.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT;
+  ci.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT;
+  ci.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+
+  ci.messageType |= VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT;
+  ci.messageType |= VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT;
+  ci.messageType |= VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
 
   auto fcn = (PFN_vkCreateDebugUtilsMessengerEXT)(vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"));
   SDL_assert(fcn);
@@ -94,4 +97,26 @@ VkDebugUtilsMessengerEXT CreateDebugUtilsMessenger(VkInstance instance)
   VkDebugUtilsMessengerEXT debug_callback = VK_NULL_HANDLE;
   fcn(instance, &ci, nullptr, &debug_callback);
   return debug_callback;
+}
+
+VkPhysicalDevice SelectPhysicalDevice(VkInstance instance, PhysicalDeviceSelectionStrategy strategy,
+                                      MemoryAllocator& allocator)
+{
+  uint32_t count = 0;
+  vkEnumeratePhysicalDevices(instance, &count, nullptr);
+  const uint64_t    handles_size = sizeof(VkPhysicalDevice) * count;
+  VkPhysicalDevice* handles      = reinterpret_cast<VkPhysicalDevice*>(allocator.Allocate(handles_size));
+  vkEnumeratePhysicalDevices(instance, &count, handles);
+
+  VkPhysicalDevice selection = VK_NULL_HANDLE;
+
+  switch (strategy)
+  {
+  case PhysicalDeviceSelectionStrategy::SelectFirst:
+    selection = handles[0];
+    break;
+  }
+
+  allocator.Free(handles, handles_size);
+  return selection;
 }

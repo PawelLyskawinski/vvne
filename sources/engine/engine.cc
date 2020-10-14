@@ -145,17 +145,9 @@ void Engine::startup(bool vulkan_validation_enabled)
     debug_callback = CreateDebugUtilsMessenger(instance);
   }
 
-  {
-    uint32_t count = 0;
-    vkEnumeratePhysicalDevices(instance, &count, nullptr);
-    VkPhysicalDevice* handles = generic_allocator.allocate<VkPhysicalDevice>(count);
-    vkEnumeratePhysicalDevices(instance, &count, handles);
-
-    physical_device = handles[0];
-    vkGetPhysicalDeviceProperties(physical_device, &physical_device_properties);
-    SDL_Log("Selecting graphics card: %s", physical_device_properties.deviceName);
-    generic_allocator.free(handles, count);
-  }
+  physical_device = SelectPhysicalDevice(instance, PhysicalDeviceSelectionStrategy::SelectFirst, system_allocator);
+  vkGetPhysicalDeviceProperties(physical_device, &physical_device_properties);
+  SDL_Log("Selecting graphics card: %s", physical_device_properties.deviceName);
 
   SDL_bool surface_result = SDL_Vulkan_CreateSurface(window, instance, &surface);
   if (SDL_FALSE == surface_result)
