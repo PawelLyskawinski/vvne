@@ -157,10 +157,9 @@ void Engine::startup(bool vulkan_validation_enabled)
   }
 
   vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &surface_capabilities);
-  extent2D              = surface_capabilities.currentExtent;
-  graphics_family_index = SelectGraphicsFamilyIndex(physical_device, surface, system_allocator);
-  renderdoc_marker_naming_enabled =
-      vulkan_validation_enabled && IsRenderdocSupported(physical_device, system_allocator);
+  extent2D                        = surface_capabilities.currentExtent;
+  graphics_family_index           = SelectGraphicsFamilyIndex(physical_device, surface, system_allocator);
+  renderdoc_marker_naming_enabled = IsRenderdocSupported(physical_device, system_allocator);
 
   {
     DeviceConf conf = {
@@ -174,13 +173,14 @@ void Engine::startup(bool vulkan_validation_enabled)
 
   if (renderdoc_marker_naming_enabled)
   {
-#define LOAD_FCN(name) (PFN_##name) vkGetDeviceProcAddr(device, "#name")
-    vkDebugMarkerSetObjectTag  = LOAD_FCN(vkDebugMarkerSetObjectTagEXT);
-    vkDebugMarkerSetObjectName = LOAD_FCN(vkDebugMarkerSetObjectNameEXT);
-    vkCmdDebugMarkerBegin      = LOAD_FCN(vkCmdDebugMarkerBeginEXT);
-    vkCmdDebugMarkerEnd        = LOAD_FCN(vkCmdDebugMarkerEndEXT);
-    vkCmdDebugMarkerInsert     = LOAD_FCN(vkCmdDebugMarkerInsertEXT);
-#undef LOAD_FCN
+
+    RenderdocFunctions fcns = LoadRenderdocFunctions(device);
+
+    vkDebugMarkerSetObjectTag  = fcns.set_object_tag;
+    vkDebugMarkerSetObjectName = fcns.set_object_name;
+    vkCmdDebugMarkerBegin      = fcns.begin;
+    vkCmdDebugMarkerEnd        = fcns.end;
+    vkCmdDebugMarkerInsert     = fcns.insert;
   }
 
   vkGetDeviceQueue(device, graphics_family_index, 0, &graphics_queue);

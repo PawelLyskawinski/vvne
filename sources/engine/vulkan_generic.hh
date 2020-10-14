@@ -34,6 +34,15 @@ struct DeviceConf
   bool              renderdoc_extension_active;
 };
 
+struct RenderdocFunctions
+{
+  PFN_vkDebugMarkerSetObjectTagEXT  set_object_tag;
+  PFN_vkDebugMarkerSetObjectNameEXT set_object_name;
+  PFN_vkCmdDebugMarkerBeginEXT      begin;
+  PFN_vkCmdDebugMarkerEndEXT        end;
+  PFN_vkCmdDebugMarkerInsertEXT     insert;
+};
+
 VkInstance               CreateInstance(const InstanceConf& conf, MemoryAllocator& allocator);
 VkDebugUtilsMessengerEXT CreateDebugUtilsMessenger(VkInstance instance);
 VkPhysicalDevice         SelectPhysicalDevice(VkInstance instance, PhysicalDeviceSelectionStrategy strategy,
@@ -41,3 +50,4 @@ VkPhysicalDevice         SelectPhysicalDevice(VkInstance instance, PhysicalDevic
 uint32_t SelectGraphicsFamilyIndex(VkPhysicalDevice physical_device, VkSurfaceKHR surface, MemoryAllocator& allocator);
 bool     IsRenderdocSupported(VkPhysicalDevice physical_device, MemoryAllocator& allocator);
 VkDevice CreateDevice(const DeviceConf& conf, MemoryAllocator& allocator);
+RenderdocFunctions LoadRenderdocFunctions(VkDevice device);

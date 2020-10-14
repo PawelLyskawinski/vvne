@@ -58,6 +58,7 @@ VkInstance CreateInstance(const InstanceConf& conf, MemoryAllocator& allocator)
 
   VkInstance instance = VK_NULL_HANDLE;
   vkCreateInstance(&ci, nullptr, &instance);
+  SDL_assert(instance);
 
   allocator.Free(extensions, extensions_size);
   allocator.Free(engine_name_buffer, engine_name_buffer_len);
@@ -161,6 +162,7 @@ bool IsRenderdocSupported(VkPhysicalDevice physical_device, MemoryAllocator& all
   vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &count, all_properties);
 
   auto Matcher = [](const VkExtensionProperties& p) {
+    SDL_Log("[rdoc] %s", p.extensionName);
     return 0 == SDL_strcmp(p.extensionName, VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
   };
 
@@ -174,6 +176,7 @@ bool IsRenderdocSupported(VkPhysicalDevice physical_device, MemoryAllocator& all
     }
   }
 
+  SDL_Log("Renderdoc: %s", result ? "True" : "False");
   allocator.Free(all_properties, all_properties_size);
   return result;
 }
@@ -224,4 +227,19 @@ VkDevice CreateDevice(const DeviceConf& conf, MemoryAllocator& allocator)
   VkDevice device = VK_NULL_HANDLE;
   vkCreateDevice(conf.physical_device, &ci, nullptr, &device);
   return device;
+}
+
+RenderdocFunctions LoadRenderdocFunctions(VkDevice device)
+{
+  RenderdocFunctions r;
+
+  auto Get = [device](const char* name) { return vkGetDeviceProcAddr(device, name); };
+
+  r.set_object_tag  = reinterpret_cast<PFN_vkDebugMarkerSetObjectTagEXT>(Get("vkDebugMarkerSetObjectTagEXT"));
+  r.set_object_name = reinterpret_cast<PFN_vkDebugMarkerSetObjectNameEXT>(Get("vkDebugMarkerSetObjectNameEXT"));
+  r.begin           = reinterpret_cast<PFN_vkCmdDebugMarkerBeginEXT>(Get("vkCmdDebugMarkerBeginEXT"));
+  r.end             = reinterpret_cast<PFN_vkCmdDebugMarkerEndEXT>(Get("vkCmdDebugMarkerEndEXT"));
+  r.insert          = reinterpret_cast<PFN_vkCmdDebugMarkerInsertEXT>(Get("vkCmdDebugMarkerInsertEXT"));
+
+  return r;
 }
