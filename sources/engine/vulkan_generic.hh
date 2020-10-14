@@ -19,6 +19,16 @@ enum class PhysicalDeviceSelectionStrategy
   SelectFirst
 };
 
+enum class SurfaceFormatSelectionStrategy
+{
+  PreferSRGBnonlinearBGRA8,
+};
+
+enum class PresentModeSelectionStrategy
+{
+  PreferImmediate,
+};
+
 struct InstanceConf
 {
   RuntimeValidation validation;
@@ -51,3 +61,7 @@ uint32_t SelectGraphicsFamilyIndex(VkPhysicalDevice physical_device, VkSurfaceKH
 bool     IsRenderdocSupported(VkPhysicalDevice physical_device, MemoryAllocator& allocator);
 VkDevice CreateDevice(const DeviceConf& conf, MemoryAllocator& allocator);
 RenderdocFunctions LoadRenderdocFunctions(VkDevice device);
+VkSurfaceFormatKHR SelectSurfaceFormat(VkPhysicalDevice physical_device, VkSurfaceKHR surface,
+                                       SurfaceFormatSelectionStrategy strategy, MemoryAllocator& allocator);
+VkPresentModeKHR   SelectPresentMode(VkPhysicalDevice physical_device, VkSurfaceKHR surface,
+                                     PresentModeSelectionStrategy strategy, MemoryAllocator& allocator);

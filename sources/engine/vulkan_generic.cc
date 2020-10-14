@@ -243,3 +243,64 @@ RenderdocFunctions LoadRenderdocFunctions(VkDevice device)
 
   return r;
 }
+
+VkSurfaceFormatKHR SelectSurfaceFormat(VkPhysicalDevice physical_device, VkSurfaceKHR surface,
+                                       SurfaceFormatSelectionStrategy strategy, MemoryAllocator& allocator)
+{
+  uint32_t count = 0;
+  vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, nullptr);
+  const uint64_t      formats_size = sizeof(VkSurfaceFormatKHR) * count;
+  VkSurfaceFormatKHR* formats      = reinterpret_cast<VkSurfaceFormatKHR*>(allocator.Allocate(formats_size));
+  vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, formats);
+
+  VkSurfaceFormatKHR surface_format = formats[0];
+
+  switch (strategy)
+  {
+  case SurfaceFormatSelectionStrategy::PreferSRGBnonlinearBGRA8:
+    for (uint32_t i = 0; i < count; ++i)
+    {
+      if (VK_FORMAT_B8G8R8A8_UNORM != formats[i].format)
+        continue;
+
+      if (VK_COLOR_SPACE_SRGB_NONLINEAR_KHR != formats[i].colorSpace)
+        continue;
+
+      surface_format = formats[i];
+      break;
+    }
+    break;
+  }
+
+  allocator.Free(formats, formats_size);
+  return surface_format;
+}
+
+VkPresentModeKHR SelectPresentMode(VkPhysicalDevice physical_device, VkSurfaceKHR surface,
+                                   PresentModeSelectionStrategy strategy, MemoryAllocator& allocator)
+{
+  uint32_t count = 0;
+  vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, nullptr);
+  const uint64_t    present_modes_size = sizeof(VkPresentModeKHR) * count;
+  VkPresentModeKHR* present_modes      = reinterpret_cast<VkPresentModeKHR*>(allocator.Allocate(present_modes_size));
+  vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, present_modes);
+
+  VkPresentModeKHR present_mode = VK_PRESENT_MODE_FIFO_KHR;
+
+  switch (strategy)
+  {
+  case PresentModeSelectionStrategy::PreferImmediate:
+    for (uint32_t i = 0; i < count; ++i)
+    {
+      if (VK_PRESENT_MODE_IMMEDIATE_KHR == present_modes[i])
+      {
+        present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+        break;
+      }
+    }
+    break;
+  }
+
+  allocator.Free(present_modes, present_modes_size);
+  return present_mode;
+}

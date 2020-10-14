@@ -186,45 +186,10 @@ void Engine::startup(bool vulkan_validation_enabled)
   vkGetDeviceQueue(device, graphics_family_index, 0, &graphics_queue);
   job_system.setup(device, graphics_family_index);
 
-  {
-    uint32_t count = 0;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, nullptr);
-    VkSurfaceFormatKHR* formats = generic_allocator.allocate<VkSurfaceFormatKHR>(count);
-    vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, formats);
-
-    surface_format = formats[0];
-    for (uint32_t i = 0; i < count; ++i)
-    {
-      if (VK_FORMAT_B8G8R8A8_UNORM != formats[i].format)
-        continue;
-
-      if (VK_COLOR_SPACE_SRGB_NONLINEAR_KHR != formats[i].colorSpace)
-        continue;
-
-      surface_format = formats[i];
-      break;
-    }
-    generic_allocator.free(formats, count);
-  }
-
-  {
-    uint32_t count = 0;
-    vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, nullptr);
-    VkPresentModeKHR* present_modes = generic_allocator.allocate<VkPresentModeKHR>(count);
-    vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, present_modes);
-    VkPresentModeKHR* end = &present_modes[count];
-
-    SDL_Log("Supported presentation modes");
-    std::for_each(present_modes, end, [](const VkPresentModeKHR& mode) { SDL_Log("%s", to_cstr(mode)); });
-
-    present_mode = (end != std::find(present_modes, &present_modes[count], VK_PRESENT_MODE_IMMEDIATE_KHR))
-                       ? VK_PRESENT_MODE_IMMEDIATE_KHR
-                   : (end != std::find(present_modes, &present_modes[count], VK_PRESENT_MODE_MAILBOX_KHR))
-                       ? VK_PRESENT_MODE_MAILBOX_KHR
-                       : VK_PRESENT_MODE_FIFO_KHR;
-
-    generic_allocator.free(present_modes, count);
-  }
+  surface_format = SelectSurfaceFormat(physical_device, surface,
+                                       SurfaceFormatSelectionStrategy::PreferSRGBnonlinearBGRA8, system_allocator);
+  present_mode =
+      SelectPresentMode(physical_device, surface, PresentModeSelectionStrategy::PreferImmediate, system_allocator);
 
   {
     VkSwapchainCreateInfoKHR ci = {
