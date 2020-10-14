@@ -15,18 +15,6 @@
 #include <stb_image.h>
 #pragma GCC diagnostic pop
 
-static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
-                                                            VkDebugUtilsMessageTypeFlagsEXT             messageType,
-                                                            const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-                                                            void*                                       pUserData)
-{
-  (void)messageSeverity;
-  (void)messageType;
-  (void)pUserData;
-  SDL_Log("[%u]: %s", messageSeverity, pCallbackData->pMessage);
-  return VK_FALSE;
-}
-
 namespace {
 
 const uint32_t initial_window_width                              = 1900;
@@ -115,9 +103,10 @@ void Engine::startup(bool vulkan_validation_enabled)
   window = SDL_CreateWindow("vvne", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, initial_window_width,
                             initial_window_height, SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
 
-  //
+  /////////////////////////////////////////////////
   // !!! Temporary !!!
-  //
+  /////////////////////////////////////////////////
+
   class SystemAlloc : public MemoryAllocator
   {
     void* Allocate(uint64_t size) override
@@ -137,6 +126,10 @@ void Engine::startup(bool vulkan_validation_enabled)
     }
   } system_allocator;
 
+  /////////////////////////////////////////////////
+  // !!! Temporary !!!
+  /////////////////////////////////////////////////
+
   {
     InstanceConf conf = {
         .validation = vulkan_validation_enabled ? RuntimeValidation::Enabled : RuntimeValidation::Disabled,
@@ -149,19 +142,7 @@ void Engine::startup(bool vulkan_validation_enabled)
 
   if (vulkan_validation_enabled)
   {
-    VkDebugUtilsMessengerCreateInfoEXT ci = {
-        .sType           = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-        .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-                           VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-                           VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-        .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-                       VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
-        .pfnUserCallback = vulkan_debug_callback,
-    };
-
-    auto fcn = (PFN_vkCreateDebugUtilsMessengerEXT)(vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"));
-    SDL_assert(fcn);
-    fcn(instance, &ci, nullptr, &debug_callback);
+    debug_callback = CreateDebugUtilsMessenger(instance);
   }
 
   {

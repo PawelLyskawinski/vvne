@@ -1,4 +1,6 @@
 #include "vulkan_generic.hh"
+#include <SDL2/SDL_assert.h>
+#include <SDL2/SDL_log.h>
 #include <SDL2/SDL_vulkan.h>
 #include <vulkan/vulkan_core.h>
 
@@ -61,4 +63,35 @@ VkInstance CreateInstance(const InstanceConf& conf, MemoryAllocator& allocator)
   allocator.Free(engine_name_buffer, engine_name_buffer_len);
 
   return instance;
+}
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
+                                                            VkDebugUtilsMessageTypeFlagsEXT             messageType,
+                                                            const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+                                                            void*                                       pUserData)
+{
+  (void)messageType;
+  (void)pUserData;
+  SDL_Log("[%u]: %s", messageSeverity, pCallbackData->pMessage);
+  return VK_FALSE;
+}
+
+VkDebugUtilsMessengerEXT CreateDebugUtilsMessenger(VkInstance instance)
+{
+  VkDebugUtilsMessengerCreateInfoEXT ci = {
+      .sType           = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+      .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+                         VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                         VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+      .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                     VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+      .pfnUserCallback = vulkan_debug_callback,
+  };
+
+  auto fcn = (PFN_vkCreateDebugUtilsMessengerEXT)(vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"));
+  SDL_assert(fcn);
+
+  VkDebugUtilsMessengerEXT debug_callback = VK_NULL_HANDLE;
+  fcn(instance, &ci, nullptr, &debug_callback);
+  return debug_callback;
 }

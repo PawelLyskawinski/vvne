@@ -21,4 +21,5 @@ struct InstanceConf
   SDL_Window*       window;
 };
 
-VkInstance CreateInstance(const InstanceConf& conf, MemoryAllocator& allocator);
+VkInstance               CreateInstance(const InstanceConf& conf, MemoryAllocator& allocator);
+VkDebugUtilsMessengerEXT CreateDebugUtilsMessenger(VkInstance instance);
