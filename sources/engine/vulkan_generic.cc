@@ -8,8 +8,8 @@ VkInstance CreateInstance(const InstanceConf& conf, MemoryAllocator& allocator)
   // engine name will be formed by adding "_engine" postfix to the provided name
   //
   const char*    engine_name_postfix    = "_engine";
-  const uint64_t engine_name_buffer_len = SDL_strlen(conf.name) + SDL_strlen(engine_name_postfix);
-  char*          engine_name_buffer     = reinterpret_cast<char*>(allocator.Allocate(engine_name_buffer_len + 1));
+  const uint64_t engine_name_buffer_len = SDL_strlen(conf.name) + SDL_strlen(engine_name_postfix) + 1;
+  char*          engine_name_buffer     = reinterpret_cast<char*>(allocator.Allocate(engine_name_buffer_len));
 
   SDL_strlcpy(engine_name_buffer, conf.name, engine_name_buffer_len);
   SDL_strlcat(engine_name_buffer, engine_name_postfix, engine_name_buffer_len);
@@ -47,7 +47,7 @@ VkInstance CreateInstance(const InstanceConf& conf, MemoryAllocator& allocator)
     extensions            = reinterpret_cast<const char**>(allocator.Reallocate(extensions, extensions_size));
     extensions[count - 1] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
 
-    ci.enabledLayerCount   = sizeof(validation_layers);
+    ci.enabledLayerCount   = SDL_arraysize(validation_layers);
     ci.ppEnabledLayerNames = validation_layers;
   }
 
