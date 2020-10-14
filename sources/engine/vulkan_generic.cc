@@ -153,7 +153,6 @@ uint32_t SelectGraphicsFamilyIndex(VkPhysicalDevice physical_device, VkSurfaceKH
 
 bool IsRenderdocSupported(VkPhysicalDevice physical_device, MemoryAllocator& allocator)
 {
-
   uint32_t count = 0;
   vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &count, nullptr);
   using Properties                   = VkExtensionProperties;
@@ -177,4 +176,52 @@ bool IsRenderdocSupported(VkPhysicalDevice physical_device, MemoryAllocator& all
 
   allocator.Free(all_properties, all_properties_size);
   return result;
+}
+
+VkDevice CreateDevice(const DeviceConf& conf, MemoryAllocator& allocator)
+{
+  const char* device_layers[]     = {"VK_LAYER_KHRONOS_validation"};
+  const char* device_extensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_EXT_DEBUG_MARKER_EXTENSION_NAME};
+  float       queue_priorities[]  = {1.0f};
+
+  VkDeviceQueueCreateInfo graphics = {
+      .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+      .queueFamilyIndex = conf.graphics_family_index,
+      .queueCount       = SDL_arraysize(queue_priorities),
+      .pQueuePriorities = queue_priorities,
+  };
+
+  VkPhysicalDeviceFeatures device_features = {
+      .tessellationShader = VK_TRUE,
+      .sampleRateShading  = VK_TRUE,
+      .fillModeNonSolid   = VK_TRUE, // enables VK_POLYGON_MODE_LINE
+      .wideLines          = VK_TRUE,
+  };
+
+  uint32_t device_extensions_count = SDL_arraysize(device_extensions) - 1;
+  if (conf.renderdoc_extension_active)
+  {
+    device_extensions_count += 1;
+  }
+
+  VkDeviceCreateInfo ci = {
+      .sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+      .queueCreateInfoCount    = 1,
+      .pQueueCreateInfos       = &graphics,
+      .enabledLayerCount       = 0u,
+      .ppEnabledLayerNames     = nullptr,
+      .enabledExtensionCount   = device_extensions_count,
+      .ppEnabledExtensionNames = device_extensions,
+      .pEnabledFeatures        = &device_features,
+  };
+
+  if (RuntimeValidation::Enabled == conf.validation)
+  {
+    ci.enabledLayerCount   = static_cast<uint32_t>(SDL_arraysize(device_layers));
+    ci.ppEnabledLayerNames = device_layers;
+  }
+
+  VkDevice device = VK_NULL_HANDLE;
+  vkCreateDevice(conf.physical_device, &ci, nullptr, &device);
+  return device;
 }

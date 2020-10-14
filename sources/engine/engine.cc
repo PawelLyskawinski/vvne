@@ -159,48 +159,17 @@ void Engine::startup(bool vulkan_validation_enabled)
   vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &surface_capabilities);
   extent2D              = surface_capabilities.currentExtent;
   graphics_family_index = SelectGraphicsFamilyIndex(physical_device, surface, system_allocator);
+  renderdoc_marker_naming_enabled =
+      vulkan_validation_enabled && IsRenderdocSupported(physical_device, system_allocator);
 
   {
-    const char* device_layers[]     = {"VK_LAYER_KHRONOS_validation"};
-    const char* device_extensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_EXT_DEBUG_MARKER_EXTENSION_NAME};
-    float       queue_priorities[]  = {1.0f};
-
-    VkDeviceQueueCreateInfo graphics = {
-        .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-        .queueFamilyIndex = graphics_family_index,
-        .queueCount       = SDL_arraysize(queue_priorities),
-        .pQueuePriorities = queue_priorities,
+    DeviceConf conf = {
+        .physical_device       = physical_device,
+        .graphics_family_index = graphics_family_index,
+        .validation            = vulkan_validation_enabled ? RuntimeValidation::Enabled : RuntimeValidation::Disabled,
+        .renderdoc_extension_active = renderdoc_marker_naming_enabled,
     };
-
-    VkPhysicalDeviceFeatures device_features = {
-        .tessellationShader = VK_TRUE,
-        .sampleRateShading  = VK_TRUE,
-        .fillModeNonSolid   = VK_TRUE, // enables VK_POLYGON_MODE_LINE
-        .wideLines          = VK_TRUE,
-    };
-
-    uint32_t device_extensions_count = SDL_arraysize(device_extensions) - 1;
-
-    renderdoc_marker_naming_enabled =
-        vulkan_validation_enabled && IsRenderdocSupported(physical_device, system_allocator);
-
-    if (renderdoc_marker_naming_enabled)
-    {
-      device_extensions_count += 1;
-    }
-
-    VkDeviceCreateInfo ci = {
-        .sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .queueCreateInfoCount    = 1,
-        .pQueueCreateInfos       = &graphics,
-        .enabledLayerCount       = vulkan_validation_enabled ? static_cast<uint32_t>(SDL_arraysize(device_layers)) : 0u,
-        .ppEnabledLayerNames     = vulkan_validation_enabled ? device_layers : nullptr,
-        .enabledExtensionCount   = device_extensions_count,
-        .ppEnabledExtensionNames = device_extensions,
-        .pEnabledFeatures        = &device_features,
-    };
-
-    vkCreateDevice(physical_device, &ci, nullptr, &device);
+    device = CreateDevice(conf, system_allocator);
   }
 
   if (renderdoc_marker_naming_enabled)
