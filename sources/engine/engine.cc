@@ -58,7 +58,7 @@ uint32_t find_memory_type_index(VkPhysicalDeviceMemoryProperties* properties, Vk
 const char* to_cstr(VkPresentModeKHR mode)
 {
   const char* modes[] = {"IMMEDIATE", "MAILBOX (smart v-sync)", "FIFO (v-sync)", "FIFO RELAXED", "unknown?"};
-  return modes[clamp(mode, VK_PRESENT_MODE_IMMEDIATE_KHR, VK_PRESENT_MODE_RANGE_SIZE_KHR)];
+  return modes[clamp(mode, VK_PRESENT_MODE_IMMEDIATE_KHR, VK_PRESENT_MODE_MAX_ENUM_KHR)];
 }
 
 void renderpass_allocate_memory(HierarchicalAllocator& a, RenderPass& rp, uint32_t n)

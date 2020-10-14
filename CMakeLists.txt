@@ -64,7 +64,6 @@ set(SOURCES
         sources/debug_gui.cc
         sources/story_editor.cc
         sources/story.cc
-        sources/story_json_serialize.cc
         sources/color_palette.cc
         sources/lines_renderer.cc
         sources/gui_lines_renderer.cc
@@ -72,7 +71,7 @@ set(SOURCES
         thirdparty/imgui_draw.cpp
         thirdparty/imgui_widgets.cpp
         thirdparty/sha256.cpp
-        )
+        sources/engine/vulkan_generic.cc sources/engine/vulkan_generic.hh sources/engine/memory_allocator.hh)
 
 if(WIN32)
 add_executable(${PROJECT_NAME} ${SOURCES} assets/applicationIcon.rc)

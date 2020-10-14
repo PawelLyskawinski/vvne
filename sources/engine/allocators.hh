@@ -18,9 +18,15 @@ public:
   {
   }
 
-  ~Stack() { SDL_free(data); }
+  ~Stack()
+  {
+    SDL_free(data);
+  }
 
-  void reset() { sp = 0; }
+  void reset()
+  {
+    sp = 0;
+  }
 
   template <typename T> T* alloc(int count = 1)
   {
@@ -72,10 +78,19 @@ template <typename T, uint32_t N = 64> struct ElementStack
     }
   }
 
-  void reset() { count = 0; }
+  void reset()
+  {
+    count = 0;
+  }
 
-  T* begin() { return &data[0]; }
-  T* end() { return &data[count]; }
+  T* begin()
+  {
+    return &data[0];
+  }
+  T* end()
+  {
+    return &data[count];
+  }
 
   T        data[N];
   uint32_t count;
@@ -92,14 +107,38 @@ template <typename T> struct ArrayView
     count = 0;
   }
 
-  void fill_with_zeros() { SDL_memset(data, 0, sizeof(T) * count); }
+  void fill_with_zeros()
+  {
+    SDL_memset(data, 0, sizeof(T) * count);
+  }
 
-  T&       operator[](int idx) { return data[idx]; }
-  const T& operator[](int idx) const { return data[idx]; }
-  T*       begin() { return data; }
-  T*       end() { return &data[count]; }
-  T*       begin() const { return data; }
-  T*       end() const { return &data[count]; }
+  T& operator[](int idx)
+  {
+    return data[idx];
+  }
+  const T& operator[](int idx) const
+  {
+    return data[idx];
+  }
+  T* begin()
+  {
+    return data;
+  }
+  T* end()
+  {
+    return &data[count];
+  }
+  T* begin() const
+  {
+    return data;
+  }
+  T* end() const
+  {
+    return &data[count];
+  }
 
-  [[nodiscard]] bool empty() const { return 0 == count; }
+  [[nodiscard]] bool empty() const
+  {
+    return 0 == count;
+  }
 };
