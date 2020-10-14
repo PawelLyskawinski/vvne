@@ -43,12 +43,12 @@ VkInstance CreateInstance(const InstanceConf& conf, MemoryAllocator& allocator)
   if (RuntimeValidation::Enabled == conf.validation)
   {
     count += 1;
-    extensions_size = sizeof(const char*) * count;
-    extensions = reinterpret_cast<const char**>(allocator.Reallocate(extensions, extensions_size);
+    extensions_size       = sizeof(const char*) * count;
+    extensions            = reinterpret_cast<const char**>(allocator.Reallocate(extensions, extensions_size));
     extensions[count - 1] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
 
-    ci.enabledLayerCount       = sizeof(validation_layers);
-    ci.ppEnabledLayerNames     = validation_layers;
+    ci.enabledLayerCount   = sizeof(validation_layers);
+    ci.ppEnabledLayerNames = validation_layers;
   }
 
   ci.enabledExtensionCount   = count;
