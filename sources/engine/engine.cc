@@ -157,30 +157,8 @@ void Engine::startup(bool vulkan_validation_enabled)
   }
 
   vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &surface_capabilities);
-  extent2D = surface_capabilities.currentExtent;
-
-  {
-    uint32_t count = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, nullptr);
-    VkQueueFamilyProperties* all_properties = generic_allocator.allocate<VkQueueFamilyProperties>(count);
-    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, all_properties);
-
-    for (uint32_t i = 0; i < count; ++i)
-    {
-      VkQueueFamilyProperties properties = all_properties[i];
-
-      VkBool32 has_present_support = 0;
-      vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, surface, &has_present_support);
-
-      if (has_present_support && (properties.queueFlags & VK_QUEUE_GRAPHICS_BIT))
-      {
-        graphics_family_index = i;
-        break;
-      }
-    }
-
-    generic_allocator.free(all_properties, count);
-  }
+  extent2D              = surface_capabilities.currentExtent;
+  graphics_family_index = SelectGraphicsFamilyIndex(physical_device, surface, system_allocator);
 
   {
     const char* device_layers[]     = {"VK_LAYER_KHRONOS_validation"};

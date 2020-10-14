@@ -120,3 +120,33 @@ VkPhysicalDevice SelectPhysicalDevice(VkInstance instance, PhysicalDeviceSelecti
   allocator.Free(handles, handles_size);
   return selection;
 }
+
+uint32_t SelectGraphicsFamilyIndex(VkPhysicalDevice physical_device, VkSurfaceKHR surface, MemoryAllocator& allocator)
+{
+  uint32_t count = 0;
+  vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, nullptr);
+  using Properties                   = VkQueueFamilyProperties;
+  const uint64_t all_properties_size = sizeof(Properties) * count;
+  Properties*    all_properties      = reinterpret_cast<Properties*>(allocator.Allocate(all_properties_size));
+  vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, all_properties);
+
+  auto IsSuitable = [physical_device, surface](uint32_t idx, const Properties& properties) {
+    VkBool32 has_present_support = 0;
+    vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, idx, surface, &has_present_support);
+    return (has_present_support && (properties.queueFlags & VK_QUEUE_GRAPHICS_BIT));
+  };
+
+  uint32_t result = UINT32_MAX;
+  for (uint32_t i = 0; i < count; ++i)
+  {
+    if (IsSuitable(i, all_properties[i]))
+    {
+      result = i;
+      break;
+    }
+  }
+
+  allocator.Free(all_properties, all_properties_size);
+  SDL_assert(UINT32_MAX != result);
+  return result;
+}
