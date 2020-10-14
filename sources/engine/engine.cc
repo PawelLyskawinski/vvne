@@ -1,6 +1,7 @@
 #include "engine.hh"
 #include "math.hh"
 #include "sha256.h"
+#include "vulkan_generic.hh"
 #include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_log.h>
 #include <SDL2/SDL_vulkan.h>
@@ -113,6 +114,38 @@ void Engine::startup(bool vulkan_validation_enabled)
 
   window = SDL_CreateWindow("vvne", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, initial_window_width,
                             initial_window_height, SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
+
+  //
+  // !!! Temporary !!!
+  //
+  class SystemAlloc : public MemoryAllocator
+  {
+    void* Allocate(uint64_t size) override
+    {
+      return SDL_malloc(size);
+    }
+
+    void* Reallocate(void* ptr, uint64_t size) override
+    {
+      return SDL_realloc(ptr, size);
+    }
+
+    void Free(void* ptr, uint64_t size) override
+    {
+      (void)size;
+      SDL_free(ptr);
+    }
+  } system_allocator;
+
+  {
+    InstanceConf conf = {
+        .validation = vulkan_validation_enabled ? RuntimeValidation::Enabled : RuntimeValidation::Disabled,
+        .name       = "vvne",
+        .window     = window,
+    };
+
+    instance = CreateInstance(conf, system_allocator);
+  }
 
   {
     VkApplicationInfo ai = {
@@ -317,9 +350,9 @@ void Engine::startup(bool vulkan_validation_enabled)
 
     present_mode = (end != std::find(present_modes, &present_modes[count], VK_PRESENT_MODE_IMMEDIATE_KHR))
                        ? VK_PRESENT_MODE_IMMEDIATE_KHR
-                       : (end != std::find(present_modes, &present_modes[count], VK_PRESENT_MODE_MAILBOX_KHR))
-                             ? VK_PRESENT_MODE_MAILBOX_KHR
-                             : VK_PRESENT_MODE_FIFO_KHR;
+                   : (end != std::find(present_modes, &present_modes[count], VK_PRESENT_MODE_MAILBOX_KHR))
+                       ? VK_PRESENT_MODE_MAILBOX_KHR
+                       : VK_PRESENT_MODE_FIFO_KHR;
 
     generic_allocator.free(present_modes, count);
   }
