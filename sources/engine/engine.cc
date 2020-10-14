@@ -23,7 +23,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug_callback(VkDebugUtilsMessageS
   (void)messageSeverity;
   (void)messageType;
   (void)pUserData;
-  SDL_Log("validation layer: %s", pCallbackData->pMessage);
+  SDL_Log("[%u]: %s", messageSeverity, pCallbackData->pMessage);
   return VK_FALSE;
 }
 

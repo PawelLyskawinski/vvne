@@ -30,7 +30,7 @@ layout(push_constant) uniform Transformation
   mat4 projection;
   mat4 view;
   mat4 model;
-  vec4 cam_pos;
+  vec3 cam_pos;
 }
 transformation;
 

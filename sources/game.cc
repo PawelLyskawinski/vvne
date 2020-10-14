@@ -306,7 +306,12 @@ void Game::record_primary_command_buffer(Engine& engine)
       ScopedPerfEvent recording_perf(render_profiler, "skybox_begin_render_pass", 2);
       vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
     }
-    vkCmdExecuteCommands(cmd, 1, &skybox_command);
+
+    if(VK_NULL_HANDLE != skybox_command)
+    {
+      vkCmdExecuteCommands(cmd, 1, &skybox_command);
+    }
+
     {
       ScopedPerfEvent recording_perf(render_profiler, "skybox_end_render_pass", 2);
       vkCmdEndRenderPass(cmd);
