@@ -181,26 +181,12 @@ void Engine::startup(bool vulkan_validation_enabled)
 
     uint32_t device_extensions_count = SDL_arraysize(device_extensions) - 1;
 
-    renderdoc_marker_naming_enabled = false;
-    if (vulkan_validation_enabled)
+    renderdoc_marker_naming_enabled =
+        vulkan_validation_enabled && IsRenderdocSupported(physical_device, system_allocator);
+
+    if (renderdoc_marker_naming_enabled)
     {
-      uint32_t count = 0;
-      vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &count, nullptr);
-      VkExtensionProperties* properties = generic_allocator.allocate<VkExtensionProperties>(count);
-      vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &count, properties);
-
-      auto is_debug_marker_ext = [](const VkExtensionProperties& p) {
-        return 0 == SDL_strcmp(p.extensionName, VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
-      };
-
-      if (std::any_of(properties, &properties[count], is_debug_marker_ext))
-      {
-        SDL_Log("Renderdoc support ENABLED");
-        renderdoc_marker_naming_enabled = true;
-        device_extensions_count += 1;
-      }
-
-      generic_allocator.free(properties, count);
+      device_extensions_count += 1;
     }
 
     VkDeviceCreateInfo ci = {

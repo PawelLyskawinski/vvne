@@ -150,3 +150,31 @@ uint32_t SelectGraphicsFamilyIndex(VkPhysicalDevice physical_device, VkSurfaceKH
   SDL_assert(UINT32_MAX != result);
   return result;
 }
+
+bool IsRenderdocSupported(VkPhysicalDevice physical_device, MemoryAllocator& allocator)
+{
+
+  uint32_t count = 0;
+  vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &count, nullptr);
+  using Properties                   = VkExtensionProperties;
+  const uint64_t all_properties_size = sizeof(Properties) * count;
+  Properties*    all_properties      = reinterpret_cast<Properties*>(allocator.Allocate(all_properties_size));
+  vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &count, all_properties);
+
+  auto Matcher = [](const VkExtensionProperties& p) {
+    return 0 == SDL_strcmp(p.extensionName, VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
+  };
+
+  bool result = false;
+  for (uint32_t i = 0; i < count; ++i)
+  {
+    if (Matcher(all_properties[i]))
+    {
+      result = true;
+      break;
+    }
+  }
+
+  allocator.Free(all_properties, all_properties_size);
+  return result;
+}

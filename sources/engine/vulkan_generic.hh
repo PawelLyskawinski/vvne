@@ -32,3 +32,4 @@ enum class PhysicalDeviceSelectionStrategy
 VkPhysicalDevice SelectPhysicalDevice(VkInstance instance, PhysicalDeviceSelectionStrategy strategy,
                                       MemoryAllocator& allocator);
 uint32_t SelectGraphicsFamilyIndex(VkPhysicalDevice physical_device, VkSurfaceKHR surface, MemoryAllocator& allocator);
+bool     IsRenderdocSupported(VkPhysicalDevice physical_device, MemoryAllocator& allocator);
