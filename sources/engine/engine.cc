@@ -6,8 +6,6 @@
 #include <SDL2/SDL_log.h>
 #include <SDL2/SDL_vulkan.h>
 
-#include <algorithm>
-
 #define STB_IMAGE_IMPLEMENTATION
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -42,12 +40,6 @@ uint32_t find_memory_type_index(VkPhysicalDeviceMemoryProperties* properties, Vk
   // this code fragment should never be reached!
   SDL_assert(false);
   return 0;
-}
-
-const char* to_cstr(VkPresentModeKHR mode)
-{
-  const char* modes[] = {"IMMEDIATE", "MAILBOX (smart v-sync)", "FIFO (v-sync)", "FIFO RELAXED", "unknown?"};
-  return modes[clamp(mode, VK_PRESENT_MODE_IMMEDIATE_KHR, VK_PRESENT_MODE_MAX_ENUM_KHR)];
 }
 
 void renderpass_allocate_memory(HierarchicalAllocator& a, RenderPass& rp, uint32_t n)
@@ -263,104 +255,35 @@ void Engine::startup(bool vulkan_validation_enabled)
 
   if (VK_SAMPLE_COUNT_1_BIT != MSAA_SAMPLE_COUNT)
   {
-    VkImageCreateInfo ci = {
-        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType     = VK_IMAGE_TYPE_2D,
-        .format        = surface_format.format,
-        .extent        = {.width = extent2D.width, .height = extent2D.height, .depth = 1},
-        .mipLevels     = 1,
-        .arrayLayers   = 1,
-        .samples       = MSAA_SAMPLE_COUNT,
-        .tiling        = VK_IMAGE_TILING_OPTIMAL,
-        .usage         = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
-        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    ImageConf conf = {
+        .type         = ImageType::MSAAResolve,
+        .format       = surface_format.format,
+        .extent       = extent2D,
+        .sample_count = MSAA_SAMPLE_COUNT,
     };
-
-    vkCreateImage(device, &ci, nullptr, &msaa_color_image.image);
+    msaa_color_image.image = CreateImage(device, conf);
   }
 
   {
-    VkImageCreateInfo ci = {
-        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType     = VK_IMAGE_TYPE_2D,
-        .format        = VK_FORMAT_D32_SFLOAT,
-        .extent        = {.width = extent2D.width, .height = extent2D.height, .depth = 1},
-        .mipLevels     = 1,
-        .arrayLayers   = 1,
-        .samples       = MSAA_SAMPLE_COUNT,
-        .tiling        = VK_IMAGE_TILING_OPTIMAL,
-        .usage         = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
-        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    ImageConf conf = {
+        .type         = ImageType::DepthTest,
+        .extent       = extent2D,
+        .sample_count = MSAA_SAMPLE_COUNT,
     };
-
-    vkCreateImage(device, &ci, nullptr, &depth_image.image);
+    depth_image.image = CreateImage(device, conf);
   }
 
   {
-    VkImageCreateInfo ci = {
-        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType     = VK_IMAGE_TYPE_2D,
-        .format        = VK_FORMAT_D32_SFLOAT,
-        .extent        = {.width = SHADOWMAP_IMAGE_DIM, .height = SHADOWMAP_IMAGE_DIM, .depth = 1},
-        .mipLevels     = 1,
-        .arrayLayers   = SHADOWMAP_CASCADE_COUNT,
-        .samples       = VK_SAMPLE_COUNT_1_BIT,
-        .tiling        = VK_IMAGE_TILING_OPTIMAL,
-        .usage         = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
-        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    ImageConf conf = {
+        .type   = ImageType::CascadeShadowMap,
+        .extent = {SHADOWMAP_IMAGE_DIM, SHADOWMAP_IMAGE_DIM},
+        .layers = SHADOWMAP_CASCADE_COUNT,
     };
-
-    vkCreateImage(device, &ci, nullptr, &shadowmap_image.image);
+    shadowmap_image.image = CreateImage(device, conf);
   }
 
-  {
-    VkSamplerCreateInfo ci = {
-        .sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-        .magFilter               = VK_FILTER_LINEAR,
-        .minFilter               = VK_FILTER_LINEAR,
-        .mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-        .addressModeU            = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-        .addressModeV            = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-        .addressModeW            = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-        .mipLodBias              = 0.0f,
-        .anisotropyEnable        = VK_FALSE,
-        .maxAnisotropy           = 1,
-        .compareEnable           = VK_FALSE,
-        .compareOp               = VK_COMPARE_OP_NEVER,
-        .minLod                  = 0.0f,
-        .maxLod                  = 1.0f,
-        .borderColor             = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
-        .unnormalizedCoordinates = VK_FALSE,
-    };
-
-    vkCreateSampler(device, &ci, nullptr, &texture_sampler);
-  }
-
-  {
-    VkSamplerCreateInfo ci = {
-        .sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-        .magFilter               = VK_FILTER_LINEAR,
-        .minFilter               = VK_FILTER_LINEAR,
-        .mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-        .addressModeU            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-        .addressModeV            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-        .addressModeW            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-        .mipLodBias              = 0.0f,
-        .anisotropyEnable        = VK_FALSE,
-        .maxAnisotropy           = 1.0f,
-        .compareEnable           = VK_FALSE,
-        .compareOp               = VK_COMPARE_OP_NEVER,
-        .minLod                  = 0.0f,
-        .maxLod                  = 1.0f,
-        .borderColor             = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
-        .unnormalizedCoordinates = VK_FALSE,
-    };
-
-    vkCreateSampler(device, &ci, nullptr, &shadowmap_sampler);
-  }
+  texture_sampler   = CreateSampler(device, VK_SAMPLER_ADDRESS_MODE_REPEAT, VK_BORDER_COLOR_INT_OPAQUE_BLACK);
+  shadowmap_sampler = CreateSampler(device, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE);
 
   // STATIC_GEOMETRY
 

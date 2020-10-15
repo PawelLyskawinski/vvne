@@ -325,3 +325,89 @@ VkSwapchainKHR CreateSwapchain(VkDevice device, const SwapchainConf& conf)
   vkCreateSwapchainKHR(device, &ci, nullptr, &swapchain);
   return swapchain;
 }
+
+VkImage CreateImage(VkDevice device, const ImageConf& conf)
+{
+  VkImage image = VK_NULL_HANDLE;
+  switch (conf.type)
+  {
+  case ImageType::MSAAResolve: {
+    VkImageCreateInfo ci = {
+        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType     = VK_IMAGE_TYPE_2D,
+        .format        = conf.format,
+        .extent        = {conf.extent.width, conf.extent.height, 1},
+        .mipLevels     = 1,
+        .arrayLayers   = 1,
+        .samples       = conf.sample_count,
+        .tiling        = VK_IMAGE_TILING_OPTIMAL,
+        .usage         = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+    vkCreateImage(device, &ci, nullptr, &image);
+  }
+  break;
+  case ImageType::DepthTest: {
+    VkImageCreateInfo ci = {
+        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType     = VK_IMAGE_TYPE_2D,
+        .format        = VK_FORMAT_D32_SFLOAT,
+        .extent        = {conf.extent.width, conf.extent.height, 1},
+        .mipLevels     = 1,
+        .arrayLayers   = 1,
+        .samples       = conf.sample_count,
+        .tiling        = VK_IMAGE_TILING_OPTIMAL,
+        .usage         = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+    vkCreateImage(device, &ci, nullptr, &image);
+  }
+  break;
+  case ImageType::CascadeShadowMap: {
+    VkImageCreateInfo ci = {
+        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType     = VK_IMAGE_TYPE_2D,
+        .format        = VK_FORMAT_D32_SFLOAT,
+        .extent        = {conf.extent.width, conf.extent.height, 1},
+        .mipLevels     = 1,
+        .arrayLayers   = conf.layers,
+        .samples       = VK_SAMPLE_COUNT_1_BIT,
+        .tiling        = VK_IMAGE_TILING_OPTIMAL,
+        .usage         = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+    vkCreateImage(device, &ci, nullptr, &image);
+  }
+  break;
+  }
+  return image;
+}
+
+VkSampler CreateSampler(VkDevice device, VkSamplerAddressMode address_mode, VkBorderColor border_color)
+{
+  VkSamplerCreateInfo ci = {
+      .sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+      .magFilter               = VK_FILTER_LINEAR,
+      .minFilter               = VK_FILTER_LINEAR,
+      .mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+      .addressModeU            = address_mode,
+      .addressModeV            = address_mode,
+      .addressModeW            = address_mode,
+      .mipLodBias              = 0.0f,
+      .anisotropyEnable        = VK_FALSE,
+      .maxAnisotropy           = 1.0f,
+      .compareEnable           = VK_FALSE,
+      .compareOp               = VK_COMPARE_OP_NEVER,
+      .minLod                  = 0.0f,
+      .maxLod                  = 1.0f,
+      .borderColor             = border_color,
+      .unnormalizedCoordinates = VK_FALSE,
+  };
+
+  VkSampler sampler = VK_NULL_HANDLE;
+  vkCreateSampler(device, &ci, nullptr, &sampler);
+  return sampler;
+}

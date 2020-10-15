@@ -63,6 +63,22 @@ struct SwapchainConf
   uint32_t                      count;
 };
 
+enum class ImageType
+{
+  MSAAResolve,
+  DepthTest,
+  CascadeShadowMap,
+};
+
+struct ImageConf
+{
+  ImageType             type;
+  VkFormat              format;
+  VkExtent2D            extent;
+  uint32_t              layers;
+  VkSampleCountFlagBits sample_count;
+};
+
 VkInstance               CreateInstance(const InstanceConf& conf, MemoryAllocator& allocator);
 VkDebugUtilsMessengerEXT CreateDebugUtilsMessenger(VkInstance instance);
 VkPhysicalDevice         SelectPhysicalDevice(VkInstance instance, PhysicalDeviceSelectionStrategy strategy,
@@ -75,4 +91,7 @@ VkSurfaceFormatKHR SelectSurfaceFormat(VkPhysicalDevice physical_device, VkSurfa
                                        SurfaceFormatSelectionStrategy strategy, MemoryAllocator& allocator);
 VkPresentModeKHR   SelectPresentMode(VkPhysicalDevice physical_device, VkSurfaceKHR surface,
                                      PresentModeSelectionStrategy strategy, MemoryAllocator& allocator);
-VkSwapchainKHR CreateSwapchain(VkDevice device, const SwapchainConf& conf);
+VkSwapchainKHR     CreateSwapchain(VkDevice device, const SwapchainConf& conf);
+VkImage            CreateImage(VkDevice device, const ImageConf& conf);
+VkSampler CreateSampler(VkDevice device, VkSamplerAddressMode address_mode, VkBorderColor border_color);
+
