@@ -136,7 +136,6 @@ void Engine::startup(bool vulkan_validation_enabled)
         .name       = "vvne",
         .window     = window,
     };
-
     instance = CreateInstance(conf, system_allocator);
   }
 
@@ -173,7 +172,6 @@ void Engine::startup(bool vulkan_validation_enabled)
 
   if (renderdoc_marker_naming_enabled)
   {
-
     RenderdocFunctions fcns = LoadRenderdocFunctions(device);
 
     vkDebugMarkerSetObjectTag  = fcns.set_object_tag;
@@ -192,23 +190,15 @@ void Engine::startup(bool vulkan_validation_enabled)
       SelectPresentMode(physical_device, surface, PresentModeSelectionStrategy::PreferImmediate, system_allocator);
 
   {
-    VkSwapchainCreateInfoKHR ci = {
-        .sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-        .surface          = surface,
-        .minImageCount    = SWAPCHAIN_IMAGES_COUNT,
-        .imageFormat      = surface_format.format,
-        .imageColorSpace  = surface_format.colorSpace,
-        .imageExtent      = extent2D,
-        .imageArrayLayers = 1,
-        .imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-        .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
-        .preTransform     = surface_capabilities.currentTransform,
-        .compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-        .presentMode      = present_mode,
-        .clipped          = VK_TRUE,
+    SwapchainConf conf = {
+        .surface        = surface,
+        .surface_format = surface_format,
+        .extent         = extent2D,
+        .transform      = surface_capabilities.currentTransform,
+        .present_mode   = present_mode,
+        .count          = SWAPCHAIN_IMAGES_COUNT,
     };
-
-    vkCreateSwapchainKHR(device, &ci, nullptr, &swapchain);
+    swapchain = CreateSwapchain(device, conf);
 
     uint32_t swapchain_images_count = 0;
     vkGetSwapchainImagesKHR(device, swapchain, &swapchain_images_count, nullptr);

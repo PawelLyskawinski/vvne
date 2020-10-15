@@ -53,6 +53,16 @@ struct RenderdocFunctions
   PFN_vkCmdDebugMarkerInsertEXT     insert;
 };
 
+struct SwapchainConf
+{
+  VkSurfaceKHR                  surface;
+  VkSurfaceFormatKHR            surface_format;
+  VkExtent2D                    extent;
+  VkSurfaceTransformFlagBitsKHR transform;
+  VkPresentModeKHR              present_mode;
+  uint32_t                      count;
+};
+
 VkInstance               CreateInstance(const InstanceConf& conf, MemoryAllocator& allocator);
 VkDebugUtilsMessengerEXT CreateDebugUtilsMessenger(VkInstance instance);
 VkPhysicalDevice         SelectPhysicalDevice(VkInstance instance, PhysicalDeviceSelectionStrategy strategy,
@@ -65,3 +75,4 @@ VkSurfaceFormatKHR SelectSurfaceFormat(VkPhysicalDevice physical_device, VkSurfa
                                        SurfaceFormatSelectionStrategy strategy, MemoryAllocator& allocator);
 VkPresentModeKHR   SelectPresentMode(VkPhysicalDevice physical_device, VkSurfaceKHR surface,
                                      PresentModeSelectionStrategy strategy, MemoryAllocator& allocator);
+VkSwapchainKHR CreateSwapchain(VkDevice device, const SwapchainConf& conf);

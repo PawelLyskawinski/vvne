@@ -162,7 +162,6 @@ bool IsRenderdocSupported(VkPhysicalDevice physical_device, MemoryAllocator& all
   vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &count, all_properties);
 
   auto Matcher = [](const VkExtensionProperties& p) {
-    SDL_Log("[rdoc] %s", p.extensionName);
     return 0 == SDL_strcmp(p.extensionName, VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
   };
 
@@ -176,7 +175,6 @@ bool IsRenderdocSupported(VkPhysicalDevice physical_device, MemoryAllocator& all
     }
   }
 
-  SDL_Log("Renderdoc: %s", result ? "True" : "False");
   allocator.Free(all_properties, all_properties_size);
   return result;
 }
@@ -303,4 +301,27 @@ VkPresentModeKHR SelectPresentMode(VkPhysicalDevice physical_device, VkSurfaceKH
 
   allocator.Free(present_modes, present_modes_size);
   return present_mode;
+}
+
+VkSwapchainKHR CreateSwapchain(VkDevice device, const SwapchainConf& conf)
+{
+  VkSwapchainCreateInfoKHR ci = {
+      .sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+      .surface          = conf.surface,
+      .minImageCount    = conf.count,
+      .imageFormat      = conf.surface_format.format,
+      .imageColorSpace  = conf.surface_format.colorSpace,
+      .imageExtent      = conf.extent,
+      .imageArrayLayers = 1,
+      .imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+      .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+      .preTransform     = conf.transform,
+      .compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+      .presentMode      = conf.present_mode,
+      .clipped          = VK_TRUE,
+  };
+
+  VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+  vkCreateSwapchainKHR(device, &ci, nullptr, &swapchain);
+  return swapchain;
 }
