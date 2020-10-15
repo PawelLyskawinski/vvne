@@ -95,40 +95,13 @@ void Engine::startup(bool vulkan_validation_enabled)
   window = SDL_CreateWindow("vvne", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, initial_window_width,
                             initial_window_height, SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
 
-  /////////////////////////////////////////////////
-  // !!! Temporary !!!
-  /////////////////////////////////////////////////
-
-  class SystemAlloc : public MemoryAllocator
-  {
-    void* Allocate(uint64_t size) override
-    {
-      return SDL_malloc(size);
-    }
-
-    void* Reallocate(void* ptr, uint64_t size) override
-    {
-      return SDL_realloc(ptr, size);
-    }
-
-    void Free(void* ptr, uint64_t size) override
-    {
-      (void)size;
-      SDL_free(ptr);
-    }
-  } system_allocator;
-
-  /////////////////////////////////////////////////
-  // !!! Temporary !!!
-  /////////////////////////////////////////////////
-
   {
     InstanceConf conf = {
         .validation = vulkan_validation_enabled ? RuntimeValidation::Enabled : RuntimeValidation::Disabled,
         .name       = "vvne",
         .window     = window,
     };
-    instance = CreateInstance(conf, system_allocator);
+    instance = CreateInstance(conf, *generic_allocator);
   }
 
   if (vulkan_validation_enabled)
@@ -136,7 +109,7 @@ void Engine::startup(bool vulkan_validation_enabled)
     debug_callback = CreateDebugUtilsMessenger(instance);
   }
 
-  physical_device = SelectPhysicalDevice(instance, PhysicalDeviceSelectionStrategy::SelectFirst, system_allocator);
+  physical_device = SelectPhysicalDevice(instance, PhysicalDeviceSelectionStrategy::SelectFirst, *generic_allocator);
   vkGetPhysicalDeviceProperties(physical_device, &physical_device_properties);
   SDL_Log("Selecting graphics card: %s", physical_device_properties.deviceName);
 
@@ -149,8 +122,8 @@ void Engine::startup(bool vulkan_validation_enabled)
 
   vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &surface_capabilities);
   extent2D                        = surface_capabilities.currentExtent;
-  graphics_family_index           = SelectGraphicsFamilyIndex(physical_device, surface, system_allocator);
-  renderdoc_marker_naming_enabled = IsRenderdocSupported(physical_device, system_allocator);
+  graphics_family_index           = SelectGraphicsFamilyIndex(physical_device, surface, *generic_allocator);
+  renderdoc_marker_naming_enabled = IsRenderdocSupported(physical_device, *generic_allocator);
 
   {
     DeviceConf conf = {
@@ -159,7 +132,7 @@ void Engine::startup(bool vulkan_validation_enabled)
         .validation            = vulkan_validation_enabled ? RuntimeValidation::Enabled : RuntimeValidation::Disabled,
         .renderdoc_extension_active = renderdoc_marker_naming_enabled,
     };
-    device = CreateDevice(conf, system_allocator);
+    device = CreateDevice(conf, *generic_allocator);
   }
 
   if (renderdoc_marker_naming_enabled)
@@ -177,9 +150,9 @@ void Engine::startup(bool vulkan_validation_enabled)
   job_system.setup(device, graphics_family_index);
 
   surface_format = SelectSurfaceFormat(physical_device, surface,
-                                       SurfaceFormatSelectionStrategy::PreferSRGBnonlinearBGRA8, system_allocator);
+                                       SurfaceFormatSelectionStrategy::PreferSRGBnonlinearBGRA8, *generic_allocator);
   present_mode =
-      SelectPresentMode(physical_device, surface, PresentModeSelectionStrategy::PreferImmediate, system_allocator);
+      SelectPresentMode(physical_device, surface, PresentModeSelectionStrategy::PreferImmediate, *generic_allocator);
 
   {
     SwapchainConf conf = {
