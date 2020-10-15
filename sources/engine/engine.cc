@@ -42,12 +42,6 @@ uint32_t find_memory_type_index(VkPhysicalDeviceMemoryProperties* properties, Vk
   return 0;
 }
 
-void renderpass_allocate_memory(HierarchicalAllocator& a, RenderPass& rp, uint32_t n)
-{
-  rp.framebuffers_count = n;
-  rp.framebuffers       = a.allocate<VkFramebuffer>(n);
-}
-
 VkComponentMapping gen_rgba_cm()
 {
   VkComponentMapping cm = {};
@@ -85,12 +79,16 @@ void GpuMemoryBlock::allocate_aligned_ranged(VkDeviceSize dst[], const uint32_t 
 
 void Engine::startup(bool vulkan_validation_enabled)
 {
-  // generic_allocator.init();
+  {
+    auto AllocFramebuffers = [&](const uint32_t count) -> ArrayView<VkFramebuffer> {
+      return {generic_allocator->allocate<VkFramebuffer>(count), count};
+    };
 
-  renderpass_allocate_memory(*generic_allocator, render_passes.shadowmap, SHADOWMAP_CASCADE_COUNT);
-  renderpass_allocate_memory(*generic_allocator, render_passes.skybox, SWAPCHAIN_IMAGES_COUNT);
-  renderpass_allocate_memory(*generic_allocator, render_passes.color_and_depth, SWAPCHAIN_IMAGES_COUNT);
-  renderpass_allocate_memory(*generic_allocator, render_passes.gui, SWAPCHAIN_IMAGES_COUNT);
+    render_passes.shadowmap.framebuffers       = AllocFramebuffers(SHADOWMAP_CASCADE_COUNT);
+    render_passes.skybox.framebuffers          = AllocFramebuffers(SWAPCHAIN_IMAGES_COUNT);
+    render_passes.color_and_depth.framebuffers = AllocFramebuffers(SWAPCHAIN_IMAGES_COUNT);
+    render_passes.gui.framebuffers             = AllocFramebuffers(SWAPCHAIN_IMAGES_COUNT);
+  }
 
   window = SDL_CreateWindow("vvne", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, initial_window_width,
                             initial_window_height, SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
@@ -653,7 +651,7 @@ void Engine::teardown()
   for (const RenderPass& it : StructureAsArrayView<RenderPass>(&render_passes))
   {
     vkDestroyRenderPass(device, it.render_pass, nullptr);
-    for (const VkFramebuffer& fb : ArrayView<VkFramebuffer>{it.framebuffers, static_cast<int>(it.framebuffers_count)})
+    for (const VkFramebuffer& fb : it.framebuffers)
     {
       vkDestroyFramebuffer(device, fb, nullptr);
     }
@@ -729,7 +727,7 @@ void Engine::teardown()
 
   vkDestroyInstance(instance, nullptr);
 
-  //generic_allocator.teardown();
+  // generic_allocator.teardown();
 }
 
 Texture Engine::load_texture(const char* filepath, bool register_for_destruction)
@@ -1403,8 +1401,8 @@ void Engine::change_resolution(const VkExtent2D new_size)
   for (const RenderPass& it : StructureAsArrayView<RenderPass>(&render_passes))
   {
     vkDestroyRenderPass(device, it.render_pass, nullptr);
-    for (uint32_t i = 0; i < it.framebuffers_count; ++i)
-      vkDestroyFramebuffer(device, it.framebuffers[i], nullptr);
+    for (VkFramebuffer framebuffer : it.framebuffers)
+      vkDestroyFramebuffer(device, framebuffer, nullptr);
   }
 
   for (const Pipelines::Pair& it : StructureAsArrayView<Pipelines::Pair>(&pipelines))

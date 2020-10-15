@@ -6,6 +6,7 @@
 #include "hierarchical_allocator.hh"
 #include "job_system.hh"
 #include "literals.hh"
+
 #include <SDL2/SDL_video.h>
 #include <vulkan/vulkan.h>
 
@@ -46,9 +47,8 @@ struct Pipelines
 
 struct RenderPass
 {
-  VkRenderPass   render_pass;
-  VkFramebuffer* framebuffers;
-  uint32_t       framebuffers_count;
+  VkRenderPass             render_pass;
+  ArrayView<VkFramebuffer> framebuffers;
 
   void begin(VkCommandBuffer cmd, uint32_t image_index) const;
 };

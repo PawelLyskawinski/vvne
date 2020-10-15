@@ -98,8 +98,8 @@ template <typename T, uint32_t N = 64> struct ElementStack
 
 template <typename T> struct ArrayView
 {
-  T*  data;
-  int count;
+  T*       data;
+  uint32_t count;
 
   void reset()
   {
@@ -112,26 +112,32 @@ template <typename T> struct ArrayView
     SDL_memset(data, 0, sizeof(T) * count);
   }
 
-  T& operator[](int idx)
+  T& operator[](uint32_t idx)
   {
     return data[idx];
   }
-  const T& operator[](int idx) const
+
+  const T& operator[](uint32_t idx) const
   {
     return data[idx];
   }
+
   T* begin()
   {
     return data;
   }
+
   T* end()
   {
     return &data[count];
   }
+
   T* begin() const
   {
     return data;
+
   }
+
   T* end() const
   {
     return &data[count];
