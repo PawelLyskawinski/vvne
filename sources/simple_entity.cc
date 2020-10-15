@@ -137,7 +137,7 @@ void SimpleEntity::recalculate_node_transforms(const SceneGraph& model, const Ma
   //////////////////////////////////////////////////////////////////////////////
   /// Apply Translations
   //////////////////////////////////////////////////////////////////////////////
-  for (int i = 0; i < nodes.count; ++i)
+  for (uint32_t i = 0; i < nodes.count; ++i)
   {
     Mat4x4 translation_matrix;
     translation_matrix.identity();
@@ -164,7 +164,7 @@ void SimpleEntity::recalculate_node_transforms(const SceneGraph& model, const Ma
   //////////////////////////////////////////////////////////////////////////////
   /// Apply Rotations
   //////////////////////////////////////////////////////////////////////////////
-  for (int i = 0; i < nodes.count; ++i)
+  for (uint32_t i = 0; i < nodes.count; ++i)
   {
     Mat4x4 rotation_matrix;
     rotation_matrix.identity();
@@ -191,7 +191,7 @@ void SimpleEntity::recalculate_node_transforms(const SceneGraph& model, const Ma
   //////////////////////////////////////////////////////////////////////////////
   /// Apply Scaling
   //////////////////////////////////////////////////////////////////////////////
-  for (int i = 0; i < nodes.count; ++i)
+  for (uint32_t i = 0; i < nodes.count; ++i)
   {
     if (nodes[i].flags.scale)
     {
@@ -221,7 +221,7 @@ void SimpleEntity::recalculate_node_transforms(const SceneGraph& model, const Ma
     Skin skin = model.skins[0];
 
     const Mat4x4 inverted_world_transform = world_transform.invert();
-    for (int joint_id = 0; joint_id < skin.joints.count; ++joint_id)
+    for (uint32_t joint_id = 0; joint_id < skin.joints.count; ++joint_id)
     {
       joint_matrices[joint_id] =
           inverted_world_transform * node_transforms[skin.joints[joint_id]] * skin.inverse_bind_matrices[joint_id];
