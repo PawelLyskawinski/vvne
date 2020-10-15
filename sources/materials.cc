@@ -661,7 +661,7 @@ void Materials::setup(Engine& engine)
   {
     SDL_RWops* ctx              = SDL_RWFromFile("../assets/lucida_sans_sdf.fnt", "r");
     int        fnt_file_size    = static_cast<int>(SDL_RWsize(ctx));
-    char*      fnt_file_content = engine.generic_allocator.allocate<char>(static_cast<uint32_t>(fnt_file_size));
+    char*      fnt_file_content = engine.generic_allocator->allocate<char>(static_cast<uint32_t>(fnt_file_size));
     SDL_RWread(ctx, fnt_file_content, sizeof(char), static_cast<size_t>(fnt_file_size));
     SDL_RWclose(ctx);
 
@@ -687,7 +687,7 @@ void Materials::setup(Engine& engine)
       cursor.forward('\n');
     }
 
-    engine.generic_allocator.free(fnt_file_content, static_cast<uint32_t>(fnt_file_size));
+    engine.generic_allocator->free(fnt_file_content, static_cast<uint32_t>(fnt_file_size));
   }
 
   pbr_light_sources_cache_lock = SDL_CreateMutex();

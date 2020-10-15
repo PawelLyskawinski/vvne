@@ -14,7 +14,7 @@ void Game::startup(Engine& engine)
   materials.setup(engine);
   materials.light_source_position = Vec3(0.0f, -1.0f, 1.0f);
   player.setup(engine.extent2D.width, engine.extent2D.height);
-  level.setup(engine.generic_allocator, materials);
+  level.setup(*engine.generic_allocator, materials);
 
   SDL_SetRelativeMouseMode(SDL_FALSE);
 
@@ -24,7 +24,7 @@ void Game::startup(Engine& engine)
   update_profiler.skip_frames = 5;
   render_profiler.skip_frames = 5;
 
-  story.setup(engine.generic_allocator);
+  story.setup(*engine.generic_allocator);
 
   DEBUG_VEC2.x = 0.1f;
   DEBUG_VEC2.y = -1.0f;
@@ -55,7 +55,7 @@ void Game::startup(Engine& engine)
 
 void Game::teardown(Engine& engine)
 {
-  level.teardown(engine.generic_allocator);
+  level.teardown(*engine.generic_allocator);
   debug_gui.teardown();
   materials.teardown(engine);
   vkDeviceWaitIdle(engine.device);
@@ -221,19 +221,19 @@ void execute_commands(Engine& engine, VkCommandBuffer cmd, PrioritizedCommandBuf
   if (0 != list_size)
   {
     {
-      PrioritizedCommandBuffer* tmp = engine.generic_allocator.allocate<PrioritizedCommandBuffer>(list_size);
+      PrioritizedCommandBuffer* tmp = engine.generic_allocator->allocate<PrioritizedCommandBuffer>(list_size);
       merge_sort(list.begin(), list.begin() + list_size, tmp);
-      engine.generic_allocator.free(tmp, list_size);
+      engine.generic_allocator->free(tmp, list_size);
     }
 
     auto             extract_command_buffer = [](const PrioritizedCommandBuffer& it) { return it.data; };
-    VkCommandBuffer* command_buffers        = engine.generic_allocator.allocate<VkCommandBuffer>(list_size);
+    VkCommandBuffer* command_buffers        = engine.generic_allocator->allocate<VkCommandBuffer>(list_size);
     VkCommandBuffer* end =
         std::transform(list.begin(), list.begin() + list_size, command_buffers, extract_command_buffer);
 
     vkCmdExecuteCommands(cmd, std::distance(command_buffers, end), command_buffers);
 
-    engine.generic_allocator.free(command_buffers, list_size);
+    engine.generic_allocator->free(command_buffers, list_size);
   }
 }
 

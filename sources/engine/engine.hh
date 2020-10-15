@@ -163,8 +163,8 @@ struct Engine
   RenderPasses         render_passes;
   Pipelines            pipelines;
 
-  HierarchicalAllocator generic_allocator;
-  JobSystem             job_system;
+  HierarchicalAllocator* generic_allocator;
+  JobSystem              job_system;
 
   void           startup(bool vulkan_validation_enabled);
   void           teardown();

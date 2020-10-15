@@ -272,7 +272,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
   SDL_RWops* ctx              = SDL_RWFromFile(path, "rb");
   uint64_t   glb_file_size    = static_cast<uint64_t>(SDL_RWsize(ctx));
-  uint8_t*   glb_file_content = engine.generic_allocator.allocate<uint8_t>(static_cast<uint32_t>(glb_file_size));
+  uint8_t*   glb_file_content = engine.generic_allocator->allocate<uint8_t>(static_cast<uint32_t>(glb_file_size));
 
   SDL_RWread(ctx, glb_file_content, sizeof(char), glb_file_size);
   SDL_RWclose(ctx);
@@ -285,17 +285,17 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
   auto safe_count = [](const Seeker& d, const char* name) { return d.has(name) ? d.node(name).elements_count() : 0; };
   scene_graph.materials.count  = safe_count(document, "materials");
-  scene_graph.materials.data   = engine.generic_allocator.allocate_zeroed<Material>(scene_graph.materials.count);
+  scene_graph.materials.data   = engine.generic_allocator->allocate_zeroed<Material>(scene_graph.materials.count);
   scene_graph.meshes.count     = safe_count(document, "meshes");
-  scene_graph.meshes.data      = engine.generic_allocator.allocate_zeroed<Mesh>(scene_graph.meshes.count);
+  scene_graph.meshes.data      = engine.generic_allocator->allocate_zeroed<Mesh>(scene_graph.meshes.count);
   scene_graph.nodes.count      = safe_count(document, "nodes");
-  scene_graph.nodes.data       = engine.generic_allocator.allocate_zeroed<Node>(scene_graph.nodes.count);
+  scene_graph.nodes.data       = engine.generic_allocator->allocate_zeroed<Node>(scene_graph.nodes.count);
   scene_graph.scenes.count     = safe_count(document, "scenes");
-  scene_graph.scenes.data      = engine.generic_allocator.allocate_zeroed<Scene>(scene_graph.scenes.count);
+  scene_graph.scenes.data      = engine.generic_allocator->allocate_zeroed<Scene>(scene_graph.scenes.count);
   scene_graph.animations.count = safe_count(document, "animations");
-  scene_graph.animations.data  = engine.generic_allocator.allocate_zeroed<Animation>(scene_graph.animations.count);
+  scene_graph.animations.data  = engine.generic_allocator->allocate_zeroed<Animation>(scene_graph.animations.count);
   scene_graph.skins.count      = safe_count(document, "skins");
-  scene_graph.skins.data       = engine.generic_allocator.allocate_zeroed<Skin>(scene_graph.skins.count);
+  scene_graph.skins.data       = engine.generic_allocator->allocate_zeroed<Skin>(scene_graph.skins.count);
 
   // ---------------------------------------------------------------------------
   // MATERIALS
@@ -386,7 +386,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
     const int required_index_space  = mesh.indices_count * (is_index_type_uint16 ? sizeof(uint16_t) : sizeof(uint32_t));
     const int required_vertex_space = position_count * (is_skinning_used ? sizeof(SkinnedVertex) : sizeof(Vertex));
     const int total_upload_buffer_size = required_index_space + required_vertex_space;
-    uint8_t*  upload_buffer            = engine.generic_allocator.allocate<uint8_t>(
+    uint8_t*  upload_buffer            = engine.generic_allocator->allocate<uint8_t>(
         static_cast<uint32_t>(total_upload_buffer_size)); // @todo: is this cleaned up?
     const int index_buffer_glb_offset =
         buffer_views.idx(index_buffer_view).integer("byteOffset") + index_accessor.integer("byteOffset");
@@ -642,7 +642,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
     vkFreeCommandBuffers(engine.device, engine.graphics_command_pool, 1, &cmd);
 
     engine.memory_blocks.host_visible_transfer_source.allocator.reset();
-    engine.generic_allocator.free(upload_buffer, total_upload_buffer_size);
+    engine.generic_allocator->free(upload_buffer, total_upload_buffer_size);
   }
 
   // ---------------------------------------------------------------------------
@@ -658,7 +658,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
     {
       node.flags.children = true;
       node.children.count = node_json.node("children").elements_count();
-      node.children.data  = engine.generic_allocator.allocate<int>(static_cast<uint32_t>(node.children.count));
+      node.children.data  = engine.generic_allocator->allocate<int>(static_cast<uint32_t>(node.children.count));
       node.children.fill_with_zeros();
 
       for (int child_idx = 0; child_idx < node.children.count; ++child_idx)
@@ -735,7 +735,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
     Seeker nodes_json = scene_json.node("nodes");
 
     scene.nodes.count = nodes_json.elements_count();
-    scene.nodes.data  = engine.generic_allocator.allocate<int>(scene.nodes.count);
+    scene.nodes.data  = engine.generic_allocator->allocate<int>(scene.nodes.count);
     scene.nodes.fill_with_zeros();
 
     for (int node_idx = 0; node_idx < scene.nodes.count; ++node_idx)
@@ -761,12 +761,12 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     current_animation.channels.count = channels_count;
     current_animation.channels.data =
-        engine.generic_allocator.allocate<AnimationChannel>(static_cast<uint32_t>(channels_count));
+        engine.generic_allocator->allocate<AnimationChannel>(static_cast<uint32_t>(channels_count));
     current_animation.channels.fill_with_zeros();
 
     current_animation.samplers.count = samplers_count;
     current_animation.samplers.data =
-        engine.generic_allocator.allocate<AnimationSampler>(static_cast<uint32_t>(samplers_count));
+        engine.generic_allocator->allocate<AnimationSampler>(static_cast<uint32_t>(samplers_count));
     current_animation.samplers.fill_with_zeros();
 
     for (int channel_idx = 0; channel_idx < channels_count; ++channel_idx)
@@ -870,9 +870,9 @@ SceneGraph loadGLB(Engine& engine, const char* path)
         SDL_assert(false);
       }
 
-      current_sampler.times = engine.generic_allocator.allocate<float>(static_cast<uint32_t>(input_elements));
+      current_sampler.times = engine.generic_allocator->allocate<float>(static_cast<uint32_t>(input_elements));
       current_sampler.values =
-          engine.generic_allocator.allocate<float>(static_cast<unsigned>(output_type) * output_elements);
+          engine.generic_allocator->allocate<float>(static_cast<unsigned>(output_type) * output_elements);
 
       {
         const int input_view_glb_offset     = input_buffer_view.integer("byteOffset");
@@ -936,7 +936,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
     Seeker joints_json = skin_json.node("joints");
 
     skin.joints.count = joints_json.elements_count();
-    skin.joints.data  = engine.generic_allocator.allocate<int>(static_cast<uint32_t>(skin.joints.count));
+    skin.joints.data  = engine.generic_allocator->allocate<int>(static_cast<uint32_t>(skin.joints.count));
 
     for (int i = 0; i < skin.joints.count; ++i)
     {
@@ -948,7 +948,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
 
     skin.inverse_bind_matrices.count = accessor.integer("count");
     skin.inverse_bind_matrices.data =
-        engine.generic_allocator.allocate<Mat4x4>(static_cast<uint32_t>(skin.inverse_bind_matrices.count));
+        engine.generic_allocator->allocate<Mat4x4>(static_cast<uint32_t>(skin.inverse_bind_matrices.count));
 
     Seeker buffer_view = buffer_views.idx(accessor.integer("bufferView"));
 
@@ -963,7 +963,7 @@ SceneGraph loadGLB(Engine& engine, const char* path)
     }
   }
 
-  engine.generic_allocator.free(glb_file_content, static_cast<uint32_t>(glb_file_size));
+  engine.generic_allocator->free(glb_file_content, static_cast<uint32_t>(glb_file_size));
 
   uint64_t duration_ticks = SDL_GetPerformanceCounter() - start;
   float    elapsed_ms     = 1000.0f * ((float)duration_ticks / (float)SDL_GetPerformanceFrequency());

@@ -34,6 +34,8 @@ int main(int argc, const char* argv[])
   constexpr int desired_frames_per_sec = 60;
   // ---------------------------
 
+  HierarchicalAllocator allocator;
+  engine->generic_allocator = &allocator;
   engine->startup(IsInArgumentsList(argv, argc, "--validate"));
   game->startup(*engine);
 

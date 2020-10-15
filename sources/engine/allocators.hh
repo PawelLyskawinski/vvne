@@ -3,7 +3,7 @@
 #include <SDL2/SDL_assert.h>
 #include <SDL2/SDL_stdinc.h>
 
-template <typename T> constexpr T align(T unaligned, T alignment)
+template <typename T> constexpr T align(T unaligned, const T alignment = sizeof(uintptr_t))
 {
   return (unaligned + (alignment - 1)) & (~(alignment - 1));
 }
@@ -31,7 +31,7 @@ public:
   template <typename T> T* alloc(int count = 1)
   {
     T* r = reinterpret_cast<T*>(&data[sp]);
-    sp += align<uint64_t>(count * sizeof(T), 8);
+    sp += align<uint64_t>(count * sizeof(T));
     SDL_assert(sp < capacity);
     return r;
   }

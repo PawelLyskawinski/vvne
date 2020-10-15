@@ -85,12 +85,12 @@ void GpuMemoryBlock::allocate_aligned_ranged(VkDeviceSize dst[], const uint32_t 
 
 void Engine::startup(bool vulkan_validation_enabled)
 {
-  generic_allocator.init();
+  // generic_allocator.init();
 
-  renderpass_allocate_memory(generic_allocator, render_passes.shadowmap, SHADOWMAP_CASCADE_COUNT);
-  renderpass_allocate_memory(generic_allocator, render_passes.skybox, SWAPCHAIN_IMAGES_COUNT);
-  renderpass_allocate_memory(generic_allocator, render_passes.color_and_depth, SWAPCHAIN_IMAGES_COUNT);
-  renderpass_allocate_memory(generic_allocator, render_passes.gui, SWAPCHAIN_IMAGES_COUNT);
+  renderpass_allocate_memory(*generic_allocator, render_passes.shadowmap, SHADOWMAP_CASCADE_COUNT);
+  renderpass_allocate_memory(*generic_allocator, render_passes.skybox, SWAPCHAIN_IMAGES_COUNT);
+  renderpass_allocate_memory(*generic_allocator, render_passes.color_and_depth, SWAPCHAIN_IMAGES_COUNT);
+  renderpass_allocate_memory(*generic_allocator, render_passes.gui, SWAPCHAIN_IMAGES_COUNT);
 
   window = SDL_CreateWindow("vvne", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, initial_window_width,
                             initial_window_height, SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
@@ -756,7 +756,7 @@ void Engine::teardown()
 
   vkDestroyInstance(instance, nullptr);
 
-  generic_allocator.teardown();
+  //generic_allocator.teardown();
 }
 
 Texture Engine::load_texture(const char* filepath, bool register_for_destruction)

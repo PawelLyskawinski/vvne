@@ -48,6 +48,9 @@ set(SOURCES
         sources/engine/gltf.cc
         sources/engine/cubemap.cc
         sources/engine/math.cc
+        sources/engine/vulkan_generic.cc
+        sources/engine/vulkan_generic.hh
+        sources/engine/memory_allocator.hh
         sources/game.cc
         sources/gui_text_generator.cc
         sources/sdf_font_generator.cc
@@ -71,7 +74,7 @@ set(SOURCES
         thirdparty/imgui_draw.cpp
         thirdparty/imgui_widgets.cpp
         thirdparty/sha256.cpp
-        sources/engine/vulkan_generic.cc sources/engine/vulkan_generic.hh sources/engine/memory_allocator.hh)
+)
 
 if(WIN32)
 add_executable(${PROJECT_NAME} ${SOURCES} assets/applicationIcon.rc)
