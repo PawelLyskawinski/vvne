@@ -218,12 +218,14 @@ void draw_performence_tab(Engine& engine, Game& game)
               bytes_as_mb(engine.generic_allocator->free_list_5MB.capacity));
   free_list_visualize(engine.generic_allocator->free_list_5MB);
 
+  auto calc_max_size = [](const BlockAllocator& allocator){ return allocator.m_BlockSize * allocator.m_BlockCapacity; };
+
   ImGui::Text("[HOST] small (1KB) block allocator (%uKB pool)",
-              bytes_as_kb(engine.generic_allocator->block_allocator_1kb.get_max_size()));
+              bytes_as_kb(calc_max_size(engine.generic_allocator->block_allocator_1kb)));
   block_allocator_visualize(engine.generic_allocator->block_allocator_1kb);
 
   ImGui::Text("[HOST] normal (10KB) block allocator (%uMB pool)",
-              bytes_as_mb(engine.generic_allocator->block_allocator_10kb.get_max_size()));
+              bytes_as_mb(calc_max_size(engine.generic_allocator->block_allocator_10kb)));
   block_allocator_visualize(engine.generic_allocator->block_allocator_10kb);
 }
 

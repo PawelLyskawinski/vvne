@@ -1,6 +1,6 @@
 #pragma once
 
-#include <SDL2/SDL_stdinc.h>
+#include "memory_allocator.hh"
 
 //
 // Fixed size block allocator.
@@ -8,34 +8,17 @@
 //
 // Allows to ONLY allocate a single block
 //
-struct BlockAllocator
+struct BlockAllocator : public MemoryAllocator
 {
-public:
-  void     init(uint32_t block_size, uint32_t block_count);
-  void     teardown();
-  uint8_t* allocate();
-  void     free(const uint8_t* ptr);
+  BlockAllocator(uint32_t block_size, uint32_t block_count);
+  ~BlockAllocator() override;
 
-  //
-  // allocator visualizer helpers
-  //
-  [[nodiscard]] bool     is_block_used(uint64_t idx) const;
-  [[nodiscard]] uint64_t calc_adjacent_blocks_count(uint64_t first) const;
-  [[nodiscard]] uint64_t get_max_size() const;
+  void* Allocate(uint64_t size) override;
+  void* Reallocate(void* ptr, uint64_t size) override;
+  void  Free(void* ptr, uint64_t size) override;
 
-  [[nodiscard]] uint32_t get_block_capacity() const
-  {
-    return block_capacity;
-  }
-
-  [[nodiscard]] uint32_t get_block_size() const
-  {
-    return block_size;
-  }
-
-private:
-  uint8_t* data                    = nullptr;
-  uint32_t block_size              = 0;
-  uint64_t block_usage_bitmaps[20] = {};
-  uint32_t block_capacity          = 0;
+  uint8_t* m_Data                  = nullptr;
+  uint64_t m_BlockUsageBitmaps[20] = {};
+  uint32_t m_BlockSize             = 0;
+  uint32_t m_BlockCapacity         = 0;
 };

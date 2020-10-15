@@ -1,10 +1,45 @@
 #include "block_allocator_visualizer.hh"
+#include <SDL2/SDL_assert.h>
 #include <imgui.h>
+
+namespace {
+
+uint64_t get_max_size(const BlockAllocator& allocator)
+{
+  return allocator.m_BlockSize * allocator.m_BlockCapacity;
+}
+
+bool is_bit_set(uint64_t bitmap, uint64_t bit)
+{
+  return bitmap & (uint64_t(1) << bit);
+}
+
+bool is_block_used(const BlockAllocator& allocator, uint64_t idx)
+{
+  SDL_assert(allocator.m_BlockCapacity > idx);
+  auto is_bit_set = [](uint64_t bitmap, uint64_t bit) { return bitmap & (uint64_t(1) << bit); };
+  return is_bit_set(allocator.m_BlockUsageBitmaps[idx / 64], idx % 64);
+}
+
+uint64_t calc_adjacent_blocks_count(const BlockAllocator& allocator, uint64_t first)
+{
+  bool initial_state = is_bit_set(allocator.m_BlockUsageBitmaps[first / 64], first % 64);
+
+  uint64_t it = first;
+  while ((allocator.m_BlockCapacity > it) and (initial_state == is_block_used(allocator, it)))
+  {
+    ++it;
+  }
+
+  return it - first;
+}
+
+} // namespace
 
 void block_allocator_visualize(const BlockAllocator& allocator)
 {
   const float    max_width = ImGui::GetWindowWidth() * 0.98f;
-  const uint32_t max_size  = allocator.get_max_size();
+  const uint32_t max_size  = get_max_size(allocator);
   uint32_t       counter   = 0;
   char           name_buffer[128];
 
@@ -29,14 +64,13 @@ void block_allocator_visualize(const BlockAllocator& allocator)
 
   // @TODO for each adjacent used/free strides draw single colored button
 
-  bool           state          = allocator.is_block_used(0);
-  const uint32_t block_capacity = allocator.get_block_capacity();
-  uint64_t       idx            = 0;
+  bool     state = is_block_used(allocator, 0);
+  uint64_t idx   = 0;
 
-  while (block_capacity > idx)
+  while (allocator.m_BlockCapacity > idx)
   {
-    uint64_t adjacent_count = allocator.calc_adjacent_blocks_count(idx);
-    draw_button(state ? BlockType::UsedSpace : BlockType::FreeSpace, allocator.get_block_size() * adjacent_count);
+    uint64_t adjacent_count = calc_adjacent_blocks_count(allocator, idx);
+    draw_button(state ? BlockType::UsedSpace : BlockType::FreeSpace, allocator.m_BlockSize * adjacent_count);
     idx += adjacent_count;
     state = !state;
   }
