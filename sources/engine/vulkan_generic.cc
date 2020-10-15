@@ -329,60 +329,45 @@ VkSwapchainKHR CreateSwapchain(VkDevice device, const SwapchainConf& conf)
 VkImage CreateImage(VkDevice device, const ImageConf& conf)
 {
   VkImage image = VK_NULL_HANDLE;
+
+  VkImageCreateInfo ci = {
+      .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+      .imageType     = VK_IMAGE_TYPE_2D,
+      .mipLevels     = 1,
+      .arrayLayers   = 1,
+      .tiling        = VK_IMAGE_TILING_OPTIMAL,
+      .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
+      .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+  };
+
   switch (conf.type)
   {
   case ImageType::MSAAResolve: {
-    VkImageCreateInfo ci = {
-        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType     = VK_IMAGE_TYPE_2D,
-        .format        = conf.format,
-        .extent        = {conf.extent.width, conf.extent.height, 1},
-        .mipLevels     = 1,
-        .arrayLayers   = 1,
-        .samples       = conf.sample_count,
-        .tiling        = VK_IMAGE_TILING_OPTIMAL,
-        .usage         = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
-        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-    };
+    ci.format  = conf.format;
+    ci.extent  = {conf.extent.width, conf.extent.height, 1};
+    ci.samples = conf.sample_count;
+    ci.usage   = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     vkCreateImage(device, &ci, nullptr, &image);
   }
   break;
   case ImageType::DepthTest: {
-    VkImageCreateInfo ci = {
-        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType     = VK_IMAGE_TYPE_2D,
-        .format        = VK_FORMAT_D32_SFLOAT,
-        .extent        = {conf.extent.width, conf.extent.height, 1},
-        .mipLevels     = 1,
-        .arrayLayers   = 1,
-        .samples       = conf.sample_count,
-        .tiling        = VK_IMAGE_TILING_OPTIMAL,
-        .usage         = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
-        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-    };
+    ci.format  = VK_FORMAT_D32_SFLOAT;
+    ci.extent  = {conf.extent.width, conf.extent.height, 1};
+    ci.samples = conf.sample_count;
+    ci.usage   = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     vkCreateImage(device, &ci, nullptr, &image);
   }
   break;
   case ImageType::CascadeShadowMap: {
-    VkImageCreateInfo ci = {
-        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType     = VK_IMAGE_TYPE_2D,
-        .format        = VK_FORMAT_D32_SFLOAT,
-        .extent        = {conf.extent.width, conf.extent.height, 1},
-        .mipLevels     = 1,
-        .arrayLayers   = conf.layers,
-        .samples       = VK_SAMPLE_COUNT_1_BIT,
-        .tiling        = VK_IMAGE_TILING_OPTIMAL,
-        .usage         = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
-        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-    };
+    ci.format = VK_FORMAT_D32_SFLOAT, ci.extent = {conf.extent.width, conf.extent.height, 1};
+    ci.arrayLayers = conf.layers;
+    ci.samples     = VK_SAMPLE_COUNT_1_BIT;
+    ci.usage       = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
     vkCreateImage(device, &ci, nullptr, &image);
   }
   break;
   }
+
   return image;
 }
 
