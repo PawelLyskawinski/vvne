@@ -2,14 +2,19 @@
 #include "engine/engine.hh"
 #include "game.hh"
 #include <SDL2/SDL.h>
-#include <algorithm>
 
 namespace {
 
-bool is_in_arguments_list(const char* argv[], uint32_t argc, const char* search)
+bool IsInArgumentsList(const char** argv, const uint32_t argc, const char* search)
 {
-  return &argv[argc] !=
-         std::find_if(argv + 1, &argv[argc], [search](const char* it) { return 0 == SDL_strcmp(it, search); });
+  for (uint32_t i = 1; i < argc; ++i)
+  {
+    if (0 == SDL_strcmp(argv[i], search))
+    {
+      return true;
+    }
+  }
+  return false;
 }
 
 } // namespace
@@ -29,10 +34,10 @@ int main(int argc, const char* argv[])
   constexpr int desired_frames_per_sec = 60;
   // ---------------------------
 
-  engine->startup(is_in_arguments_list(argv, argc, "--validate"));
+  engine->startup(IsInArgumentsList(argv, argc, "--validate"));
   game->startup(*engine);
 
-  if (not is_in_arguments_list(argv, argc, "--dry_run"))
+  if (not IsInArgumentsList(argv, argc, "--dry_run"))
   {
     uint64_t        performance_frequency     = SDL_GetPerformanceFrequency();
     uint64_t        start_of_game_ticks       = SDL_GetPerformanceCounter();
