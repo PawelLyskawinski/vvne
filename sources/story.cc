@@ -32,23 +32,24 @@ uint32_t gather_active_entities(const State states[], uint32_t count, uint32_t* 
 
 } // namespace
 
-void Story::setup(HierarchicalAllocator& hallocator)
+void Story::setup(MemoryAllocator& in_allocator)
 {
-  allocator        = &hallocator;
-  nodes            = hallocator.allocate<Node>(entities_capacity);
-  node_states      = hallocator.allocate<State>(entities_capacity);
-  target_positions = hallocator.allocate<TargetPosition>(components_capacity);
-  connections      = hallocator.allocate<Connection>(connections_capacity);
-  dialogues        = hallocator.allocate<Dialogue>(dialogues_capacity);
+  allocator   = &in_allocator;
+  nodes       = reinterpret_cast<Node*>(allocator->Allocate(sizeof(Node) * entities_capacity));
+  node_states = reinterpret_cast<State*>(allocator->Allocate(sizeof(State) * entities_capacity));
+  target_positions =
+      reinterpret_cast<TargetPosition*>(allocator->Allocate(sizeof(TargetPosition) * components_capacity));
+  connections = reinterpret_cast<Connection*>(allocator->Allocate(sizeof(Connection) * connections_capacity));
+  dialogues   = reinterpret_cast<Dialogue*>(allocator->Allocate(sizeof(Dialogue) * dialogues_capacity));
 }
 
 void Story::teardown()
 {
-  allocator->free(nodes, entities_capacity);
-  allocator->free(node_states, entities_capacity);
-  allocator->free(target_positions, components_capacity);
-  allocator->free(connections, connections_capacity);
-  allocator->free(dialogues, dialogues_capacity);
+  allocator->Free(nodes, sizeof(Node) * entities_capacity);
+  allocator->Free(node_states, sizeof(State) * entities_capacity);
+  allocator->Free(target_positions, sizeof(TargetPosition) * components_capacity);
+  allocator->Free(connections, sizeof(Connection) * connections_capacity);
+  allocator->Free(dialogues, sizeof(Dialogue) * dialogues_capacity);
 }
 
 void Story::load(SDL_RWops* handle)
@@ -68,7 +69,7 @@ void Story::load(SDL_RWops* handle)
     Dialogue& dialogue = dialogues[i];
     s.deserialize(dialogue.entity);
     s.deserialize(dialogue.type);
-    dialogue.text = allocator->allocate<char>(Dialogue::type_to_size(dialogue.type));
+    dialogue.text = reinterpret_cast<char*>(allocator->Allocate(sizeof(char) * Dialogue::type_to_size(dialogue.type)));
     s.deserialize(dialogue.text, Dialogue::type_to_size(dialogue.type));
   }
 
@@ -188,7 +189,8 @@ void Story::validate_and_fix()
         const Dialogue stub = {
             .entity = entity,
             .type   = Dialogue::Type::Short,
-            .text   = allocator->allocate<char>(Dialogue::type_to_size(Dialogue::Type::Short)),
+            .text   = reinterpret_cast<char*>(
+                allocator->Allocate(sizeof(char) * Dialogue::type_to_size(Dialogue::Type::Short))),
         };
 
         *end = stub;
@@ -281,8 +283,8 @@ bool Story::update(const Player& player, uint32_t entity_idx)
   }
   case Node::Dialogue: {
     node_states[entity_idx] = State::Finished;
-    const Dialogue* co = std::find(dialogues, dialogues + dialogues_count, entity_idx);
-    active_dialogue = co;
+    const Dialogue* co      = std::find(dialogues, dialogues + dialogues_count, entity_idx);
+    active_dialogue         = co;
     return false;
   }
   default:
@@ -290,11 +292,12 @@ bool Story::update(const Player& player, uint32_t entity_idx)
   }
 }
 
-void Story::tick(const Player& player, Stack& allocator)
+void Story::tick(const Player& player, MemoryAllocator& allocator)
 {
   uint32_t  active_entites_capacity = 256;
-  uint32_t* active_entities         = allocator.alloc<uint32_t>(active_entites_capacity);
-  uint32_t  active_entities_count   = gather_active_entities(node_states, entity_count, active_entities);
+  uint32_t* active_entities =
+      reinterpret_cast<uint32_t*>(allocator.Allocate(sizeof(uint32_t) * active_entites_capacity));
+  uint32_t active_entities_count = gather_active_entities(node_states, entity_count, active_entities);
 
   //
   // partition active entities into those which are still active and already finished

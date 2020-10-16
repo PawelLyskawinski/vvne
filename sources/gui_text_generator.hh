@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/allocators.hh"
+#include "engine/memory_allocator.hh"
 #include "engine/math.hh"
 #include <vulkan/vulkan.h>
 
@@ -19,6 +20,6 @@ struct GuiTextGenerator
   float      camera_y_pitch_radians;
   VkExtent2D screen_extent2D;
 
-  [[nodiscard]] ArrayView<GuiText> height_ruler(Stack& allocator) const;
-  [[nodiscard]] ArrayView<GuiText> tilt_ruler(Stack& allocator) const;
+  [[nodiscard]] ArrayView<GuiText> height_ruler(MemoryAllocator& allocator) const;
+  [[nodiscard]] ArrayView<GuiText> tilt_ruler(MemoryAllocator& allocator) const;
 };

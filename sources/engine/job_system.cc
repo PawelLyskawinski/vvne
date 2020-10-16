@@ -1,6 +1,6 @@
 #include "job_system.hh"
-#include "allocators.hh"
 #include "literals.hh"
+#include "stack_allocator.hh"
 #include <algorithm>
 
 namespace {
@@ -160,7 +160,7 @@ void JobSystem::worker_loop()
       };
 
       jobs[job_idx](tjd);
-      allocator.reset();
+      allocator.Reset();
       job_idx = SDL_AtomicIncRef(&jobs_taken);
     }
 

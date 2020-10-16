@@ -1,18 +1,17 @@
 #pragma once
 
 #include "engine_constants.hh"
+#include "memory_allocator.hh"
 #include <SDL2/SDL_atomic.h>
 #include <SDL2/SDL_mutex.h>
 #include <SDL2/SDL_thread.h>
 #include <vulkan/vulkan.h>
 
-struct Stack;
-
 struct ThreadJobData
 {
-  int    thread_id;
-  Stack& allocator;
-  void*  user_data;
+  int              thread_id;
+  MemoryAllocator& allocator;
+  void*            user_data;
 };
 
 struct WorkerCommands
@@ -51,7 +50,10 @@ struct JobSystem
   void            reset_command_buffers(uint32_t image_index);
   VkCommandBuffer acquire(uint32_t worker_id, uint32_t image_index);
   void            worker_loop();
-  inline void     fill_jobs(JobGenerator g) { jobs_count = (g(jobs) - jobs); }
+  inline void     fill_jobs(JobGenerator g)
+  {
+    jobs_count = (g(jobs) - jobs);
+  }
 
   void start();
   void wait_for_finish();

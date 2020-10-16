@@ -1,7 +1,7 @@
 #pragma once
 
 #include "color_palette.hh"
-#include "engine/hierarchical_allocator.hh"
+#include "engine/memory_allocator.hh"
 #include "engine/math.hh"
 #include "story.hh"
 #include <SDL2/SDL_events.h>
@@ -51,11 +51,11 @@ struct StoryEditor : public Story
   bool                   is_point_requested_to_render          = false;
   Vec3                   point_to_render                       = {};
 
-  void setup(HierarchicalAllocator& allocator);
+  void setup(MemoryAllocator& allocator);
   void teardown();
   void load(SDL_RWops* handle);
   void save(SDL_RWops* handle);
-  void tick(const Player& player, Stack& allocator);
+  void tick(const Player& player, MemoryAllocator& allocator);
   void imgui_update();
   void editor_update(const SDL_Event& event);
   void render_node_edit_window(const Player& player);

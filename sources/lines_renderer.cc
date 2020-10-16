@@ -12,8 +12,10 @@ bool are_colors_equal(const Vec4& lhs, const Vec4& rhs)
 
 bool compare_colors(const Vec4& lhs, const Vec4& rhs)
 {
-  return (lhs.x != rhs.x) ? lhs.x < rhs.x
-                          : (lhs.y != rhs.y) ? lhs.y < rhs.y : (lhs.z != rhs.z) ? lhs.z < rhs.z : lhs.w < rhs.w;
+  return (lhs.x != rhs.x)   ? lhs.x < rhs.x
+         : (lhs.y != rhs.y) ? lhs.y < rhs.y
+         : (lhs.z != rhs.z) ? lhs.z < rhs.z
+                            : lhs.w < rhs.w;
 }
 
 template <typename T, typename TFcn> T find_range_end(T begin, T end, TFcn pred)
@@ -48,36 +50,26 @@ bool Line::operator<(const Line& rhs) const
   }
 }
 
-void LinesRenderer::setup(HierarchicalAllocator& allocator, uint32_t capacity)
+void LinesRenderer::setup(MemoryAllocator& allocator, uint32_t capacity)
 {
   lines_capacity      = capacity;
-  lines               = allocator.allocate<Line>(lines_capacity);
-  position_cache      = allocator.allocate<Vec2>(2 * lines_capacity);
+  lines               = reinterpret_cast<Line*>(allocator.Allocate(sizeof(Line) * lines_capacity));
+  position_cache      = reinterpret_cast<Vec2*>(allocator.Allocate(sizeof(Vec2) * (2 * lines_capacity)));
   lines_size          = 0;
   position_cache_size = 0;
 }
 
-void LinesRenderer::teardown(HierarchicalAllocator& allocator)
+void LinesRenderer::teardown(MemoryAllocator& allocator)
 {
-  allocator.free(lines, lines_capacity);
-  allocator.free(position_cache, 2 * lines_capacity);
+  allocator.Free(lines, sizeof(Line) * lines_capacity);
+  allocator.Free(position_cache, sizeof(Vec2) * (2 * lines_capacity));
 }
 
-void LinesRenderer::cache_lines(Stack& stack)
+void LinesRenderer::cache_lines(MemoryAllocator& allocator)
 {
-  cache_lines(stack.alloc<Line>(lines_size));
-}
+  Line* tmp = reinterpret_cast<Line*>(allocator.Allocate(sizeof(Line) * lines_size));
 
-void LinesRenderer::cache_lines(HierarchicalAllocator& allocator)
-{
-  Line* tmp = allocator.allocate<Line>(lines_size);
-  cache_lines(tmp);
-  allocator.free(tmp, lines_size);
-}
-
-void LinesRenderer::cache_lines(Line* tmp_helper_space)
-{
-  merge_sort(lines, lines + lines_size, tmp_helper_space);
+  merge_sort(lines, lines + lines_size, tmp);
 
   auto acc_fcn = [](Vec2* a, const Line& line) {
     *a++ = line.origin;
@@ -87,6 +79,8 @@ void LinesRenderer::cache_lines(Line* tmp_helper_space)
 
   position_cache_size =
       std::distance(position_cache, std::accumulate(lines, lines + lines_size, position_cache, acc_fcn));
+
+  allocator.Free(tmp, sizeof(Line) * lines_size);
 }
 
 void LinesRenderer::render(VkCommandBuffer cmd, VkPipelineLayout layout, uint32_t base_offset) const

@@ -1,8 +1,9 @@
 #pragma once
 
-#include "engine/hierarchical_allocator.hh"
+#include "engine/memory_allocator.hh"
 #include "engine/math.hh"
 #include <vulkan/vulkan_core.h>
+#include <SDL2/SDL_assert.h>
 
 struct Line
 {
@@ -13,15 +14,12 @@ struct Line
   bool  operator<(const Line& rhs) const;
 };
 
-struct Stack;
-
 struct LinesRenderer
 {
-  void setup(HierarchicalAllocator& allocator, uint32_t capacity);
-  void teardown(HierarchicalAllocator& allocator);
-  void cache_lines(HierarchicalAllocator& allocator);
-  void cache_lines(Stack& stack);
-  void cache_lines(Line* tmp_helper_space);
+  void setup(MemoryAllocator& allocator, uint32_t capacity);
+  void teardown(MemoryAllocator& allocator);
+  void cache_lines(MemoryAllocator& allocator);
+  //void cache_lines(Line* tmp_helper_space);
   void reset();
   void render(VkCommandBuffer cmd, VkPipelineLayout layout, uint32_t base_offset = 0) const;
 

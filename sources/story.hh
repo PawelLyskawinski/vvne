@@ -1,7 +1,6 @@
 #pragma once
 
-#include "engine/allocators.hh"
-#include "engine/hierarchical_allocator.hh"
+#include "engine/memory_allocator.hh"
 #include "story_components.hh"
 #include <SDL2/SDL_rwops.h>
 
@@ -16,19 +15,19 @@ struct Story
   static constexpr uint32_t dialogues_capacity   = 1024;
   static constexpr uint32_t connections_capacity = 10'240;
 
-  HierarchicalAllocator* allocator              = nullptr;
-  Node*                  nodes                  = nullptr;
-  State*                 node_states            = nullptr;
-  uint32_t               entity_count           = 0;
-  TargetPosition*        target_positions       = nullptr;
-  uint32_t               target_positions_count = 0;
-  Connection*            connections            = nullptr;
-  uint32_t               connections_count      = 0;
-  Dialogue*              dialogues              = nullptr;
-  uint32_t               dialogues_count        = 0;
-  const Dialogue*        active_dialogue        = nullptr;
+  MemoryAllocator* allocator              = nullptr;
+  Node*            nodes                  = nullptr;
+  State*           node_states            = nullptr;
+  uint32_t         entity_count           = 0;
+  TargetPosition*  target_positions       = nullptr;
+  uint32_t         target_positions_count = 0;
+  Connection*      connections            = nullptr;
+  uint32_t         connections_count      = 0;
+  Dialogue*        dialogues              = nullptr;
+  uint32_t         dialogues_count        = 0;
+  const Dialogue*  active_dialogue        = nullptr;
 
-  void setup(HierarchicalAllocator& allocator);
+  void setup(MemoryAllocator& allocator);
   void teardown();
   void load(SDL_RWops* handle);
   void save(SDL_RWops* handle);
@@ -36,7 +35,7 @@ struct Story
   void dump_connections() const;
   void validate_and_fix();
   void reset_graph_state();
-  void tick(const Player& player, Stack& allocator);
+  void tick(const Player& player, MemoryAllocator& allocator);
   void depth_first_cancel(const Connection& connection);
   void depth_first_cancel(uint32_t entity);
 

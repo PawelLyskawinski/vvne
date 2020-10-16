@@ -8,40 +8,6 @@ template <typename T> constexpr T align(T unaligned, const T alignment = sizeof(
   return (unaligned + (alignment - 1)) & (~(alignment - 1));
 }
 
-class Stack
-{
-public:
-  explicit Stack(uint64_t new_capacity)
-      : data(reinterpret_cast<uint8_t*>(SDL_malloc(new_capacity)))
-      , sp(0)
-      , capacity(new_capacity)
-  {
-  }
-
-  ~Stack()
-  {
-    SDL_free(data);
-  }
-
-  void reset()
-  {
-    sp = 0;
-  }
-
-  template <typename T> T* alloc(int count = 1)
-  {
-    T* r = reinterpret_cast<T*>(&data[sp]);
-    sp += align<uint64_t>(count * sizeof(T));
-    SDL_assert(sp < capacity);
-    return r;
-  }
-
-private:
-  uint8_t* data;
-  uint64_t sp;
-  uint64_t capacity;
-};
-
 template <typename T, uint32_t N = 64> struct ElementStack
 {
   void push(const T& input)

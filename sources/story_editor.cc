@@ -4,6 +4,7 @@
 #include "imgui.h"
 #include "player.hh"
 #include <SDL2/SDL_log.h>
+#include <SDL2/SDL_assert.h>
 #include <algorithm>
 
 namespace story {
@@ -230,13 +231,13 @@ void ClickedPositionTracker::update(const Vec2& position)
 //                 NEW IMPLEMENTATION
 //////////////////////////////////////////////////////////
 
-void StoryEditor::setup(HierarchicalAllocator& allocator)
+void StoryEditor::setup(MemoryAllocator& allocator)
 {
   Story::setup(allocator);
 
-  positions                      = allocator.allocate<Vec2>(entities_capacity);
-  positions_before_grab_movement = allocator.allocate<Vec2>(entities_capacity);
-  is_selected                    = allocator.allocate<uint8_t>(entities_capacity);
+  positions                      = reinterpret_cast<Vec2*>(allocator.Allocate(sizeof(Vec2) * entities_capacity));
+  positions_before_grab_movement = reinterpret_cast<Vec2*>(allocator.Allocate(sizeof(Vec2) * entities_capacity));
+  is_selected                    = reinterpret_cast<uint8_t*>(allocator.Allocate(sizeof(uint8_t) * entities_capacity));
 
   std::fill(is_selected, is_selected + entities_capacity, SDL_FALSE);
 
@@ -298,9 +299,9 @@ void StoryEditor::setup(HierarchicalAllocator& allocator)
 
 void StoryEditor::teardown()
 {
-  allocator->free(positions, entities_capacity);
-  allocator->free(positions_before_grab_movement, entities_capacity);
-  allocator->free(is_selected, entities_capacity);
+  allocator->Free(positions, sizeof(Vec2) * entities_capacity);
+  allocator->Free(positions_before_grab_movement, sizeof(Vec2) * entities_capacity);
+  allocator->Free(is_selected, sizeof(uint8_t) * entities_capacity);
   Story::teardown();
 }
 
@@ -323,7 +324,7 @@ void StoryEditor::save(SDL_RWops* handle)
   s.serialize(positions, entity_count);
 }
 
-void StoryEditor::tick(const Player& player, Stack& allocator)
+void StoryEditor::tick(const Player& player, MemoryAllocator& allocator)
 {
   Story::tick(player, allocator);
 }
@@ -568,7 +569,8 @@ void StoryEditor::imgui_update()
             Dialogue co = {
                 .entity = node_idx,
                 .type   = Dialogue::Type::Short,
-                .text   = allocator->allocate<char>(Dialogue::type_to_size(Dialogue::Type::Short)),
+                .text   = reinterpret_cast<char*>(
+                    allocator->Allocate(sizeof(char) * Dialogue::type_to_size(Dialogue::Type::Short))),
             };
             dialogues[dialogues_count++] = co;
           }

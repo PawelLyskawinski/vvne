@@ -10,10 +10,10 @@ uint32_t line_to_pixel_length(float coord, int pixel_max_size)
 
 } // namespace
 
-ArrayView<GuiText> GuiTextGenerator::height_ruler(Stack& allocator) const
+ArrayView<GuiText> GuiTextGenerator::height_ruler(MemoryAllocator& allocator) const
 {
   ArrayView<GuiText> stack = {};
-  stack.data               = allocator.alloc<GuiText>(12);
+  stack.data               = reinterpret_cast<GuiText*>(allocator.Allocate(sizeof(GuiText) * 12));
 
   const Vec2 base_offset = Vec2(0.13f, player_y_location_meters / 16.0f - 1.015f);
   const Vec3 green       = Vec3(125.0f, 204.0f, 174.0f).scale(1.0f / 255.0f);
@@ -57,7 +57,7 @@ ArrayView<GuiText> GuiTextGenerator::height_ruler(Stack& allocator) const
   return stack;
 }
 
-ArrayView<GuiText> GuiTextGenerator::tilt_ruler(Stack& allocator) const
+ArrayView<GuiText> GuiTextGenerator::tilt_ruler(MemoryAllocator& allocator) const
 {
   float start_x_offset           = line_to_pixel_length(1.17f, screen_extent2D.width);
   float start_y_offset           = line_to_pixel_length(1.375f, screen_extent2D.height);
@@ -70,7 +70,7 @@ ArrayView<GuiText> GuiTextGenerator::tilt_ruler(Stack& allocator) const
   const Vec3 yellow = Vec3(1.0f, 1.0f, 0.0f);
 
   ArrayView<GuiText> stack = {};
-  stack.data               = allocator.alloc<GuiText>(12);
+  stack.data               = reinterpret_cast<GuiText*>(allocator.Allocate(sizeof(GuiText) * 12));
 
   for (int i = 0; i < 10; ++i)
   {
