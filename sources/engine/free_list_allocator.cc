@@ -3,21 +3,22 @@
 
 using Node = FreeListAllocator::Node;
 
-void FreeListAllocator::init(uint64_t new_capacity)
+FreeListAllocator::FreeListAllocator(uint64_t new_capacity)
+    : head{}
+    , pool(reinterpret_cast<uint8_t*>(SDL_malloc(new_capacity)))
+    , capacity(new_capacity)
 {
-  capacity    = new_capacity;
-  pool        = reinterpret_cast<uint8_t*>(SDL_malloc(capacity));
   Node* first = reinterpret_cast<Node*>(pool);
   *first      = Node{nullptr, static_cast<uint32_t>(capacity)};
   head        = Node{first, static_cast<uint32_t>(capacity)};
 }
 
-void FreeListAllocator::teardown()
+FreeListAllocator::~FreeListAllocator()
 {
   SDL_free(pool);
 }
 
-uint8_t* FreeListAllocator::allocate_bytes(unsigned size)
+void* FreeListAllocator::Allocate(uint64_t size)
 {
   Node* A = &head;
   Node* B = A->next;
@@ -45,6 +46,15 @@ uint8_t* FreeListAllocator::allocate_bytes(unsigned size)
   return nullptr;
 }
 
+void* FreeListAllocator::Reallocate(void* ptr, uint64_t size)
+{
+  // TODO implement!
+  (void)ptr;
+  (void)size;
+  SDL_assert(false);
+  return ptr;
+}
+
 namespace {
 
 bool are_mergable(const Node* left, const Node* right)
@@ -54,8 +64,9 @@ bool are_mergable(const Node* left, const Node* right)
 
 } // namespace
 
-void FreeListAllocator::free_bytes(uint8_t* free_me, unsigned size)
+void FreeListAllocator::Free(void* ptr, uint64_t size)
 {
+  uint8_t* free_me = reinterpret_cast<uint8_t*>(ptr);
   SDL_assert(free_me);
   SDL_assert(pool <= free_me);
   SDL_assert(&free_me[size] <= &pool[capacity]);

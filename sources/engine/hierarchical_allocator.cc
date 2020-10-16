@@ -1,16 +1,12 @@
 #include "hierarchical_allocator.hh"
 #include "allocators.hh"
+#include "literals.hh"
 
 HierarchicalAllocator::HierarchicalAllocator()
     : block_allocator_1kb(1_KB, 512)
     , block_allocator_10kb(10_KB, 512)
+    , free_list_5MB(5_MB)
 {
-  free_list_5MB.init(5_MB);
-}
-
-HierarchicalAllocator::~HierarchicalAllocator()
-{
-  free_list_5MB.teardown();
 }
 
 void* HierarchicalAllocator::Allocate(uint64_t size)
@@ -26,7 +22,7 @@ void* HierarchicalAllocator::Allocate(uint64_t size)
   }
   else
   {
-    return free_list_5MB.allocate_bytes(size);
+    return free_list_5MB.Allocate(size);
   }
 }
 
@@ -43,12 +39,15 @@ void HierarchicalAllocator::Free(void* ptr, uint64_t size)
   }
   else
   {
-    free_list_5MB.free_bytes(reinterpret_cast<uint8_t*>(ptr), size);
+    free_list_5MB.Free(ptr, size);
   }
 }
 
 void* HierarchicalAllocator::Reallocate(void* ptr, uint64_t size)
 {
+  // @TODO: implement
+  (void)ptr;
+  (void)size;
   SDL_assert(false);
   return nullptr;
 }

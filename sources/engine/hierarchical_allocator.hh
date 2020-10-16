@@ -7,7 +7,7 @@
 struct HierarchicalAllocator : public MemoryAllocator
 {
   HierarchicalAllocator();
-  ~HierarchicalAllocator() override;
+  ~HierarchicalAllocator() override = default;
 
   template <typename T> T* allocate(uint64_t n = 1)
   {

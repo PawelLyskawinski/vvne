@@ -1,9 +1,8 @@
 #pragma once
 
-#include "literals.hh"
-#include <SDL2/SDL_assert.h>
+#include "memory_allocator.hh"
 
-struct FreeListAllocator
+struct FreeListAllocator : public MemoryAllocator
 {
   struct Node
   {
@@ -21,12 +20,21 @@ struct FreeListAllocator
     }
   };
 
+  explicit FreeListAllocator(uint64_t capacity);
+  ~FreeListAllocator() override;
+
+  void* Allocate(uint64_t size) override;
+  void* Reallocate(void* ptr, uint64_t size) override;
+  void  Free(void* ptr, uint64_t size) override;
+
   Node     head;
   uint8_t* pool;
   uint64_t capacity;
 
+#if 0
   void     init(uint64_t new_capacity);
   void     teardown();
   uint8_t* allocate_bytes(unsigned size);
   void     free_bytes(uint8_t* free_me, unsigned size);
+#endif
 };
